@@ -181,8 +181,16 @@ describe("Posts page mount", () => {
     }
     expect(document.querySelector('link[rel="canonical"]')).toBeNull();
     expect(screen.queryByText(/substack\.com/i)).toBeNull();
+    for (const anchor of document.querySelectorAll("a[href]")) {
+      const href = anchor.getAttribute("href") ?? "";
+      expect(href).not.toContain("letsstartwiththetruth.substack.com");
+      expect(href).not.toContain("substack.com");
+    }
     expect(window.location.pathname).toBe("/posts");
     expect(fetchMock).not.toHaveBeenCalled();
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).not.toContain("/api/substack/archive");
+    }
   });
 
   it.each(["/posts/1", "/posts/some-slug"])(
