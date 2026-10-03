@@ -4,6 +4,7 @@ export const LOGIN_URL = "https://brokenscience.org/login/";
 
 export const getLoginUrl = () => LOGIN_URL;
 
+/** Keep in sync with the <base href> bootstrap in client/index.html. */
 const KNOWN_ROUTES = new Set([
   "classes",
   "courses",

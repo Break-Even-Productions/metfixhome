@@ -110,6 +110,13 @@ export function dailyFixPath(date?: string | null, pillar?: Pillar | null): stri
   return `/the-daily-fix/${date}`;
 }
 
+/** Today with no pillar stays on /the-daily-fix so the bare route remains “today”. */
+export function dailyFixHref(todayIso: string, date: string, pillar: Pillar | null): string {
+  if (!pillar && date === todayIso) return dailyFixPath();
+  if (!pillar) return dailyFixPath(date);
+  return dailyFixPath(date, pillar);
+}
+
 export function addCalendarDays(iso: string, delta: number): string {
   const [year, month, day] = iso.split("-").map(Number);
   const utc = new Date(Date.UTC(year, month - 1, day + delta));

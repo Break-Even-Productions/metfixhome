@@ -82,21 +82,55 @@ function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }
             <X size={16} />
           </button>
         </div>
-        {filtered.map((item) => (
-          <a
-            key={item.label}
-            href={item.href}
-            target={item.href.startsWith("http") ? "_blank" : "_self"}
-            rel="noopener noreferrer"
-            onClick={onClose}
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.875rem 1.25rem", borderBottom: "1px solid rgba(255,255,255,0.04)", textDecoration: "none", transition: "background 0.15s" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(201,169,110,0.06)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            <span style={{ fontFamily: "'DM Sans'", fontSize: "0.9rem", color: "#fdf6f6" }}>{item.label}</span>
-            <span style={{ fontFamily: "'DM Mono'", fontSize: "0.7rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase" }}>{item.category}</span>
-          </a>
-        ))}
+        {filtered.map((item) => {
+          const external = item.href.startsWith("http");
+          const sharedStyle = {
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "0.875rem 1.25rem",
+            borderBottom: "1px solid rgba(255,255,255,0.04)",
+            textDecoration: "none",
+            transition: "background 0.15s",
+          } as const;
+          const hover = {
+            onMouseEnter: (e: React.MouseEvent<HTMLAnchorElement>) => {
+              e.currentTarget.style.background = "rgba(201,169,110,0.06)";
+            },
+            onMouseLeave: (e: React.MouseEvent<HTMLAnchorElement>) => {
+              e.currentTarget.style.background = "transparent";
+            },
+          };
+          const inner = (
+            <>
+              <span style={{ fontFamily: "'DM Sans'", fontSize: "0.9rem", color: "#fdf6f6" }}>{item.label}</span>
+              <span style={{ fontFamily: "'DM Mono'", fontSize: "0.7rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase" }}>{item.category}</span>
+            </>
+          );
+          return external ? (
+            <a
+              key={item.label}
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={onClose}
+              style={sharedStyle}
+              {...hover}
+            >
+              {inner}
+            </a>
+          ) : (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={onClose}
+              style={sharedStyle}
+              {...hover}
+            >
+              {inner}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
@@ -199,6 +233,8 @@ export default function GlobalNav() {
           {/* Right controls */}
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
             <button
+              type="button"
+              aria-label="Search"
               onClick={() => setSearchOpen(true)}
               style={{ background: "none", border: "none", color: "rgba(239,239,239,0.8)", cursor: "pointer", padding: "0.7rem", transition: "color 0.2s" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#C9A96E")}

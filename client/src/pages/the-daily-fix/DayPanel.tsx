@@ -1,9 +1,11 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Link } from "wouter";
 import { DayContent } from "./DayContent";
 import type { DailyFixLoadState } from "./data";
 import {
   addCalendarDays,
   bsiTodayIso,
+  dailyFixHref,
   dailyFixPath,
   dayParts,
   formatDayLabel,
@@ -19,7 +21,6 @@ type DayPanelProps = {
   pillar: Pillar;
   pillarInUrl: boolean;
   load: DailyFixLoadState;
-  onSelect: (date: string, pillar: Pillar | null) => void;
   onOpenArchive: () => void;
 };
 
@@ -53,28 +54,27 @@ function PillarTab({
   active,
   title,
   meta,
-  onSelect,
+  href,
 }: {
   pillar: Pillar;
   active: boolean;
   title: string;
   meta: string;
-  onSelect: () => void;
+  href: string;
 }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={href}
       role="tab"
       id={`fix-tab-${pillar}`}
       aria-selected={active}
       aria-controls={`fix-panel-${pillar}`}
       className="df-tab"
-      onClick={onSelect}
     >
       <span className="df-tab-label">{pillarLabel(pillar)}</span>
       <span className="df-tab-title">{title}</span>
       <span className="df-tab-meta">{meta}</span>
-    </button>
+    </Link>
   );
 }
 
@@ -95,7 +95,6 @@ export function DayPanel({
   pillar,
   pillarInUrl,
   load,
-  onSelect,
   onOpenArchive,
 }: DayPanelProps) {
   const todayIso = bsiTodayIso();
@@ -107,6 +106,7 @@ export function DayPanel({
   const newerDisabled = newer > todayIso;
   const strip = recentDateStrip(todayIso);
   const closer = day && isCloserScheduledDay(day, requestedIso);
+  const keptPillar = pillarInUrl ? pillar : null;
 
   return (
     <div>
@@ -116,19 +116,21 @@ export function DayPanel({
           <h2 className="df-heading">{formatDayLabel(displayIso)}</h2>
         </div>
         <div className="df-actions">
-          <button type="button" className="df-btn df-btn-ghost" onClick={() => onSelect(older, pillarInUrl ? pillar : null)}>
+          <Link href={dailyFixHref(todayIso, older, keptPillar)} className="df-btn df-btn-ghost">
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             Previous
-          </button>
-          <button
-            type="button"
-            className="df-btn df-btn-ghost"
-            disabled={newerDisabled}
-            onClick={() => !newerDisabled && onSelect(newer, pillarInUrl ? pillar : null)}
-          >
-            Next
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </button>
+          </Link>
+          {newerDisabled ? (
+            <span className="df-btn df-btn-ghost" aria-disabled="true" style={{ opacity: 0.35 }}>
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </span>
+          ) : (
+            <Link href={dailyFixHref(todayIso, newer, keptPillar)} className="df-btn df-btn-ghost">
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          )}
           <button type="button" className="df-btn df-btn-ink" onClick={onOpenArchive}>
             Archive
           </button>
@@ -140,16 +142,15 @@ export function DayPanel({
           const parts = dayParts(iso);
           const active = iso === requestedIso;
           return (
-            <button
+            <Link
               key={iso}
-              type="button"
+              href={dailyFixHref(todayIso, iso, keptPillar)}
               aria-current={active ? "date" : undefined}
               className="df-chip"
-              onClick={() => onSelect(iso, pillarInUrl ? pillar : null)}
             >
               <span className="df-chip-dow">{parts.weekdayShort}</span>
               <span className="df-chip-day">{parts.day}</span>
-            </button>
+            </Link>
           );
         })}
       </div>
@@ -164,7 +165,7 @@ export function DayPanel({
               active={pillar === item}
               title={copy.title}
               meta={copy.meta}
-              onSelect={() => onSelect(requestedIso, item)}
+              href={dailyFixHref(todayIso, requestedIso, item)}
             />
           );
         })}

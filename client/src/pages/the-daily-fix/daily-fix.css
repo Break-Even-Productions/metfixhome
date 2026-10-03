@@ -182,6 +182,10 @@
   transition: background-color 0.3s var(--df-ease), transform 0.3s var(--df-ease), color 0.3s var(--df-ease);
 }
 
+a.df-btn {
+  color: inherit;
+}
+
 .df-btn:disabled {
   cursor: not-allowed;
   opacity: 0.35;
@@ -235,6 +239,7 @@
   }
 }
 
+.df-masthead a,
 .df-masthead button {
   display: flex;
   min-width: 0;
@@ -247,12 +252,15 @@
   border-right: 1px solid rgba(255, 255, 255, 0.15);
   color: var(--df-cream);
   cursor: pointer;
+  text-decoration: none;
 }
 
+.df-masthead a:last-child,
 .df-masthead button:last-child {
   border-right: 0;
 }
 
+.df-masthead a:hover,
 .df-masthead button:hover {
   background: rgba(255, 255, 255, 0.1);
 }
@@ -275,6 +283,7 @@
     display: inline-flex;
   }
 
+  .df-masthead a,
   .df-masthead button {
     gap: 0.75rem;
     padding: 1rem 1.25rem;
@@ -350,6 +359,7 @@
   background: #fff;
   color: var(--df-ink);
   cursor: pointer;
+  text-decoration: none;
 }
 
 .df-chip[aria-current="date"] {
@@ -396,6 +406,7 @@
   border: 1px solid var(--df-line);
   background: #fff;
   color: var(--df-ink);
+  text-decoration: none;
 }
 
 .df-tab[aria-selected="true"] {

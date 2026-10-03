@@ -1,6 +1,6 @@
 import { BookOpen, Dumbbell, UtensilsCrossed } from "lucide-react";
 import { useEffect, useMemo } from "react";
-import { useLocation, useParams } from "wouter";
+import { Link, useParams } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
@@ -8,9 +8,8 @@ import { loadDailyFixState } from "./data";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
-  dailyFixPath,
+  dailyFixHref,
   parseDailyFixRoute,
-  type Pillar,
 } from "./model";
 
 const JAKARTA_ID = "daily-fix-jakarta-font";
@@ -42,9 +41,13 @@ function jumpTo(id: string) {
   window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
 }
 
-export default function TheDailyFixPage() {
-  const params = useParams<{ date?: string; pillar?: string }>();
-  const [, setLocation] = useLocation();
+export default function TheDailyFixPage({
+  params: routeParams,
+}: {
+  params?: { date?: string; pillar?: string };
+}) {
+  const hookParams = useParams<{ date?: string; pillar?: string }>();
+  const params = routeParams ?? hookParams;
   const route = parseDailyFixRoute(params.date, params.pillar);
   const todayIso = bsiTodayIso();
   const requestedIso = route.kind === "day" && route.date ? route.date : todayIso;
@@ -58,19 +61,6 @@ export default function TheDailyFixPage() {
   const description =
     load.status === "loaded" ? `${load.day.belly.title} Daily Fix` : undefined;
   usePageMeta({ title, description });
-
-  const onSelect = (date: string, pillar: Pillar | null) => {
-    const isToday = date === todayIso;
-    if (!pillar && isToday) {
-      setLocation(dailyFixPath());
-      return;
-    }
-    if (!pillar) {
-      setLocation(dailyFixPath(date));
-      return;
-    }
-    setLocation(dailyFixPath(date, pillar));
-  };
 
   const masthead = useMemo(
     () =>
@@ -113,13 +103,10 @@ export default function TheDailyFixPage() {
               {masthead.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <button
+                  <Link
                     key={item.pillar}
-                    type="button"
-                    onClick={() => {
-                      onSelect(requestedIso, item.pillar);
-                      jumpTo("todays-fix");
-                    }}
+                    href={dailyFixHref(todayIso, requestedIso, item.pillar)}
+                    onClick={() => jumpTo("todays-fix")}
                   >
                     <span className="df-masthead-icon">
                       <Icon className="h-4 w-4" strokeWidth={2.35} />
@@ -132,7 +119,7 @@ export default function TheDailyFixPage() {
                         {item.detail}
                       </span>
                     </span>
-                  </button>
+                  </Link>
                 );
               })}
             </nav>
@@ -146,7 +133,6 @@ export default function TheDailyFixPage() {
               pillar={route.pillar}
               pillarInUrl={route.pillarInUrl}
               load={load}
-              onSelect={onSelect}
               onOpenArchive={() => jumpTo("daily-fix-archive")}
             />
           </div>

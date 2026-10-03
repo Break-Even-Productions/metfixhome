@@ -3,6 +3,7 @@ import {
   addCalendarDays,
   bsiTodayIso,
   dailyFixPath,
+  dailyFixHref,
   isCloserScheduledDay,
   isIsoDate,
   parseDailyFixRoute,
@@ -37,6 +38,8 @@ describe("Daily Fix routes", () => {
       pillarInUrl: true,
     });
     expect(dailyFixPath("2025-02-11", "body")).toBe("/the-daily-fix/2025-02-11/body");
+    expect(dailyFixHref("2025-02-11", "2025-02-11", null)).toBe("/the-daily-fix");
+    expect(dailyFixHref("2025-02-11", "2025-02-11", "brain")).toBe("/the-daily-fix/2025-02-11/brain");
   });
 
   it("falls invalid pillars back to belly and rejects YYMMDD", () => {
