@@ -65,15 +65,16 @@ function mapBelly(value: unknown): DailyFixBelly | null {
   if (!isRecord(value)) return null;
   const title = asString(value.title);
   if (title == null) return null;
+  const macros = isRecord(value.macros) ? value.macros : null;
   const hasStructuredIngredients = Boolean(value.has_structured_ingredients);
   const hasStructuredSteps = Boolean(value.has_structured_steps);
   return {
     title,
     body: asString(value.body),
     steps: asString(value.steps),
-    fat: asNullableNumber(value.fat),
-    carb: asNullableNumber(value.carb),
-    protein: asNullableNumber(value.protein),
+    fat: macros ? asNullableNumber(macros.fat) : null,
+    carb: macros ? asNullableNumber(macros.carb) : null,
+    protein: macros ? asNullableNumber(macros.protein) : null,
     has_structured_ingredients: hasStructuredIngredients,
     has_structured_steps: hasStructuredSteps,
     recipe_ingredients: hasStructuredIngredients ? mapIngredients(value.recipe_ingredients) : [],
@@ -84,7 +85,8 @@ function mapBelly(value: unknown): DailyFixBelly | null {
 function mapBody(value: unknown): DailyFixBody | null {
   if (!isRecord(value)) return null;
   const title = asString(value.title);
-  const html = asString(value.html);
+  // BSI day content uses body.body for workout HTML; body.html is not present.
+  const html = asString(value.body);
   if (title == null || html == null) return null;
   return { title, html };
 }
@@ -92,7 +94,10 @@ function mapBody(value: unknown): DailyFixBody | null {
 function mapBrain(value: unknown): DailyFixBrain | null {
   if (!isRecord(value)) return null;
   const title = asString(value.title);
-  const html = asString(value.html);
+  // BSI day content uses brain.body, or brain.excerpt when body is empty.
+  const bodyHtml = asString(value.body);
+  const excerpt = asString(value.excerpt);
+  const html = bodyHtml && bodyHtml.length > 0 ? bodyHtml : excerpt;
   if (title == null || html == null) return null;
   return {
     title,
