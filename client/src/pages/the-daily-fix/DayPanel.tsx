@@ -26,12 +26,20 @@ type DayPanelProps = {
 function UnavailableCopy() {
   return (
     <div className="df-status" role="status">
-      <h3>Daily Fix content isn’t available on this site yet</h3>
+      <h3>This day could not be loaded</h3>
       <p>
-        This page is a static GitHub Pages app. It cannot safely load a live Daily Fix day, so it does
-        not guess, show sample recipes, or call WordPress from the browser. When a credentialed caller
-        exists outside this bundle, this layout will show that day’s belly, body, and brain.
+        Daily Fix could not load this day right now. It does not invent a recipe, workout, or reading to
+        fill the gap. Try again later, or pick another day.
       </p>
+    </div>
+  );
+}
+
+function LoadingCopy() {
+  return (
+    <div className="df-status" role="status">
+      <h3>Loading this day’s fix</h3>
+      <p>Fetching the recipe, workout, and reading for this date.</p>
     </div>
   );
 }
@@ -79,6 +87,11 @@ function PillarTab({
 }
 
 function tabCopy(load: DailyFixLoadState, pillar: Pillar) {
+  if (load.status === "loading") {
+    if (pillar === "belly") return { title: "Recipe", meta: "Loading" };
+    if (pillar === "body") return { title: "Workout", meta: "Loading" };
+    return { title: "Reading", meta: "Loading" };
+  }
   if (load.status !== "loaded") {
     if (pillar === "belly") return { title: "Recipe", meta: "Unavailable" };
     if (pillar === "body") return { title: "Workout", meta: "Unavailable" };
@@ -184,6 +197,7 @@ export function DayPanel({
           </p>
         ) : null}
         {load.status === "invalid" ? <InvalidCopy /> : null}
+        {load.status === "loading" ? <LoadingCopy /> : null}
         {load.status === "unavailable" ? <UnavailableCopy /> : null}
         {load.status === "loaded" && day ? <DayContent day={day} pillar={pillar} /> : null}
       </div>

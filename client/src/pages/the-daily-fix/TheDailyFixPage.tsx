@@ -4,7 +4,7 @@ import { Link, useLocation, useParams } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
-import { loadDailyFixState } from "./data";
+import { fetchDailyFixDay, fetchIsoForRoute, type DailyFixLoadState } from "./data";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
@@ -87,7 +87,10 @@ export default function TheDailyFixPage({
   });
   const todayIso = bsiTodayIso();
   const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
-  const load = loadDailyFixState(route.kind);
+  const fetchIso = fetchIsoForRoute(route.kind, route.iso, todayIso);
+  const [load, setLoad] = useState<DailyFixLoadState>(() =>
+    route.kind === "invalid" ? { status: "invalid" } : { status: "loading" },
+  );
 
   useEffect(() => {
     loadJakartaSans();
@@ -101,6 +104,23 @@ export default function TheDailyFixPage({
       setLocation(next, { replace: true });
     }
   }, [route, location, hash, setLocation]);
+
+  useEffect(() => {
+    if (route.kind === "invalid" || !fetchIso) {
+      setLoad({ status: "invalid" });
+      return;
+    }
+    const controller = new AbortController();
+    setLoad({ status: "loading" });
+    void fetchDailyFixDay(fetchIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLoad({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [fetchIso, route.kind]);
 
   const title = "Daily Fix · MetFix";
   const description =

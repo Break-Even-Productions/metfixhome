@@ -6,14 +6,13 @@ import {
   dailyFixHref,
   dailyFixPath,
   isoFromYymmdd,
+  isCloserScheduledDay,
   parseDailyFixRoute,
   yymmddFromIso,
-  isCloserScheduledDay,
   sortedIngredients,
   visibleMacros,
   type DailyFixDay,
 } from "./model";
-import { loadDailyFixState } from "./data";
 
 describe("Daily Fix routes", () => {
   it("treats a bare path as today and does not emit a date", () => {
@@ -121,14 +120,6 @@ describe("BSI today", () => {
     expect(bsiTodayIso(utcLate)).toBe("2026-03-11");
     const utcEarly = new Date("2026-03-10T00:30:00.000Z");
     expect(bsiTodayIso(utcEarly)).toBe("2026-03-10");
-  });
-});
-
-describe("static load state", () => {
-  it("never invents a sample day or returns loaded", () => {
-    expect(loadDailyFixState("today")).toEqual({ status: "unavailable" });
-    expect(loadDailyFixState("day")).toEqual({ status: "unavailable" });
-    expect(loadDailyFixState("invalid")).toEqual({ status: "invalid" });
   });
 });
 
