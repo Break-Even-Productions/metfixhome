@@ -35,11 +35,15 @@ describe("GitHub Pages document base", () => {
       "/the-daily-fix/2025-02-10",
       "/the-daily-fix/20250210",
       "/the-daily-fix/25/02/10/belly",
+      "/posts",
+      "/posts/1",
+      "/posts/some-slug",
       "/not-a-route",
     ];
     for (const path of pages) {
       expect(pagesAssetPath(path), path).toBe("/assets/index.js");
       expect(pagesAssetPath(path)).not.toMatch(/^\/the-daily-fix\//);
+      expect(pagesAssetPath(path)).not.toMatch(/^\/posts\//);
       expect(pagesAssetPath(path)).not.toMatch(/^\/not-a-route\//);
       expect(pagesAssetPath(path)).not.toMatch(/^\/25\//);
     }
