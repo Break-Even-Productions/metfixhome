@@ -20,6 +20,7 @@ function AppRoutes() {
       <Route path={"/classes"} component={Classes} />
       <Route path={"/courses"} component={Classes} />
       <Route path={"/affiliate-seminars"} component={AffiliateSeminars} />
+      <Route path={"/the-daily-fix/:yy/:mm/:dd"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix/:date/:pillar"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix/:date"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix"} component={TheDailyFixPage} />

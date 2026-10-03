@@ -5,6 +5,11 @@ export type Pillar = (typeof PILLARS)[number];
 export const BSI_TODAY_TZ = "Etc/GMT-2";
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const YYMMDD = /^(\d{2})(\d{2})(\d{2})$/;
+const YYYYMMDD = /^(\d{4})(\d{2})(\d{2})$/;
+const TWO_DIGITS = /^\d{2}$/;
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2099;
 
 export type RecipeIngredient = {
   display: string;
@@ -55,11 +60,28 @@ export type DailyFixDay = {
   brain: DailyFixBrain;
 };
 
+export type DailyFixRouteKind = "today" | "day" | "invalid";
+
 export type DailyFixRoute = {
-  kind: "today" | "day" | "invalid";
-  date: string | null;
+  kind: DailyFixRouteKind;
+  /** ISO calendar day when kind is "day". */
+  iso: string | null;
+  /** Canonical YYMMDD when kind is "day". */
+  code: string | null;
   pillar: Pillar;
-  pillarInUrl: boolean;
+  /** True when a valid pillar was explicit in the path or hash. */
+  pillarExplicit: boolean;
+  canonicalPath: string;
+  canonicalHash: string;
+};
+
+export type DailyFixRouteInput = {
+  date?: string;
+  pillar?: string;
+  yy?: string;
+  mm?: string;
+  dd?: string;
+  hash?: string;
 };
 
 export function bsiTodayIso(now = new Date()): string {
@@ -71,14 +93,37 @@ export function bsiTodayIso(now = new Date()): string {
   }).format(now);
 }
 
+export function isValidCalendarDay(year: number, month: number, day: number): boolean {
+  if (year < MIN_YEAR || year > MAX_YEAR) return false;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  return utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
+}
+
 export function isIsoDate(value: string): boolean {
   const match = ISO_DATE.exec(value);
   if (!match) return false;
+  return isValidCalendarDay(Number(match[1]), Number(match[2]), Number(match[3]));
+}
+
+export function yymmddFromIso(iso: string): string | null {
+  const match = ISO_DATE.exec(iso);
+  if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const utc = new Date(Date.UTC(year, month - 1, day));
-  return utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
+  if (!isValidCalendarDay(year, month, day)) return null;
+  return `${String(year).slice(2)}${match[2]}${match[3]}`;
+}
+
+export function isoFromYymmdd(code: string): string | null {
+  const match = YYMMDD.exec(code);
+  if (!match) return null;
+  const year = MIN_YEAR + Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!isValidCalendarDay(year, month, day)) return null;
+  return `${year}-${match[2]}-${match[3]}`;
 }
 
 export function isPillar(value: string | undefined): value is Pillar {
@@ -89,32 +134,130 @@ export function parsePillar(value: string | undefined): Pillar {
   return isPillar(value) ? value : "belly";
 }
 
-export function parseDailyFixRoute(date?: string, pillar?: string): DailyFixRoute {
-  if (!date) {
-    return { kind: "today", date: null, pillar: "belly", pillarInUrl: false };
+function hashToken(hash: string | undefined): string {
+  if (!hash) return "";
+  return hash.startsWith("#") ? hash.slice(1) : hash;
+}
+
+function resolvePillar(pathPillar: string | undefined, hash: string | undefined): {
+  pillar: Pillar;
+  explicit: boolean;
+} {
+  if (pathPillar != null && pathPillar !== "") {
+    if (isPillar(pathPillar)) return { pillar: pathPillar, explicit: true };
+    return { pillar: "belly", explicit: false };
   }
-  if (!isIsoDate(date)) {
-    return { kind: "invalid", date, pillar: parsePillar(pillar), pillarInUrl: isPillar(pillar) };
-  }
+  const token = hashToken(hash);
+  if (!token) return { pillar: "belly", explicit: false };
+  if (isPillar(token)) return { pillar: token, explicit: true };
+  return { pillar: "belly", explicit: false };
+}
+
+function todayRoute(hash: string | undefined): DailyFixRoute {
+  const { pillar, explicit } = resolvePillar(undefined, hash);
   return {
-    kind: "day",
-    date,
-    pillar: parsePillar(pillar),
-    pillarInUrl: isPillar(pillar),
+    kind: "today",
+    iso: null,
+    code: null,
+    pillar,
+    pillarExplicit: explicit,
+    canonicalPath: "/the-daily-fix",
+    canonicalHash: explicit ? `#${pillar}` : "",
   };
 }
 
-export function dailyFixPath(date?: string | null, pillar?: Pillar | null): string {
-  if (!date) return "/the-daily-fix";
-  if (pillar) return `/the-daily-fix/${date}/${pillar}`;
-  return `/the-daily-fix/${date}`;
+function dayRoute(iso: string, code: string, pathPillar: string | undefined, hash: string | undefined): DailyFixRoute {
+  const { pillar, explicit } = resolvePillar(pathPillar, hash);
+  return {
+    kind: "day",
+    iso,
+    code,
+    pillar,
+    pillarExplicit: explicit,
+    canonicalPath: `/the-daily-fix/${code}`,
+    canonicalHash: explicit ? `#${pillar}` : "",
+  };
 }
 
-/** Today with no pillar stays on /the-daily-fix so the bare route remains “today”. */
-export function dailyFixHref(todayIso: string, date: string, pillar: Pillar | null): string {
-  if (!pillar && date === todayIso) return dailyFixPath();
-  if (!pillar) return dailyFixPath(date);
-  return dailyFixPath(date, pillar);
+function invalidRoute(hash: string | undefined, pathPillar?: string): DailyFixRoute {
+  const { pillar, explicit } = resolvePillar(pathPillar, hash);
+  return {
+    kind: "invalid",
+    iso: null,
+    code: null,
+    pillar,
+    pillarExplicit: explicit,
+    canonicalPath: "",
+    canonicalHash: "",
+  };
+}
+
+function parseDateSegment(segment: string, pathPillar: string | undefined, hash: string | undefined): DailyFixRoute {
+  const six = YYMMDD.exec(segment);
+  if (six) {
+    const iso = isoFromYymmdd(segment);
+    if (!iso) return invalidRoute(hash, pathPillar);
+    return dayRoute(iso, segment, pathPillar, hash);
+  }
+
+  const eight = YYYYMMDD.exec(segment);
+  if (eight) {
+    const year = Number(eight[1]);
+    const month = Number(eight[2]);
+    const day = Number(eight[3]);
+    if (!isValidCalendarDay(year, month, day)) return invalidRoute(hash, pathPillar);
+    const iso = `${eight[1]}-${eight[2]}-${eight[3]}`;
+    const code = yymmddFromIso(iso);
+    if (!code) return invalidRoute(hash, pathPillar);
+    return dayRoute(iso, code, pathPillar, hash);
+  }
+
+  const isoMatch = ISO_DATE.exec(segment);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (!isValidCalendarDay(year, month, day)) return invalidRoute(hash, pathPillar);
+    const code = yymmddFromIso(segment);
+    if (!code) return invalidRoute(hash, pathPillar);
+    return dayRoute(segment, code, pathPillar, hash);
+  }
+
+  return invalidRoute(hash, pathPillar);
+}
+
+function parseSlashDate(yy: string, mm: string, dd: string, hash: string | undefined): DailyFixRoute {
+  if (!TWO_DIGITS.test(yy) || !TWO_DIGITS.test(mm) || !TWO_DIGITS.test(dd)) {
+    return invalidRoute(hash);
+  }
+  const code = `${yy}${mm}${dd}`;
+  const iso = isoFromYymmdd(code);
+  if (!iso) return invalidRoute(hash);
+  return dayRoute(iso, code, undefined, hash);
+}
+
+export function parseDailyFixRoute(input: DailyFixRouteInput = {}): DailyFixRoute {
+  if (input.yy != null && input.mm != null && input.dd != null) {
+    return parseSlashDate(input.yy, input.mm, input.dd, input.hash);
+  }
+  if (!input.date) return todayRoute(input.hash);
+  return parseDateSegment(input.date, input.pillar, input.hash);
+}
+
+export function dailyFixCanonicalUrl(route: DailyFixRoute, search = ""): string {
+  return `${route.canonicalPath}${search}${route.canonicalHash}`;
+}
+
+export function dailyFixPath(code?: string | null, pillar?: Pillar | null): string {
+  if (!code) return pillar ? `/the-daily-fix#${pillar}` : "/the-daily-fix";
+  return pillar ? `/the-daily-fix/${code}#${pillar}` : `/the-daily-fix/${code}`;
+}
+
+/** Today uses the bare path (plus optional hash). Other days use YYMMDD, never YYYY-MM-DD or a path pillar. */
+export function dailyFixHref(todayIso: string, dateIso: string, pillar: Pillar | null): string {
+  if (dateIso === todayIso) return dailyFixPath(null, pillar);
+  const code = yymmddFromIso(dateIso);
+  return dailyFixPath(code, pillar);
 }
 
 export function addCalendarDays(iso: string, delta: number): string {

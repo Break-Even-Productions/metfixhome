@@ -1,6 +1,6 @@
 import { BookOpen, Dumbbell, UtensilsCrossed } from "lucide-react";
-import { useEffect, useMemo } from "react";
-import { Link, useParams } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useParams } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
@@ -8,6 +8,7 @@ import { loadDailyFixState } from "./data";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
+  dailyFixCanonicalUrl,
   dailyFixHref,
   parseDailyFixRoute,
 } from "./model";
@@ -17,6 +18,14 @@ const JAKARTA_HREF =
   "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap";
 
 const FIX_EPOCH = new Date(2025, 1, 10);
+
+type DailyFixParams = {
+  date?: string;
+  pillar?: string;
+  yy?: string;
+  mm?: string;
+  dd?: string;
+};
 
 function daysSinceFixStart(now = new Date()) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -41,21 +50,57 @@ function jumpTo(id: string) {
   window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
 }
 
+function useDocumentHash() {
+  const [hash, setHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const sync = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    window.addEventListener("pushState", sync);
+    window.addEventListener("replaceState", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener("pushState", sync);
+      window.removeEventListener("replaceState", sync);
+    };
+  }, []);
+  return hash;
+}
+
 export default function TheDailyFixPage({
   params: routeParams,
 }: {
-  params?: { date?: string; pillar?: string };
+  params?: DailyFixParams;
 }) {
-  const hookParams = useParams<{ date?: string; pillar?: string }>();
+  const hookParams = useParams<DailyFixParams>();
   const params = routeParams ?? hookParams;
-  const route = parseDailyFixRoute(params.date, params.pillar);
+  const [location, setLocation] = useLocation();
+  const hash = useDocumentHash();
+  const route = parseDailyFixRoute({
+    date: params.date,
+    pillar: params.pillar,
+    yy: params.yy,
+    mm: params.mm,
+    dd: params.dd,
+    hash,
+  });
   const todayIso = bsiTodayIso();
-  const requestedIso = route.kind === "day" && route.date ? route.date : todayIso;
+  const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
   const load = loadDailyFixState(route.kind);
 
   useEffect(() => {
     loadJakartaSans();
   }, []);
+
+  useEffect(() => {
+    if (route.kind === "invalid") return;
+    const next = dailyFixCanonicalUrl(route, window.location.search);
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) {
+      setLocation(next, { replace: true });
+    }
+  }, [route, location, hash, setLocation]);
 
   const title = "Daily Fix · MetFix";
   const description =
@@ -131,7 +176,7 @@ export default function TheDailyFixPage({
             <DayPanel
               requestedIso={requestedIso}
               pillar={route.pillar}
-              pillarInUrl={route.pillarInUrl}
+              pillarExplicit={route.pillarExplicit}
               load={load}
               onOpenArchive={() => jumpTo("daily-fix-archive")}
             />

@@ -6,7 +6,6 @@ import {
   addCalendarDays,
   bsiTodayIso,
   dailyFixHref,
-  dailyFixPath,
   dayParts,
   formatDayLabel,
   isCloserScheduledDay,
@@ -19,7 +18,7 @@ import {
 type DayPanelProps = {
   requestedIso: string;
   pillar: Pillar;
-  pillarInUrl: boolean;
+  pillarExplicit: boolean;
   load: DailyFixLoadState;
   onOpenArchive: () => void;
 };
@@ -42,8 +41,9 @@ function InvalidCopy() {
     <div className="df-status" role="alert">
       <h3>That day isn’t a Daily Fix date</h3>
       <p>
-        Use <code>/the-daily-fix</code> for today, or <code>/the-daily-fix/YYYY-MM-DD</code> for a
-        calendar day. Six-digit codes and hash routes are not used here.
+        Use <code>/the-daily-fix</code> for today, or <code>/the-daily-fix/YYMMDD</code> for a
+        calendar day. Pillars live in the hash: <code>#belly</code>, <code>#body</code>, or{" "}
+        <code>#brain</code>.
       </p>
     </div>
   );
@@ -93,7 +93,7 @@ function tabCopy(load: DailyFixLoadState, pillar: Pillar) {
 export function DayPanel({
   requestedIso,
   pillar,
-  pillarInUrl,
+  pillarExplicit,
   load,
   onOpenArchive,
 }: DayPanelProps) {
@@ -106,7 +106,7 @@ export function DayPanel({
   const newerDisabled = newer > todayIso;
   const strip = recentDateStrip(todayIso);
   const closer = day && isCloserScheduledDay(day, requestedIso);
-  const keptPillar = pillarInUrl ? pillar : null;
+  const keptPillar = pillarExplicit ? pillar : null;
 
   return (
     <div>
@@ -187,7 +187,7 @@ export function DayPanel({
         {load.status === "unavailable" ? <UnavailableCopy /> : null}
         {load.status === "loaded" && day ? <DayContent day={day} pillar={pillar} /> : null}
       </div>
-      <p className="sr-only">{dailyFixPath(requestedIso, pillarInUrl ? pillar : null)}</p>
+      <p className="sr-only">{dailyFixHref(todayIso, requestedIso, keptPillar)}</p>
     </div>
   );
 }

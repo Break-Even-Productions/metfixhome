@@ -29,16 +29,19 @@ describe("GitHub Pages document base", () => {
       "/become-an-affiliate",
       "/affiliate-seminars",
       "/the-daily-fix",
-      "/the-daily-fix/2025-02-11",
-      "/the-daily-fix/2025-02-11/belly",
-      "/the-daily-fix/2025-02-11/body",
-      "/the-daily-fix/2025-02-11/brain",
+      "/the-daily-fix/250210",
+      "/the-daily-fix/250210#brain",
+      "/the-daily-fix/25/02/10",
+      "/the-daily-fix/2025-02-10",
+      "/the-daily-fix/20250210",
+      "/the-daily-fix/25/02/10/belly",
       "/not-a-route",
     ];
     for (const path of pages) {
       expect(pagesAssetPath(path), path).toBe("/assets/index.js");
       expect(pagesAssetPath(path)).not.toMatch(/^\/the-daily-fix\//);
       expect(pagesAssetPath(path)).not.toMatch(/^\/not-a-route\//);
+      expect(pagesAssetPath(path)).not.toMatch(/^\/25\//);
     }
   });
 });

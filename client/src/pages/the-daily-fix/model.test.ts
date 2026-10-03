@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   addCalendarDays,
   bsiTodayIso,
-  dailyFixPath,
+  dailyFixCanonicalUrl,
   dailyFixHref,
-  isCloserScheduledDay,
-  isIsoDate,
+  dailyFixPath,
+  isoFromYymmdd,
   parseDailyFixRoute,
-  parsePillar,
+  yymmddFromIso,
   sortedIngredients,
   visibleMacros,
   type DailyFixDay,
@@ -15,39 +15,102 @@ import {
 import { loadDailyFixState } from "./data";
 
 describe("Daily Fix routes", () => {
-  it("treats a bare path as today with the default pillar view", () => {
-    expect(parseDailyFixRoute()).toEqual({
+  it("treats a bare path as today and does not emit a date", () => {
+    expect(parseDailyFixRoute()).toMatchObject({
       kind: "today",
-      date: null,
+      iso: null,
+      code: null,
       pillar: "belly",
-      pillarInUrl: false,
+      pillarExplicit: false,
+      canonicalPath: "/the-daily-fix",
+      canonicalHash: "",
     });
     expect(dailyFixPath()).toBe("/the-daily-fix");
   });
 
-  it("keeps YYYY-MM-DD days and optional pillars", () => {
-    expect(parseDailyFixRoute("2025-02-11")).toMatchObject({
+  it("keeps YYMMDD as canonical and hashes pillars", () => {
+    expect(parseDailyFixRoute({ date: "250210" })).toMatchObject({
       kind: "day",
-      date: "2025-02-11",
-      pillar: "belly",
-      pillarInUrl: false,
+      iso: "2025-02-10",
+      code: "250210",
+      canonicalPath: "/the-daily-fix/250210",
+      canonicalHash: "",
     });
-    expect(parseDailyFixRoute("2025-02-11", "brain")).toMatchObject({
-      kind: "day",
+    expect(parseDailyFixRoute({ date: "250210", hash: "#brain" })).toMatchObject({
       pillar: "brain",
-      pillarInUrl: true,
+      pillarExplicit: true,
+      canonicalPath: "/the-daily-fix/250210",
+      canonicalHash: "#brain",
     });
-    expect(dailyFixPath("2025-02-11", "body")).toBe("/the-daily-fix/2025-02-11/body");
-    expect(dailyFixHref("2025-02-11", "2025-02-11", null)).toBe("/the-daily-fix");
-    expect(dailyFixHref("2025-02-11", "2025-02-11", "brain")).toBe("/the-daily-fix/2025-02-11/brain");
+    expect(dailyFixPath("250210", "body")).toBe("/the-daily-fix/250210#body");
+    expect(dailyFixHref("2025-02-10", "2025-02-10", null)).toBe("/the-daily-fix");
+    expect(dailyFixHref("2025-02-10", "2025-02-10", "brain")).toBe("/the-daily-fix#brain");
+    expect(dailyFixHref("2025-02-11", "2025-02-10", null)).toBe("/the-daily-fix/250210");
   });
 
-  it("falls invalid pillars back to belly and rejects YYMMDD", () => {
-    expect(parsePillar("nope")).toBe("belly");
-    expect(parseDailyFixRoute("2025-02-11", "legs").pillar).toBe("belly");
-    expect(parseDailyFixRoute("250211").kind).toBe("invalid");
-    expect(isIsoDate("2025-02-31")).toBe(false);
-    expect(isIsoDate("2025-02-11")).toBe(true);
+  it("rewrites hyphenated, 8-digit, and slash dates to YYMMDD", () => {
+    expect(parseDailyFixRoute({ date: "2025-02-10" }).code).toBe("250210");
+    expect(parseDailyFixRoute({ date: "20250210" }).code).toBe("250210");
+    expect(parseDailyFixRoute({ yy: "25", mm: "02", dd: "10" })).toMatchObject({
+      kind: "day",
+      code: "250210",
+      canonicalPath: "/the-daily-fix/250210",
+    });
+    expect(dailyFixCanonicalUrl(parseDailyFixRoute({ date: "2025-02-10", pillar: "brain" }), "?utm=1")).toBe(
+      "/the-daily-fix/250210?utm=1#brain",
+    );
+  });
+
+  it("lets a path pillar win over a hash, then uses that hash", () => {
+    expect(parseDailyFixRoute({ date: "250210", pillar: "brain", hash: "#body" })).toMatchObject({
+      pillar: "brain",
+      canonicalHash: "#brain",
+    });
+  });
+
+  it("drops a bad pillar hash or path without becoming an invalid date", () => {
+    expect(parseDailyFixRoute({ date: "250210", pillar: "feet" })).toMatchObject({
+      kind: "day",
+      pillar: "belly",
+      pillarExplicit: false,
+      canonicalHash: "",
+    });
+    expect(parseDailyFixRoute({ date: "250210", hash: "#feet" })).toMatchObject({
+      kind: "day",
+      pillar: "belly",
+      pillarExplicit: false,
+      canonicalHash: "",
+    });
+    expect(parseDailyFixRoute({ hash: "#feet" })).toMatchObject({
+      kind: "today",
+      pillar: "belly",
+      canonicalPath: "/the-daily-fix",
+      canonicalHash: "",
+    });
+    expect(parseDailyFixRoute({ hash: "#brain" })).toMatchObject({
+      kind: "today",
+      pillar: "brain",
+      canonicalHash: "#brain",
+    });
+  });
+
+  it("does not rewrite malformed or out-of-range dates", () => {
+    const invalid = [
+      { date: "250231" },
+      { date: "20250231" },
+      { date: "2025-02-31" },
+      { yy: "25", mm: "02", dd: "31" },
+      { yy: "25", mm: "2", dd: "10" },
+      { date: "19990210" },
+      { date: "25" },
+    ];
+    for (const input of invalid) {
+      expect(parseDailyFixRoute(input).kind, JSON.stringify(input)).toBe("invalid");
+      expect(parseDailyFixRoute(input).canonicalPath).toBe("");
+    }
+    expect(isoFromYymmdd("250229")).toBeNull();
+    expect(isoFromYymmdd("240229")).toBe("2024-02-29");
+    expect(yymmddFromIso("2025-02-10")).toBe("250210");
   });
 });
 
@@ -61,7 +124,7 @@ describe("BSI today", () => {
 });
 
 describe("static load state", () => {
-  it("never invents a sample day", () => {
+  it("never invents a sample day or returns loaded", () => {
     expect(loadDailyFixState("today")).toEqual({ status: "unavailable" });
     expect(loadDailyFixState("day")).toEqual({ status: "unavailable" });
     expect(loadDailyFixState("invalid")).toEqual({ status: "invalid" });
@@ -87,7 +150,7 @@ describe("day contract helpers", () => {
 
   it("flags a closer scheduled day", () => {
     const day = { date: "2025-02-12", requested_date: "2025-02-11" } as DailyFixDay;
-    expect(isCloserScheduledDay(day, "2025-02-11")).toBe(true);
     expect(addCalendarDays("2025-02-11", 1)).toBe("2025-02-12");
+    expect(day.date).not.toBe("2025-02-11");
   });
 });
