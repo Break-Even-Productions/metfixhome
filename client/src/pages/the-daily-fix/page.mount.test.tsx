@@ -4,10 +4,11 @@
  * Mount-level checks: real Router + TheDailyFixPage / NotFound, mocked fetch.
  * Helper-only assertions (parseDailyFixRoute / fetchIsoForRoute) are not enough here.
  */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import NotFound from "@/pages/NotFound";
+import { dailyFixCommentsRequestUrl } from "./comments";
 import TheDailyFixPage from "./TheDailyFixPage";
 import { DAILY_FIX_BFF_URL } from "./data";
 
@@ -42,6 +43,11 @@ const bsiDayBody = {
     button_text: "FULL ARTICLE",
     photo_url: "https://example.com/ignore-brain.jpg",
   },
+};
+
+const emptyCommentsBody = {
+  comments: { belly: [], body: [], brain: [] },
+  meta: { date: "2025-02-10", type: "all", count: { belly: 0, body: 0, brain: 0, total: 0 } },
 };
 
 /** Mirrors App.tsx Daily Fix + NotFound routes without GlobalNav / theme chrome. */
@@ -82,13 +88,25 @@ function openAddressBar(url: string) {
   window.history.replaceState(null, "", url);
 }
 
-function mockDayFetch() {
-  const fetchMock = vi.fn(async () =>
-    new Response(JSON.stringify(bsiDayBody), {
+function mockDayAndCommentsFetch(options?: {
+  commentsStatus?: number;
+  commentsBody?: unknown;
+}) {
+  const commentsStatus = options?.commentsStatus ?? 200;
+  const commentsBody = options?.commentsBody ?? emptyCommentsBody;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/daily-fix/comments")) {
+      return new Response(JSON.stringify(commentsBody), {
+        status: commentsStatus,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify(bsiDayBody), {
       status: 200,
       headers: { "Content-Type": "application/json" },
-    }),
-  );
+    });
+  });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -96,6 +114,7 @@ function mockDayFetch() {
 beforeEach(() => {
   stubBrowserApis();
   openAddressBar("/");
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -105,15 +124,23 @@ afterEach(() => {
 });
 
 describe("Daily Fix page mount", () => {
-  it("fetches date=2025-02-10 once for /250210#brain; hash-only pillar changes do not fetch again", async () => {
-    const fetchMock = mockDayFetch();
+  it("fetches day + comments once for /250210#brain; hash-only pillar changes do not fetch again", async () => {
+    const fetchMock = mockDayAndCommentsFetch();
     openAddressBar("/the-daily-fix/250210#brain");
     render(<MountedDailyFixApp />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenCalledWith(
       `${DAILY_FIX_BFF_URL}?date=2025-02-10`,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      dailyFixCommentsRequestUrl("2025-02-10"),
+      expect.objectContaining({
+        method: "GET",
+        headers: { Accept: "application/json" },
+        signal: expect.any(AbortSignal),
+      }),
     );
 
     await act(async () => {
@@ -122,7 +149,7 @@ describe("Daily Fix page mount", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       window.location.hash = "#belly";
@@ -130,11 +157,61 @@ describe("Daily Fix page mount", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    // Extra tick so a mistaken refetch would still be counted.
     await waitFor(() => {
       expect(window.location.hash).toBe("#belly");
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the day loaded when comments return 404", async () => {
+    const fetchMock = mockDayAndCommentsFetch({
+      commentsStatus: 404,
+      commentsBody: { error: "not_found" },
+    });
+    openAddressBar("/the-daily-fix/250210");
+    render(<MountedDailyFixApp />);
+
+    expect(await screen.findByRole("heading", { name: "Steak bowls" })).toBeTruthy();
+    expect(await screen.findByText(/Comments are unavailable right now/i)).toBeTruthy();
+    expect(screen.queryByText(/This day could not be loaded/i)).toBeNull();
+    expect(screen.queryByText(/No comments yet/i)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows No comments yet only after a real empty list", async () => {
+    mockDayAndCommentsFetch({ commentsStatus: 200, commentsBody: emptyCommentsBody });
+    openAddressBar("/the-daily-fix/250210");
+    render(<MountedDailyFixApp />);
+
+    expect(await screen.findByText("No comments yet.")).toBeTruthy();
+    expect(screen.queryByText(/Comments are unavailable/i)).toBeNull();
+  });
+
+  it("logged-out submit opens join modal and never POSTs", async () => {
+    const fetchMock = mockDayAndCommentsFetch();
+    openAddressBar("/the-daily-fix/250210#belly");
+    render(<MountedDailyFixApp />);
+
+    expect(await screen.findByRole("heading", { name: "Steak bowls" })).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("Your name"), { target: { value: "Pat" } });
+    fireEvent.change(screen.getByPlaceholderText(/Share a thought/i), {
+      target: { value: "Hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Post comment/i }));
+
+    expect(await screen.findByRole("dialog", { name: /Join MetFix Today/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Join with Email/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeTruthy();
+    expect(window.location.pathname).toBe("/the-daily-fix/250210");
+    expect(window.location.hash).toBe("#belly");
+    expect(fetchMock.mock.calls.every((call) => {
+      const init = call[1] as RequestInit | undefined;
+      return !init?.method || init.method === "GET";
+    })).toBe(true);
+    expect(localStorage.getItem("metfix-daily-fix-comments")).toBeNull();
+    expect(localStorage.getItem("metfix-daily-fix-author")).toBeNull();
+    expect(localStorage.getItem("metfix-daily-fix-author-id")).toBeNull();
+    expect(localStorage.getItem("metfix-join-demo")).toBeNull();
   });
 
   it.each([
@@ -142,14 +219,13 @@ describe("Daily Fix page mount", () => {
     "/the-daily-fix/20250210",
     "/the-daily-fix/25/02/10",
   ])("after mount, address bar for %s ends on /the-daily-fix/250210", async (path) => {
-    mockDayFetch();
+    mockDayAndCommentsFetch();
     openAddressBar(path);
     render(<MountedDailyFixApp />);
 
     await waitFor(() => {
       expect(window.location.pathname).toBe("/the-daily-fix/250210");
     });
-    // Stays — not a one-frame flash of the model string.
     await act(async () => {
       await Promise.resolve();
     });

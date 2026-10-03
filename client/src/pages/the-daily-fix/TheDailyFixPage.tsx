@@ -3,6 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
+import { CommentThread } from "./CommentThread";
+import {
+  fetchDailyFixComments,
+  type CommentsLoadState,
+} from "./comments";
 import { DayPanel } from "./DayPanel";
 import { fetchDailyFixDay, fetchIsoForRoute, type DailyFixLoadState } from "./data";
 import "./daily-fix.css";
@@ -91,6 +96,9 @@ export default function TheDailyFixPage({
   const [load, setLoad] = useState<DailyFixLoadState>(() =>
     route.kind === "invalid" ? { status: "invalid" } : { status: "loading" },
   );
+  const [commentsLoad, setCommentsLoad] = useState<CommentsLoadState>(() =>
+    route.kind === "invalid" ? { status: "unavailable" } : { status: "loading" },
+  );
 
   useEffect(() => {
     loadJakartaSans();
@@ -118,6 +126,25 @@ export default function TheDailyFixPage({
       })
       .catch(() => {
         if (!controller.signal.aborted) setLoad({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [fetchIso, route.kind]);
+
+  // One comment read per ISO date. Invalid dates do not fetch. Failures stay in the
+  // comment panel and never replace the day load state.
+  useEffect(() => {
+    if (route.kind === "invalid" || !fetchIso) {
+      setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    const controller = new AbortController();
+    setCommentsLoad({ status: "loading" });
+    void fetchDailyFixComments(fetchIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCommentsLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
       });
     return () => controller.abort();
   }, [fetchIso, route.kind]);
@@ -200,6 +227,7 @@ export default function TheDailyFixPage({
               load={load}
               onOpenArchive={() => jumpTo("daily-fix-archive")}
             />
+            {route.kind !== "invalid" ? <CommentThread load={commentsLoad} /> : null}
           </div>
         </section>
 
