@@ -9,6 +9,7 @@ const KNOWN_ROUTES = new Set([
   "courses",
   "become-an-affiliate",
   "affiliate-seminars",
+  "the-daily-fix",
   "404",
 ]);
 

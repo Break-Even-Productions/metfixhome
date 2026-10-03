@@ -13,7 +13,7 @@ import { Link, useLocation } from "wouter";
 
 const SEARCH_ITEMS = [
   { label: "What Is MetFix? Free Course", href: "https://whatis.metfix.org/", category: "Course" },
-  { label: "The Daily Fix: Free Daily Content", href: "https://brokenscience.org/fix/", category: "Free" },
+  { label: "The Daily Fix: Free Daily Content", href: "/the-daily-fix", category: "Free" },
   { label: "All Courses", href: "/courses", category: "Specialty" },
   { label: "Resource Library", href: "https://brokenscience.org/all-content/", category: "Resource" },
   { label: "Foundations Seminar: In-Person", href: "/affiliate-seminars", category: "Event" },
