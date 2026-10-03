@@ -8,6 +8,7 @@ import {
   isoFromYymmdd,
   parseDailyFixRoute,
   yymmddFromIso,
+  isCloserScheduledDay,
   sortedIngredients,
   visibleMacros,
   type DailyFixDay,
@@ -149,8 +150,10 @@ describe("day contract helpers", () => {
   });
 
   it("flags a closer scheduled day", () => {
-    const day = { date: "2025-02-12", requested_date: "2025-02-11" } as DailyFixDay;
     expect(addCalendarDays("2025-02-11", 1)).toBe("2025-02-12");
-    expect(day.date).not.toBe("2025-02-11");
+    expect(isCloserScheduledDay({ date: "2025-02-12", requested_date: "2025-02-11" } as DailyFixDay, "2025-02-12")).toBe(true);
+    expect(isCloserScheduledDay({ date: "2025-02-12", requested_date: "2025-02-11" } as DailyFixDay, "2025-02-11")).toBe(true);
+    expect(isCloserScheduledDay({ date: "2025-02-11", requested_date: "2025-02-11" } as DailyFixDay, "2025-02-11")).toBe(false);
+    expect(isCloserScheduledDay({ date: "2025-02-11" } as DailyFixDay, "2025-02-11")).toBe(false);
   });
 });
