@@ -11,6 +11,7 @@ import BecomeAnAffiliate from "./pages/BecomeAnAffiliate";
 import Classes from "./pages/Classes";
 import AffiliateSeminars from "./pages/AffiliateSeminars";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
+import PostsPage from "./pages/posts/PostsPage";
 
 function AppRoutes() {
   return (
@@ -24,6 +25,7 @@ function AppRoutes() {
       <Route path={"/the-daily-fix/:date/:pillar"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix/:date"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix"} component={TheDailyFixPage} />
+      <Route path={"/posts"} component={PostsPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
