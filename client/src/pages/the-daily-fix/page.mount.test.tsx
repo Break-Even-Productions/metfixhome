@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import NotFound from "@/pages/NotFound";
 import TheDailyFixPage from "./TheDailyFixPage";
-import { DAILY_FIX_BFF_URL, resetDailyFixDayCache } from "./data";
+import { DAILY_FIX_BFF_URL, peekLoadedDailyFixDay, resetDailyFixDayCache } from "./data";
 import { formatDayLabel } from "./model";
 
 const FROZEN = new Date("2026-03-10T23:30:00.000Z");
@@ -307,6 +307,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
       cleanup();
       renderAt("/the-daily-fix");
       expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
+      expect(window.location.pathname).toBe("/the-daily-fix");
       await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
       expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
       expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
@@ -359,6 +360,21 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
+    expect(peekLoadedDailyFixDay(TODAY)).toBeNull();
+
+    // Failed bare response must not be cached — dated today refetches once.
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input)).searchParams.get("date")!;
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    cleanup();
+    renderAt("/the-daily-fix/260311");
+    expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
+    expect(fetchMock.mock.calls.length).toBe(4);
+    expect(requestDates(fetchMock).slice(-1)).toEqual([TODAY]);
   });
 
   it("warm bare remount stays at exactly three GETs", async () => {
@@ -509,6 +525,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     cleanup();
     renderAt("/the-daily-fix/260310");
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/the-daily-fix/260310");
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
     expect(fetchMock.mock.calls.length).toBe(4);
   });
