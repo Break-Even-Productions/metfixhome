@@ -108,7 +108,7 @@ function mapBelly(value: unknown): DailyFixBelly | null {
     carb: macros ? asNullableNumber(macros.carb) : null,
     protein: macros ? asNullableNumber(macros.protein) : null,
     photo_url: mapHttpsPhotoUrl(value.photo_url),
-    yt_url: extractYoutubeId(value.yt_url),
+    yt_id: extractYoutubeId(value.yt_url),
     has_structured_ingredients: hasStructuredIngredients,
     has_structured_steps: hasStructuredSteps,
     recipe_ingredients: hasStructuredIngredients ? mapIngredients(value.recipe_ingredients) : [],

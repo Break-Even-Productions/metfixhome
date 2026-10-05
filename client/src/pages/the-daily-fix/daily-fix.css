@@ -594,15 +594,15 @@ a.df-btn {
   filter: blur(18px) brightness(0.45);
 }
 
-.df-meal-photo-reduce .df-meal-photo-img,
-.df-meal-photo-reduce.df-meal-photo-playing .df-meal-photo-img {
-  transition: none;
-  transform: none;
-  filter: none;
-}
+@media (prefers-reduced-motion: reduce) {
+  .df-meal-photo-img {
+    transition: none;
+  }
 
-.df-meal-photo-reduce.df-meal-photo-playing .df-meal-photo-img {
-  filter: brightness(0.45);
+  .df-meal-photo-playing .df-meal-photo-img {
+    transform: none;
+    filter: brightness(0.45);
+  }
 }
 
 .df-meal-photo-video {

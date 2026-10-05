@@ -36,8 +36,8 @@ export type DailyFixBelly = {
   protein: number | null;
   /** Non-empty https URL, or null when absent/invalid. */
   photo_url: string | null;
-  /** Strict 11-char YouTube video id, or null when absent/unparseable. */
-  yt_url: string | null;
+  /** Parsed 11-char YouTube id from watch/youtu.be/embed/shorts/live, or null. */
+  yt_id: string | null;
   has_structured_ingredients: boolean;
   has_structured_steps: boolean;
   recipe_ingredients: RecipeIngredient[];
@@ -61,14 +61,13 @@ export function mapHttpsPhotoUrl(value: unknown): string | null {
 }
 
 /**
- * Extract a strict 11-char YouTube id from watch / youtu.be / embed / shorts.
- * Returns null when no usable id is present.
+ * Extract a strict 11-char YouTube id from watch / youtu.be / embed / shorts / live URLs.
+ * Bare ids are rejected. Returns null when no usable id is present.
  */
 export function extractYoutubeId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (YT_ID.test(trimmed)) return trimmed;
   try {
     const url = new URL(trimmed);
     const host = url.hostname.replace(/^www\./, "").toLowerCase();

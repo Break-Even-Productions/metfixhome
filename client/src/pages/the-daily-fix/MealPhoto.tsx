@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { initLiquidGlass } from "./liquidGlass";
 import {
   glassMacroRows,
@@ -41,35 +41,31 @@ export function MealPhoto({
   const macrosRef = useRef<HTMLDivElement>(null);
   const photoRef = useRef<HTMLImageElement>(null);
   const videoFrameRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   const [crossOrigin, setCrossOrigin] = useState<"anonymous" | undefined>("anonymous");
   const [corsPlain, setCorsPlain] = useState(false);
+  const [glassFailed, setGlassFailed] = useState(false);
   const [photoReady, setPhotoReady] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
 
+  const glassDisabled = corsPlain || glassFailed;
   const glassRows = glassMacroRows(macros);
   const showPlay = Boolean(videoId) && !playing;
-  // Glass macros card only with a CORS-capable photo; never a CSS glass stand-in.
-  const showGlassMacros = !corsPlain && !playing && glassRows.length > 0;
+  // Glass macros card only with a CORS-capable photo and successful glass boot.
+  const showGlassMacros = !glassDisabled && !playing && glassRows.length > 0;
   const canInitGlass =
-    !corsPlain && !playing && photoReady && (glassRows.length > 0 || Boolean(videoId));
+    !glassDisabled && !playing && photoReady && (glassRows.length > 0 || Boolean(videoId));
 
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setReduceMotion(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  // Reset CORS / load state when the day or photo changes.
-  useEffect(() => {
-    setCrossOrigin("anonymous");
-    setCorsPlain(false);
-    setPhotoReady(false);
-  }, [dayKey, photoUrl]);
+  // Cached images may already be complete on mount (e.g. switching back to Belly).
+  // key={day.date} on MealPhoto resets React state — no separate reset effect.
+  useLayoutEffect(() => {
+    const photo = photoRef.current;
+    if (photo?.complete && photo.naturalWidth > 0) {
+      setPhotoReady(true);
+    }
+  }, [crossOrigin, photoUrl]);
 
   useEffect(() => {
     if (!playing) return;
@@ -77,8 +73,10 @@ export function MealPhoto({
       if (event.key === "Escape") onCloseRef.current();
     };
     const onPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".df-watch")) return;
       const frame = videoFrameRef.current;
-      if (frame && event.target instanceof Node && frame.contains(event.target)) return;
+      if (frame && target instanceof Node && frame.contains(target)) return;
       onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
@@ -90,44 +88,53 @@ export function MealPhoto({
   }, [playing]);
 
   useEffect(() => {
+    if (!playing) return;
+    const iframe = iframeRef.current;
+    if (iframe) {
+      try {
+        iframe.focus();
+      } catch {
+        /* ignore cross-origin focus failures */
+      }
+    }
+  }, [playing]);
+
+  useEffect(() => {
     if (!canInitGlass) return;
     const root = rootRef.current;
-    const photo = photoRef.current;
-    if (!root || !photo) return;
+    if (!root) return;
 
     let cancelled = false;
     let instance: LiquidGlassInstance | null = null;
 
-    const boot = () => {
-      const glassElements: HTMLElement[] = [];
-      if (macrosRef.current && showGlassMacros) glassElements.push(macrosRef.current);
-      if (playRef.current && showPlay) glassElements.push(playRef.current);
-      if (glassElements.length === 0) return;
+    const glassElements: HTMLElement[] = [];
+    if (macrosRef.current && showGlassMacros) glassElements.push(macrosRef.current);
+    if (playRef.current && showPlay) glassElements.push(playRef.current);
+    if (glassElements.length === 0) return;
 
-      void initLiquidGlass({
-        root,
-        glassElements,
-        defaults: {
-          brightness: -0.15,
-          blurAmount: 0.22,
-          cornerRadius: 32,
-          button: true,
-        },
-      }).then((next) => {
+    void initLiquidGlass({
+      root,
+      glassElements,
+      defaults: {
+        brightness: -0.15,
+        blurAmount: 0.22,
+        cornerRadius: 32,
+        button: true,
+      },
+    })
+      .then((next) => {
         if (cancelled) {
           next.destroy();
           return;
         }
         instance = next;
+      })
+      .catch(() => {
+        if (!cancelled) setGlassFailed(true);
       });
-    };
-
-    if (photo.complete && photo.naturalWidth > 0) boot();
-    else photo.addEventListener("load", boot, { once: true });
 
     return () => {
       cancelled = true;
-      photo.removeEventListener("load", boot);
       instance?.destroy();
     };
   }, [canInitGlass, dayKey, photoUrl, showGlassMacros, showPlay, playing]);
@@ -137,6 +144,7 @@ export function MealPhoto({
       setCrossOrigin(undefined);
       setCorsPlain(true);
       setPhotoReady(false);
+      setGlassFailed(false);
       return;
     }
   };
@@ -145,11 +153,7 @@ export function MealPhoto({
     setPhotoReady(true);
   };
 
-  const frameClass = [
-    "df-meal-photo",
-    playing ? "df-meal-photo-playing" : "",
-    reduceMotion ? "df-meal-photo-reduce" : "",
-  ]
+  const frameClass = ["df-meal-photo", playing ? "df-meal-photo-playing" : ""]
     .filter(Boolean)
     .join(" ");
 
@@ -160,7 +164,7 @@ export function MealPhoto({
         ref={photoRef}
         className="df-meal-photo-img"
         src={photoUrl}
-        alt={playing ? "" : title}
+        alt={title}
         width={1024}
         height={576}
         decoding="async"
@@ -171,10 +175,12 @@ export function MealPhoto({
       {playing && videoId ? (
         <div ref={videoFrameRef} className="df-meal-photo-video">
           <iframe
+            ref={iframeRef}
             src={youtubeEmbedUrl(videoId)}
             title={`${title} short`}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
+            tabIndex={0}
           />
         </div>
       ) : null}

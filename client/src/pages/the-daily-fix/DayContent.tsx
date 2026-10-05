@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { MealPhoto } from "./MealPhoto";
 import {
   brainButtonText,
@@ -18,17 +18,14 @@ function BellyContent({ day }: { day: DailyFixDay }) {
   const { belly } = day;
   const photoUrl = belly.photo_url;
   const hasMealPhoto = Boolean(photoUrl);
-  const videoId = belly.yt_url;
+  const videoId = belly.yt_id;
   const showWatch = hasMealPhoto && Boolean(videoId);
+  // Spec B2c: MealPhoto mounted → never show plain .df-macros (even CORS/glassFailed/all-0).
   const plainMacros = hasMealPhoto ? [] : visibleMacros(belly);
   const ingredients = belly.has_structured_ingredients ? sortedIngredients(belly.recipe_ingredients) : [];
   const steps = belly.has_structured_steps ? sortedSteps(belly.recipe_steps) : [];
+  // DayContent is keyed by day.date in DayPanel, so playing resets on date change.
   const [playing, setPlaying] = useState(false);
-  const mealKey = day.date;
-
-  useEffect(() => {
-    setPlaying(false);
-  }, [mealKey]);
 
   const onPlay = useCallback(() => setPlaying(true), []);
   const onClose = useCallback(() => setPlaying(false), []);
@@ -38,8 +35,8 @@ function BellyContent({ day }: { day: DailyFixDay }) {
       <h3 className="df-heading">{belly.title}</h3>
       {hasMealPhoto && photoUrl ? (
         <MealPhoto
-          key={mealKey}
-          dayKey={mealKey}
+          key={day.date}
+          dayKey={day.date}
           title={belly.title}
           photoUrl={photoUrl}
           videoId={videoId}

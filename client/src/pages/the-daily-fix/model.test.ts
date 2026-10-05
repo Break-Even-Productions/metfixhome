@@ -143,6 +143,8 @@ describe("day contract helpers", () => {
     expect(glassMacroRows({ fat: 0, carb: 0, protein: 0 })).toEqual([]);
     expect(glassMacroRows({ fat: null, carb: null, protein: null })).toEqual([]);
     expect(glassMacroRows({ fat: 0, carb: 5, protein: null })).toEqual([{ label: "Carbs", grams: 5 }]);
+    // A3: negatives and zero/null collapse to empty
+    expect(glassMacroRows({ fat: -1, carb: 0, protein: null })).toEqual([]);
   });
 
   it("sorts structured recipe fields without group labels", () => {
@@ -173,13 +175,18 @@ describe("belly media URL helpers", () => {
     expect(mapHttpsPhotoUrl("/relative.jpg")).toBeNull();
   });
 
-  it("extractYoutubeId accepts watch / youtu.be / embed / shorts and strips &t=", () => {
+  it("C2: javascript: and data: photo URLs map to null", () => {
+    expect(mapHttpsPhotoUrl("javascript:alert(1)")).toBeNull();
+    expect(mapHttpsPhotoUrl("data:image/png;base64,AAAA")).toBeNull();
+  });
+
+  it("extractYoutubeId accepts watch / youtu.be / embed / shorts / live and strips &t=", () => {
     expect(extractYoutubeId("https://www.youtube.com/watch?v=jHXO-qIk28A")).toBe("jHXO-qIk28A");
     expect(extractYoutubeId("https://www.youtube.com/watch?v=jHXO-qIk28A&t=12s")).toBe("jHXO-qIk28A");
     expect(extractYoutubeId("https://youtu.be/jHXO-qIk28A")).toBe("jHXO-qIk28A");
     expect(extractYoutubeId("https://www.youtube.com/embed/jHXO-qIk28A")).toBe("jHXO-qIk28A");
     expect(extractYoutubeId("https://www.youtube.com/shorts/jHXO-qIk28A")).toBe("jHXO-qIk28A");
-    expect(extractYoutubeId("jHXO-qIk28A")).toBe("jHXO-qIk28A");
+    expect(extractYoutubeId("https://www.youtube.com/live/jHXO-qIk28A")).toBe("jHXO-qIk28A");
   });
 
   it("unparseable yt → null (no play UI id)", () => {
@@ -188,6 +195,14 @@ describe("belly media URL helpers", () => {
     expect(extractYoutubeId("not a url")).toBeNull();
     expect(extractYoutubeId("")).toBeNull();
     expect(extractYoutubeId(null)).toBeNull();
+    expect(extractYoutubeId("jHXO-qIk28A")).toBeNull(); // bare id rejected
+  });
+
+  it("C3: wrong-length ids and youtube.com with no id map to null", () => {
+    expect(extractYoutubeId("abcdefghij")).toBeNull(); // 10
+    expect(extractYoutubeId("abcdefghijkl")).toBeNull(); // 12
+    expect(extractYoutubeId("https://www.youtube.com/")).toBeNull();
+    expect(extractYoutubeId("https://www.youtube.com/watch")).toBeNull();
   });
 
   it("youtubeEmbedUrl builds autoplay embed from id only", () => {
