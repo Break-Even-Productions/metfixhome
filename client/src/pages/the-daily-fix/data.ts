@@ -1,10 +1,13 @@
-import type {
-  DailyFixBelly,
-  DailyFixBody,
-  DailyFixBrain,
-  DailyFixDay,
-  RecipeIngredient,
-  RecipeStep,
+import {
+  addCalendarDays,
+  bsiTodayIso,
+  isIsoDate,
+  type DailyFixBelly,
+  type DailyFixBody,
+  type DailyFixBrain,
+  type DailyFixDay,
+  type RecipeIngredient,
+  type RecipeStep,
 } from "./model";
 
 /** Deployed Daily Fix BFF. No key, no VITE_ override, no WordPress call. */
@@ -15,6 +18,33 @@ export type DailyFixLoadState =
   | { status: "unavailable" }
   | { status: "invalid" }
   | { status: "loaded"; day: DailyFixDay };
+
+type DailyFixSettled = Exclude<DailyFixLoadState, { status: "invalid" | "loading" }>;
+
+export type LoadDailyFixOptions = {
+  /**
+   * Bare `/the-daily-fix` allows BSI closest-day when `date` ≠ requested ISO.
+   * Dated `/the-daily-fix/YYMMDD` requires an exact date match.
+   */
+  allowCloser?: boolean;
+};
+
+type CacheLoaded = {
+  kind: "loaded";
+  day: DailyFixDay;
+  /** Epoch ms of next Etc/GMT-2 midnight when this entry was stored. */
+  expiresAt: number;
+};
+
+type CacheInflight = {
+  kind: "inflight";
+  promise: Promise<DailyFixSettled>;
+};
+
+type CacheEntry = CacheLoaded | CacheInflight;
+
+/** Module-level day cache. Keys are ISO dates (returned date and/or requested alias). */
+const dayCache = new Map<string, CacheEntry>();
 
 export function dailyFixRequestUrl(isoDate: string): string {
   const url = new URL(DAILY_FIX_BFF_URL);
@@ -82,11 +112,16 @@ function mapBelly(value: unknown): DailyFixBelly | null {
   };
 }
 
+/**
+ * Prefer non-empty body.body; if null or "", use body.excerpt.
+ * Whitespace-only body.body is kept (no excerpt fallback).
+ */
 function mapBody(value: unknown): DailyFixBody | null {
   if (!isRecord(value)) return null;
   const title = asString(value.title);
-  // BSI day content uses body.body for workout HTML; body.html is not present.
-  const html = asString(value.body);
+  const bodyHtml = asString(value.body);
+  const excerpt = asString(value.excerpt);
+  const html = bodyHtml && bodyHtml.length > 0 ? bodyHtml : excerpt;
   if (title == null || html == null) return null;
   return { title, html };
 }
@@ -94,7 +129,6 @@ function mapBody(value: unknown): DailyFixBody | null {
 function mapBrain(value: unknown): DailyFixBrain | null {
   if (!isRecord(value)) return null;
   const title = asString(value.title);
-  // BSI day content uses brain.body, or brain.excerpt when body is empty.
   const bodyHtml = asString(value.body);
   const excerpt = asString(value.excerpt);
   const html = bodyHtml && bodyHtml.length > 0 ? bodyHtml : excerpt;
@@ -107,12 +141,16 @@ function mapBrain(value: unknown): DailyFixBrain | null {
   };
 }
 
-/** Map a Worker JSON body onto DailyFixDay, or null when the body is not a usable day. */
+/**
+ * Map a Worker JSON body onto DailyFixDay, or null when unusable.
+ * Requires a valid top-level ISO `date`. Does not enforce dated-URL exact match —
+ * callers use `allowCloser` in loadDailyFixDay for that.
+ */
 export function mapDailyFixDay(payload: unknown, requestedIso: string): DailyFixDay | null {
   if (!isRecord(payload)) return null;
   if (typeof payload.error === "string") return null;
   const date = asString(payload.date);
-  if (date == null) return null;
+  if (date == null || !isIsoDate(date)) return null;
   const belly = mapBelly(payload.belly);
   const body = mapBody(payload.body);
   const brain = mapBrain(payload.brain);
@@ -124,18 +162,78 @@ export function mapDailyFixDay(payload: unknown, requestedIso: string): DailyFix
   return day;
 }
 
+/** Next Etc/GMT-2 midnight after `now`, as UTC epoch ms. Checked on read — no timers. */
+export function nextBsiMidnightMs(now = new Date()): number {
+  const todayIso = bsiTodayIso(now);
+  const [y, m, d] = todayIso.split("-").map(Number);
+  const midnightThisLocalDayUtc = Date.UTC(y, m - 1, d, 0, 0, 0) - 2 * 60 * 60 * 1000;
+  return midnightThisLocalDayUtc + 24 * 60 * 60 * 1000;
+}
+
+function isOlderThanSevenDays(iso: string, todayIso: string): boolean {
+  return iso < addCalendarDays(todayIso, -7);
+}
+
+function isLoadedExpired(entry: CacheLoaded, now: Date, todayIso: string): boolean {
+  if (isOlderThanSevenDays(entry.day.date, todayIso)) return false;
+  return now.getTime() >= entry.expiresAt;
+}
+
+function purgeExpired(iso: string, now = new Date()): void {
+  const entry = dayCache.get(iso);
+  if (!entry || entry.kind !== "loaded") return;
+  const todayIso = bsiTodayIso(now);
+  if (isLoadedExpired(entry, now, todayIso)) {
+    dayCache.delete(iso);
+  }
+}
+
+/** Synchronous peek of a successfully mapped day for a cache key, or null. */
+export function peekLoadedDailyFixDay(isoDate: string, now = new Date()): DailyFixDay | null {
+  purgeExpired(isoDate, now);
+  const entry = dayCache.get(isoDate);
+  if (!entry || entry.kind !== "loaded") return null;
+  return entry.day;
+}
+
 /**
- * Load one Daily Fix day from the BFF.
- * Never invents sample days. A 503 or unusable body is unavailable, not invalid.
+ * Store under the returned `date`, and alias the requested ISO to the same entry.
+ * Does not issue a GET for the returned date.
  */
-export async function fetchDailyFixDay(
-  isoDate: string,
-  signal?: AbortSignal,
-): Promise<Exclude<DailyFixLoadState, { status: "invalid" | "loading" }>> {
+function storeLoaded(requestedIso: string, day: DailyFixDay, now = new Date()): void {
+  const entry: CacheLoaded = {
+    kind: "loaded",
+    day,
+    expiresAt: nextBsiMidnightMs(now),
+  };
+  dayCache.set(day.date, entry);
+  dayCache.set(requestedIso, entry);
+}
+
+function dayForConsumer(day: DailyFixDay, requestedIso: string, allowCloser: boolean): DailyFixDay | null {
+  if (day.date === requestedIso) {
+    if (!day.requested_date) return day;
+    return {
+      date: day.date,
+      belly: day.belly,
+      body: day.body,
+      brain: day.brain,
+    };
+  }
+  if (!allowCloser) return null;
+  return {
+    date: day.date,
+    requested_date: requestedIso,
+    belly: day.belly,
+    body: day.body,
+    brain: day.brain,
+  };
+}
+
+async function fetchAndMapDay(isoDate: string): Promise<DailyFixSettled> {
   try {
     const response = await fetch(dailyFixRequestUrl(isoDate), {
       method: "GET",
-      signal,
       headers: { Accept: "application/json" },
     });
     if (!response.ok) return { status: "unavailable" };
@@ -148,10 +246,79 @@ export async function fetchDailyFixDay(
     const day = mapDailyFixDay(payload, isoDate);
     if (!day) return { status: "unavailable" };
     return { status: "loaded", day };
-  } catch (error) {
-    if (signal?.aborted) throw error;
+  } catch {
     return { status: "unavailable" };
   }
+}
+
+/**
+ * Load one Daily Fix day via the module cache.
+ * One GET per requested ISO for the SPA lifetime; in-flight promises are shared.
+ * Failures are not cached. Route changes must not abort the shared fetch.
+ *
+ * Dated routes pass `allowCloser: false` so a closer-day payload is unmappable.
+ * Bare today passes `allowCloser: true`.
+ */
+export function loadDailyFixDay(
+  isoDate: string,
+  options: LoadDailyFixOptions = {},
+  now = new Date(),
+): Promise<DailyFixSettled> {
+  const allowCloser = options.allowCloser === true;
+  purgeExpired(isoDate, now);
+
+  const existing = dayCache.get(isoDate);
+  if (existing?.kind === "loaded") {
+    const day = dayForConsumer(existing.day, isoDate, allowCloser);
+    if (!day) return Promise.resolve({ status: "unavailable" });
+    return Promise.resolve({ status: "loaded", day });
+  }
+  if (existing?.kind === "inflight") {
+    return existing.promise.then((result) => {
+      if (result.status !== "loaded") return result;
+      const day = dayForConsumer(result.day, isoDate, allowCloser);
+      if (!day) return { status: "unavailable" };
+      return { status: "loaded", day };
+    });
+  }
+
+  const promise = fetchAndMapDay(isoDate).then((result) => {
+    const current = dayCache.get(isoDate);
+    if (current?.kind === "inflight" && current.promise === promise) {
+      dayCache.delete(isoDate);
+    }
+    if (result.status === "loaded") {
+      storeLoaded(isoDate, result.day, now);
+    }
+    return result;
+  });
+
+  dayCache.set(isoDate, { kind: "inflight", promise });
+  return promise.then((result) => {
+    if (result.status !== "loaded") return result;
+    const day = dayForConsumer(result.day, isoDate, allowCloser);
+    if (!day) return { status: "unavailable" };
+    return { status: "loaded", day };
+  });
+}
+
+/**
+ * Prefetch today, today−1, today−2. Fire-and-forget for strip cache only.
+ * Uses allowCloser when settling so closer payloads are cached under returned date.
+ */
+export function prefetchDailyFixWindow(todayIso: string): void {
+  const isos = [todayIso, addCalendarDays(todayIso, -1), addCalendarDays(todayIso, -2)];
+  for (const iso of isos) {
+    void loadDailyFixDay(iso, { allowCloser: true });
+  }
+}
+
+/** @deprecated Prefer loadDailyFixDay. No AbortSignal — shared cache must not be cancelled. */
+export async function fetchDailyFixDay(
+  isoDate: string,
+  _signal?: AbortSignal,
+): Promise<DailyFixSettled> {
+  return loadDailyFixDay(isoDate, { allowCloser: true });
 }
 
 /** ISO date to fetch for a resolved route. Invalid routes never fetch. */
@@ -163,4 +330,23 @@ export function fetchIsoForRoute(
   if (kind === "today") return todayIso;
   if (kind === "day" && routeIso) return routeIso;
   return null;
+}
+
+/** Sync initial/route-change state from cache without a skeleton flash when possible. */
+export function syncLoadFromCache(
+  kind: "today" | "day" | "invalid",
+  fetchIso: string | null,
+): DailyFixLoadState {
+  if (kind === "invalid" || !fetchIso) return { status: "invalid" };
+  const allowCloser = kind === "today";
+  const cached = peekLoadedDailyFixDay(fetchIso);
+  if (!cached) return { status: "loading" };
+  const day = dayForConsumer(cached, fetchIso, allowCloser);
+  if (!day) return { status: "unavailable" };
+  return { status: "loaded", day };
+}
+
+/** Reset module cache between tests so entries do not leak. */
+export function resetDailyFixDayCache(): void {
+  dayCache.clear();
 }

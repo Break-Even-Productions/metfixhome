@@ -4,7 +4,6 @@ import { DayContent } from "./DayContent";
 import type { DailyFixLoadState } from "./data";
 import {
   addCalendarDays,
-  bsiTodayIso,
   dailyFixHref,
   dayParts,
   formatDayLabel,
@@ -12,11 +11,17 @@ import {
   pillarLabel,
   recentDateStrip,
   type DailyFixDay,
+  type DailyFixRouteKind,
   type Pillar,
 } from "./model";
 
 type DayPanelProps = {
+  /** Route request ISO (today for bare; URL ISO for dated). */
   requestedIso: string;
+  /** Calendar highlight / prev-next anchor: response date when loaded. */
+  panelIso: string;
+  todayIso: string;
+  routeKind: DailyFixRouteKind;
   pillar: Pillar;
   pillarExplicit: boolean;
   load: DailyFixLoadState;
@@ -26,20 +31,7 @@ type DayPanelProps = {
 function UnavailableCopy() {
   return (
     <div className="df-status" role="status">
-      <h3>This day could not be loaded</h3>
-      <p>
-        Daily Fix could not load this day right now. It does not invent a recipe, workout, or reading to
-        fill the gap. Try again later, or pick another day.
-      </p>
-    </div>
-  );
-}
-
-function LoadingCopy() {
-  return (
-    <div className="df-status" role="status">
-      <h3>Loading this day’s fix</h3>
-      <p>Fetching the recipe, workout, and reading for this date.</p>
+      <h3>Not available</h3>
     </div>
   );
 }
@@ -53,6 +45,18 @@ function InvalidCopy() {
         calendar day. Pillars live in the hash: <code>#belly</code>, <code>#body</code>, or{" "}
         <code>#brain</code>.
       </p>
+    </div>
+  );
+}
+
+function DaySkeleton() {
+  return (
+    <div className="df-skeleton" aria-hidden="true">
+      <div className="df-skeleton-title" />
+      <div className="df-skeleton-image" />
+      <div className="df-skeleton-line" />
+      <div className="df-skeleton-line df-skeleton-line-short" />
+      <div className="df-skeleton-line" />
     </div>
   );
 }
@@ -105,27 +109,32 @@ function tabCopy(load: DailyFixLoadState, pillar: Pillar) {
 
 export function DayPanel({
   requestedIso,
+  panelIso,
+  todayIso,
+  routeKind,
   pillar,
   pillarExplicit,
   load,
   onOpenArchive,
 }: DayPanelProps) {
-  const todayIso = bsiTodayIso();
   const day: DailyFixDay | null = load.status === "loaded" ? load.day : null;
-  const displayIso = day?.date ?? requestedIso;
-  const isToday = requestedIso === todayIso;
-  const older = addCalendarDays(requestedIso, -1);
-  const newer = addCalendarDays(requestedIso, 1);
+  const displayIso = day?.date ?? panelIso;
+  const isTodayRequest = requestedIso === todayIso && routeKind === "today";
+  const older = addCalendarDays(panelIso, -1);
+  const newer = addCalendarDays(panelIso, 1);
   const newerDisabled = newer > todayIso;
   const strip = recentDateStrip(todayIso);
-  const closer = day && isCloserScheduledDay(day, requestedIso);
+  // Closer-day disclaimer only on bare /the-daily-fix — never on dated URLs.
+  const closer =
+    routeKind === "today" && day != null && isCloserScheduledDay(day, requestedIso);
   const keptPillar = pillarExplicit ? pillar : null;
+  const loading = load.status === "loading";
 
   return (
     <div>
       <div className="df-row">
         <div>
-          <p className="df-kicker">{isToday ? "Today’s fix" : "This day"}</p>
+          <p className="df-kicker">{isTodayRequest && !closer ? "Today’s fix" : "This day"}</p>
           <h2 className="df-heading">{formatDayLabel(displayIso)}</h2>
         </div>
         <div className="df-actions">
@@ -153,7 +162,7 @@ export function DayPanel({
       <div className="df-strip" aria-label="Recent days">
         {strip.map((iso) => {
           const parts = dayParts(iso);
-          const active = iso === requestedIso;
+          const active = iso === panelIso;
           return (
             <Link
               key={iso}
@@ -178,7 +187,7 @@ export function DayPanel({
               active={pillar === item}
               title={copy.title}
               meta={copy.meta}
-              href={dailyFixHref(todayIso, requestedIso, item)}
+              href={dailyFixHref(todayIso, panelIso, item)}
             />
           );
         })}
@@ -189,6 +198,7 @@ export function DayPanel({
         id={`fix-panel-${pillar}`}
         aria-labelledby={`fix-tab-${pillar}`}
         className="df-panel"
+        aria-busy={loading ? "true" : undefined}
       >
         {closer ? (
           <p className="df-disclaimer">
@@ -197,11 +207,16 @@ export function DayPanel({
           </p>
         ) : null}
         {load.status === "invalid" ? <InvalidCopy /> : null}
-        {load.status === "loading" ? <LoadingCopy /> : null}
+        {loading ? (
+          <div role="status">
+            <span className="sr-only">Loading</span>
+            <DaySkeleton />
+          </div>
+        ) : null}
         {load.status === "unavailable" ? <UnavailableCopy /> : null}
         {load.status === "loaded" && day ? <DayContent day={day} pillar={pillar} /> : null}
       </div>
-      <p className="sr-only">{dailyFixHref(todayIso, requestedIso, keptPillar)}</p>
+      <p className="sr-only">{dailyFixHref(todayIso, panelIso, keptPillar)}</p>
     </div>
   );
 }
