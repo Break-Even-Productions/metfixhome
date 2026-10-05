@@ -214,7 +214,9 @@ export function DayPanel({
           </div>
         ) : null}
         {load.status === "unavailable" ? <UnavailableCopy /> : null}
-        {load.status === "loaded" && day ? <DayContent day={day} pillar={pillar} /> : null}
+        {load.status === "loaded" && day ? (
+          <DayContent key={day.date} day={day} pillar={pillar} />
+        ) : null}
       </div>
       <p className="sr-only">{dailyFixHref(todayIso, panelIso, keptPillar)}</p>
     </div>

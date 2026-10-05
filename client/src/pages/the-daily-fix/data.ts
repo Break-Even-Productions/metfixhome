@@ -1,7 +1,9 @@
 import {
   addCalendarDays,
   bsiTodayIso,
+  extractYoutubeId,
   isIsoDate,
+  mapHttpsPhotoUrl,
   type DailyFixBelly,
   type DailyFixBody,
   type DailyFixBrain,
@@ -105,6 +107,8 @@ function mapBelly(value: unknown): DailyFixBelly | null {
     fat: macros ? asNullableNumber(macros.fat) : null,
     carb: macros ? asNullableNumber(macros.carb) : null,
     protein: macros ? asNullableNumber(macros.protein) : null,
+    photo_url: mapHttpsPhotoUrl(value.photo_url),
+    yt_id: extractYoutubeId(value.yt_url),
     has_structured_ingredients: hasStructuredIngredients,
     has_structured_steps: hasStructuredSteps,
     recipe_ingredients: hasStructuredIngredients ? mapIngredients(value.recipe_ingredients) : [],

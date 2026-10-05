@@ -1,3 +1,6 @@
+import { Play } from "lucide-react";
+import { useCallback, useState } from "react";
+import { MealPhoto } from "./MealPhoto";
 import {
   brainButtonText,
   sortedIngredients,
@@ -13,22 +16,53 @@ function HtmlBlock({ html }: { html: string }) {
 
 function BellyContent({ day }: { day: DailyFixDay }) {
   const { belly } = day;
-  const macros = visibleMacros(belly);
+  const photoUrl = belly.photo_url;
+  const hasMealPhoto = Boolean(photoUrl);
+  const videoId = belly.yt_id;
+  const showWatch = hasMealPhoto && Boolean(videoId);
+  // Spec B2c: MealPhoto mounted → never show plain .df-macros (even CORS/glassFailed/all-0).
+  const plainMacros = hasMealPhoto ? [] : visibleMacros(belly);
   const ingredients = belly.has_structured_ingredients ? sortedIngredients(belly.recipe_ingredients) : [];
   const steps = belly.has_structured_steps ? sortedSteps(belly.recipe_steps) : [];
+  // DayContent is keyed by day.date in DayPanel, so playing resets on date change.
+  const [playing, setPlaying] = useState(false);
+
+  const onPlay = useCallback(() => setPlaying(true), []);
+  const onClose = useCallback(() => setPlaying(false), []);
 
   return (
     <div>
       <h3 className="df-heading">{belly.title}</h3>
-      {macros.length > 0 ? (
+      {hasMealPhoto && photoUrl ? (
+        <MealPhoto
+          key={day.date}
+          dayKey={day.date}
+          title={belly.title}
+          photoUrl={photoUrl}
+          videoId={videoId}
+          macros={belly}
+          playing={playing}
+          onPlay={onPlay}
+          onClose={onClose}
+        />
+      ) : null}
+      {plainMacros.length > 0 ? (
         <dl className="df-macros">
-          {macros.map((row) => (
+          {plainMacros.map((row) => (
             <div key={row.label}>
               <dd>{row.grams}g</dd>
               <dt>{row.label}</dt>
             </div>
           ))}
         </dl>
+      ) : null}
+      {showWatch ? (
+        <div className="df-belly-chrome">
+          <button type="button" className="df-watch" onClick={onPlay}>
+            <Play className="df-watch-icon" aria-hidden="true" />
+            Watch video
+          </button>
+        </div>
       ) : null}
       <div className="df-recipe">
         <div>
