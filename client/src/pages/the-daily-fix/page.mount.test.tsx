@@ -1005,7 +1005,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     expect(screen.queryByText("Per serving")).toBeNull();
   });
 
-  it("C4 CORS: img error retries without crossOrigin; second error adds no img; no glass / Per serving / df-macros", async () => {
+  it("C4 CORS: img error retries without crossOrigin; second error keeps same plain img; no glass / Per serving / df-macros", async () => {
     stubDay({
       photo_url: PHOTO,
       yt_url: YT,
@@ -1022,9 +1022,11 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     });
     const plain = screen.getByRole("img", { name: "Belly 2025-02-10" }) as HTMLImageElement;
     expect(plain.getAttribute("src")).toBe(PHOTO);
-    expect(document.querySelectorAll(".df-meal-photo-img").length).toBe(1);
+    expect(plain.getAttribute("crossorigin")).toBeNull();
     fireEvent.error(plain);
-    expect(document.querySelectorAll(".df-meal-photo-img").length).toBe(1);
+    const afterSecond = screen.getByRole("img", { name: "Belly 2025-02-10" });
+    expect(afterSecond).toBe(plain);
+    expect(afterSecond.getAttribute("crossorigin")).toBeNull();
     fireImgLoad(plain);
     await act(async () => {
       await Promise.resolve();
@@ -1162,8 +1164,39 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     await waitFor(() => expect(liquidDestroy).toHaveBeenCalledTimes(1));
     fireImgLoad(imgB as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(2));
+    await act(async () => {});
     expect(liquidDestroy).toHaveBeenCalledTimes(1);
     expect(liquidInit).toHaveBeenCalledTimes(2);
+  });
+
+  it("stale-playing / date key: play on 250210 then Next → 250211 has no iframe, has play", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input)).searchParams.get("date")!;
+      return new Response(
+        JSON.stringify(
+          dayPayload(date, {
+            belly: {
+              photo_url: PHOTO,
+              yt_url: YT,
+              macros: { fat: 10, carb: 2, protein: 20 },
+            },
+          }),
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    cleanup();
+    renderShell("/the-daily-fix/250210#belly");
+    await screen.findByRole("img", { name: "Belly 2025-02-10" });
+    fireEvent.click(screen.getByRole("button", { name: "Play the short" }));
+    expect(await screen.findByTitle("Belly 2025-02-10 short")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: /Next/i }));
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-11" })).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(screen.queryByTitle("Belly 2025-02-11 short")).toBeNull();
+    expect(screen.getByRole("button", { name: "Play the short" })).toBeTruthy();
   });
 
   it("C6: unmount → destroy exactly 1", async () => {
@@ -1182,6 +1215,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     fireImgLoad(screen.getByRole("img", { name: "Steak" }) as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
     view.unmount();
+    await act(async () => {});
     expect(liquidDestroy).toHaveBeenCalledTimes(1);
   });
 
@@ -1201,6 +1235,8 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     const iframe = await screen.findByTitle("Belly 2025-02-10 short");
     expect(iframe.getAttribute("src")).toBe(EMBED);
     await waitFor(() => expect(liquidDestroy).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(liquidDestroy).toHaveBeenCalledTimes(1);
   });
 
   it("C6: bare mount with photo → init exactly 1 (not once per prefetched day)", async () => {
@@ -1227,12 +1263,11 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     const img = await screen.findByRole("img", { name: `Belly ${TODAY}` });
     fireImgLoad(img as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
+    await act(async () => {});
     expect(liquidInit).toHaveBeenCalledTimes(1);
   });
 
-  it("C6: in-app hash pillar switch keeps glass init at exactly 1 when returning via remount", async () => {
-    // Spec: do not re-init on pillar switch without remount. Page unmounts belly on
-    // #body; this asserts hash navigation in-shell does not multiply inits while on belly.
+  it("C6: same-pillar hash re-render on belly → init exactly 1, destroy 0", async () => {
     stubDay({
       photo_url: PHOTO,
       yt_url: YT,
@@ -1243,11 +1278,26 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireImgLoad(img as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("tab", { name: /Body/i }));
-    await screen.findByRole("heading", { name: "Body 2025-02-10" });
+    // Re-click Belly tab (same pillar hash) — MealPhoto stays mounted.
+    fireEvent.click(screen.getByRole("tab", { name: /Belly/i }));
+    await act(async () => {});
     expect(liquidInit).toHaveBeenCalledTimes(1);
+    expect(liquidDestroy).toHaveBeenCalledTimes(0);
+    expect(screen.getByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
   });
 
+  it('bare 11-char yt_url "not-a-video" → no play button', async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: "not-a-video",
+      macros: { fat: 10, carb: 2, protein: 20 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Watch video/i })).toBeNull();
+  });
   it("non-zero glass macros with photo; partial zeros omit 0 rows", async () => {
     stubDay({
       photo_url: PHOTO,

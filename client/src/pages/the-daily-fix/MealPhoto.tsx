@@ -41,9 +41,9 @@ export function MealPhoto({
   const macrosRef = useRef<HTMLDivElement>(null);
   const photoRef = useRef<HTMLImageElement>(null);
   const videoFrameRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const wasPlayingRef = useRef(false);
 
   const [crossOrigin, setCrossOrigin] = useState<"anonymous" | undefined>("anonymous");
   const [corsPlain, setCorsPlain] = useState(false);
@@ -87,17 +87,13 @@ export function MealPhoto({
     };
   }, [playing]);
 
+  // Return focus to the play button when closing — never focus the iframe (Escape must stay on document).
   useEffect(() => {
-    if (!playing) return;
-    const iframe = iframeRef.current;
-    if (iframe) {
-      try {
-        iframe.focus();
-      } catch {
-        /* ignore cross-origin focus failures */
-      }
+    if (wasPlayingRef.current && !playing && showPlay) {
+      playRef.current?.focus();
     }
-  }, [playing]);
+    wasPlayingRef.current = playing;
+  }, [playing, showPlay]);
 
   useEffect(() => {
     if (!canInitGlass) return;
@@ -160,7 +156,7 @@ export function MealPhoto({
   return (
     <div ref={rootRef} className={frameClass} data-day={dayKey}>
       <img
-        key={`${dayKey}-${crossOrigin ?? "plain"}`}
+        key={`${dayKey}-${photoUrl}-${crossOrigin ?? "plain"}`}
         ref={photoRef}
         className="df-meal-photo-img"
         src={photoUrl}
@@ -175,12 +171,10 @@ export function MealPhoto({
       {playing && videoId ? (
         <div ref={videoFrameRef} className="df-meal-photo-video">
           <iframe
-            ref={iframeRef}
             src={youtubeEmbedUrl(videoId)}
             title={`${title} short`}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            tabIndex={0}
           />
         </div>
       ) : null}
