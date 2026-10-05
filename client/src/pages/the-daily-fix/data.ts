@@ -143,10 +143,10 @@ function mapBrain(value: unknown): DailyFixBrain | null {
 
 /**
  * Map a Worker JSON body onto DailyFixDay, or null when unusable.
- * Requires a valid top-level ISO `date`. Does not enforce dated-URL exact match —
- * callers use `allowCloser` in loadDailyFixDay for that.
+ * Requires a valid top-level ISO `date`. Does not set `requested_date` —
+ * `dayForConsumer` stamps that for bare closer-day display.
  */
-export function mapDailyFixDay(payload: unknown, requestedIso: string): DailyFixDay | null {
+export function mapDailyFixDay(payload: unknown, _requestedIso?: string): DailyFixDay | null {
   if (!isRecord(payload)) return null;
   if (typeof payload.error === "string") return null;
   const date = asString(payload.date);
@@ -155,11 +155,7 @@ export function mapDailyFixDay(payload: unknown, requestedIso: string): DailyFix
   const body = mapBody(payload.body);
   const brain = mapBrain(payload.brain);
   if (!belly || !body || !brain) return null;
-  const day: DailyFixDay = { date, belly, body, brain };
-  if (date !== requestedIso) {
-    day.requested_date = requestedIso;
-  }
-  return day;
+  return { date, belly, body, brain };
 }
 
 /** Next Etc/GMT-2 midnight after `now`, as UTC epoch ms. Checked on read — no timers. */
@@ -174,17 +170,34 @@ function isOlderThanSevenDays(iso: string, todayIso: string): boolean {
   return iso < addCalendarDays(todayIso, -7);
 }
 
-function isLoadedExpired(entry: CacheLoaded, now: Date, todayIso: string): boolean {
-  if (isOlderThanSevenDays(entry.day.date, todayIso)) return false;
+/**
+ * Long-lived only when both the cache key and the returned day.date are older than 7 days.
+ * A recent requested alias pointing at an old returned day still expires at midnight.
+ */
+function isLoadedExpired(cacheKey: string, entry: CacheLoaded, now: Date, todayIso: string): boolean {
+  if (isOlderThanSevenDays(cacheKey, todayIso) && isOlderThanSevenDays(entry.day.date, todayIso)) {
+    return false;
+  }
   return now.getTime() >= entry.expiresAt;
 }
 
-function purgeExpired(iso: string, now = new Date()): void {
-  const entry = dayCache.get(iso);
+function deleteTwinKeys(cacheKey: string, entry: CacheLoaded): void {
+  dayCache.delete(cacheKey);
+  if (entry.day.date !== cacheKey) {
+    dayCache.delete(entry.day.date);
+  }
+  // Also drop any other key that aliases this same entry object.
+  for (const [key, value] of dayCache) {
+    if (value === entry) dayCache.delete(key);
+  }
+}
+
+function purgeExpired(cacheKey: string, now = new Date()): void {
+  const entry = dayCache.get(cacheKey);
   if (!entry || entry.kind !== "loaded") return;
   const todayIso = bsiTodayIso(now);
-  if (isLoadedExpired(entry, now, todayIso)) {
-    dayCache.delete(iso);
+  if (isLoadedExpired(cacheKey, entry, now, todayIso)) {
+    deleteTwinKeys(cacheKey, entry);
   }
 }
 
@@ -212,7 +225,6 @@ function storeLoaded(requestedIso: string, day: DailyFixDay, now = new Date()): 
 
 function dayForConsumer(day: DailyFixDay, requestedIso: string, allowCloser: boolean): DailyFixDay | null {
   if (day.date === requestedIso) {
-    if (!day.requested_date) return day;
     return {
       date: day.date,
       belly: day.belly,
@@ -311,14 +323,6 @@ export function prefetchDailyFixWindow(todayIso: string): void {
   for (const iso of isos) {
     void loadDailyFixDay(iso, { allowCloser: true });
   }
-}
-
-/** @deprecated Prefer loadDailyFixDay. No AbortSignal — shared cache must not be cancelled. */
-export async function fetchDailyFixDay(
-  isoDate: string,
-  _signal?: AbortSignal,
-): Promise<DailyFixSettled> {
-  return loadDailyFixDay(isoDate, { allowCloser: true });
 }
 
 /** ISO date to fetch for a resolved route. Invalid routes never fetch. */

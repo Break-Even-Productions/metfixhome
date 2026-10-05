@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DAILY_FIX_BFF_URL,
   dailyFixRequestUrl,
-  fetchDailyFixDay,
   fetchIsoForRoute,
   loadDailyFixDay,
   mapDailyFixDay,
+  nextBsiMidnightMs,
   peekLoadedDailyFixDay,
   prefetchDailyFixWindow,
   resetDailyFixDayCache,
@@ -201,10 +201,10 @@ describe("mapDailyFixDay", () => {
     expect(day?.brain.html).toBe("<p>Excerpt only</p>");
   });
 
-  it("sets requested_date when the Worker returns a closer day", () => {
+  it("maps a closer returned date without setting requested_date (consumer stamps it)", () => {
     const closer = mapDailyFixDay({ ...bsiDayBody, date: "2025-02-12" }, "2025-02-10");
     expect(closer?.date).toBe("2025-02-12");
-    expect(closer?.requested_date).toBe("2025-02-10");
+    expect(closer?.requested_date).toBeUndefined();
   });
 
   it("rejects missing/invalid top-level date, null workout, error objects, and the old flat client shape", () => {
@@ -307,23 +307,83 @@ describe("loadDailyFixDay cache", () => {
       `${DAILY_FIX_BFF_URL}?date=2026-03-09`,
     ]);
   });
+
+  it("expires at next Etc/GMT-2 midnight and refetches once", async () => {
+    vi.useFakeTimers();
+    const start = new Date("2026-03-10T23:30:00.000Z");
+    vi.setSystemTime(start);
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ...bsiDayBody, date: "2026-03-11" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect((await loadDailyFixDay("2026-03-11", { allowCloser: true }, start)).status).toBe("loaded");
+    expect(peekLoadedDailyFixDay("2026-03-11", start)).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const afterMidnight = new Date(nextBsiMidnightMs(start) + 1);
+    vi.setSystemTime(afterMidnight);
+    expect(peekLoadedDailyFixDay("2026-03-11", afterMidnight)).toBeNull();
+    expect((await loadDailyFixDay("2026-03-11", { allowCloser: true }, afterMidnight)).status).toBe(
+      "loaded",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("expires a recent alias even when returned day.date is older than 7 days", async () => {
+    vi.useFakeTimers();
+    const start = new Date("2026-03-10T23:30:00.000Z");
+    vi.setSystemTime(start);
+    const oldDate = "2026-02-20"; // >7 days before BSI today 2026-03-11
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ...bsiDayBody, date: oldDate }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const closer = await loadDailyFixDay("2026-03-11", { allowCloser: true }, start);
+    expect(closer.status).toBe("loaded");
+    if (closer.status === "loaded") {
+      expect(closer.day.date).toBe(oldDate);
+      expect(closer.day.requested_date).toBe("2026-03-11");
+    }
+    expect(peekLoadedDailyFixDay("2026-03-11", start)).not.toBeNull();
+    expect(peekLoadedDailyFixDay(oldDate, start)).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const afterMidnight = new Date(nextBsiMidnightMs(start) + 1);
+    vi.setSystemTime(afterMidnight);
+    // Recent alias must expire; twin key is purged with it.
+    expect(peekLoadedDailyFixDay("2026-03-11", afterMidnight)).toBeNull();
+    expect(peekLoadedDailyFixDay(oldDate, afterMidnight)).toBeNull();
+
+    const dated = await loadDailyFixDay("2026-03-11", { allowCloser: false }, afterMidnight);
+    // Dated exact-match still unmappable for closer payload, but it must refetch (not stale alias).
+    expect(dated).toEqual({ status: "unavailable" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
-describe("fetchDailyFixDay", () => {
+describe("loadDailyFixDay network failures", () => {
   it("never invents a sample day when the network fails or the Worker is unavailable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ error: "unavailable" }), { status: 503 })),
     );
-    expect(await fetchDailyFixDay("2025-02-10")).toEqual({ status: "unavailable" });
+    expect(await loadDailyFixDay("2025-02-10", { allowCloser: true })).toEqual({ status: "unavailable" });
 
     resetDailyFixDayCache();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
-    expect(await fetchDailyFixDay("2025-02-10")).toEqual({ status: "unavailable" });
+    expect(await loadDailyFixDay("2025-02-10", { allowCloser: true })).toEqual({ status: "unavailable" });
 
     resetDailyFixDayCache();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 500 })));
-    expect(await fetchDailyFixDay("2025-02-10")).toEqual({ status: "unavailable" });
+    expect(await loadDailyFixDay("2025-02-10", { allowCloser: true })).toEqual({ status: "unavailable" });
 
     resetDailyFixDayCache();
     vi.stubGlobal(
@@ -332,7 +392,7 @@ describe("fetchDailyFixDay", () => {
         throw new TypeError("Failed to fetch");
       }),
     );
-    expect(await fetchDailyFixDay("2025-02-10")).toEqual({ status: "unavailable" });
+    expect(await loadDailyFixDay("2025-02-10", { allowCloser: true })).toEqual({ status: "unavailable" });
   });
 
   it("loads a stubbed BSI-shaped 200 day without shipping that stub as page content", async () => {
@@ -344,7 +404,7 @@ describe("fetchDailyFixDay", () => {
       });
     });
     vi.stubGlobal("fetch", fetchMock);
-    const result = await fetchDailyFixDay("2025-02-10");
+    const result = await loadDailyFixDay("2025-02-10", { allowCloser: false });
     expect(result.status).toBe("loaded");
     if (result.status === "loaded") {
       expect(result.day.belly.title).toBe("Steak bowls");

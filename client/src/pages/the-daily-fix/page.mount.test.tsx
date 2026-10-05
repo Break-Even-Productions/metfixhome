@@ -243,29 +243,79 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     // Note for PR #2 rebase only: comments GET must key on response date 2026-03-09, not today.
   });
 
-  it("7/19. failed today → Not available; never shows prefetched −1/−2; no extra GET beyond three", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
-      if (date === TODAY) {
-        return new Response(JSON.stringify({ error: "unavailable" }), { status: 503 });
-      }
-      return new Response(JSON.stringify(dayPayload(date)), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
+  it.each([
+    {
+      label: "503",
+      todayResponse: async () =>
+        new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }),
+    },
+    {
+      label: "404",
+      todayResponse: async () => new Response("", { status: 404 }),
+    },
+    {
+      label: "thrown fetch",
+      todayResponse: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    },
+    {
+      label: "unmappable body",
+      todayResponse: async () =>
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    },
+    {
+      label: "fully null workout",
+      todayResponse: async () =>
+        new Response(
+          JSON.stringify(
+            dayPayload(TODAY, {
+              body: { title: null, body: null, excerpt: null },
+            }),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    },
+    {
+      label: "200 different date that does not map",
+      todayResponse: async () =>
+        new Response(
+          JSON.stringify(
+            dayPayload(MINUS2, {
+              body: { title: null, body: null, excerpt: null },
+            }),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    },
+  ])(
+    "7/19. bare today $label → Not available; never shows −1/−2; exactly three GETs",
+    async ({ todayResponse }) => {
+      resetDailyFixDayCache();
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const date = new URL(String(input)).searchParams.get("date")!;
+        if (date === TODAY) return todayResponse();
+        return new Response(JSON.stringify(dayPayload(date)), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    cleanup();
-    renderAt("/the-daily-fix");
-    expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
-    expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
-    expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
-    expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
-    expect(screen.queryByText(/invent/i)).toBeNull();
-  });
+      vi.stubGlobal("fetch", fetchMock);
+      cleanup();
+      renderAt("/the-daily-fix");
+      expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
+      await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+      expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
+      expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
+      expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
+      expect(screen.queryByText(/invent/i)).toBeNull();
+    },
+  );
 
-  it("17. bare: 200 with no/invalid top-level date → Not available, not cached", async () => {
+  it("17. bare: 200 with invalid top-level date → Not available, not cached", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const date = new URL(String(input)).searchParams.get("date")!;
       if (date === TODAY) {
@@ -284,6 +334,53 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
     await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+  });
+
+  it("17. bare: 200 with no date key → Not available, not cached", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input)).searchParams.get("date")!;
+      if (date === TODAY) {
+        const body = dayPayload(TODAY);
+        delete (body as { date?: string }).date;
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    cleanup();
+    renderAt("/the-daily-fix");
+    expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
+    expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
+  });
+
+  it("warm bare remount stays at exactly three GETs", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input)).searchParams.get("date")!;
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    cleanup();
+    renderAt("/the-daily-fix");
+    expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
+
+    cleanup();
+    renderAt("/the-daily-fix");
+    expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
+    expect(screen.queryByText("Loading")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("18. bare mount stays exactly three GETs even when today returns a different date", async () => {
@@ -362,7 +459,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("10. failed prefetch not cached; visit refetches once; failed prefetch never changes visible day", async () => {
+  it("10. failed prefetch not cached; visit refetches once and succeeds; failed prefetch never changes visible day", async () => {
     let minus1Fails = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const date = new URL(String(input)).searchParams.get("date")!;
@@ -378,15 +475,42 @@ describe("Daily Fix page mount — prefetch cache", () => {
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3));
-    const afterPrefetch = fetchMock.mock.calls.length;
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
     expect(screen.getByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
 
     minus1Fails = false;
     cleanup();
     renderAt("/the-daily-fix/260310");
     expect(await screen.findByRole("heading", { name: `Belly ${MINUS1}` })).toBeTruthy();
-    expect(fetchMock.mock.calls.length).toBe(afterPrefetch + 1);
+    expect(fetchMock.mock.calls.length).toBe(4);
+  });
+
+  it("10. failed prefetch stay failed on visit → Not available; never changed visible day during prefetch", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input)).searchParams.get("date")!;
+      if (date === MINUS1) {
+        return new Response("", { status: 404 });
+      }
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    cleanup();
+    renderAt("/the-daily-fix");
+    expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
+    expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
+    expect(screen.getByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
+
+    cleanup();
+    renderAt("/the-daily-fix/260310");
+    expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
+    expect(fetchMock.mock.calls.length).toBe(4);
   });
 
   it("11. dated /250210 makes exactly one GET for 2025-02-10; no today-window prefetch", async () => {
@@ -423,17 +547,25 @@ describe("Daily Fix page mount — prefetch cache", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    cleanup();
-    resetDailyFixDayCache();
-    fetchMock.mockClear();
-    cleanup();
-    renderAt("/the-daily-fix/250231");
-    expect(await screen.findByRole("heading", { name: /That day isn’t a Daily Fix date/i })).toBeTruthy();
-    expect(fetchMock).not.toHaveBeenCalled();
+    for (const path of [
+      "/the-daily-fix/250231",
+      "/the-daily-fix/20250231",
+      "/the-daily-fix/2025-02-31",
+      "/the-daily-fix/25/02/31",
+      "/the-daily-fix/25/2/10",
+      "/the-daily-fix/19990210",
+    ]) {
+      cleanup();
+      resetDailyFixDayCache();
+      fetchMock.mockClear();
+      renderAt(path);
+      expect(await screen.findByRole("heading", { name: /That day isn’t a Daily Fix date/i })).toBeTruthy();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(document.querySelector(".df-skeleton")).toBeNull();
+    }
 
     cleanup();
     fetchMock.mockClear();
-    cleanup();
     renderAt("/the-daily-fix/25/02/10/belly");
     expect(await screen.findByText(/Error 404/i)).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
