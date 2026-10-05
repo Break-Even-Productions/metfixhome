@@ -1112,7 +1112,8 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     expect(rejections).toEqual([]);
   });
 
-  it("C6: MealPhoto parent re-render (pillar switch without remount) → init stays exactly 1", async () => {
+  // Idle re-render only — Spec (a) re-init applies after play/close, not parent re-render.
+  it("C6: MealPhoto parent re-render (idle, no play) → init stays exactly 1", async () => {
     const onPlay = vi.fn();
     const onClose = vi.fn();
     const props = {
@@ -1199,7 +1200,8 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     expect(screen.getByRole("button", { name: "Play the short" })).toBeTruthy();
   });
 
-  it("C6: unmount → destroy exactly 1", async () => {
+  // Idle unmount (never played): one destroy. Play/close/unmount destroy=2 is Spec (a) below.
+  it("C6: idle unmount (never played) → destroy exactly 1", async () => {
     const view = render(
       <MealPhoto
         dayKey="2025-02-10"
@@ -1219,7 +1221,8 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     expect(liquidDestroy).toHaveBeenCalledTimes(1);
   });
 
-  it("C6: play-start → destroy exactly 1; no iframe before click", async () => {
+  // Spec (a): destroy when playing starts (idle glass torn down). Re-init on close is covered below.
+  it("C6 Spec (a): play-start → destroy exactly 1; no iframe before click", async () => {
     stubDay({
       photo_url: PHOTO,
       yt_url: YT,
@@ -1237,8 +1240,79 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     await waitFor(() => expect(liquidDestroy).toHaveBeenCalledTimes(1));
     await act(async () => {});
     expect(liquidDestroy).toHaveBeenCalledTimes(1);
+    expect(liquidInit).toHaveBeenCalledTimes(1);
   });
 
+  it("Escape closes video; focus returns to play; idle mount does not steal focus", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: YT,
+      macros: { fat: 12, carb: 3, protein: 30 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    const img = await screen.findByRole("img", { name: "Belly 2025-02-10" }) as HTMLImageElement;
+    fireImgLoad(img);
+    const playIdle = screen.getByRole("button", { name: "Play the short" });
+    // wasPlayingRef path: first mount with playing=false must not focus the play button.
+    expect(document.activeElement).not.toBe(playIdle);
+
+    fireEvent.click(playIdle);
+    expect(await screen.findByTitle("Belly 2025-02-10 short")).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.querySelector("iframe")).toBeNull());
+    const playAfter = screen.getByRole("button", { name: "Play the short" });
+    expect(playAfter).toBeTruthy();
+    expect(document.activeElement).toBe(playAfter);
+  });
+
+  // Spec (a) same-day glass lifecycle: mount init1 → play destroy1 → close init2 → unmount destroy2.
+  // "Init once per shown day" = once per idle photo presentation, not never-after-play.
+  it("C6 Spec (a): play then close → init 2 / destroy 1; unmount → destroy 2", async () => {
+    let playing = false;
+    const onPlay = vi.fn(() => {
+      playing = true;
+    });
+    const onClose = vi.fn(() => {
+      playing = false;
+    });
+    const base = {
+      dayKey: "2025-02-10",
+      title: "Steak",
+      photoUrl: PHOTO,
+      videoId: "jHXO-qIk28A" as string | null,
+      macros: { fat: 10, carb: 2, protein: 20 },
+      onPlay,
+      onClose,
+    };
+    const view = render(<MealPhoto {...base} playing={playing} />);
+    fireImgLoad(screen.getByRole("img", { name: "Steak" }) as HTMLImageElement);
+    await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "Play the short" }));
+
+    playing = true;
+    view.rerender(<MealPhoto {...base} playing={playing} />);
+    expect(await screen.findByTitle("Steak short")).toBeTruthy();
+    await waitFor(() => expect(liquidDestroy).toHaveBeenCalledTimes(1));
+    expect(liquidInit).toHaveBeenCalledTimes(1);
+
+    playing = false;
+    view.rerender(<MealPhoto {...base} playing={playing} />);
+    await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(liquidDestroy).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Play the short" })).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Play the short" }));
+
+    view.unmount();
+    await act(async () => {});
+    expect(liquidDestroy).toHaveBeenCalledTimes(2);
+  });
+
+  // Prefetch must not inflate glass init; Spec (a) re-init still happens after play/close on the shown day.
   it("C6: bare mount with photo → init exactly 1 (not once per prefetched day)", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const date = new URL(String(input)).searchParams.get("date")!;
