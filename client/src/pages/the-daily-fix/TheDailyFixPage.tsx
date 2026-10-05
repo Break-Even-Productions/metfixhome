@@ -4,7 +4,13 @@ import { Link, useLocation, useParams } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
-import { fetchDailyFixDay, fetchIsoForRoute, type DailyFixLoadState } from "./data";
+import {
+  fetchIsoForRoute,
+  loadDailyFixDay,
+  prefetchDailyFixWindow,
+  syncLoadFromCache,
+  type DailyFixLoadState,
+} from "./data";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
@@ -85,12 +91,24 @@ export default function TheDailyFixPage({
     dd: params.dd,
     hash,
   });
-  const todayIso = bsiTodayIso();
-  const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
+  // One BSI-today sample for this mount lifetime (prefetch + bare fetch share it).
+  const [todayIso] = useState(() => bsiTodayIso());
   const fetchIso = fetchIsoForRoute(route.kind, route.iso, todayIso);
+  const allowCloser = route.kind === "today";
+  // Panel request key: bare uses today; dated uses URL ISO. Highlight uses response date when loaded.
+  const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
+  const routeKey = `${route.kind}:${fetchIso ?? "none"}`;
+
   const [load, setLoad] = useState<DailyFixLoadState>(() =>
-    route.kind === "invalid" ? { status: "invalid" } : { status: "loading" },
+    syncLoadFromCache(route.kind, fetchIso),
   );
+  const [loadKey, setLoadKey] = useState(routeKey);
+
+  // Sync from cache on route change — no skeleton flash when the day is already loaded.
+  if (routeKey !== loadKey) {
+    setLoadKey(routeKey);
+    setLoad(syncLoadFromCache(route.kind, fetchIso));
+  }
 
   useEffect(() => {
     loadJakartaSans();
@@ -105,27 +123,38 @@ export default function TheDailyFixPage({
     }
   }, [route, location, hash, setLocation]);
 
+  // Prefetch today/−1/−2 only on bare today route (strip cache). Not a bare-path fallback walk.
+  useEffect(() => {
+    if (route.kind !== "today") return;
+    prefetchDailyFixWindow(todayIso);
+  }, [todayIso, route.kind]);
+
   useEffect(() => {
     if (route.kind === "invalid" || !fetchIso) {
       setLoad({ status: "invalid" });
       return;
     }
-    const controller = new AbortController();
-    setLoad({ status: "loading" });
-    void fetchDailyFixDay(fetchIso, controller.signal)
-      .then((next) => {
-        if (!controller.signal.aborted) setLoad(next);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setLoad({ status: "unavailable" });
-      });
-    return () => controller.abort();
-  }, [fetchIso, route.kind]);
+
+    let active = true;
+    setLoad(syncLoadFromCache(route.kind, fetchIso));
+
+    void loadDailyFixDay(fetchIso, { allowCloser }).then((next) => {
+      if (!active) return;
+      setLoad(next);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [fetchIso, route.kind, allowCloser]);
 
   const title = "Daily Fix · MetFix";
   const description =
     load.status === "loaded" ? `${load.day.belly.title} Daily Fix` : undefined;
   usePageMeta({ title, description });
+
+  // Calendar / day label follow the response date when loaded (bare closer-day).
+  const panelIso = load.status === "loaded" ? load.day.date : requestedIso;
 
   const masthead = useMemo(
     () =>
@@ -170,7 +199,7 @@ export default function TheDailyFixPage({
                 return (
                   <Link
                     key={item.pillar}
-                    href={dailyFixHref(todayIso, requestedIso, item.pillar)}
+                    href={dailyFixHref(todayIso, panelIso, item.pillar)}
                     onClick={() => jumpTo("todays-fix")}
                   >
                     <span className="df-masthead-icon">
@@ -195,6 +224,9 @@ export default function TheDailyFixPage({
           <div className="df-pad">
             <DayPanel
               requestedIso={requestedIso}
+              panelIso={panelIso}
+              todayIso={todayIso}
+              routeKind={route.kind}
               pillar={route.pillar}
               pillarExplicit={route.pillarExplicit}
               load={load}
