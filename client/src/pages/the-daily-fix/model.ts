@@ -34,11 +34,89 @@ export type DailyFixBelly = {
   fat: number | null;
   carb: number | null;
   protein: number | null;
+  /** Non-empty https URL, or null when absent/invalid. */
+  photo_url: string | null;
+  /** Strict 11-char YouTube video id, or null when absent/unparseable. */
+  yt_url: string | null;
   has_structured_ingredients: boolean;
   has_structured_steps: boolean;
   recipe_ingredients: RecipeIngredient[];
   recipe_steps: RecipeStep[];
 };
+
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/** Trim; keep only a non-empty https: URL, else null. */
+export function mapHttpsPhotoUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:") return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract a strict 11-char YouTube id from watch / youtu.be / embed / shorts.
+ * Returns null when no usable id is present.
+ */
+export function extractYoutubeId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (YT_ID.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    if (host === "youtu.be") {
+      const id = url.pathname.split("/").filter(Boolean)[0] ?? "";
+      return YT_ID.test(id) ? id : null;
+    }
+    if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+      const fromQuery = url.searchParams.get("v");
+      if (fromQuery && YT_ID.test(fromQuery)) return fromQuery;
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts[0] === "embed" || parts[0] === "shorts" || parts[0] === "live") {
+        const id = parts[1] ?? "";
+        return YT_ID.test(id) ? id : null;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** Build the autoplay embed URL for a parsed YouTube id. Never pass a raw page URL. */
+export function youtubeEmbedUrl(videoId: string): string {
+  const embed = new URL(`https://www.youtube.com/embed/${videoId}`);
+  embed.searchParams.set("autoplay", "1");
+  embed.searchParams.set("rel", "0");
+  embed.searchParams.set("playsinline", "1");
+  return embed.toString();
+}
+
+/**
+ * Glass overlay macros: Protein → Fat → Carbs, only values that are numbers > 0.
+ * Null and 0g rows are omitted. Empty means no glass macros card.
+ */
+export function glassMacroRows(macros: BellyMacros): { label: string; grams: number }[] {
+  const rows: { label: string; grams: number }[] = [];
+  if (typeof macros.protein === "number" && macros.protein > 0) {
+    rows.push({ label: "Protein", grams: macros.protein });
+  }
+  if (typeof macros.fat === "number" && macros.fat > 0) {
+    rows.push({ label: "Fat", grams: macros.fat });
+  }
+  if (typeof macros.carb === "number" && macros.carb > 0) {
+    rows.push({ label: "Carbs", grams: macros.carb });
+  }
+  return rows;
+}
 
 export type DailyFixBody = {
   title: string;

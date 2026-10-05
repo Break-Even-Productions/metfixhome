@@ -144,11 +144,52 @@ describe("mapDailyFixDay", () => {
     expect(day?.belly.fat).toBe(22);
     expect(day?.belly.carb).toBeNull();
     expect(day?.belly.protein).toBe(34);
+    expect(day?.belly.photo_url).toBe("https://example.com/ignore-belly.jpg");
+    expect(day?.belly.yt_url).toBeNull();
     expect(day?.belly.recipe_ingredients.map((item) => item.display)).toEqual(["Eggs", "Salt"]);
     expect(day?.body.html).toContain("Work");
     expect(day?.brain.html).toContain("Think");
     expect(day?.requested_date).toBeUndefined();
-    expect(day && "photo_url" in day.belly).toBe(false);
+  });
+
+  it("mapBelly photo_url / yt_url: https trim, YouTube id extract, else null", () => {
+    const withMedia = mapDailyFixDay(
+      {
+        ...bsiDayBody,
+        belly: {
+          ...bsiDayBody.belly,
+          photo_url: "  https://cdn.example.com/meal.jpg  ",
+          yt_url: "https://youtu.be/jHXO-qIk28A?t=30",
+        },
+      },
+      "2025-02-10",
+    );
+    expect(withMedia?.belly.photo_url).toBe("https://cdn.example.com/meal.jpg");
+    expect(withMedia?.belly.yt_url).toBe("jHXO-qIk28A");
+
+    const badMedia = mapDailyFixDay(
+      {
+        ...bsiDayBody,
+        belly: {
+          ...bsiDayBody.belly,
+          photo_url: "http://insecure.example.com/x.jpg",
+          yt_url: "https://www.youtube.com/watch?v=nope",
+        },
+      },
+      "2025-02-10",
+    );
+    expect(badMedia?.belly.photo_url).toBeNull();
+    expect(badMedia?.belly.yt_url).toBeNull();
+
+    const emptyPhoto = mapDailyFixDay(
+      {
+        ...bsiDayBody,
+        belly: { ...bsiDayBody.belly, photo_url: "   ", yt_url: "" },
+      },
+      "2025-02-10",
+    );
+    expect(emptyPhoto?.belly.photo_url).toBeNull();
+    expect(emptyPhoto?.belly.yt_url).toBeNull();
   });
 
   it("uses body.excerpt when body.body is null or empty (rest-day fixture)", () => {

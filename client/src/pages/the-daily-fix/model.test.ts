@@ -5,12 +5,16 @@ import {
   dailyFixCanonicalUrl,
   dailyFixHref,
   dailyFixPath,
+  extractYoutubeId,
+  glassMacroRows,
   isoFromYymmdd,
   isCloserScheduledDay,
+  mapHttpsPhotoUrl,
   parseDailyFixRoute,
   yymmddFromIso,
   sortedIngredients,
   visibleMacros,
+  youtubeEmbedUrl,
   type DailyFixDay,
 } from "./model";
 
@@ -131,6 +135,16 @@ describe("day contract helpers", () => {
     ]);
   });
 
+  it("glass macros gate keeps only values > 0 in Protein/Fat/Carbs order", () => {
+    expect(glassMacroRows({ fat: 12, carb: null, protein: 30 })).toEqual([
+      { label: "Protein", grams: 30 },
+      { label: "Fat", grams: 12 },
+    ]);
+    expect(glassMacroRows({ fat: 0, carb: 0, protein: 0 })).toEqual([]);
+    expect(glassMacroRows({ fat: null, carb: null, protein: null })).toEqual([]);
+    expect(glassMacroRows({ fat: 0, carb: 5, protein: null })).toEqual([{ label: "Carbs", grams: 5 }]);
+  });
+
   it("sorts structured recipe fields without group labels", () => {
     expect(
       sortedIngredients([
@@ -146,5 +160,39 @@ describe("day contract helpers", () => {
     expect(isCloserScheduledDay({ date: "2025-02-12", requested_date: "2025-02-11" } as DailyFixDay, "2025-02-11")).toBe(true);
     expect(isCloserScheduledDay({ date: "2025-02-11", requested_date: "2025-02-11" } as DailyFixDay, "2025-02-11")).toBe(false);
     expect(isCloserScheduledDay({ date: "2025-02-11" } as DailyFixDay, "2025-02-11")).toBe(false);
+  });
+});
+
+describe("belly media URL helpers", () => {
+  it("mapHttpsPhotoUrl keeps trimmed https only", () => {
+    expect(mapHttpsPhotoUrl("  https://cdn.example.com/steak.jpg  ")).toBe("https://cdn.example.com/steak.jpg");
+    expect(mapHttpsPhotoUrl("http://cdn.example.com/steak.jpg")).toBeNull();
+    expect(mapHttpsPhotoUrl("")).toBeNull();
+    expect(mapHttpsPhotoUrl("   ")).toBeNull();
+    expect(mapHttpsPhotoUrl(null)).toBeNull();
+    expect(mapHttpsPhotoUrl("/relative.jpg")).toBeNull();
+  });
+
+  it("extractYoutubeId accepts watch / youtu.be / embed / shorts and strips &t=", () => {
+    expect(extractYoutubeId("https://www.youtube.com/watch?v=jHXO-qIk28A")).toBe("jHXO-qIk28A");
+    expect(extractYoutubeId("https://www.youtube.com/watch?v=jHXO-qIk28A&t=12s")).toBe("jHXO-qIk28A");
+    expect(extractYoutubeId("https://youtu.be/jHXO-qIk28A")).toBe("jHXO-qIk28A");
+    expect(extractYoutubeId("https://www.youtube.com/embed/jHXO-qIk28A")).toBe("jHXO-qIk28A");
+    expect(extractYoutubeId("https://www.youtube.com/shorts/jHXO-qIk28A")).toBe("jHXO-qIk28A");
+    expect(extractYoutubeId("jHXO-qIk28A")).toBe("jHXO-qIk28A");
+  });
+
+  it("unparseable yt → null (no play UI id)", () => {
+    expect(extractYoutubeId("https://www.youtube.com/watch?v=short")).toBeNull();
+    expect(extractYoutubeId("https://example.com/watch?v=jHXO-qIk28A")).toBeNull();
+    expect(extractYoutubeId("not a url")).toBeNull();
+    expect(extractYoutubeId("")).toBeNull();
+    expect(extractYoutubeId(null)).toBeNull();
+  });
+
+  it("youtubeEmbedUrl builds autoplay embed from id only", () => {
+    expect(youtubeEmbedUrl("jHXO-qIk28A")).toBe(
+      "https://www.youtube.com/embed/jHXO-qIk28A?autoplay=1&rel=0&playsinline=1",
+    );
   });
 });

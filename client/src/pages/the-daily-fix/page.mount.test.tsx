@@ -4,7 +4,7 @@
  * Mount-level QA: Router + TheDailyFixPage / NotFound, mocked fetch, frozen BSI clock.
  * Helper-only assertions do not count toward these checks.
  */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import NotFound from "@/pages/NotFound";
@@ -12,13 +12,33 @@ import TheDailyFixPage from "./TheDailyFixPage";
 import { DAILY_FIX_BFF_URL, peekLoadedDailyFixDay, resetDailyFixDayCache } from "./data";
 import { formatDayLabel } from "./model";
 
+const { liquidDestroy, liquidInit } = vi.hoisted(() => {
+  const liquidDestroy = vi.fn();
+  const liquidInit = vi.fn(async () => ({ destroy: liquidDestroy }));
+  return { liquidDestroy, liquidInit };
+});
+
+vi.mock("./liquidGlass", () => ({
+  initLiquidGlass: liquidInit,
+}));
+
 const FROZEN = new Date("2026-03-10T23:30:00.000Z");
 const TODAY = "2026-03-11";
 const MINUS1 = "2026-03-10";
 const MINUS2 = "2026-03-09";
+const PHOTO = "https://cdn.example.com/meal.jpg";
+const YT = "https://www.youtube.com/watch?v=jHXO-qIk28A";
+const EMBED = "https://www.youtube.com/embed/jHXO-qIk28A?autoplay=1&rel=0&playsinline=1";
+
+function fireImgLoad(img: HTMLImageElement) {
+  Object.defineProperty(img, "complete", { configurable: true, value: true });
+  Object.defineProperty(img, "naturalWidth", { configurable: true, value: 1024 });
+  Object.defineProperty(img, "naturalHeight", { configurable: true, value: 576 });
+  fireEvent.load(img);
+}
 
 function dayPayload(date: string, overrides: Record<string, unknown> = {}) {
-  return {
+  const base = {
     date,
     belly: {
       title: `Belly ${date}`,
@@ -29,7 +49,9 @@ function dayPayload(date: string, overrides: Record<string, unknown> = {}) {
       has_structured_steps: false,
       recipe_ingredients: [],
       recipe_steps: [],
-      photo_url: "https://example.com/ignore.jpg",
+      // Default: no MealPhoto so regression tests keep plain .df-macros behavior.
+      photo_url: null as string | null,
+      yt_url: null as string | null,
     },
     body: {
       title: `Body ${date}`,
@@ -41,7 +63,15 @@ function dayPayload(date: string, overrides: Record<string, unknown> = {}) {
       body: `<p>Read ${date}</p>`,
       excerpt: null,
     },
-    ...overrides,
+  };
+  const { belly: bellyOverride, ...rest } = overrides;
+  return {
+    ...base,
+    ...rest,
+    belly: {
+      ...base.belly,
+      ...(bellyOverride && typeof bellyOverride === "object" ? bellyOverride : {}),
+    },
   };
 }
 
@@ -104,6 +134,9 @@ beforeEach(() => {
   stubBrowserApis();
   openAddressBar("/");
   resetDailyFixDayCache();
+  liquidInit.mockClear();
+  liquidDestroy.mockClear();
+  liquidInit.mockImplementation(async () => ({ destroy: liquidDestroy }));
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(FROZEN);
 });
@@ -713,5 +746,177 @@ describe("Daily Fix page mount — skeleton, copy, dated mismatch", () => {
     renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
     expect(screen.queryByText(/closest scheduled Daily Fix/i)).toBeNull();
+  });
+});
+
+describe("Daily Fix page mount — MealPhoto belly media", () => {
+  beforeEach(() => {
+    // Dynamic import + LiquidGlass.init need real timers.
+    vi.useRealTimers();
+    vi.setSystemTime(FROZEN);
+  });
+
+  function stubDay(belly: Record<string, unknown>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify(dayPayload("2025-02-10", { belly })), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+  }
+
+  it("09-15 style: photo+play; no Per serving when macros are 0", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: YT,
+      macros: { fat: 0, carb: 0, protein: 0 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    const img = screen.getByRole("img", { name: "Belly 2025-02-10" }) as HTMLImageElement;
+    expect(img.getAttribute("crossorigin")).toBe("anonymous");
+    expect(img.getAttribute("width")).toBe("1024");
+    expect(img.getAttribute("height")).toBe("576");
+    expect(screen.getByRole("button", { name: "Play the short" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Watch video/i })).toBeTruthy();
+    expect(screen.queryByText("Per serving")).toBeNull();
+    expect(document.querySelector(".df-macros")).toBeNull();
+    fireImgLoad(img);
+    await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
+  });
+
+  it("non-zero glass macros with photo; partial zeros omit 0 rows", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: YT,
+      macros: { fat: 39, carb: 0, protein: 42 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    expect(await screen.findByText("Per serving")).toBeTruthy();
+    const glass = document.querySelector(".df-meal-macros")!;
+    expect(within(glass as HTMLElement).getByText("Protein")).toBeTruthy();
+    expect(within(glass as HTMLElement).getByText("42g")).toBeTruthy();
+    expect(within(glass as HTMLElement).getByText("Fat")).toBeTruthy();
+    expect(within(glass as HTMLElement).getByText("39g")).toBeTruthy();
+    expect(within(glass as HTMLElement).queryByText("Carbs")).toBeNull();
+    expect(document.querySelector(".df-macros")).toBeNull();
+  });
+
+  it("no photo → no MealPhoto/play/Watch; keep plain df-macros when macros non-zero", async () => {
+    stubDay({
+      photo_url: null,
+      yt_url: YT,
+      macros: { fat: 10, carb: null, protein: 20 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(document.querySelector(".df-meal-photo")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Watch video/i })).toBeNull();
+    expect(document.querySelector(".df-macros")).toBeTruthy();
+    expect(screen.getByText("10g")).toBeTruthy();
+    expect(screen.getByText("20g")).toBeTruthy();
+    expect(liquidInit).not.toHaveBeenCalled();
+  });
+
+  it("photo+all-0 → no glass card and no plain df-macros (B2c)", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: null,
+      macros: { fat: 0, carb: 0, protein: 0 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(screen.queryByText("Per serving")).toBeNull();
+    expect(document.querySelector(".df-macros")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Watch video/i })).toBeNull();
+  });
+
+  it("click play mounts iframe with exact embed URL", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: YT,
+      macros: { fat: 12, carb: 3, protein: 30 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
+    fireImgLoad(img as HTMLImageElement);
+    await waitFor(() => expect(liquidInit).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Play the short" }));
+    const iframe = await screen.findByTitle("Belly 2025-02-10 short");
+    expect(iframe.getAttribute("src")).toBe(EMBED);
+    expect(iframe.getAttribute("allow")).toContain("autoplay");
+    expect(iframe.hasAttribute("allowfullscreen")).toBe(true);
+    await waitFor(() => expect(liquidDestroy).toHaveBeenCalled());
+  });
+
+  it("Watch video shares the play handler", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: "https://youtu.be/jHXO-qIk28A",
+      macros: { fat: 1, carb: 1, protein: 1 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    await screen.findByRole("img", { name: "Belly 2025-02-10" });
+    fireEvent.click(screen.getByRole("button", { name: /Watch video/i }));
+    expect(await screen.findByTitle("Belly 2025-02-10 short")).toBeTruthy();
+  });
+
+  it("photo + null/unparseable yt → img only, no play/Watch", async () => {
+    stubDay({
+      photo_url: PHOTO,
+      yt_url: "https://www.youtube.com/watch?v=nope",
+      macros: { fat: 5, carb: null, protein: 10 },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Watch video/i })).toBeNull();
+    expect(screen.getByText("Per serving")).toBeTruthy();
+    expect(document.querySelector(".df-macros")).toBeNull();
+  });
+
+  it("LiquidGlass init once per shown day; destroy on unmount / date change", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input)).searchParams.get("date")!;
+      return new Response(
+        JSON.stringify(
+          dayPayload(date, {
+            belly: {
+              photo_url: PHOTO,
+              yt_url: YT,
+              macros: { fat: 10, carb: 2, protein: 20 },
+            },
+          }),
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    cleanup();
+    renderAt("/the-daily-fix/250210#belly");
+    const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
+    fireImgLoad(img as HTMLImageElement);
+    await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
+
+    // Pillar switch away and back should remount belly but day key unchanged —
+    // destroy on unmount is expected; a fresh init when belly returns is fine.
+    cleanup();
+    renderAt("/the-daily-fix/250211#belly");
+    const img2 = await screen.findByRole("img", { name: "Belly 2025-02-11" });
+    fireImgLoad(img2 as HTMLImageElement);
+    await waitFor(() => expect(liquidInit.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(liquidDestroy).toHaveBeenCalled();
   });
 });

@@ -1,3 +1,6 @@
+import { Play } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { MealPhoto } from "./MealPhoto";
 import {
   brainButtonText,
   sortedIngredients,
@@ -13,22 +16,56 @@ function HtmlBlock({ html }: { html: string }) {
 
 function BellyContent({ day }: { day: DailyFixDay }) {
   const { belly } = day;
-  const macros = visibleMacros(belly);
+  const photoUrl = belly.photo_url;
+  const hasMealPhoto = Boolean(photoUrl);
+  const videoId = belly.yt_url;
+  const showWatch = hasMealPhoto && Boolean(videoId);
+  const plainMacros = hasMealPhoto ? [] : visibleMacros(belly);
   const ingredients = belly.has_structured_ingredients ? sortedIngredients(belly.recipe_ingredients) : [];
   const steps = belly.has_structured_steps ? sortedSteps(belly.recipe_steps) : [];
+  const [playing, setPlaying] = useState(false);
+  const mealKey = day.date;
+
+  useEffect(() => {
+    setPlaying(false);
+  }, [mealKey]);
+
+  const onPlay = useCallback(() => setPlaying(true), []);
+  const onClose = useCallback(() => setPlaying(false), []);
 
   return (
     <div>
       <h3 className="df-heading">{belly.title}</h3>
-      {macros.length > 0 ? (
+      {hasMealPhoto && photoUrl ? (
+        <MealPhoto
+          key={mealKey}
+          dayKey={mealKey}
+          title={belly.title}
+          photoUrl={photoUrl}
+          videoId={videoId}
+          macros={belly}
+          playing={playing}
+          onPlay={onPlay}
+          onClose={onClose}
+        />
+      ) : null}
+      {plainMacros.length > 0 ? (
         <dl className="df-macros">
-          {macros.map((row) => (
+          {plainMacros.map((row) => (
             <div key={row.label}>
               <dd>{row.grams}g</dd>
               <dt>{row.label}</dt>
             </div>
           ))}
         </dl>
+      ) : null}
+      {showWatch ? (
+        <div className="df-belly-chrome">
+          <button type="button" className="df-watch" onClick={onPlay}>
+            <Play className="df-watch-icon" aria-hidden="true" />
+            Watch video
+          </button>
+        </div>
       ) : null}
       <div className="df-recipe">
         <div>
