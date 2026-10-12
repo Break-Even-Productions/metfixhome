@@ -20,9 +20,22 @@ export type FullHead = {
   imageAlt: string;
 };
 
+function rawPillarPhoto(raw: unknown, pillar: "belly" | "body" | "brain"): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const block = (raw as Record<string, unknown>)[pillar];
+  if (!block || typeof block !== "object" || Array.isArray(block)) return null;
+  const photo = (block as Record<string, unknown>).photo_url;
+  return typeof photo === "string" ? photo : null;
+}
+
+/**
+ * Build the Daily Fix SEO head.
+ * Photo URLs prefer raw upstream (so http can be force-https'd per Spec 6.2);
+ * the shared mapper still nulls http for the client (PR #5 lock).
+ */
 export function buildFullHead(
   day: DailyFixDay,
-  opts: { bare: boolean; yymmdd: string; tab: DailyFixTab | null },
+  opts: { bare: boolean; yymmdd: string; tab: DailyFixTab | null; raw?: unknown },
 ): FullHead {
   const ymd = opts.yymmdd || yymmddFromIso(day.date) || "";
   const titles: { belly?: string; body?: string; brain?: string } = {};
@@ -53,12 +66,12 @@ export function buildFullHead(
 
   let imageUrl: string | null = null;
   if (tab === "body" && tabHasContent) {
-    imageUrl = forceHttpsUrl(day.body.photo_url);
+    imageUrl = forceHttpsUrl(rawPillarPhoto(opts.raw, "body") ?? day.body.photo_url);
   } else if (tab === "brain" && tabHasContent) {
-    imageUrl = forceHttpsUrl(day.brain.photo_url);
+    imageUrl = forceHttpsUrl(rawPillarPhoto(opts.raw, "brain") ?? day.brain.photo_url);
   }
   if (!imageUrl) {
-    imageUrl = forceHttpsUrl(day.belly.photo_url);
+    imageUrl = forceHttpsUrl(rawPillarPhoto(opts.raw, "belly") ?? day.belly.photo_url);
   }
   let imageWidth: number | null = null;
   let imageHeight: number | null = null;
@@ -80,10 +93,8 @@ export function buildFullHead(
   };
 }
 
-const STRIP_HEAD_RE =
-  /<title\b[^>]*>[\s\S]*?<\/title>|<meta\s+name=["']description["'][^>]*>|<link\s+rel=["']canonical["'][^>]*>|<meta\s+property=["']og:(?:type|title|description|url|image|image:width|image:height|image:alt)["'][^>]*>|<meta\s+name=["']twitter:(?:card|title|description|image|image:alt)["'][^>]*>|<meta\s+name=["']robots["'][^>]*>/gi;
-
-const REPLACE_SELECTORS = [
+/** Full-mode tags replaced in document order (site robots meta is left alone). */
+const FULL_REPLACE_SELECTORS = [
   "title",
   'meta[name="description"]',
   'link[rel="canonical"]',
@@ -100,7 +111,6 @@ const REPLACE_SELECTORS = [
   'meta[name="twitter:description"]',
   'meta[name="twitter:image"]',
   'meta[name="twitter:image:alt"]',
-  'meta[name="robots"]',
 ];
 
 export type HeadMode =
@@ -108,14 +118,8 @@ export type HeadMode =
   | { mode: "generic" }
   | { mode: "generic_noindex" };
 
-export function buildHeadSnippet(plan: HeadMode): string {
-  if (plan.mode === "generic_noindex") {
-    return `<meta name="robots" content="noindex">`;
-  }
-  if (plan.mode === "generic") {
-    return "";
-  }
-  const h = plan.head;
+export function buildFullHeadSnippet(head: FullHead): string {
+  const h = head;
   const parts = [
     `<title>${escapeAttr(h.title)}</title>`,
     `<meta name="description" content="${escapeAttr(h.description)}">`,
@@ -138,31 +142,27 @@ export function buildHeadSnippet(plan: HeadMode): string {
   return parts.join("");
 }
 
-export function applyHeadToHtml(html: string, plan: HeadMode): string {
-  let out = html.replace(STRIP_HEAD_RE, "");
-  const snippet = buildHeadSnippet(plan);
-  if (snippet) {
-    if (out.includes("</head>")) {
-      out = out.replace("</head>", `${snippet}</head>`);
-    } else {
-      out = snippet + out;
-    }
+class RemoveElement {
+  element(element: Element) {
+    element.remove();
   }
-  const dfJson = plan.mode === "full" ? plan.dfInitialJson : null;
-  if (dfJson) {
-    const tag = `<script type="application/json" id="df-initial">${dfJson}</script>`;
-    if (out.includes("</body>")) {
-      out = out.replace("</body>", `${tag}</body>`);
-    } else {
-      out += tag;
-    }
-  }
-  return out;
 }
 
-class HeadRewriter {
+class ReplaceRobotsNoindex {
+  private done = false;
+  element(element: Element) {
+    if (this.done) {
+      element.remove();
+      return;
+    }
+    this.done = true;
+    element.replace(`<meta name="robots" content="noindex">`, { html: true });
+  }
+}
+
+class FullHeadRewriter {
   private injected = false;
-  constructor(private readonly plan: HeadMode) {}
+  constructor(private readonly head: FullHead) {}
 
   element(element: Element) {
     if (this.injected) {
@@ -170,12 +170,7 @@ class HeadRewriter {
       return;
     }
     this.injected = true;
-    const html = buildHeadSnippet(this.plan);
-    if (html) {
-      element.replace(html, { html: true });
-    } else {
-      element.remove();
-    }
+    element.replace(buildFullHeadSnippet(this.head), { html: true });
   }
 }
 
@@ -190,24 +185,32 @@ class DfInitialInjector {
 }
 
 /**
- * Spec §6: HTMLRewriter on the Worker.
- * Node/vitest has no HTMLRewriter — fall back to the equivalent string transform.
+ * Spec §6: HTMLRewriter on the Worker (workerd always provides HTMLRewriter).
+ *
+ * - full: replace title/description/canonical/og/twitter; leave site robots alone; inject df-initial
+ * - generic: remove only canonical + og:url (keep site title/description/robots)
+ * - generic_noindex: same as generic, plus swap robots → noindex
  */
-export async function rewriteHtml(response: Response, plan: HeadMode): Promise<Response> {
-  if (typeof HTMLRewriter === "undefined") {
-    const html = await response.text();
-    const next = applyHeadToHtml(html, plan);
-    const headers = new Headers(response.headers);
-    headers.delete("content-length");
-    return new Response(next, { status: response.status, headers });
+export function rewriteHtml(response: Response, plan: HeadMode): Response {
+  const rewriter = new HTMLRewriter();
+
+  if (plan.mode === "generic") {
+    rewriter.on('link[rel="canonical"]', new RemoveElement());
+    rewriter.on('meta[property="og:url"]', new RemoveElement());
+    return rewriter.transform(response);
   }
 
-  const rewriter = new HTMLRewriter();
-  const headRewriter = new HeadRewriter(plan);
-  for (const sel of REPLACE_SELECTORS) {
+  if (plan.mode === "generic_noindex") {
+    rewriter.on('link[rel="canonical"]', new RemoveElement());
+    rewriter.on('meta[property="og:url"]', new RemoveElement());
+    rewriter.on('meta[name="robots"]', new ReplaceRobotsNoindex());
+    return rewriter.transform(response);
+  }
+
+  const headRewriter = new FullHeadRewriter(plan.head);
+  for (const sel of FULL_REPLACE_SELECTORS) {
     rewriter.on(sel, headRewriter);
   }
-  const dfJson = plan.mode === "full" ? plan.dfInitialJson : null;
-  rewriter.on("body", new DfInitialInjector(dfJson));
+  rewriter.on("body", new DfInitialInjector(plan.dfInitialJson));
   return rewriter.transform(response);
 }

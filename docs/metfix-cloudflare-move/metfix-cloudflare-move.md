@@ -209,7 +209,7 @@ The hash-pillar lock is superseded by `?tab=`, because Ethan wants per-tab share
 2. Add the secret `DAILY_FIX_API_KEY` on the Worker, in the dashboard or with `wrangler secret put DAILY_FIX_API_KEY`.
 3. Check the workers.dev or preview URL against section 9.
 4. Add the custom domain `metfix.org` to the Worker.
-5. Add a Single Redirect rule that sends `www.metfix.org/*` to `https://metfix.org/${path}` with a 301 and keeps the query.
+5. Add a Single Redirect rule that sends `www.metfix.org/*` to `https://metfix.org${path}${search}` with a 301 (path already starts with `/`; no double slash).
 6. Add a usage notification for Workers requests at about 70,000 a day, if the free plan allows it.
 7. Disable GitHub Pages, then land the post-cutover cleanup commit.
 

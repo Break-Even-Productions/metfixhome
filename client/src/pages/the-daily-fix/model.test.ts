@@ -162,9 +162,9 @@ describe("day contract helpers", () => {
 });
 
 describe("belly media URL helpers", () => {
-  it("mapHttpsPhotoUrl keeps trimmed https and upgrades http", () => {
+  it("mapHttpsPhotoUrl keeps trimmed https only (PR #5 lock — no http upgrade)", () => {
     expect(mapHttpsPhotoUrl("  https://cdn.example.com/steak.jpg  ")).toBe("https://cdn.example.com/steak.jpg");
-    expect(mapHttpsPhotoUrl("http://cdn.example.com/steak.jpg")).toBe("https://cdn.example.com/steak.jpg");
+    expect(mapHttpsPhotoUrl("http://cdn.example.com/steak.jpg")).toBeNull();
     expect(mapHttpsPhotoUrl("")).toBeNull();
     expect(mapHttpsPhotoUrl("   ")).toBeNull();
     expect(mapHttpsPhotoUrl(null)).toBeNull();

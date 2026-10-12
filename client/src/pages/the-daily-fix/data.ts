@@ -236,33 +236,33 @@ export function syncLoadFromCache(
   return { status: "loaded", day };
 }
 
-let dfInitialRead = false;
+let dfInitialDone = false;
 let dfInitialPayload: unknown | undefined;
 
 /**
- * Read `#df-initial` raw upstream JSON once, map with the shared mapper, seed the day cache.
- * Returns the mapped day when the ISO matches (or allowCloser), else null.
+ * Read `#df-initial` raw upstream JSON once, map, and seed the day cache once.
+ * Subsequent calls (in-app navigation) return null and never re-seed (C5).
  */
 export function seedFromDfInitial(
   requestedIso: string,
   allowCloser: boolean,
   doc: Document = document,
 ): DailyFixDay | null {
-  if (!dfInitialRead) {
-    dfInitialRead = true;
-    const el = doc.getElementById("df-initial");
-    if (!el) {
-      dfInitialPayload = undefined;
-      return null;
-    }
-    try {
-      dfInitialPayload = JSON.parse(el.textContent || "");
-    } catch {
-      dfInitialPayload = undefined;
-      return null;
-    }
+  if (dfInitialDone) return null;
+  dfInitialDone = true;
+
+  const el = doc.getElementById("df-initial");
+  if (!el) {
+    dfInitialPayload = undefined;
+    return null;
   }
-  if (dfInitialPayload === undefined) return null;
+  try {
+    dfInitialPayload = JSON.parse(el.textContent || "");
+  } catch {
+    dfInitialPayload = undefined;
+    return null;
+  }
+
   const day = mapDailyFixDay(dfInitialPayload, requestedIso);
   if (!day) return null;
   const forConsumer = dayForConsumer(day, requestedIso, allowCloser);
@@ -274,6 +274,6 @@ export function seedFromDfInitial(
 /** Reset module cache between tests so entries do not leak. */
 export function resetDailyFixDayCache(): void {
   dayCache.clear();
-  dfInitialRead = false;
+  dfInitialDone = false;
   dfInitialPayload = undefined;
 }

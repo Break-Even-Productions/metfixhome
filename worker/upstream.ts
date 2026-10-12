@@ -7,6 +7,9 @@ import {
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_HOST = "brokenscience.org";
 
+/** Hard cap on sitemap upstream subrequests (CQ). */
+export const SITEMAP_MAX_SUBREQUESTS = 40;
+
 export type Env = {
   ASSETS: Fetcher;
   DAILY_FIX_API_KEY?: string;
@@ -23,12 +26,14 @@ export async function fetchDailyFixDay(
   iso: string,
   env: Env,
   fetchImpl: typeof fetch = fetch,
+  opts?: { baseUrl?: string },
 ): Promise<UpstreamOutcome> {
   if (!env.DAILY_FIX_API_KEY) {
     return { kind: "nokey" };
   }
 
-  const url = `${BSI_DAILY_FIX_URL}?date=${encodeURIComponent(iso)}`;
+  const base = opts?.baseUrl ?? BSI_DAILY_FIX_URL;
+  const url = `${base}?date=${encodeURIComponent(iso)}`;
   try {
     assertBsiHost(url);
   } catch {
@@ -55,21 +60,22 @@ export async function fetchDailyFixDay(
       return { kind: "upstream_error", status: response.status };
     }
 
+    const bodyText = await response.text();
     let json: unknown;
     try {
-      json = await response.json();
+      json = JSON.parse(bodyText);
     } catch {
-      return { kind: "unmappable", status: 200, json: null };
+      return { kind: "unmappable", status: 200, json: null, bodyText };
     }
 
     const mapped = mapDailyFixDay(json, iso);
     if (!mapped) {
-      return { kind: "unmappable", status: 200, json };
+      return { kind: "unmappable", status: 200, json, bodyText };
     }
     if (mapped.date !== iso) {
-      return { kind: "mismatch", status: 200, json, mapped };
+      return { kind: "mismatch", status: 200, json, mapped, bodyText };
     }
-    return { kind: "ok", status: 200, json, mapped };
+    return { kind: "ok", status: 200, json, mapped, bodyText };
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
       return { kind: "timeout" };
@@ -81,8 +87,14 @@ export async function fetchDailyFixDay(
   }
 }
 
+export type ListItem = {
+  date: string;
+  /** Present when upstream includes it; filter to published when set. */
+  status?: string;
+};
+
 export type ListPage = {
-  items: { date: string }[];
+  items: ListItem[];
   total: number;
 };
 
@@ -90,9 +102,11 @@ export async function fetchDailyFixListPage(
   offset: number,
   env: Env,
   fetchImpl: typeof fetch = fetch,
+  opts?: { baseUrl?: string },
 ): Promise<{ ok: true; page: ListPage } | { ok: false; reason: "nokey" | "fail" }> {
   if (!env.DAILY_FIX_API_KEY) return { ok: false, reason: "nokey" };
-  const url = `${BSI_DAILY_FIX_URL}?limit=100&offset=${offset}`;
+  const base = opts?.baseUrl ?? BSI_DAILY_FIX_URL;
+  const url = `${base}?limit=100&offset=${offset}`;
   try {
     assertBsiHost(url);
   } catch {
@@ -113,11 +127,14 @@ export async function fetchDailyFixListPage(
       meta?: { total?: unknown };
     };
     const total = typeof json.meta?.total === "number" ? json.meta.total : 0;
-    const items: { date: string }[] = [];
+    const items: ListItem[] = [];
     if (Array.isArray(json.items)) {
       for (const item of json.items) {
         if (item && typeof item === "object" && typeof (item as { date?: unknown }).date === "string") {
-          items.push({ date: (item as { date: string }).date });
+          const row = item as { date: string; status?: unknown };
+          const entry: ListItem = { date: row.date };
+          if (typeof row.status === "string") entry.status = row.status;
+          items.push(entry);
         }
       }
     }

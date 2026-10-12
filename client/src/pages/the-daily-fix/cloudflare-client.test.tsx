@@ -3,7 +3,7 @@
  *
  * Spec C tests: legacy hash→tab, df-initial seeding, API error statuses.
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import TheDailyFixPage from "./TheDailyFixPage";
@@ -12,6 +12,7 @@ import {
   resetDailyFixDayCache,
   seedFromDfInitial,
 } from "./data";
+import * as DayContentMod from "./DayContent";
 
 const FROZEN = new Date("2026-03-10T23:30:00.000Z");
 const TODAY = "2026-03-11";
@@ -88,7 +89,14 @@ afterEach(() => {
 });
 
 describe("C2 legacy hash", () => {
-  it("C2: #brain shows Brain on first commit, rewrites to ?tab=brain, 1 GET", async () => {
+  it("C2: #brain shows Brain on first commit (Belly 0 renders), rewrites to ?tab=brain, 1 GET", async () => {
+    const bellyRenders: string[] = [];
+    const orig = DayContentMod.DayContent;
+    const spy = vi.spyOn(DayContentMod, "DayContent").mockImplementation((props) => {
+      if (props.pillar === "belly") bellyRenders.push("belly");
+      return orig(props);
+    });
+
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify(dayPayload("2025-02-10")), {
         status: 200,
@@ -106,14 +114,16 @@ describe("C2 legacy hash", () => {
       </Router>,
     );
     expect(await screen.findByRole("heading", { name: "Brain 2025-02-10" })).toBeTruthy();
+    expect(bellyRenders.length).toBe(0);
     expect(screen.queryByRole("heading", { name: "Belly 2025-02-10" })).toBeNull();
     expect(window.location.search).toBe("?tab=brain");
     expect(window.location.hash).toBe("");
     expect(window.history.length).toBe(histLen);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 
-  it("C3: #belly and bad tab fall back to Belly", async () => {
+  it("C3: #belly, #bogus, and ?tab=xyz fall back to Belly and drop", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify(dayPayload("2025-02-10")), {
         status: 200,
@@ -128,13 +138,60 @@ describe("C2 legacy hash", () => {
 
     cleanup();
     resetDailyFixDayCache();
+    renderAt("/the-daily-fix/250210#bogus");
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("");
+
+    cleanup();
+    resetDailyFixDayCache();
     renderAt("/the-daily-fix/250210?tab=xyz");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+});
+
+describe("C4 tab click", () => {
+  it("C4: tab click writes ?tab=body with replace; fetch count unchanged", async () => {
+    vi.useRealTimers();
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(dayPayload("2025-02-10")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderAt("/the-daily-fix/250210");
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    const histLen = window.history.length;
+    const fetches = fetchMock.mock.calls.length;
+    let replaceUrls: string[] = [];
+    const origReplace = window.history.replaceState.bind(window.history);
+    window.history.replaceState = ((state: unknown, title: string, url?: string | URL | null) => {
+      if (typeof url === "string") replaceUrls.push(url);
+      return origReplace(state, title, url);
+    }) as History["replaceState"];
+    const tab = screen.getByRole("tab", { name: /Body/i });
+    expect(tab.getAttribute("href")).toBe("/the-daily-fix/250210?tab=body");
+    // wouter ignores clicks when event.button !== 0; set button explicitly for jsdom.
+    tab.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    await waitFor(() => expect(window.location.search).toBe("?tab=body"));
+    expect(replaceUrls.some((u) => u.includes("tab=body"))).toBe(true);
+    expect(window.history.length).toBe(histLen);
+    expect(fetchMock.mock.calls.length).toBe(fetches);
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: /Body/i }).getAttribute("aria-selected")).toBe(
+        "true",
+      );
+    });
+    expect(screen.getByRole("heading", { name: "Body 2025-02-10" })).toBeTruthy();
   });
 });
 
 describe("C5/C6 df-initial", () => {
-  it("C5: dated df-initial → 0 /api for shown day", async () => {
+  it("C5: dated df-initial → 0 /api for shown day; no re-seed on Next", async () => {
     const el = document.createElement("script");
     el.id = "df-initial";
     el.type = "application/json";
@@ -146,19 +203,30 @@ describe("C5/C6 df-initial", () => {
       return getElementById(id);
     });
 
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(dayPayload(TODAY)), {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
+      return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }),
-    );
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(0);
     expect(spy).toHaveBeenCalledWith("df-initial");
-    // Only one read of the tag across seed
+    expect(spy.mock.calls.filter((c) => c[0] === "df-initial").length).toBe(1);
+
+    fireEvent.click(screen.getByRole("link", { name: /Next/i }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalled(),
+    );
+    const dates = fetchMock.mock.calls.map(
+      (c) => new URL(String(c[0]), "https://metfix.org").searchParams.get("date"),
+    );
+    expect(dates).toContain("2025-02-11");
+    // Still a single df-initial read — no re-seed on in-app navigation
     expect(spy.mock.calls.filter((c) => c[0] === "df-initial").length).toBe(1);
   });
 

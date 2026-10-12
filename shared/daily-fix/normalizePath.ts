@@ -192,6 +192,17 @@ function finalizeServe(
     return redirectTabless(base, otherPairs);
   }
 
+  // Exact raw allowlist only — `tab=%62ody` is not `body` and must 301.
+  if (rawVal === "body" || rawVal === "brain") {
+    return base.mode === "bare"
+      ? { kind: "serve", mode: "bare", tab: rawVal }
+      : { kind: "serve", mode: "dated", iso: base.iso, yymmdd: base.yymmdd, tab: rawVal };
+  }
+
+  if (rawVal === "belly") {
+    return redirectTabless(base, otherPairs);
+  }
+
   const decoded = (() => {
     try {
       return decodeURIComponent(rawVal.replace(/\+/g, " "));
@@ -204,17 +215,9 @@ function finalizeServe(
     return redirectTabless(base, otherPairs);
   }
 
-  if (decoded === "body" || decoded === "brain") {
-    return base.mode === "bare"
-      ? { kind: "serve", mode: "bare", tab: decoded }
-      : { kind: "serve", mode: "dated", iso: base.iso, yymmdd: base.yymmdd, tab: decoded };
-  }
-
-  // Case-only difference → 301 to lowercase allowlisted tab
+  // Encoded / case variants that decode to an allowlisted tab → 301 to exact lowercase.
   const lower = decoded.toLowerCase();
   if (lower === "body" || lower === "brain") {
-    const pairs = [...otherPairs];
-    // Keep other pairs byte-for-byte; replace tab value with lowercase, preserving original tab pair position.
     const rebuilt: string[] = [];
     let tabPlaced = false;
     for (const p of query.pairs) {

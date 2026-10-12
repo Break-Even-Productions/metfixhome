@@ -126,6 +126,11 @@ export function consumeLegacyHashInBrowser(): string {
     ? window.location.hash.slice(1)
     : window.location.hash;
   if (token !== "belly" && token !== "body" && token !== "brain") {
+    // C3: drop unknown hashes (#bogus) so they don't linger.
+    if (window.location.hash) {
+      const cleaned = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState(window.history.state, "", cleaned);
+    }
     return window.location.search;
   }
   const url = new URL(window.location.href);

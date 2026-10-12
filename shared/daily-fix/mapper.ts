@@ -60,19 +60,15 @@ export type DailyFixDay = {
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 
-/**
- * Trim; keep http(s) URLs, upgrading http→https (W28 / Spec §6.2).
- * Other schemes and relative paths → null.
- */
+/** Trim; keep only a non-empty https: URL, else null. (PR #5 lock — no http upgrade.) */
 export function mapHttpsPhotoUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   try {
     const url = new URL(trimmed);
-    if (url.protocol === "http:") url.protocol = "https:";
     if (url.protocol !== "https:") return null;
-    return url.toString();
+    return trimmed;
   } catch {
     return null;
   }

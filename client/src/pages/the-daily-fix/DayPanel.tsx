@@ -77,6 +77,7 @@ function PillarTab({
   return (
     <Link
       href={href}
+      replace
       role="tab"
       id={`fix-tab-${pillar}`}
       aria-selected={active}

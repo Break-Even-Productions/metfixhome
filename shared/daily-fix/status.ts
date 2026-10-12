@@ -1,10 +1,10 @@
 import type { DailyFixDay } from "./mapper";
 
 export type UpstreamOutcome =
-  | { kind: "ok"; status: 200; json: unknown; mapped: DailyFixDay }
+  | { kind: "ok"; status: 200; json: unknown; mapped: DailyFixDay; bodyText: string }
   | { kind: "not_found"; status: 404 }
-  | { kind: "mismatch"; status: 200; json: unknown; mapped: DailyFixDay }
-  | { kind: "unmappable"; status: 200; json: unknown }
+  | { kind: "mismatch"; status: 200; json: unknown; mapped: DailyFixDay; bodyText: string }
+  | { kind: "unmappable"; status: 200; json: unknown; bodyText: string }
   | { kind: "upstream_error"; status: number }
   | { kind: "timeout" }
   | { kind: "throw" }

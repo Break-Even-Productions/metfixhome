@@ -1,6 +1,6 @@
 import { BookOpen, Dumbbell, UtensilsCrossed } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "wouter";
+import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
@@ -59,34 +59,18 @@ function jumpTo(id: string) {
   window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
 }
 
-function useDocumentSearch() {
-  const [search, setSearch] = useState(() => {
-    // Legacy hash → ?tab= before first pillar read (no Belly flash).
-    return consumeLegacyHashInBrowser();
-  });
-  useEffect(() => {
-    const sync = () => setSearch(window.location.search);
-    window.addEventListener("popstate", sync);
-    window.addEventListener("pushState", sync);
-    window.addEventListener("replaceState", sync);
-    return () => {
-      window.removeEventListener("popstate", sync);
-      window.removeEventListener("pushState", sync);
-      window.removeEventListener("replaceState", sync);
-    };
-  }, []);
-  return search;
-}
-
 export default function TheDailyFixPage({
   params: routeParams,
 }: {
   params?: DailyFixParams;
 }) {
+  // Legacy hash → ?tab= before first pillar read (no Belly flash).
+  useState(() => consumeLegacyHashInBrowser());
   const hookParams = useParams<DailyFixParams>();
   const params = routeParams ?? hookParams;
   const [location, setLocation] = useLocation();
-  const search = useDocumentSearch();
+  // wouter's useSearch subscribes to push/replaceState (C4 tab clicks).
+  const search = useSearch();
   const route = parseDailyFixRoute({
     date: params.date,
     pillar: params.pillar,

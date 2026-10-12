@@ -178,7 +178,7 @@ describe("mapDailyFixDay", () => {
       },
       "2025-02-10",
     );
-    expect(badMedia?.belly.photo_url).toBe("https://insecure.example.com/x.jpg");
+    expect(badMedia?.belly.photo_url).toBeNull();
     expect(badMedia?.belly.yt_id).toBeNull();
 
     const emptyPhoto = mapDailyFixDay(

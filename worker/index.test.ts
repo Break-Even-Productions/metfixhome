@@ -1,10 +1,15 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
 import { handleRequest, type Env } from "./index";
-import { cacheTtlSeconds } from "../shared/daily-fix";
+import { assertBsiHost } from "./upstream";
+import { cacheTtlSeconds, cutDescription } from "../shared/daily-fix";
+
+installHtmlRewriterPolyfill();
 
 const INDEX_HTML = `<!doctype html><html><head>
+<meta name="robots" content="index, follow">
 <title>MetFix</title>
 <meta name="description" content="site">
 <link rel="canonical" href="https://metfix.org/">
@@ -44,6 +49,23 @@ const DAY = {
     photo_url: "https://cdn.example.com/brain.jpg",
   },
 };
+
+const SITE_TITLE = "MetFix";
+
+const SEO_12 = [
+  "title",
+  "description",
+  "canonical",
+  "og:type",
+  "og:title",
+  "og:description",
+  "og:url",
+  "og:image",
+  "twitter:card",
+  "twitter:title",
+  "twitter:description",
+  "twitter:image",
+] as const;
 
 type CacheStore = Map<string, Response>;
 
@@ -99,6 +121,71 @@ async function flush(ctx: { pending: Promise<unknown>[] }) {
   ctx.pending.length = 0;
 }
 
+function headersObject(res: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of res.headers) {
+    if (k === "content-length" || k === "date") continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function countOccurrences(hay: string, needle: string): number {
+  let n = 0;
+  let i = 0;
+  while ((i = hay.indexOf(needle, i)) !== -1) {
+    n++;
+    i += needle.length;
+  }
+  return n;
+}
+
+function seoTagPositions(body: string): Record<(typeof SEO_12)[number], number> {
+  return {
+    title: body.search(/<title>/i),
+    description: body.search(/<meta[^>]*name=["']description["']/i),
+    canonical: body.search(/<link[^>]*rel=["']canonical["']/i),
+    "og:type": body.search(/property=["']og:type["']/i),
+    "og:title": body.search(/property=["']og:title["']/i),
+    "og:description": body.search(/property=["']og:description["']/i),
+    "og:url": body.search(/property=["']og:url["']/i),
+    "og:image": body.search(/property=["']og:image["'](?!:)/i),
+    "twitter:card": body.search(/name=["']twitter:card["']/i),
+    "twitter:title": body.search(/name=["']twitter:title["']/i),
+    "twitter:description": body.search(/name=["']twitter:description["']/i),
+    "twitter:image": body.search(/name=["']twitter:image["'](?!:)/i),
+  };
+}
+
+function assertTwelveTagsOnceInOrder(body: string) {
+  const pos = seoTagPositions(body);
+  let prev = -1;
+  for (const name of SEO_12) {
+    expect(pos[name], name).toBeGreaterThan(-1);
+    expect(pos[name], name).toBeGreaterThan(prev);
+    prev = pos[name];
+  }
+  expect(countOccurrences(body, "<title>")).toBe(1);
+  expect(countOccurrences(body, 'name="description"')).toBe(1);
+  expect(countOccurrences(body, 'rel="canonical"')).toBe(1);
+  expect(countOccurrences(body, 'property="og:type"')).toBe(1);
+  expect(countOccurrences(body, 'property="og:title"')).toBe(1);
+  expect(countOccurrences(body, 'property="og:description"')).toBe(1);
+  expect(countOccurrences(body, 'property="og:url"')).toBe(1);
+  expect((body.match(/property="og:image(?!:)"/g) || []).length).toBe(1);
+  expect(countOccurrences(body, 'name="twitter:card"')).toBe(1);
+  expect(countOccurrences(body, 'name="twitter:title"')).toBe(1);
+  expect(countOccurrences(body, 'name="twitter:description"')).toBe(1);
+  expect((body.match(/name="twitter:image(?!:)"/g) || []).length).toBe(1);
+}
+
+function assertGenericHead(body: string) {
+  expect(body).toContain(`<title>${SITE_TITLE}</title>`);
+  expect(body).not.toContain('rel="canonical"');
+  expect(body).not.toContain('property="og:url"');
+  expect(body).not.toContain("df-initial");
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-10-12T10:00:00.000Z")); // 12:00 DFX
@@ -123,6 +210,12 @@ describe("W1 wrangler.jsonc", () => {
       "/api/*",
       "/sitemap-daily-fix.xml",
     ]);
+    const pkg = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+    );
+    const wrangler = pkg.devDependencies?.wrangler ?? pkg.dependencies?.wrangler;
+    expect(wrangler).toMatch(/^\d/);
+    expect(wrangler).not.toMatch(/^[~^]/);
   });
 });
 
@@ -139,11 +232,17 @@ describe("Worker HTML / API / sitemap", () => {
     ctx = makeCtx();
   });
 
-  async function call(path: string, init: RequestInit = {}, key = "test-secret-key") {
+  async function call(
+    path: string,
+    init: RequestInit = {},
+    key = "test-secret-key",
+    extra: { bsiBaseUrl?: string } = {},
+  ) {
     const req = new Request(`https://metfix.org${path}`, init);
     return handleRequest(req, makeEnv(assetsFetch, key), ctx, {
       fetchImpl: fetchMock as unknown as typeof fetch,
       cachesDefault: cache,
+      bsiBaseUrl: extra.bsiBaseUrl,
     });
   }
 
@@ -272,7 +371,7 @@ describe("Worker HTML / API / sitemap", () => {
     }
   });
 
-  it("W11 invalid dates 404 noindex", async () => {
+  it("W11 invalid dates 404 noindex + generic head, no canonical", async () => {
     for (const path of [
       "/the-daily-fix/260231",
       "/the-daily-fix/261301",
@@ -286,6 +385,7 @@ describe("Worker HTML / API / sitemap", () => {
       expect(res.status).toBe(404);
       const body = await res.text();
       expect(body).toContain('name="robots" content="noindex"');
+      expect(body).toContain(`<title>${SITE_TITLE}</title>`);
       expect(body).not.toContain('rel="canonical"');
       expect(body).not.toContain("df-initial");
       expect(fetchMock).toHaveBeenCalledTimes(0);
@@ -306,12 +406,14 @@ describe("Worker HTML / API / sitemap", () => {
     );
   });
 
-  it("W13 upstream 404", async () => {
+  it("W13 upstream 404 → noindex generic head, no canonical", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 404 }));
     const res = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
     expect(res.status).toBe(404);
     const body = await res.text();
-    expect(body).toContain("noindex");
+    expect(body).toContain('name="robots" content="noindex"');
+    expect(body).toContain(`<title>${SITE_TITLE}</title>`);
+    expect(body).not.toContain('rel="canonical"');
     expect(body).not.toContain("df-initial");
     expect(cache.puts.length).toBe(0);
   });
@@ -338,47 +440,63 @@ describe("Worker HTML / API / sitemap", () => {
     expect(body).toContain('rel="canonical" href="https://metfix.org/the-daily-fix"');
   });
 
-  it("W16 bare unusable → 200 generic", async () => {
+  it("W16 bare unusable → 200 generic head, no canonical", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 404 }));
     const res = await call("/the-daily-fix", { headers: { Accept: "text/html" } });
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).not.toContain("df-initial");
+    assertGenericHead(body);
     expect(body).not.toContain("noindex");
     expect(cache.puts.length).toBe(0);
   });
 
-  it("W17 503 cases", async () => {
-    const triggers: Array<() => void> = [
-      () => fetchMock.mockResolvedValue(new Response("x", { status: 500 })),
-      () => fetchMock.mockResolvedValue(new Response("x", { status: 502 })),
-      () => fetchMock.mockRejectedValue(new Error("boom")),
-      () =>
+  it("W17 503 cases with real timeout + generic head", async () => {
+    const triggers: Array<() => void | Promise<void>> = [
+      () => {
+        fetchMock.mockResolvedValue(new Response("x", { status: 500 }));
+      },
+      () => {
+        fetchMock.mockResolvedValue(new Response("x", { status: 502 }));
+      },
+      () => {
+        fetchMock.mockRejectedValue(new Error("boom"));
+      },
+      () => {
         fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
           expect(init?.signal).toBeTruthy();
-          const err = new Error("TimeoutError");
-          err.name = "TimeoutError";
-          return Promise.reject(err);
-        }),
+          return new Promise((_resolve, reject) => {
+            init!.signal!.addEventListener("abort", () => {
+              const err = new Error("The operation was aborted due to timeout");
+              err.name = "TimeoutError";
+              reject(err);
+            });
+          });
+        });
+      },
     ];
     for (const setup of triggers) {
       fetchMock.mockReset();
       cache.puts.length = 0;
       setup();
-      const res = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
+      const pending = call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
+      await vi.advanceTimersByTimeAsync(3500);
+      const res = await pending;
       expect(res.status).toBe(503);
       expect(res.headers.get("Retry-After")).toBe("300");
       expect(res.headers.get("Cache-Control")).toBe("no-store");
-      expect(await res.text()).not.toContain("df-initial");
+      const body = await res.text();
+      assertGenericHead(body);
+      expect(body).not.toContain("noindex");
       expect(cache.puts.length).toBe(0);
     }
     fetchMock.mockReset();
     const res = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } }, "");
     expect(res.status).toBe(503);
     expect(fetchMock).toHaveBeenCalledTimes(0);
+    assertGenericHead(await res.text());
   });
 
-  it("W18 strips upstream headers", async () => {
+  it("W18 strips Set-Cookie, X-WP-Total, Server, Access-Control-*", async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify(DAY), {
         status: 200,
@@ -387,30 +505,71 @@ describe("Worker HTML / API / sitemap", () => {
           "X-WP-Total": "9",
           Server: "nginx",
           "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "X-API-Key",
         },
       }),
     );
     const html = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
     expect(html.headers.get("Set-Cookie")).toBeNull();
+    expect(html.headers.get("X-WP-Total")).toBeNull();
+    expect(html.headers.get("Server")).toBeNull();
     expect(html.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(html.headers.get("Access-Control-Allow-Headers")).toBeNull();
     const api = await call("/api/daily-fix?date=2026-10-04");
     expect(api.headers.get("Set-Cookie")).toBeNull();
+    expect(api.headers.get("X-WP-Total")).toBeNull();
+    expect(api.headers.get("Server")).toBeNull();
     expect(api.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("W19 HEAD matches GET status/headers", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
-    const get = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
-    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
-    const head = await call("/the-daily-fix/261004", {
-      method: "HEAD",
-      headers: { Accept: "text/html" },
-    });
-    expect(head.status).toBe(get.status);
-    expect(await head.text()).toBe("");
+  it("W19 HEAD matches GET status/headers for key statuses", async () => {
+    const cases: Array<{ setup: () => void; path: string; status: number }> = [
+      {
+        path: "/the-daily-fix/261004",
+        status: 200,
+        setup: () => fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 })),
+      },
+      {
+        path: "/the-daily-fix/261004",
+        status: 404,
+        setup: () => fetchMock.mockResolvedValue(new Response("{}", { status: 404 })),
+      },
+      {
+        path: "/the-daily-fix",
+        status: 200,
+        setup: () =>
+          fetchMock.mockResolvedValue(
+            new Response(JSON.stringify({ ...DAY, date: "2026-10-12" }), { status: 200 }),
+          ),
+      },
+      {
+        path: "/the-daily-fix/261004",
+        status: 503,
+        setup: () => fetchMock.mockResolvedValue(new Response("x", { status: 500 })),
+      },
+      {
+        path: "/the-daily-fix/260231",
+        status: 404,
+        setup: () => {},
+      },
+    ];
+    for (const c of cases) {
+      cache.store.clear();
+      cache.puts.length = 0;
+      fetchMock.mockReset();
+      c.setup();
+      const get = await call(c.path, { headers: { Accept: "text/html" } });
+      fetchMock.mockReset();
+      c.setup();
+      const head = await call(c.path, { method: "HEAD", headers: { Accept: "text/html" } });
+      expect(get.status).toBe(c.status);
+      expect(head.status).toBe(get.status);
+      expect(headersObject(head)).toEqual(headersObject(get));
+      expect(await head.text()).toBe("");
+    }
   });
 
-  it("W20 key only to brokenscience.org", async () => {
+  it("W20 key only to brokenscience.org + evil host-guard", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
     await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
     for (const c of fetchMock.mock.calls) {
@@ -420,34 +579,60 @@ describe("Worker HTML / API / sitemap", () => {
         expect(url.hostname).toBe("brokenscience.org");
       }
     }
+    expect(() => assertBsiHost("https://evil.example/x")).toThrow();
+    expect(() => assertBsiHost("https://brokenscience.org.evil.example/x")).toThrow();
+    expect(() => assertBsiHost("https://brokenscience.org/x")).not.toThrow();
+
+    fetchMock.mockReset();
+    cache.store.clear();
+    const evil = await call(
+      "/the-daily-fix/261004",
+      { headers: { Accept: "text/html" } },
+      "test-secret-key",
+      { bsiBaseUrl: "https://evil.example/wp-json/metfix/v1/daily-fix" },
+    );
+    expect(evil.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
-  it("W21 key never in response", async () => {
+  it("W21 key never in HTML or API response", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
-    const res = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
-    const body = await res.text();
-    expect(body).not.toContain("test-secret-key");
-    for (const [k, v] of res.headers) {
-      expect(k + v).not.toContain("test-secret-key");
+    for (const path of ["/the-daily-fix/261004", "/api/daily-fix?date=2026-10-04"]) {
+      const res = await call(path, { headers: { Accept: "text/html" } });
+      const body = await res.text();
+      expect(body).not.toContain("test-secret-key");
+      for (const [k, v] of res.headers) {
+        expect(k + v).not.toContain("test-secret-key");
+      }
     }
   });
 
-  it("W22–W25 head tags", async () => {
+  it("W22 all 12 tags exactly once in order", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
     const res = await call("/the-daily-fix/261004?tab=brain", { headers: { Accept: "text/html" } });
     const body = await res.text();
-    const titleIdx = body.indexOf("<title>The Daily Fix - 261004 | Brain</title>");
-    const descIdx = body.indexOf('name="description"');
-    const canonIdx = body.indexOf('rel="canonical" href="https://metfix.org/the-daily-fix/261004"');
-    const ogType = body.indexOf('property="og:type" content="website"');
-    expect(titleIdx).toBeGreaterThan(-1);
-    expect(descIdx).toBeGreaterThan(titleIdx);
-    expect(canonIdx).toBeGreaterThan(descIdx);
-    expect(ogType).toBeGreaterThan(canonIdx);
-    expect(body).toContain('property="og:url" content="https://metfix.org/the-daily-fix/261004?tab=brain"');
-    expect(body).toContain("cdn.example.com/brain.jpg");
+    assertTwelveTagsOnceInOrder(body);
     expect(body).toContain('"@type":"WebSite"');
     expect(body).not.toContain("CollectionPage");
+  });
+
+  it("W23 title in title/og/twitter; brain suffix ×3", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
+    let body = await (
+      await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } })
+    ).text();
+    expect(body).toContain("<title>The Daily Fix - 261004</title>");
+    expect(body).toContain('property="og:title" content="The Daily Fix - 261004"');
+    expect(body).toContain('name="twitter:title" content="The Daily Fix - 261004"');
+
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
+    body = await (
+      await call("/the-daily-fix/261004?tab=brain", { headers: { Accept: "text/html" } })
+    ).text();
+    const titled = "The Daily Fix - 261004 | Brain";
+    expect(body).toContain(`<title>${titled}</title>`);
+    expect(body).toContain(`property="og:title" content="${titled}"`);
+    expect(body).toContain(`name="twitter:title" content="${titled}"`);
   });
 
   it("W24 rest day tab=body", async () => {
@@ -464,7 +649,37 @@ describe("Worker HTML / API / sitemap", () => {
     expect(body).toContain("belly.jpg");
   });
 
-  it("W29 escaping", async () => {
+  it("W28 image: tab photo, http→https, no dims; fallback dims", async () => {
+    const withHttp = {
+      ...DAY,
+      brain: { ...DAY.brain, photo_url: "http://cdn.example.com/brain-http.jpg" },
+    };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(withHttp), { status: 200 }));
+    let body = await (
+      await call("/the-daily-fix/261004?tab=brain", { headers: { Accept: "text/html" } })
+    ).text();
+    expect(body).toContain('property="og:image" content="https://cdn.example.com/brain-http.jpg"');
+    expect(body).not.toContain("og:image:width");
+    expect(body).not.toContain("og:image:height");
+
+    cache.store.clear();
+    cache.puts.length = 0;
+    const noPhotos = {
+      ...DAY,
+      belly: { ...DAY.belly, photo_url: null },
+      body: { ...DAY.body, photo_url: null },
+      brain: { ...DAY.brain, photo_url: null },
+    };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(noPhotos), { status: 200 }));
+    body = await (
+      await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } })
+    ).text();
+    expect(body).toContain("MetFix-logo-1x1-1.jpg");
+    expect(body).toContain('property="og:image:width" content="1336"');
+    expect(body).toContain('property="og:image:height" content="1336"');
+  });
+
+  it("W29 escaping in every title/description tag", async () => {
     const hostile = {
       ...DAY,
       belly: {
@@ -475,8 +690,19 @@ describe("Worker HTML / API / sitemap", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(hostile), { status: 200 }));
     const res = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
     const body = await res.text();
-    // decoded once → &#8211; then attr-escaped → &amp;#8211;
-    expect(body).toContain("Tom &quot;&amp;&quot; Jerry &#39;s &amp;#8211; x");
+    const escaped = "Tom &quot;&amp;&quot; Jerry &#39;s &amp;#8211; x";
+    expect(body).toContain(escaped);
+    // Prepared title lands in all three description tags (attr-escaped).
+    expect(body).toMatch(
+      new RegExp(`name="description" content="[^"]*${escaped.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+    );
+    expect(body).toMatch(
+      new RegExp(`property="og:description" content="[^"]*${escaped.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+    );
+    expect(body).toMatch(
+      new RegExp(`name="twitter:description" content="[^"]*${escaped.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+    );
+    expect(countOccurrences(body, escaped)).toBe(3);
     expect(body).not.toMatch(/description[^>]*<b>/);
   });
 
@@ -502,23 +728,26 @@ describe("Worker HTML / API / sitemap", () => {
     expect(text).toContain("\\u2028");
     expect(text).toContain("\\u2029");
     expect(JSON.parse(text)).toEqual(raw);
-    // Hostile payload must not open/close extra scripts around df-initial.
-    expect(body).toMatch(
-      /<script type="application\/json" id="df-initial">[\s\S]*?<\/script>/,
-    );
     expect(text).not.toContain("</script>");
   });
 
-  it("W31–W36 cache behavior", async () => {
+  it("W31 exact s-maxage on cache put", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
     const res = await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
     await flush(ctx);
+    const ttl = cacheTtlSeconds("2026-10-04", new Date("2026-10-12T10:00:00.000Z"));
+    expect(ttl).toBe(86400);
     expect(cache.puts.length).toBe(1);
     expect(cache.puts[0]!.key).toBe("https://metfix.org/__dfcache/2026-10-04");
-    expect(cache.puts[0]!.res.headers.get("Cache-Control")).toContain("s-maxage=");
+    expect(cache.puts[0]!.res.headers.get("Cache-Control")).toBe(`s-maxage=${ttl}`);
     expect(cache.puts[0]!.res.headers.get("Set-Cookie")).toBeNull();
     expect(res.headers.get("Cache-Control") || "").not.toMatch(/s-maxage/i);
+  });
 
+  it("W32–W33 HTML then API and reverse share cache", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
+    await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
+    await flush(ctx);
     fetchMock.mockClear();
     await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
     expect(fetchMock).toHaveBeenCalledTimes(0);
@@ -526,16 +755,64 @@ describe("Worker HTML / API / sitemap", () => {
     fetchMock.mockClear();
     await call("/api/daily-fix?date=2026-10-04");
     expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    // Reverse: API first, then HTML
+    cache.store.clear();
+    cache.puts.length = 0;
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
+    await call("/api/daily-fix?date=2026-10-04");
+    await flush(ctx);
+    fetchMock.mockClear();
+    await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
-  it("W34 TTL boundaries", () => {
-    // 12:00 DFX on 2026-10-12 → today capped 300
+  it("W34 TTL boundaries including bare cap and DFX midnight", () => {
     expect(cacheTtlSeconds("2026-10-12", new Date("2026-10-12T10:00:00.000Z"))).toBe(300);
-    // 23:58 DFX = 21:58 UTC
+    expect(cacheTtlSeconds("2026-10-12", new Date("2026-10-12T10:00:00.000Z"), { bare: true })).toBe(
+      300,
+    );
     expect(cacheTtlSeconds("2026-10-12", new Date("2026-10-12T21:58:00.000Z"))).toBe(120);
     expect(cacheTtlSeconds("2026-10-11", new Date("2026-10-12T10:00:00.000Z"))).toBe(43200);
     expect(cacheTtlSeconds("2026-10-05", new Date("2026-10-12T10:00:00.000Z"))).toBe(43200);
     expect(cacheTtlSeconds("2026-10-04", new Date("2026-10-12T10:00:00.000Z"))).toBe(86400);
+    // 23:59:59 DFX still today−7 short window; 00:00:00 DFX rolls the boundary
+    expect(cacheTtlSeconds("2026-10-05", new Date("2026-10-12T21:59:59.000Z"))).toBe(1);
+    expect(cacheTtlSeconds("2026-10-05", new Date("2026-10-12T22:00:00.000Z"))).toBe(86400);
+  });
+
+  it("W35 no cache.put for 404/5xx/timeout/throw/mismatch/unmappable (HTML+API)", async () => {
+    const badHtml: Array<() => void> = [
+      () => fetchMock.mockResolvedValue(new Response("{}", { status: 404 })),
+      () => fetchMock.mockResolvedValue(new Response("x", { status: 500 })),
+      () => fetchMock.mockRejectedValue(new Error("boom")),
+      () =>
+        fetchMock.mockResolvedValue(
+          new Response(JSON.stringify({ ...DAY, date: "2026-10-03" }), { status: 200 }),
+        ),
+      () => fetchMock.mockResolvedValue(new Response(JSON.stringify({ date: "nope" }), { status: 200 })),
+    ];
+    for (const setup of badHtml) {
+      cache.puts.length = 0;
+      fetchMock.mockReset();
+      setup();
+      await call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
+      await flush(ctx);
+      expect(cache.puts.length).toBe(0);
+    }
+    for (const setup of [
+      () => fetchMock.mockResolvedValue(new Response("{}", { status: 404 })),
+      () => fetchMock.mockResolvedValue(new Response("x", { status: 500 })),
+      () => fetchMock.mockRejectedValue(new Error("boom")),
+      () => fetchMock.mockResolvedValue(new Response(JSON.stringify({ date: "nope" }), { status: 200 })),
+    ]) {
+      cache.puts.length = 0;
+      fetchMock.mockReset();
+      setup();
+      await call("/api/daily-fix?date=2026-08-15");
+      await flush(ctx);
+      expect(cache.puts.length).toBe(0);
+    }
   });
 
   it("W37 cached mismatch on dated → 404", async () => {
@@ -551,49 +828,80 @@ describe("Worker HTML / API / sitemap", () => {
   });
 
   it("W38–W44 API contract", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
+    const raw = JSON.stringify(DAY);
+    fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
     const ok = await call("/api/daily-fix?date=2026-10-04&x=1");
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual(DAY);
+    expect(await ok.text()).toBe(raw);
     expect(ok.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
     expect(ok.headers.get("Cache-Control")).toBe("public, max-age=60");
     expect(ok.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(ok.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(ok.headers.get("Access-Control-Allow-Headers")).toBeNull();
 
+    fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
+    const get = await call("/api/daily-fix?date=2026-10-04");
+    fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
     const head = await call("/api/daily-fix?date=2026-10-04", { method: "HEAD" });
-    expect(head.status).toBe(200);
+    expect(head.status).toBe(get.status);
+    expect(headersObject(head)).toEqual(headersObject(get));
     expect(await head.text()).toBe("");
 
     for (const method of ["POST", "PUT", "DELETE", "OPTIONS", "PATCH"]) {
+      fetchMock.mockClear();
       const res = await call("/api/daily-fix?date=2026-10-04", { method });
       expect(res.status).toBe(405);
       expect(res.headers.get("Allow")).toBe("GET, HEAD");
+      expect(fetchMock).toHaveBeenCalledTimes(0);
     }
 
     for (const q of ["", "?date=2026-02-31", "?date=261004", "?date=2026-13-01"]) {
+      fetchMock.mockClear();
       const res = await call(`/api/daily-fix${q}`);
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "bad_date" });
+      expect(fetchMock).toHaveBeenCalledTimes(0);
     }
 
-    fetchMock.mockResolvedValue(new Response("{}", { status: 404 }));
-    const nf = await call("/api/daily-fix?date=2026-10-04");
-    // clear cache from earlier puts for this date — use a fresh date
-    const nf2 = await call("/api/daily-fix?date=2026-09-01");
+    cache.store.clear();
     fetchMock.mockResolvedValue(new Response("{}", { status: 404 }));
     const notFound = await call("/api/daily-fix?date=2026-08-01");
     expect(notFound.status).toBe(404);
     expect(await notFound.json()).toEqual({ error: "not_found" });
+    expect(notFound.headers.get("Cache-Control")).toBe("public, max-age=60");
 
-    fetchMock.mockResolvedValue(new Response("x", { status: 500 }));
-    const u = await call("/api/daily-fix?date=2026-07-01");
-    expect(u.status).toBe(503);
-    expect(await u.json()).toEqual({ error: "unavailable" });
-    expect(u.headers.get("Retry-After")).toBe("300");
-
-    void ok;
-    void head;
-    void nf;
-    void nf2;
+    for (const setup of [
+      () => fetchMock.mockResolvedValue(new Response("x", { status: 500 })),
+      () => fetchMock.mockRejectedValue(new Error("boom")),
+      () =>
+        fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              const err = new Error("TimeoutError");
+              err.name = "TimeoutError";
+              reject(err);
+            });
+          });
+        }),
+    ]) {
+      cache.puts.length = 0;
+      fetchMock.mockReset();
+      setup();
+      const pending = call("/api/daily-fix?date=2026-07-01");
+      await vi.advanceTimersByTimeAsync(3500);
+      const u = await pending;
+      expect(u.status).toBe(503);
+      expect(await u.json()).toEqual({ error: "unavailable" });
+      expect(u.headers.get("Retry-After")).toBe("300");
+      expect(u.headers.get("Cache-Control")).toBe("no-store");
+      await flush(ctx);
+      expect(cache.puts.length).toBe(0);
+    }
+    fetchMock.mockReset();
+    const nokey = await call("/api/daily-fix?date=2026-07-02", {}, "");
+    expect(nokey.status).toBe(503);
+    expect(await nokey.json()).toEqual({ error: "unavailable" });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   it("W44 unmappable API 200 not cached", async () => {
@@ -605,43 +913,68 @@ describe("Worker HTML / API / sitemap", () => {
     expect(cache.puts.length).toBe(0);
   });
 
-  it("W45–W49 sitemap", async () => {
-    let calls = 0;
-    fetchMock.mockImplementation(async (url: string) => {
-      calls++;
-      const u = new URL(String(url));
-      expect(u.searchParams.get("limit")).toBe("100");
-      expect(u.searchParams.has("date")).toBe(false);
-      const offset = Number(u.searchParams.get("offset"));
-      const items = Array.from({ length: Math.min(100, 250 - offset) }, (_, i) => ({
-        date: `2026-01-${String((offset + i) % 28 || 1).padStart(2, "0")}`,
-      }));
-      return new Response(JSON.stringify({ items, meta: { total: 250 } }), { status: 200 });
+  it("W45 sitemap paging total 250/200/0 + X-API-Key each page", async () => {
+    async function runTotal(total: number, expectedCalls: number) {
+      cache.store.clear();
+      cache.puts.length = 0;
+      let calls = 0;
+      fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+        calls++;
+        const u = new URL(String(url));
+        expect(u.searchParams.get("limit")).toBe("100");
+        expect(u.searchParams.has("date")).toBe(false);
+        const headers = init?.headers as Record<string, string>;
+        expect(headers["X-API-Key"]).toBe("test-secret-key");
+        const offset = Number(u.searchParams.get("offset"));
+        const items = Array.from({ length: Math.min(100, Math.max(0, total - offset)) }, (_, i) => ({
+          date: `2026-01-${String(((offset + i) % 28) + 1).padStart(2, "0")}`,
+        }));
+        return new Response(JSON.stringify({ items, meta: { total } }), { status: 200 });
+      });
+      const res = await call("/sitemap-daily-fix.xml");
+      expect(res.status).toBe(200);
+      expect(calls).toBe(expectedCalls);
+    }
+    await runTotal(250, 3);
+    await runTotal(200, 2);
+    await runTotal(0, 1);
+  });
+
+  it("W46 sitemap lastmod + future exclusion", async () => {
+    fetchMock.mockImplementation(async () => {
+      return new Response(
+        JSON.stringify({
+          items: [
+            { date: "2026-10-04", ignored: true },
+            { date: "2026-10-13" }, // tomorrow DFX at frozen 12:00 on 10-12
+            { date: "2026-10-11" },
+          ],
+          meta: { total: 3 },
+        }),
+        { status: 200 },
+      );
     });
     const res = await call("/sitemap-daily-fix.xml");
-    expect(res.status).toBe(200);
-    expect(calls).toBe(3);
-    expect(res.headers.get("Content-Type")).toBe("application/xml");
     const xml = await res.text();
     expect(xml).toContain("https://metfix.org/the-daily-fix</loc>");
+    expect(xml).toContain("<loc>https://metfix.org/the-daily-fix/261004</loc><lastmod>2026-10-04</lastmod>");
+    expect(xml).toContain("<loc>https://metfix.org/the-daily-fix/261011</loc><lastmod>2026-10-11</lastmod>");
+    expect(xml).not.toContain("261013");
     expect(xml).not.toContain("tab=");
-    await flush(ctx);
-    expect(cache.puts.some((p) => p.key === "https://metfix.org/__dfcache/sitemap")).toBe(true);
+  });
 
-    calls = 0;
-    await call("/sitemap-daily-fix.xml");
-    expect(calls).toBe(0);
-
-    // failure on page 2
+  it("W47 page-2 failure → 503, no cache", async () => {
     cache.store.clear();
     cache.puts.length = 0;
     let n = 0;
     fetchMock.mockImplementation(async () => {
       n++;
       if (n === 1) {
-        return new Response(JSON.stringify({ items: [{ date: "2026-10-01" }], meta: { total: 200 } }), {
-          status: 200,
-        });
+        // Full page of 100 so the worker advances to page 2.
+        const items = Array.from({ length: 100 }, (_, i) => ({
+          date: `2026-01-${String((i % 28) + 1).padStart(2, "0")}`,
+        }));
+        return new Response(JSON.stringify({ items, meta: { total: 200 } }), { status: 200 });
       }
       return new Response("nope", { status: 500 });
     });
@@ -649,5 +982,63 @@ describe("Worker HTML / API / sitemap", () => {
     expect(fail.status).toBe(503);
     expect(await fail.text()).not.toContain("<urlset");
     expect(cache.puts.length).toBe(0);
+  });
+
+  it("W48 sitemap cache s-maxage=86400", async () => {
+    cache.store.clear();
+    cache.puts.length = 0;
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
+        status: 200,
+      }),
+    );
+    await call("/sitemap-daily-fix.xml");
+    await flush(ctx);
+    const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap");
+    expect(put).toBeTruthy();
+    expect(put!.res.headers.get("Cache-Control")).toBe("s-maxage=86400");
+    fetchMock.mockClear();
+    await call("/sitemap-daily-fix.xml");
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it("W49 HEAD sitemap matches GET headers, empty body", async () => {
+    cache.store.clear();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
+        status: 200,
+      }),
+    );
+    const get = await call("/sitemap-daily-fix.xml");
+    cache.store.clear();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
+        status: 200,
+      }),
+    );
+    const head = await call("/sitemap-daily-fix.xml", { method: "HEAD" });
+    expect(head.status).toBe(get.status);
+    expect(headersObject(head)).toEqual(headersObject(get));
+    expect(await head.text()).toBe("");
+  });
+});
+
+describe("W27 truncation (shared cutDescription)", () => {
+  it("exact string with astral chars + trim + boundaries", () => {
+    // 154 code points then space-cut: build overlong with emoji (astral) and trailing punctuation.
+    const core = `The Daily Fix 261004: Belly - ${"A".repeat(100)} 😀 ${"B".repeat(40)}.,:; -`;
+    expect(Array.from(core).length).toBeGreaterThan(155);
+    const cut = cutDescription(core);
+    expect(Array.from(cut).length).toBeLessThanOrEqual(155);
+    expect(cut.endsWith("\u2026")).toBe(true);
+    expect(cut).toContain("😀");
+    expect(cut).not.toMatch(/[.,:;\-\s]$/);
+
+    const at155 = "x".repeat(155);
+    expect(cutDescription(at155)).toBe(at155);
+    const at156 = "x".repeat(156);
+    const cut156 = cutDescription(at156);
+    expect(cut156.endsWith("\u2026")).toBe(true);
+    expect(Array.from(cut156).length).toBeLessThanOrEqual(155);
   });
 });

@@ -15,6 +15,7 @@ import { buildFullHead, rewriteHtml, type HeadMode } from "./head";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
+  SITEMAP_MAX_SUBREQUESTS,
   type Env,
 } from "./upstream";
 
@@ -33,21 +34,27 @@ export async function handleRequest(
   deps: {
     fetchImpl?: typeof fetch;
     cachesDefault?: Cache;
+    /** Test-only override for W20 host-guard (defaults to BSI URL). */
+    bsiBaseUrl?: string;
   } = {},
 ): Promise<Response> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const cache = deps.cachesDefault ?? caches.default;
+  const bsiBaseUrl = deps.bsiBaseUrl;
   const url = new URL(request.url);
   const path = url.pathname;
 
-  // /api/daily-fix — always handled by worker
+  // /api/* — worker-owned
   if (path === "/api/daily-fix" || path === "/api/daily-fix/") {
-    return handleApi(request, env, ctx, fetchImpl, cache);
+    return handleApi(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
+  }
+  if (path.startsWith("/api/")) {
+    return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
   }
 
   // Sitemap
   if (path === "/sitemap-daily-fix.xml") {
-    return handleSitemap(request, env, ctx, fetchImpl, cache);
+    return handleSitemap(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
   }
 
   // Daily Fix HTML routes — only GET/HEAD with Accept: text/html
@@ -61,15 +68,29 @@ export async function handleRequest(
     if (!wantsHtml) {
       return env.ASSETS.fetch(request);
     }
-    return handleDailyFixHtml(request, env, ctx, fetchImpl, cache);
+    return handleDailyFixHtml(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
   }
 
   // Anything else under run_worker_first that we don't own → ASSETS
   return env.ASSETS.fetch(request);
 }
 
-function acceptsHtml(request: Request): boolean {
-  return (request.headers.get("Accept") ?? "").includes("text/html");
+function redirectResponse(location: string): Response {
+  return new Response(null, {
+    status: 301,
+    headers: {
+      Location: location,
+      "Cache-Control": "max-age=3600",
+    },
+  });
+}
+
+async function fetchIndexHtml(request: Request, env: Env): Promise<Response> {
+  const assetRes = await env.ASSETS.fetch(indexAssetRequest(request));
+  if (assetRes.status !== 200) {
+    throw new Error(`ASSETS index fetch returned ${assetRes.status}`);
+  }
+  return assetRes;
 }
 
 async function handleDailyFixHtml(
@@ -78,15 +99,13 @@ async function handleDailyFixHtml(
   ctx: ExecutionContext,
   fetchImpl: typeof fetch,
   cache: Cache,
+  bsiBaseUrl?: string,
 ): Promise<Response> {
   const url = new URL(request.url);
   const normalized = normalizeDailyFixPath(url.pathname, url.search);
 
   if (normalized.kind === "redirect") {
-    return new Response(null, {
-      status: 301,
-      headers: { Location: normalized.location },
-    });
+    return redirectResponse(normalized.location);
   }
 
   if (normalized.kind === "notFound") {
@@ -102,42 +121,49 @@ async function handleDailyFixHtml(
   // Try edge cache first
   let outcome: UpstreamOutcome | null = null;
   let rawJson: unknown = null;
+  let bodyText: string | null = null;
   const keyReq = cacheKeyRequest(requestIso);
   const cached = await cache.match(keyReq);
   if (cached) {
     try {
-      rawJson = await cached.clone().json();
+      bodyText = await cached.clone().text();
+      rawJson = JSON.parse(bodyText);
       const mapped = mapDailyFixDay(rawJson, requestIso);
       if (mapped && mapped.date === requestIso) {
-        outcome = { kind: "ok", status: 200, json: rawJson, mapped };
+        outcome = { kind: "ok", status: 200, json: rawJson, mapped, bodyText };
       } else if (mapped && route === "dated") {
         // W37: dated hit whose date doesn't match → 404
-        outcome = { kind: "mismatch", status: 200, json: rawJson, mapped };
+        outcome = { kind: "mismatch", status: 200, json: rawJson, mapped, bodyText };
       } else if (mapped && route === "bare") {
         // Bare may display closer day; cache key was request ISO (Q2)
-        outcome = { kind: "ok", status: 200, json: rawJson, mapped };
+        outcome = { kind: "ok", status: 200, json: rawJson, mapped, bodyText };
       } else {
-        outcome = { kind: "unmappable", status: 200, json: rawJson };
+        outcome = { kind: "unmappable", status: 200, json: rawJson, bodyText };
       }
     } catch {
       outcome = null;
+      bodyText = null;
     }
   }
 
   if (!outcome) {
-    outcome = await fetchDailyFixDay(requestIso, env, fetchImpl);
-    // Bare closer-day: treat mapped mismatch as ok (BSI source of truth) and cache under request ISO (Q2).
+    outcome = await fetchDailyFixDay(requestIso, env, fetchImpl, { baseUrl: bsiBaseUrl });
+    // Bare closer-day: BSI may return a different date for "today". We still treat that
+    // as ok for the bare route and store the closer-day body under today's cache key
+    // (request ISO), per Q2 — dated routes that later hit this entry get a mismatch 404.
     if (route === "bare" && outcome.kind === "mismatch") {
       outcome = {
         kind: "ok",
         status: 200,
         json: outcome.json,
         mapped: outcome.mapped,
+        bodyText: outcome.bodyText,
       };
     }
     if (outcome.kind === "ok") {
       const ttl = cacheTtlSeconds(requestIso, new Date(), { bare: route === "bare" });
-      const store = new Response(JSON.stringify(outcome.json), {
+      // Store upstream bytes as-is (no re-serialization).
+      const store = new Response(outcome.bodyText, {
         status: 200,
         headers: {
           "Content-Type": "application/json",
@@ -146,8 +172,10 @@ async function handleDailyFixHtml(
       });
       ctx.waitUntil(cache.put(keyReq, store));
       rawJson = outcome.json;
+      bodyText = outcome.bodyText;
     } else if (outcome.kind === "mismatch" || outcome.kind === "unmappable") {
       rawJson = outcome.json;
+      bodyText = outcome.bodyText;
       // never cache dated mismatch / unmappable (Q6)
     }
   }
@@ -167,6 +195,7 @@ async function handleDailyFixHtml(
       bare: route === "bare",
       yymmdd: digits,
       tab,
+      raw: rawJson,
     });
     plan = {
       mode: "full",
@@ -179,11 +208,14 @@ async function handleDailyFixHtml(
     plan = { mode: "generic" };
   }
 
-  const assetRes = await env.ASSETS.fetch(indexAssetRequest(request));
-  const bodyRes = await rewriteHtml(assetRes, plan);
-  // Clone headers and set status
+  let assetRes: Response;
+  try {
+    assetRes = await fetchIndexHtml(request, env);
+  } catch {
+    return htmlServiceUnavailable(request, env, isHead, /* assetsFailed */ true);
+  }
+  const bodyRes = rewriteHtml(assetRes, plan);
   const headers = new Headers(bodyRes.headers);
-  // HTML must not get s-maxage (W36 / Q7)
   const cc = headers.get("Cache-Control");
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
@@ -196,8 +228,16 @@ async function handleDailyFixHtml(
 
 async function htmlNotFound(request: Request, env: Env): Promise<Response> {
   const isHead = request.method.toUpperCase() === "HEAD";
-  const assetRes = await env.ASSETS.fetch(indexAssetRequest(request));
-  const rewritten = await rewriteHtml(assetRes, { mode: "generic_noindex" });
+  let assetRes: Response;
+  try {
+    assetRes = await fetchIndexHtml(request, env);
+  } catch {
+    return new Response(isHead ? null : "Service Unavailable", {
+      status: 503,
+      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+    });
+  }
+  const rewritten = rewriteHtml(assetRes, { mode: "generic_noindex" });
   const headers = new Headers(rewritten.headers);
   if (isHead) return new Response(null, { status: 404, headers });
   return new Response(rewritten.body, { status: 404, headers });
@@ -207,9 +247,24 @@ async function htmlServiceUnavailable(
   request: Request,
   env: Env,
   isHead: boolean,
+  assetsFailed = false,
 ): Promise<Response> {
-  const assetRes = await env.ASSETS.fetch(indexAssetRequest(request));
-  const rewritten = await rewriteHtml(assetRes, { mode: "generic" });
+  if (assetsFailed) {
+    return new Response(isHead ? null : "Service Unavailable", {
+      status: 503,
+      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+    });
+  }
+  let assetRes: Response;
+  try {
+    assetRes = await fetchIndexHtml(request, env);
+  } catch {
+    return new Response(isHead ? null : "Service Unavailable", {
+      status: 503,
+      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+    });
+  }
+  const rewritten = rewriteHtml(assetRes, { mode: "generic" });
   const headers = new Headers(rewritten.headers);
   headers.set("Retry-After", "300");
   headers.set("Cache-Control", "no-store");
@@ -217,13 +272,12 @@ async function htmlServiceUnavailable(
   return new Response(rewritten.body, { status: 503, headers });
 }
 
+/** Prefer `/` over `/index.html` — Assets can 307 the latter. */
 function indexAssetRequest(request: Request): Request {
-  const url = new URL(request.url);
-  url.pathname = "/index.html";
-  url.search = "";
+  const url = new URL("/", request.url);
   return new Request(url.toString(), {
     method: "GET",
-    headers: request.headers,
+    headers: { Accept: "text/html" },
   });
 }
 
@@ -233,6 +287,7 @@ async function handleApi(
   ctx: ExecutionContext,
   fetchImpl: typeof fetch,
   cache: Cache,
+  bsiBaseUrl?: string,
 ): Promise<Response> {
   const method = request.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
@@ -254,21 +309,22 @@ async function handleApi(
   const cached = await cache.match(keyReq);
   if (cached) {
     try {
-      const json = await cached.clone().json();
+      const bodyText = await cached.clone().text();
+      const json = JSON.parse(bodyText);
       const mapped = mapDailyFixDay(json, date);
       if (mapped && mapped.date === date) {
-        return jsonResponse(json, 200, apiOkHeaders(), method === "HEAD", true);
+        return apiRawBody(bodyText, 200, apiOkHeaders(), method === "HEAD");
       }
     } catch {
       /* fall through */
     }
   }
 
-  const outcome = await fetchDailyFixDay(date, env, fetchImpl);
+  const outcome = await fetchDailyFixDay(date, env, fetchImpl, { baseUrl: bsiBaseUrl });
 
   if (outcome.kind === "ok") {
     const ttl = cacheTtlSeconds(date, new Date());
-    const store = new Response(JSON.stringify(outcome.json), {
+    const store = new Response(outcome.bodyText, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
@@ -276,20 +332,18 @@ async function handleApi(
       },
     });
     ctx.waitUntil(cache.put(keyReq, store));
-    return jsonResponse(outcome.json, 200, apiOkHeaders(), method === "HEAD", true);
+    return apiRawBody(outcome.bodyText, 200, apiOkHeaders(), method === "HEAD");
   }
 
   if (outcome.kind === "unmappable") {
-    // Rev 2.1: raw 200, not edge-cached
-    return jsonResponse(outcome.json, 200, apiOkHeaders(), method === "HEAD", true);
+    // Rev 2.1: raw 200, not edge-cached — upstream bytes as-is
+    return apiRawBody(outcome.bodyText, 200, apiOkHeaders(), method === "HEAD");
   }
 
   if (outcome.kind === "not_found" || outcome.kind === "mismatch") {
-    // API: mismatch is client's concern today — dated mismatch on API returns raw?
-    // Spec 5.4: 404 for upstream 404. Mismatch: "The client maps the body… A dated mismatch is handled in the client"
-    // So API returns raw 200 for mismatch (like unmappable with a body that maps but wrong date).
+    // §5.4: dated mismatch is handled in the client — return raw 200 body.
     if (outcome.kind === "mismatch") {
-      return jsonResponse(outcome.json, 200, apiOkHeaders(), method === "HEAD", true);
+      return apiRawBody(outcome.bodyText, 200, apiOkHeaders(), method === "HEAD");
     }
     return jsonResponse(
       { error: "not_found" },
@@ -315,20 +369,25 @@ function apiOkHeaders(): HeadersInit {
   };
 }
 
+/** Return upstream body text without re-serialization. */
+function apiRawBody(bodyText: string, status: number, extra: HeadersInit, head: boolean): Response {
+  const headers = new Headers(extra);
+  if (head) return new Response(null, { status, headers });
+  return new Response(bodyText, { status, headers });
+}
+
 function jsonResponse(
   body: unknown,
   status: number,
   extra: HeadersInit,
   head: boolean,
-  rawBody = false,
 ): Response {
   const headers = new Headers(extra);
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json; charset=utf-8");
   }
   if (head) return new Response(null, { status, headers });
-  const text = rawBody && typeof body === "string" ? body : JSON.stringify(body);
-  return new Response(text, { status, headers });
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 async function handleSitemap(
@@ -337,6 +396,7 @@ async function handleSitemap(
   ctx: ExecutionContext,
   fetchImpl: typeof fetch,
   cache: Cache,
+  bsiBaseUrl?: string,
 ): Promise<Response> {
   const method = request.method.toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
@@ -356,32 +416,37 @@ async function handleSitemap(
   const dates: string[] = [];
   let offset = 0;
   let total = Infinity;
+  let subrequests = 0;
+  let hitCap = false;
 
   while (offset < total) {
-    const page = await fetchDailyFixListPage(offset, env, fetchImpl);
+    if (subrequests >= SITEMAP_MAX_SUBREQUESTS) {
+      hitCap = true;
+      break;
+    }
+    subrequests += 1;
+    const page = await fetchDailyFixListPage(offset, env, fetchImpl, { baseUrl: bsiBaseUrl });
     if (!page.ok) {
-      return new Response(method === "HEAD" ? null : "Service Unavailable", {
-        status: 503,
-        headers: {
-          "Retry-After": "300",
-          "Cache-Control": "no-store",
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
+      return sitemapUnavailable(method);
     }
     total = page.page.total;
     for (const item of page.page.items) {
+      // If status is present, keep only published; otherwise trust the list.
+      if (item.status != null && item.status !== "published") continue;
       if (isIsoDate(item.date) && item.date <= today) {
         dates.push(item.date);
       }
     }
+    // Stop when a page has fewer than 100 items (last page).
+    if (page.page.items.length < 100) break;
     offset += 100;
-    if (page.page.items.length === 0 && offset >= total) break;
-    // total=0 → one call then stop
     if (total === 0) break;
   }
 
-  // Deduplicate, newest first already from API; keep stable unique
+  if (hitCap) {
+    return sitemapUnavailable(method);
+  }
+
   const seen = new Set<string>();
   const unique: string[] = [];
   for (const d of dates) {
@@ -424,5 +489,13 @@ async function handleSitemap(
   return new Response(body, { status: 200, headers });
 }
 
-// silence unused in some builds
-void acceptsHtml;
+function sitemapUnavailable(method: string): Response {
+  return new Response(method === "HEAD" ? null : "Service Unavailable", {
+    status: 503,
+    headers: {
+      "Retry-After": "300",
+      "Cache-Control": "no-store",
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+  });
+}

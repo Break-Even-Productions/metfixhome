@@ -237,6 +237,7 @@ export default defineConfig({
       "../shared/**/*.test.ts",
       "../worker/**/*.test.ts",
     ],
+    exclude: ["../worker/**/*.workers.test.ts", "**/node_modules/**"],
   },
   server: {
     port: 3000,

@@ -14,11 +14,25 @@ describe("W26–W27 description + truncation", () => {
     );
   });
 
-  it("truncates >155 code points", () => {
+  it("W27 truncates >155 with astral chars, exact cut + boundaries", () => {
     const long = "A".repeat(100) + " " + "B".repeat(60);
     const cut = cutDescription(`The Daily Fix 261004: Belly - ${long}.`);
     expect(Array.from(cut).length).toBeLessThanOrEqual(155);
     expect(cut.endsWith("\u2026")).toBe(true);
+
+    // Astral emoji counts as one code point; cut back to last space, trim .,;:- and spaces.
+    const astral = `The Daily Fix 261004: Belly - ${"字".repeat(120)} 😀 trailing-words-here.,:; -`;
+    expect(Array.from(astral).length).toBeGreaterThan(155);
+    const cutAstral = cutDescription(astral);
+    const expectedPrefix = Array.from(astral).slice(0, 154).join("");
+    const space = expectedPrefix.lastIndexOf(" ");
+    const expected =
+      (space === -1 ? expectedPrefix : expectedPrefix.slice(0, space)).replace(
+        /[.,:;\-\s]+$/,
+        "",
+      ) + "\u2026";
+    expect(cutAstral).toBe(expected);
+    expect(cutAstral).toContain("😀");
 
     const at155 = "x".repeat(155);
     expect(cutDescription(at155)).toBe(at155);
