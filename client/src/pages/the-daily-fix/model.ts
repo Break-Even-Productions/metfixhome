@@ -104,8 +104,6 @@ export type DailyFixRouteInput = {
   dd?: string;
   /** Raw location.search (with or without `?`). */
   search?: string;
-  /** Legacy hash (`#brain`); migrated to ?tab= before read when possible. */
-  hash?: string;
 };
 
 export function isPillar(value: string | undefined): value is Pillar {
@@ -116,70 +114,64 @@ export function parsePillar(value: string | undefined): Pillar {
   return isPillar(value) ? value : "belly";
 }
 
+function pairKey(pair: string): string {
+  const eq = pair.indexOf("=");
+  return eq === -1 ? pair : pair.slice(0, eq);
+}
+
 /**
  * Apply legacy `#belly|#body|#brain` → `?tab=` (belly drops param) via replaceState
  * before the first render reads the pillar. Returns the search string to use.
+ * Rewrites raw query pairs (no URLSearchParams set/delete) so encoding is preserved.
  */
 export function consumeLegacyHashInBrowser(): string {
   if (typeof window === "undefined") return "";
   const token = window.location.hash.startsWith("#")
     ? window.location.hash.slice(1)
     : window.location.hash;
+  const path = window.location.pathname;
+  const search = window.location.search;
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const pairs = raw ? raw.split("&") : [];
+
   if (token !== "belly" && token !== "body" && token !== "brain") {
     // C3: drop unknown hashes (#bogus) so they don't linger.
     if (window.location.hash) {
-      const cleaned = `${window.location.pathname}${window.location.search}`;
-      window.history.replaceState(window.history.state, "", cleaned);
+      window.history.replaceState(window.history.state, "", `${path}${search}`);
     }
-    return window.location.search;
+    return search;
   }
-  const url = new URL(window.location.href);
-  url.hash = "";
-  if (token === "belly") {
-    url.searchParams.delete("tab");
-  } else {
-    url.searchParams.set("tab", token);
+
+  const rebuilt: string[] = [];
+  let tabPlaced = false;
+  for (const p of pairs) {
+    const key = pairKey(p);
+    if (key === "tab" || key === "tab[]") {
+      if (!tabPlaced && (token === "body" || token === "brain")) {
+        rebuilt.push(`tab=${token}`);
+        tabPlaced = true;
+      }
+      continue;
+    }
+    rebuilt.push(p);
   }
-  const next = `${url.pathname}${url.search}`;
-  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (!tabPlaced && (token === "body" || token === "brain")) {
+    rebuilt.push(`tab=${token}`);
+  }
+
+  const nextSearch = rebuilt.length ? `?${rebuilt.join("&")}` : "";
+  const next = `${path}${nextSearch}`;
+  const current = `${path}${search}${window.location.hash}`;
   if (next !== current.replace(/#.*$/, "") || window.location.hash) {
     window.history.replaceState(window.history.state, "", next);
   }
-  return url.search;
-}
-
-function tabFromSearch(search: string | undefined): {
-  pillar: Pillar;
-  tab: DailyFixTab | null;
-  explicit: boolean;
-  dropTab: boolean;
-} {
-  const raw = search?.startsWith("?") ? search.slice(1) : search ?? "";
-  if (!raw) return { pillar: "belly", tab: null, explicit: false, dropTab: false };
-  const params = new URLSearchParams(raw);
-  if (!params.has("tab")) return { pillar: "belly", tab: null, explicit: false, dropTab: false };
-  const values = params.getAll("tab");
-  if (values.length !== 1) {
-    return { pillar: "belly", tab: null, explicit: false, dropTab: true };
-  }
-  const v = values[0]!;
-  if (v === "body" || v === "brain") {
-    return { pillar: v, tab: v, explicit: true, dropTab: false };
-  }
-  // belly, unknown, empty → fall back to belly and drop param (client-side)
-  return { pillar: "belly", tab: null, explicit: false, dropTab: true };
-}
-
-function pillarFromLegacyHash(hash: string | undefined): Pillar | null {
-  if (!hash) return null;
-  const token = hash.startsWith("#") ? hash.slice(1) : hash;
-  if (token === "belly" || token === "body" || token === "brain") return token;
-  return null;
+  return nextSearch;
 }
 
 /**
  * Client route parse. Prefers shared normalizeDailyFixPath for path+query when
  * the path is under /the-daily-fix; falls back for param-based router input.
+ * Legacy hashes are handled by consumeLegacyHashInBrowser before this runs.
  */
 export function parseDailyFixRoute(input: DailyFixRouteInput = {}): DailyFixRoute {
   // Build a path from router params when present
@@ -192,16 +184,7 @@ export function parseDailyFixRoute(input: DailyFixRouteInput = {}): DailyFixRout
       : `/the-daily-fix/${input.date}`;
   }
 
-  let search = input.search ?? "";
-  // Legacy hash wins for pillar when search has no tab (pre-consume path in tests)
-  const hashPillar = pillarFromLegacyHash(input.hash);
-  if (hashPillar && !new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).has("tab")) {
-    if (hashPillar === "body" || hashPillar === "brain") {
-      const base = search.startsWith("?") ? search : search ? `?${search}` : "";
-      search = base ? `${base}&tab=${hashPillar}` : `?tab=${hashPillar}`;
-    }
-  }
-
+  const search = input.search ?? "";
   const normalized = normalizeDailyFixPath(path, search);
 
   if (normalized.kind === "notFound") {
@@ -279,31 +262,34 @@ function serveToRoute(
 
 /** Canonical path + search for the route (no hash). Drops invalid client-side tab. */
 export function dailyFixCanonicalUrl(route: DailyFixRoute, search = ""): string {
-  const tabInfo = tabFromSearch(search);
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  params.delete("tab");
-  params.delete("tab[]");
-  const tab = route.tab;
-  if (tab === "body" || tab === "brain") {
-    params.set("tab", tab);
-  } else if (tabInfo.dropTab) {
-    // keep deleted
-  }
-  // Rebuild query preserving non-tab pairs from original when possible
-  const qs = buildSearchWithTab(search, tab);
+  const qs = buildSearchWithTab(search, route.tab);
   return `${route.canonicalPath}${qs}`;
 }
 
+/**
+ * Rebuild search keeping `tab` in its original pair position (edge parity).
+ * Non-tab pairs keep their raw encoding.
+ */
 function buildSearchWithTab(search: string, tab: DailyFixTab | null): string {
   const raw = search.startsWith("?") ? search.slice(1) : search;
-  const pairs = raw ? raw.split("&").filter((p) => {
-    const key = p.split("=")[0];
-    return key !== "tab" && key !== "tab[]";
-  }) : [];
-  if (tab === "body" || tab === "brain") {
-    pairs.push(`tab=${tab}`);
+  const pairs = raw ? raw.split("&") : [];
+  const rebuilt: string[] = [];
+  let tabPlaced = false;
+  for (const p of pairs) {
+    const key = pairKey(p);
+    if (key === "tab" || key === "tab[]") {
+      if (!tabPlaced && (tab === "body" || tab === "brain")) {
+        rebuilt.push(`tab=${tab}`);
+        tabPlaced = true;
+      }
+      continue;
+    }
+    rebuilt.push(p);
   }
-  return pairs.length ? `?${pairs.join("&")}` : "";
+  if (!tabPlaced && (tab === "body" || tab === "brain")) {
+    rebuilt.push(`tab=${tab}`);
+  }
+  return rebuilt.length ? `?${rebuilt.join("&")}` : "";
 }
 
 export function dailyFixPath(code?: string | null, pillar?: Pillar | null): string {

@@ -38,7 +38,7 @@ Use one Worker with static assets in metfixhome, on the free plan. Do not use Pa
 - The worker passes anything that is not a GET or HEAD request with `Accept` including `text/html` straight to `env.ASSETS.fetch(request)`, with no BSI call. The exceptions are `/api/daily-fix` and `/sitemap-daily-fix.xml`, which the worker handles itself.
 - Custom domain: `metfix.org` on the Worker. `www.metfix.org` becomes a free Single Redirect rule with a 301 to `https://metfix.org${path}${query}`. Ethan does this in the dashboard.
 - Do not add `_redirects` for Daily Fix. The Worker owns those redirects.
-- Vite `base` goes back to `"/"`. Add `build:cf`, which is `vite build`.
+- Vite `base` goes back to `"/"`. Add `build:cf`, which is `vite build` (same command as `build:pages`).
 - CI stays green: `npm ci --legacy-peer-deps`, the liquidglass chunk assert, and vitest. Add `wrangler deploy --dry-run`.
 - Deploy runs from main only, through a GitHub Action or Workers Builds. Web Lead and Ethan pick. This PR only adds config.
 

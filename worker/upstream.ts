@@ -7,7 +7,11 @@ import {
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_HOST = "brokenscience.org";
 
-/** Hard cap on sitemap upstream subrequests (CQ). */
+/**
+ * Hard cap on sitemap Cloudflare subrequests (CQ2).
+ * Includes Cache API match (+1) and reserves one slot for put; upstream
+ * fetches stop at MAX-1.
+ */
 export const SITEMAP_MAX_SUBREQUESTS = 40;
 
 export type Env = {

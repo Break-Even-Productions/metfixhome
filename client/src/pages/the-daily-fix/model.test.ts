@@ -65,34 +65,26 @@ describe("Daily Fix routes", () => {
     );
   });
 
-  it("lets a path pillar win over a hash, then uses that tab", () => {
-    expect(parseDailyFixRoute({ date: "250210", pillar: "brain", hash: "#body" })).toMatchObject({
+  it("lets a path pillar set the tab", () => {
+    expect(parseDailyFixRoute({ date: "250210", pillar: "brain" })).toMatchObject({
       pillar: "brain",
       tab: "brain",
     });
   });
 
-  it("drops a bad pillar hash or path without becoming an invalid date", () => {
+  it("drops a bad path pillar without becoming a valid day route", () => {
     expect(parseDailyFixRoute({ date: "250210", pillar: "feet" })).toMatchObject({
       kind: "invalid",
     });
-    expect(parseDailyFixRoute({ date: "250210", hash: "#feet" })).toMatchObject({
-      kind: "day",
-      pillar: "belly",
-      pillarExplicit: false,
-      tab: null,
-    });
-    expect(parseDailyFixRoute({ hash: "#feet" })).toMatchObject({
-      kind: "today",
-      pillar: "belly",
-      canonicalPath: "/the-daily-fix",
-      tab: null,
-    });
-    expect(parseDailyFixRoute({ hash: "#brain" })).toMatchObject({
-      kind: "today",
-      pillar: "brain",
-      tab: "brain",
-    });
+  });
+
+  it("keeps tab in its original query position (edge parity)", () => {
+    expect(
+      dailyFixCanonicalUrl(
+        parseDailyFixRoute({ date: "250210", search: "?tab=brain" }),
+        "?a=%2F&tab=brain&b=c+d",
+      ),
+    ).toBe("/the-daily-fix/250210?a=%2F&tab=brain&b=c+d");
   });
 
   it("does not rewrite malformed or out-of-range dates", () => {

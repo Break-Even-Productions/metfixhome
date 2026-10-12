@@ -635,6 +635,18 @@ describe("Worker HTML / API / sitemap", () => {
     expect(body).toContain(`name="twitter:title" content="${titled}"`);
   });
 
+  it("W25 canonical tab-less; og:url carries ?tab=brain", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(DAY), { status: 200 }));
+    const body = await (
+      await call("/the-daily-fix/261004?tab=brain", { headers: { Accept: "text/html" } })
+    ).text();
+    expect(body).toContain('rel="canonical" href="https://metfix.org/the-daily-fix/261004"');
+    expect(body).not.toContain('rel="canonical" href="https://metfix.org/the-daily-fix/261004?tab=');
+    expect(body).toContain(
+      'property="og:url" content="https://metfix.org/the-daily-fix/261004?tab=brain"',
+    );
+  });
+
   it("W24 rest day tab=body", async () => {
     const rest = {
       ...DAY,
@@ -827,6 +839,13 @@ describe("Worker HTML / API / sitemap", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
+  it("/api/foo returns JSON 404", async () => {
+    const res = await call("/api/foo");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
   it("W38–W44 API contract", async () => {
     const raw = JSON.stringify(DAY);
     fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
@@ -913,7 +932,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(cache.puts.length).toBe(0);
   });
 
-  it("W45 sitemap paging total 250/200/0 + X-API-Key each page", async () => {
+  it("W45 sitemap paging total 250/200/0 + X-API-Key each page + Content-Type", async () => {
     async function runTotal(total: number, expectedCalls: number) {
       cache.store.clear();
       cache.puts.length = 0;
@@ -933,6 +952,7 @@ describe("Worker HTML / API / sitemap", () => {
       });
       const res = await call("/sitemap-daily-fix.xml");
       expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("application/xml");
       expect(calls).toBe(expectedCalls);
     }
     await runTotal(250, 3);
@@ -940,27 +960,53 @@ describe("Worker HTML / API / sitemap", () => {
     await runTotal(0, 1);
   });
 
-  it("W46 sitemap lastmod + future exclusion", async () => {
+  it("W46 sitemap lastmod, future exclusion, scheduled keep, draft drop", async () => {
     fetchMock.mockImplementation(async () => {
       return new Response(
         JSON.stringify({
           items: [
             { date: "2026-10-04", ignored: true },
             { date: "2026-10-13" }, // tomorrow DFX at frozen 12:00 on 10-12
-            { date: "2026-10-11" },
+            { date: "2026-10-11", status: "scheduled" },
+            { date: "2026-10-10", status: "draft" },
+            { date: "2026-10-09", status: "published" },
+            { date: "2026-10-08", status: null },
           ],
-          meta: { total: 3 },
+          meta: { total: 6 },
         }),
         { status: 200 },
       );
     });
     const res = await call("/sitemap-daily-fix.xml");
+    expect(res.headers.get("Content-Type")).toBe("application/xml");
     const xml = await res.text();
     expect(xml).toContain("https://metfix.org/the-daily-fix</loc>");
     expect(xml).toContain("<loc>https://metfix.org/the-daily-fix/261004</loc><lastmod>2026-10-04</lastmod>");
     expect(xml).toContain("<loc>https://metfix.org/the-daily-fix/261011</loc><lastmod>2026-10-11</lastmod>");
+    expect(xml).toContain("<loc>https://metfix.org/the-daily-fix/261009</loc><lastmod>2026-10-09</lastmod>");
+    expect(xml).toContain("<loc>https://metfix.org/the-daily-fix/261008</loc><lastmod>2026-10-08</lastmod>");
     expect(xml).not.toContain("261013");
+    expect(xml).not.toContain("261010"); // draft excluded
     expect(xml).not.toContain("tab=");
+  });
+
+  it("sitemap subrequest cap: total 10000 → 503, no put, ≤40 upstream", async () => {
+    cache.store.clear();
+    cache.puts.length = 0;
+    let calls = 0;
+    fetchMock.mockImplementation(async () => {
+      calls++;
+      const items = Array.from({ length: 100 }, (_, i) => ({
+        date: `2026-01-${String((i % 28) + 1).padStart(2, "0")}`,
+      }));
+      return new Response(JSON.stringify({ items, meta: { total: 10000 } }), { status: 200 });
+    });
+    const res = await call("/sitemap-daily-fix.xml");
+    expect(res.status).toBe(503);
+    expect(cache.puts.length).toBe(0);
+    // match=1 + reserve put; upstream stops at MAX-1 → at most 38 fetches, never >40
+    expect(calls).toBeLessThanOrEqual(40);
+    expect(calls).toBe(38);
   });
 
   it("W47 page-2 failure → 503, no cache", async () => {

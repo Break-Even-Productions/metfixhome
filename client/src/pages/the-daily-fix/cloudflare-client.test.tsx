@@ -12,6 +12,7 @@ import {
   resetDailyFixDayCache,
   seedFromDfInitial,
 } from "./data";
+import { consumeLegacyHashInBrowser } from "./model";
 import * as DayContentMod from "./DayContent";
 
 const FROZEN = new Date("2026-03-10T23:30:00.000Z");
@@ -115,12 +116,28 @@ describe("C2 legacy hash", () => {
     );
     expect(await screen.findByRole("heading", { name: "Brain 2025-02-10" })).toBeTruthy();
     expect(bellyRenders.length).toBe(0);
+    expect(spy.mock.calls.some((c) => c[0]?.pillar === "brain")).toBe(true);
     expect(screen.queryByRole("heading", { name: "Belly 2025-02-10" })).toBeNull();
     expect(window.location.search).toBe("?tab=brain");
     expect(window.location.hash).toBe("");
     expect(window.history.length).toBe(histLen);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     spy.mockRestore();
+  });
+
+  it("consumeLegacyHashInBrowser rewrites raw pairs and preserves encoding", () => {
+    window.history.replaceState(null, "", "/the-daily-fix/250210?a=%2F&b=c+d#brain");
+    expect(consumeLegacyHashInBrowser()).toBe("?a=%2F&b=c+d&tab=brain");
+    expect(window.location.search).toBe("?a=%2F&b=c+d&tab=brain");
+    expect(window.location.hash).toBe("");
+
+    window.history.replaceState(null, "", "/the-daily-fix/250210?a=%2F&tab=old&b=c+d#belly");
+    expect(consumeLegacyHashInBrowser()).toBe("?a=%2F&b=c+d");
+    expect(window.location.hash).toBe("");
+
+    window.history.replaceState(null, "", "/the-daily-fix/250210?a=%2F#feet");
+    expect(consumeLegacyHashInBrowser()).toBe("?a=%2F");
+    expect(window.location.hash).toBe("");
   });
 
   it("C3: #belly, #bogus, and ?tab=xyz fall back to Belly and drop", async () => {

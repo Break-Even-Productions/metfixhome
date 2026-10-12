@@ -404,6 +404,8 @@ async function handleSitemap(
   }
 
   const keyReq = sitemapCacheKeyRequest();
+  // Cap counts Cache API: match = 1, reserve 1 for put, stop upstream at MAX-1.
+  let subrequests = 1;
   const cached = await cache.match(keyReq);
   if (cached) {
     if (method === "HEAD") {
@@ -416,11 +418,11 @@ async function handleSitemap(
   const dates: string[] = [];
   let offset = 0;
   let total = Infinity;
-  let subrequests = 0;
   let hitCap = false;
 
   while (offset < total) {
-    if (subrequests >= SITEMAP_MAX_SUBREQUESTS) {
+    // Stop at MAX-1 so the final slot stays reserved for cache.put.
+    if (subrequests >= SITEMAP_MAX_SUBREQUESTS - 1) {
       hitCap = true;
       break;
     }
@@ -431,8 +433,14 @@ async function handleSitemap(
     }
     total = page.page.total;
     for (const item of page.page.items) {
-      // If status is present, keep only published; otherwise trust the list.
-      if (item.status != null && item.status !== "published") continue;
+      // Spec rev 2.1: keep null / published / scheduled; exclude draft and other statuses.
+      if (
+        item.status != null &&
+        item.status !== "published" &&
+        item.status !== "scheduled"
+      ) {
+        continue;
+      }
       if (isIsoDate(item.date) && item.date <= today) {
         dates.push(item.date);
       }

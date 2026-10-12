@@ -220,7 +220,7 @@ Notation: `fetchMock` is the upstream fetch, `ASSETS` is `env.ASSETS.fetch`, and
 
 ## B: build and CI
 
-- **B1.** `vite.config` base is `"/"` for `build:cf`. `build:cf` is `vite build`.
+- **B1.** `vite.config` base is `"/"` for `build:cf`. `build:cf` is `vite build` (identical to `build:pages`).
 - **B2.** After the build, `rg -n "DAILY_FIX_API_KEY|X-API-Key|<test key value>" dist/public` returns 0 hits.
 - **B3.** `assert:liquidglass-chunk` passes with base `"/"`. This needs the leading-slash fix above.
 - **B4.** CI workflow steps, in order:

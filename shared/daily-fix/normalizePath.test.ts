@@ -68,6 +68,28 @@ const ROWS: Row[] = [
   { name: "year 1999 hyphen", path: "/the-daily-fix/1999-10-04", expect: { kind: "notFound" } },
   { name: "year 2100 hyphen", path: "/the-daily-fix/2100-10-04", expect: { kind: "notFound" } },
   {
+    name: "year 2000 8-digit",
+    path: "/the-daily-fix/20001004",
+    expect: { kind: "redirect", location: "/the-daily-fix/001004" },
+  },
+  {
+    name: "year 2099 8-digit",
+    path: "/the-daily-fix/20991004",
+    expect: { kind: "redirect", location: "/the-daily-fix/991004" },
+  },
+  {
+    name: "year 2000 hyphen",
+    path: "/the-daily-fix/2000-10-04",
+    expect: { kind: "redirect", location: "/the-daily-fix/001004" },
+  },
+  {
+    name: "year 2099 hyphen",
+    path: "/the-daily-fix/2099-10-04",
+    expect: { kind: "redirect", location: "/the-daily-fix/991004" },
+  },
+  { name: "26/02/31 invalid", path: "/the-daily-fix/26/02/31", expect: { kind: "notFound" } },
+  { name: "7-digit segment", path: "/the-daily-fix/2610040", expect: { kind: "notFound" } },
+  {
     name: "unknown path pillar",
     path: "/the-daily-fix/261004/foo",
     expect: { kind: "notFound" },
@@ -81,6 +103,11 @@ const ROWS: Row[] = [
     name: "trailing slash dated",
     path: "/the-daily-fix/261004/",
     expect: { kind: "redirect", location: "/the-daily-fix/261004" },
+  },
+  {
+    name: "one-hop ISO+brain",
+    path: "/the-daily-fix/2026-10-04/brain",
+    expect: { kind: "redirect", location: "/the-daily-fix/261004?tab=brain" },
   },
 ];
 
@@ -128,10 +155,34 @@ const TAB_ROWS: Array<{ name: string; path: string; search: string; expect: Row[
     expect: { kind: "redirect", location: "/the-daily-fix/261004?tab=body" },
   },
   {
+    name: "tab %62ody → 301",
+    path: "/the-daily-fix/261004",
+    search: "?tab=%62ody",
+    expect: { kind: "redirect", location: "/the-daily-fix/261004?tab=body" },
+  },
+  {
     name: "tab body serve",
     path: "/the-daily-fix/261004",
     search: "?tab=body",
     expect: { kind: "serve", mode: "dated", iso: "2026-10-04", yymmdd: "261004", tab: "body" },
+  },
+  {
+    name: "tab body with other params",
+    path: "/the-daily-fix/261004",
+    search: "?x=1&tab=body&y=2",
+    expect: { kind: "serve", mode: "dated", iso: "2026-10-04", yymmdd: "261004", tab: "body" },
+  },
+  {
+    name: "bare tab brain serve",
+    path: "/the-daily-fix",
+    search: "?tab=brain",
+    expect: { kind: "serve", mode: "bare", tab: "brain" },
+  },
+  {
+    name: "bare tab xyz strip",
+    path: "/the-daily-fix",
+    search: "?tab=xyz",
+    expect: { kind: "redirect", location: "/the-daily-fix" },
   },
 ];
 
@@ -222,6 +273,11 @@ describe("S2 single hop", () => {
         location: (r.expect as { location: string }).location,
       })),
       { path: "/the-daily-fix/261004/brain", search: "?x=1", location: "/the-daily-fix/261004?x=1&tab=brain" },
+      {
+        path: "/the-daily-fix/2026-10-04/brain",
+        search: "",
+        location: "/the-daily-fix/261004?tab=brain",
+      },
     ];
     for (const row of redirectPaths) {
       const first = normalizeDailyFixPath(row.path, row.search);

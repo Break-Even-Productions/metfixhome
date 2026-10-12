@@ -1,6 +1,7 @@
 /**
- * Minimal HTMLRewriter polyfill for Node vitest unit tests.
- * Production + pool-workers tests use workerd's real HTMLRewriter.
+ * Unit-only HTMLRewriter polyfill for Node vitest (`worker/index.test.ts`).
+ * Do not use in production or pool-workers tests — those use workerd's real
+ * HTMLRewriter (`worker/htmlrewriter.workers.test.ts`).
  *
  * Inserted/replaced HTML is not re-tokenized (matches workerd).
  */
