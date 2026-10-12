@@ -29,8 +29,10 @@ if (!scriptMatch) {
 }
 
 const entrySrc = scriptMatch[1];
-const entryPath = path.resolve(distPublic, entrySrc.replace(/^\.\//, ""));
-if (!fs.existsSync(entryPath)) {
+// Vite base "/" emits absolute "/assets/…"; resolve relative to dist/public (strip leading "/").
+const entryRel = entrySrc.replace(/^\//, "").replace(/^\.\//, "");
+const entryPath = path.resolve(distPublic, entryRel);
+if (!fs.existsSync(entryPath) || !entryPath.startsWith(distPublic + path.sep)) {
   fail(`entry chunk not found: ${entryPath}`);
 }
 

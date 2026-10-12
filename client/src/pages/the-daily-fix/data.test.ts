@@ -84,7 +84,7 @@ describe("Daily Fix BFF request", () => {
   it("asks the Worker for an ISO date, never a YYMMDD path segment", () => {
     expect(dailyFixRequestUrl("2025-02-10")).toBe(`${DAILY_FIX_BFF_URL}?date=2025-02-10`);
     expect(dailyFixRequestUrl("2025-02-10")).not.toContain("250210");
-    expect(DAILY_FIX_BFF_URL).toContain("metfix-bff.wispy-mode-982d.workers.dev");
+    expect(DAILY_FIX_BFF_URL).toBe("/api/daily-fix");
   });
 
   it("resolves the fetch date from the route after rewrite shapes, not the raw segment", () => {
@@ -105,13 +105,13 @@ describe("Daily Fix BFF request", () => {
 });
 
 describe("page route checks", () => {
-  it("fetches date=2025-02-10 once for /the-daily-fix/250210#brain and ignores pillar hash changes", () => {
+  it("fetches date=2025-02-10 once for /the-daily-fix/250210?tab=brain and ignores pillar tab changes", () => {
     const today = "2026-03-11";
-    const brain = parseDailyFixRoute({ date: "250210", hash: "#brain" });
-    const body = parseDailyFixRoute({ date: "250210", hash: "#body" });
-    const belly = parseDailyFixRoute({ date: "250210", hash: "#belly" });
+    const brain = parseDailyFixRoute({ date: "250210", search: "?tab=brain" });
+    const body = parseDailyFixRoute({ date: "250210", search: "?tab=body" });
+    const belly = parseDailyFixRoute({ date: "250210" });
     expect(brain.canonicalPath).toBe("/the-daily-fix/250210");
-    expect(brain.canonicalHash).toBe("#brain");
+    expect(brain.tab).toBe("brain");
     expect(fetchIsoForRoute(brain.kind, brain.iso, today)).toBe("2025-02-10");
     expect(fetchIsoForRoute(body.kind, body.iso, today)).toBe("2025-02-10");
     expect(fetchIsoForRoute(belly.kind, belly.iso, today)).toBe("2025-02-10");
@@ -123,7 +123,7 @@ describe("page route checks", () => {
       const route = parseDailyFixRoute(input);
       expect(dailyFixCanonicalUrl(route)).toBe("/the-daily-fix/250210");
       expect(route.canonicalPath).toBe("/the-daily-fix/250210");
-      expect(route.canonicalHash).toBe("");
+      expect(route.tab).toBeNull();
     }
   });
 
@@ -335,14 +335,14 @@ describe("loadDailyFixDay cache", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("prefetch warms today/−1/−2 without future days", async () => {
+  it("prefetch warms today−1/−2 without future days (Q1: bare prefetch only)", async () => {
     const seen: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         seen.push(url);
-        const date = new URL(url).searchParams.get("date")!;
+        const date = new URL(url, "https://metfix.org").searchParams.get("date")!;
         return new Response(JSON.stringify({ ...bsiDayBody, date }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -350,9 +350,8 @@ describe("loadDailyFixDay cache", () => {
       }),
     );
     prefetchDailyFixWindow("2026-03-11");
-    await vi.waitFor(() => expect(seen).toHaveLength(3));
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
     expect(seen).toEqual([
-      `${DAILY_FIX_BFF_URL}?date=2026-03-11`,
       `${DAILY_FIX_BFF_URL}?date=2026-03-10`,
       `${DAILY_FIX_BFF_URL}?date=2026-03-09`,
     ]);

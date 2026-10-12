@@ -7,15 +7,18 @@
     "dev": "vite --host",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "build:pages": "vite build",
+    "build:cf": "vite build",
     "assert:liquidglass-chunk": "node scripts/assert-liquidglass-chunk.mjs",
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
+    "check:worker": "tsc --noEmit -p worker/tsconfig.json",
     "test": "vitest run",
     "format": "prettier --write .",
     "sanity": "sanity dev",
     "sanity:deploy": "sanity deploy -y --url metfix",
-    "sanity:seed": "tsx --tsconfig tsconfig.json scripts/seed-sanity.ts"
+    "sanity:seed": "tsx --tsconfig tsconfig.json scripts/seed-sanity.ts",
+    "test:workers": "vitest run --config vitest.workers.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -77,6 +80,7 @@
   },
   "devDependencies": {
     "@builder.io/vite-plugin-jsx-loc": "^0.1.1",
+    "@cloudflare/workers-types": "4.20251011.0",
     "@sanity/vision": "^6.9.2",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.1.3",
@@ -103,7 +107,9 @@
     "typescript": "5.6.3",
     "vite": "^7.1.7",
     "vite-plugin-manus-runtime": "^0.0.57",
-    "vitest": "^2.1.4"
+    "vitest": "2.1.9",
+    "wrangler": "4.45.3",
+    "@cloudflare/vitest-pool-workers": "0.10.0"
   },
   "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",
   "pnpm": {

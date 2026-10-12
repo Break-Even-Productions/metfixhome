@@ -25,17 +25,33 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Typecheck worker
+        run: npm run check:worker
+
       - name: Unit and mount tests
         run: npm test
 
       - name: Build static site
-        run: npm run build:pages
+        run: npm run build:cf
         env:
-          GITHUB_PAGES: "true"
           GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
           VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
 
+      - name: B2 — no API key strings in client bundle
+        run: |
+          if grep -RInE 'DAILY_FIX_API_KEY|X-API-Key|test-secret-key' dist/public; then
+            echo "B2 failed: secret strings found in dist/public" >&2
+            exit 1
+          fi
+          echo "B2 ok: no key strings in dist/public"
+
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk
+
+      - name: Pool-workers HTMLRewriter tests (built dist)
+        run: npm run test:workers
+
+      - name: Wrangler deploy dry-run
+        run: npx wrangler deploy --dry-run

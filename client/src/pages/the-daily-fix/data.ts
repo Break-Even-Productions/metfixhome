@@ -1,19 +1,8 @@
-import {
-  addCalendarDays,
-  bsiTodayIso,
-  extractYoutubeId,
-  isIsoDate,
-  mapHttpsPhotoUrl,
-  type DailyFixBelly,
-  type DailyFixBody,
-  type DailyFixBrain,
-  type DailyFixDay,
-  type RecipeIngredient,
-  type RecipeStep,
-} from "./model";
+import { mapDailyFixDay, type DailyFixDay } from "@shared/daily-fix/mapper";
+import { addCalendarDays, bsiTodayIso } from "./model";
 
-/** Deployed Daily Fix BFF. No key, no VITE_ override, no WordPress call. */
-export const DAILY_FIX_BFF_URL = "https://metfix-bff.wispy-mode-982d.workers.dev/daily-fix";
+/** Same-origin Daily Fix API (Cloudflare Worker). */
+export const DAILY_FIX_BFF_URL = "/api/daily-fix";
 
 export type DailyFixLoadState =
   | { status: "loading" }
@@ -49,118 +38,11 @@ type CacheEntry = CacheLoaded | CacheInflight;
 const dayCache = new Map<string, CacheEntry>();
 
 export function dailyFixRequestUrl(isoDate: string): string {
-  const url = new URL(DAILY_FIX_BFF_URL);
-  url.searchParams.set("date", isoDate);
-  return url.toString();
+  return `${DAILY_FIX_BFF_URL}?date=${encodeURIComponent(isoDate)}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function asNullableNumber(value: unknown): number | null {
-  if (value == null) return null;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function mapIngredients(value: unknown): RecipeIngredient[] {
-  if (!Array.isArray(value)) return [];
-  const items: RecipeIngredient[] = [];
-  for (const entry of value) {
-    if (!isRecord(entry)) continue;
-    const display = asString(entry.display);
-    const sortOrder = entry.sort_order;
-    if (display == null || typeof sortOrder !== "number") continue;
-    items.push({ display, sort_order: sortOrder });
-  }
-  return items;
-}
-
-function mapSteps(value: unknown): RecipeStep[] {
-  if (!Array.isArray(value)) return [];
-  const items: RecipeStep[] = [];
-  for (const entry of value) {
-    if (!isRecord(entry)) continue;
-    const instruction = asString(entry.instruction);
-    const sortOrder = entry.sort_order;
-    if (instruction == null || typeof sortOrder !== "number") continue;
-    items.push({ instruction, sort_order: sortOrder });
-  }
-  return items;
-}
-
-function mapBelly(value: unknown): DailyFixBelly | null {
-  if (!isRecord(value)) return null;
-  const title = asString(value.title);
-  if (title == null) return null;
-  const macros = isRecord(value.macros) ? value.macros : null;
-  const hasStructuredIngredients = Boolean(value.has_structured_ingredients);
-  const hasStructuredSteps = Boolean(value.has_structured_steps);
-  return {
-    title,
-    body: asString(value.body),
-    steps: asString(value.steps),
-    fat: macros ? asNullableNumber(macros.fat) : null,
-    carb: macros ? asNullableNumber(macros.carb) : null,
-    protein: macros ? asNullableNumber(macros.protein) : null,
-    photo_url: mapHttpsPhotoUrl(value.photo_url),
-    yt_id: extractYoutubeId(value.yt_url),
-    has_structured_ingredients: hasStructuredIngredients,
-    has_structured_steps: hasStructuredSteps,
-    recipe_ingredients: hasStructuredIngredients ? mapIngredients(value.recipe_ingredients) : [],
-    recipe_steps: hasStructuredSteps ? mapSteps(value.recipe_steps) : [],
-  };
-}
-
-/**
- * Prefer non-empty body.body; if null or "", use body.excerpt.
- * Whitespace-only body.body is kept (no excerpt fallback).
- */
-function mapBody(value: unknown): DailyFixBody | null {
-  if (!isRecord(value)) return null;
-  const title = asString(value.title);
-  const bodyHtml = asString(value.body);
-  const excerpt = asString(value.excerpt);
-  const html = bodyHtml && bodyHtml.length > 0 ? bodyHtml : excerpt;
-  if (title == null || html == null) return null;
-  return { title, html };
-}
-
-function mapBrain(value: unknown): DailyFixBrain | null {
-  if (!isRecord(value)) return null;
-  const title = asString(value.title);
-  const bodyHtml = asString(value.body);
-  const excerpt = asString(value.excerpt);
-  const html = bodyHtml && bodyHtml.length > 0 ? bodyHtml : excerpt;
-  if (title == null || html == null) return null;
-  return {
-    title,
-    html,
-    article_url: asString(value.article_url),
-    button_text: asString(value.button_text),
-  };
-}
-
-/**
- * Map a Worker JSON body onto DailyFixDay, or null when unusable.
- * Requires a valid top-level ISO `date`. Does not set `requested_date` —
- * `dayForConsumer` stamps that for bare closer-day display.
- */
-export function mapDailyFixDay(payload: unknown, _requestedIso?: string): DailyFixDay | null {
-  if (!isRecord(payload)) return null;
-  if (typeof payload.error === "string") return null;
-  const date = asString(payload.date);
-  if (date == null || !isIsoDate(date)) return null;
-  const belly = mapBelly(payload.belly);
-  const body = mapBody(payload.body);
-  const brain = mapBrain(payload.brain);
-  if (!belly || !body || !brain) return null;
-  return { date, belly, body, brain };
-}
+/** Re-export shared mapper (identity with worker). */
+export { mapDailyFixDay };
 
 /** Next Etc/GMT-2 midnight after `now`, as UTC epoch ms. Checked on read — no timers. */
 export function nextBsiMidnightMs(now = new Date()): number {
@@ -190,8 +72,7 @@ function deleteTwinKeys(cacheKey: string, entry: CacheLoaded): void {
   if (entry.day.date !== cacheKey) {
     dayCache.delete(entry.day.date);
   }
-  // Also drop any other key that aliases this same entry object.
-  for (const [key, value] of dayCache) {
+  for (const [key, value] of Array.from(dayCache.entries())) {
     if (value === entry) dayCache.delete(key);
   }
 }
@@ -252,6 +133,7 @@ async function fetchAndMapDay(isoDate: string): Promise<DailyFixSettled> {
       method: "GET",
       headers: { Accept: "application/json" },
     });
+    // 400/404/405/503 → Not available (Rev 2.1)
     if (!response.ok) return { status: "unavailable" };
     let payload: unknown;
     try {
@@ -319,11 +201,11 @@ export function loadDailyFixDay(
 }
 
 /**
- * Prefetch today, today−1, today−2. Fire-and-forget for strip cache only.
- * Uses allowCloser when settling so closer payloads are cached under returned date.
+ * Prefetch today−1 and today−2 only (Q1). Fire-and-forget for strip cache.
+ * Today is seeded from df-initial on bare first view.
  */
 export function prefetchDailyFixWindow(todayIso: string): void {
-  const isos = [todayIso, addCalendarDays(todayIso, -1), addCalendarDays(todayIso, -2)];
+  const isos = [addCalendarDays(todayIso, -1), addCalendarDays(todayIso, -2)];
   for (const iso of isos) {
     void loadDailyFixDay(iso, { allowCloser: true });
   }
@@ -354,7 +236,44 @@ export function syncLoadFromCache(
   return { status: "loaded", day };
 }
 
+let dfInitialDone = false;
+let dfInitialPayload: unknown | undefined;
+
+/**
+ * Read `#df-initial` raw upstream JSON once, map, and seed the day cache once.
+ * Subsequent calls (in-app navigation) return null and never re-seed (C5).
+ */
+export function seedFromDfInitial(
+  requestedIso: string,
+  allowCloser: boolean,
+  doc: Document = document,
+): DailyFixDay | null {
+  if (dfInitialDone) return null;
+  dfInitialDone = true;
+
+  const el = doc.getElementById("df-initial");
+  if (!el) {
+    dfInitialPayload = undefined;
+    return null;
+  }
+  try {
+    dfInitialPayload = JSON.parse(el.textContent || "");
+  } catch {
+    dfInitialPayload = undefined;
+    return null;
+  }
+
+  const day = mapDailyFixDay(dfInitialPayload, requestedIso);
+  if (!day) return null;
+  const forConsumer = dayForConsumer(day, requestedIso, allowCloser);
+  if (!forConsumer) return null;
+  storeLoaded(requestedIso, day);
+  return forConsumer;
+}
+
 /** Reset module cache between tests so entries do not leak. */
 export function resetDailyFixDayCache(): void {
   dayCache.clear();
+  dfInitialDone = false;
+  dfInitialPayload = undefined;
 }

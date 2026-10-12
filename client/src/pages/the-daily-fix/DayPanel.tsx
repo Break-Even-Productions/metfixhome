@@ -42,8 +42,8 @@ function InvalidCopy() {
       <h3>That day isn’t a Daily Fix date</h3>
       <p>
         Use <code>/the-daily-fix</code> for today, or <code>/the-daily-fix/YYMMDD</code> for a
-        calendar day. Pillars live in the hash: <code>#belly</code>, <code>#body</code>, or{" "}
-        <code>#brain</code>.
+        calendar day. Pillars use <code>?tab=body</code> or <code>?tab=brain</code> (belly is the
+        default with no param).
       </p>
     </div>
   );
@@ -77,6 +77,7 @@ function PillarTab({
   return (
     <Link
       href={href}
+      replace
       role="tab"
       id={`fix-tab-${pillar}`}
       aria-selected={active}

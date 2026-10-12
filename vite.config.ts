@@ -231,7 +231,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "../shared/**/*.test.ts",
+      "../worker/**/*.test.ts",
+    ],
+    exclude: ["../worker/**/*.workers.test.ts", "**/node_modules/**"],
   },
   server: {
     port: 3000,
