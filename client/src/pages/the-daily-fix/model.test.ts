@@ -27,28 +27,28 @@ describe("Daily Fix routes", () => {
       pillar: "belly",
       pillarExplicit: false,
       canonicalPath: "/the-daily-fix",
-      canonicalHash: "",
+      tab: null,
     });
     expect(dailyFixPath()).toBe("/the-daily-fix");
   });
 
-  it("keeps YYMMDD as canonical and hashes pillars", () => {
+  it("keeps YYMMDD as canonical and tabs pillars", () => {
     expect(parseDailyFixRoute({ date: "250210" })).toMatchObject({
       kind: "day",
       iso: "2025-02-10",
       code: "250210",
       canonicalPath: "/the-daily-fix/250210",
-      canonicalHash: "",
+      tab: null,
     });
-    expect(parseDailyFixRoute({ date: "250210", hash: "#brain" })).toMatchObject({
+    expect(parseDailyFixRoute({ date: "250210", search: "?tab=brain" })).toMatchObject({
       pillar: "brain",
       pillarExplicit: true,
       canonicalPath: "/the-daily-fix/250210",
-      canonicalHash: "#brain",
+      tab: "brain",
     });
-    expect(dailyFixPath("250210", "body")).toBe("/the-daily-fix/250210#body");
+    expect(dailyFixPath("250210", "body")).toBe("/the-daily-fix/250210?tab=body");
     expect(dailyFixHref("2025-02-10", "2025-02-10", null)).toBe("/the-daily-fix");
-    expect(dailyFixHref("2025-02-10", "2025-02-10", "brain")).toBe("/the-daily-fix#brain");
+    expect(dailyFixHref("2025-02-10", "2025-02-10", "brain")).toBe("/the-daily-fix?tab=brain");
     expect(dailyFixHref("2025-02-11", "2025-02-10", null)).toBe("/the-daily-fix/250210");
   });
 
@@ -61,40 +61,37 @@ describe("Daily Fix routes", () => {
       canonicalPath: "/the-daily-fix/250210",
     });
     expect(dailyFixCanonicalUrl(parseDailyFixRoute({ date: "2025-02-10", pillar: "brain" }), "?utm=1")).toBe(
-      "/the-daily-fix/250210?utm=1#brain",
+      "/the-daily-fix/250210?utm=1&tab=brain",
     );
   });
 
-  it("lets a path pillar win over a hash, then uses that hash", () => {
+  it("lets a path pillar win over a hash, then uses that tab", () => {
     expect(parseDailyFixRoute({ date: "250210", pillar: "brain", hash: "#body" })).toMatchObject({
       pillar: "brain",
-      canonicalHash: "#brain",
+      tab: "brain",
     });
   });
 
   it("drops a bad pillar hash or path without becoming an invalid date", () => {
     expect(parseDailyFixRoute({ date: "250210", pillar: "feet" })).toMatchObject({
-      kind: "day",
-      pillar: "belly",
-      pillarExplicit: false,
-      canonicalHash: "",
+      kind: "invalid",
     });
     expect(parseDailyFixRoute({ date: "250210", hash: "#feet" })).toMatchObject({
       kind: "day",
       pillar: "belly",
       pillarExplicit: false,
-      canonicalHash: "",
+      tab: null,
     });
     expect(parseDailyFixRoute({ hash: "#feet" })).toMatchObject({
       kind: "today",
       pillar: "belly",
       canonicalPath: "/the-daily-fix",
-      canonicalHash: "",
+      tab: null,
     });
     expect(parseDailyFixRoute({ hash: "#brain" })).toMatchObject({
       kind: "today",
       pillar: "brain",
-      canonicalHash: "#brain",
+      tab: "brain",
     });
   });
 
@@ -143,7 +140,6 @@ describe("day contract helpers", () => {
     expect(glassMacroRows({ fat: 0, carb: 0, protein: 0 })).toEqual([]);
     expect(glassMacroRows({ fat: null, carb: null, protein: null })).toEqual([]);
     expect(glassMacroRows({ fat: 0, carb: 5, protein: null })).toEqual([{ label: "Carbs", grams: 5 }]);
-    // A3: negatives and zero/null collapse to empty
     expect(glassMacroRows({ fat: -1, carb: 0, protein: null })).toEqual([]);
   });
 
@@ -166,9 +162,9 @@ describe("day contract helpers", () => {
 });
 
 describe("belly media URL helpers", () => {
-  it("mapHttpsPhotoUrl keeps trimmed https only", () => {
+  it("mapHttpsPhotoUrl keeps trimmed https and upgrades http", () => {
     expect(mapHttpsPhotoUrl("  https://cdn.example.com/steak.jpg  ")).toBe("https://cdn.example.com/steak.jpg");
-    expect(mapHttpsPhotoUrl("http://cdn.example.com/steak.jpg")).toBeNull();
+    expect(mapHttpsPhotoUrl("http://cdn.example.com/steak.jpg")).toBe("https://cdn.example.com/steak.jpg");
     expect(mapHttpsPhotoUrl("")).toBeNull();
     expect(mapHttpsPhotoUrl("   ")).toBeNull();
     expect(mapHttpsPhotoUrl(null)).toBeNull();
@@ -195,12 +191,12 @@ describe("belly media URL helpers", () => {
     expect(extractYoutubeId("not a url")).toBeNull();
     expect(extractYoutubeId("")).toBeNull();
     expect(extractYoutubeId(null)).toBeNull();
-    expect(extractYoutubeId("jHXO-qIk28A")).toBeNull(); // bare id rejected
+    expect(extractYoutubeId("jHXO-qIk28A")).toBeNull();
   });
 
   it("C3: wrong-length ids and youtube.com with no id map to null", () => {
-    expect(extractYoutubeId("abcdefghij")).toBeNull(); // 10
-    expect(extractYoutubeId("abcdefghijkl")).toBeNull(); // 12
+    expect(extractYoutubeId("abcdefghij")).toBeNull();
+    expect(extractYoutubeId("abcdefghijkl")).toBeNull();
     expect(extractYoutubeId("https://www.youtube.com/")).toBeNull();
     expect(extractYoutubeId("https://www.youtube.com/watch")).toBeNull();
   });

@@ -143,8 +143,8 @@ function renderShell(url: string) {
 
 function requestDates(fetchMock: ReturnType<typeof vi.fn>): string[] {
   return fetchMock.mock.calls.map((call) => {
-    const url = new URL(String(call[0]));
-    expect(url.origin + url.pathname).toBe(DAILY_FIX_BFF_URL);
+    const url = new URL(String(call[0]), "https://metfix.org");
+    expect(url.pathname).toBe(DAILY_FIX_BFF_URL);
     expect(url.searchParams.has("key")).toBe(false);
     expect(call[1]).toEqual(expect.objectContaining({ headers: { Accept: "application/json" } }));
     return url.searchParams.get("date")!;
@@ -181,11 +181,11 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
         }),
       ),
     );
-    renderAt("/the-daily-fix/250210#body");
+    renderAt("/the-daily-fix/250210?tab=body");
     expect(await screen.findByRole("heading", { name: "Rest" })).toBeTruthy();
     expect(screen.getByText("Rest day")).toBeTruthy();
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     cleanup();
     renderAt("/the-daily-fix/250210#brain");
@@ -206,7 +206,7 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
         ),
       ),
     );
-    renderAt("/the-daily-fix/250210#body");
+    renderAt("/the-daily-fix/250210?tab=body");
     expect(await screen.findByText("Real work")).toBeTruthy();
     expect(screen.queryByText("Excerpt")).toBeNull();
   });
@@ -255,7 +255,7 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
 describe("Daily Fix page mount — bare /the-daily-fix", () => {
   it("5. bare mount: exactly 3 worker GETs once each, today first, then −1 −2; no key", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -276,7 +276,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 
   it("6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const requested = new URL(String(input)).searchParams.get("date")!;
+      const requested = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       const date = requested === TODAY ? MINUS2 : requested;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
@@ -290,7 +290,8 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     expect(screen.getByText(formatDayLabel(MINUS2), { selector: ".df-heading" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: `Brain ${MINUS2}` })).toBeTruthy();
     expect(window.location.pathname).toBe("/the-daily-fix");
-    expect(window.location.hash).toBe("#brain");
+    expect(window.location.search).toBe("?tab=brain");
+    expect(window.location.hash).toBe("");
     const strip = screen.getByLabelText("Recent days");
     const active = within(strip).getByRole("link", { current: "date" });
     expect(active.textContent).toContain("9");
@@ -350,7 +351,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     async ({ todayResponse }) => {
       resetDailyFixDayCache();
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-        const date = new URL(String(input)).searchParams.get("date")!;
+        const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
         if (date === TODAY) return todayResponse();
         return new Response(JSON.stringify(dayPayload(date)), {
           status: 200,
@@ -372,7 +373,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 
   it("17. bare: 200 with invalid top-level date → Not available, not cached", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       if (date === TODAY) {
         return new Response(JSON.stringify(dayPayload(TODAY, { date: "not-iso" })), {
           status: 200,
@@ -393,7 +394,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 
   it("17. bare: 200 with no date key → Not available, not cached", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       if (date === TODAY) {
         const body = dayPayload(TODAY);
         delete (body as { date?: string }).date;
@@ -418,7 +419,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 
     // Failed bare response must not be cached — dated today refetches once.
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -433,7 +434,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 
   it("warm bare remount stays at exactly three GETs", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -455,7 +456,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 
   it("18. bare mount stays exactly three GETs even when today returns a different date", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const requested = new URL(String(input)).searchParams.get("date")!;
+      const requested = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       const date = requested === TODAY ? MINUS2 : requested;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
@@ -475,7 +476,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
 describe("Daily Fix page mount — prefetch cache", () => {
   it("8. after bare mount, in-app to /260310 and /260309 → no new fetch, no skeleton", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -502,7 +503,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
 
   it("9. prefetch closer for −1 caches under returned date; /260309 hits; /260310 Not available without second fetch", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const requested = new URL(String(input)).searchParams.get("date")!;
+      const requested = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       const date = requested === MINUS1 ? MINUS2 : requested;
       return new Response(JSON.stringify(dayPayload(date)), {
         status: 200,
@@ -532,7 +533,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
   it("10. failed prefetch not cached; visit refetches once and succeeds; failed prefetch never changes visible day", async () => {
     let minus1Fails = true;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       if (date === MINUS1 && minus1Fails) {
         return new Response("", { status: 404 });
       }
@@ -558,7 +559,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
 
   it("10. failed prefetch stay failed on visit → Not available; never changed visible day during prefetch", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       if (date === MINUS1) {
         return new Response("", { status: 404 });
       }
@@ -599,7 +600,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("12. pillar hash 0 extra fetches; invalid dates and four-segment path 0 fetches / no prefetch", async () => {
+  it("12. pillar tab 0 extra fetches; invalid dates and four-segment path 0 fetches / no prefetch", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify(dayPayload("2025-02-10")), {
         status: 200,
@@ -608,13 +609,15 @@ describe("Daily Fix page mount — prefetch cache", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
-    renderAt("/the-daily-fix/250210#brain");
+    renderAt("/the-daily-fix/250210?tab=brain");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await act(async () => {
-      window.location.hash = "#body";
+      window.history.replaceState(null, "", "/the-daily-fix/250210?tab=body");
+      window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await act(async () => {
-      window.location.hash = "#belly";
+      window.history.replaceState(null, "", "/the-daily-fix/250210");
+      window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -806,7 +809,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 0, carb: 0, protein: 0 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     const img = screen.getByRole("img", { name: "Belly 2025-02-10" }) as HTMLImageElement;
     expect(img.getAttribute("crossorigin")).toBe("anonymous");
@@ -828,7 +831,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       body: "<p>Marinate the steak</p>",
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     expect(img.getAttribute("src")).toBe(PHOTO);
     expect(screen.getByRole("heading", { name: "Ingredients", level: 4 })).toBeTruthy();
@@ -844,7 +847,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: null, carb: null, protein: null },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(screen.queryByText("Per serving")).toBeNull();
     expect(document.querySelector(".df-macros")).toBeNull();
@@ -857,7 +860,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 22, carb: 3, protein: 34 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByText("Per serving")).toBeTruthy();
     const glass = document.querySelector(".df-meal-macros") as HTMLElement;
     const labels = within(glass)
@@ -876,7 +879,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 0, carb: 5, protein: 0 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const glass = (await screen.findByText("Per serving")).closest(".df-meal-macros") as HTMLElement;
     expect(within(glass).getByText("Carbs")).toBeTruthy();
     expect(within(glass).getByText("5g")).toBeTruthy();
@@ -893,7 +896,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     delete (payload.belly as { photo_url?: string | null }).photo_url;
     stubPayload(payload);
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(document.querySelector(".df-meal-photo")).toBeNull();
     expect(screen.queryByText("Per serving")).toBeNull();
@@ -910,7 +913,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 10, carb: null, protein: 20 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(document.querySelector(".df-meal-photo")).toBeNull();
     expect(screen.queryByText("Per serving")).toBeNull();
@@ -925,7 +928,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 0, carb: 0, protein: 0 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     const plain = document.querySelector(".df-macros") as HTMLElement;
     expect(plain).toBeTruthy();
@@ -939,7 +942,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       yt_url: null,
       macros: { fat: null, carb: null, protein: null },
     });
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(document.querySelector(".df-macros")).toBeNull();
     expect(screen.queryByText("Per serving")).toBeNull();
@@ -956,7 +959,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
         yt_url: yt,
         macros: { fat: 1, carb: 1, protein: 1 },
       });
-      renderAt("/the-daily-fix/250210#belly");
+      renderAt("/the-daily-fix/250210");
       await screen.findByRole("img", { name: "Belly 2025-02-10" });
       fireEvent.click(screen.getByRole("button", { name: /Watch video/i }));
       const iframe = await screen.findByTitle("Belly 2025-02-10 short");
@@ -972,7 +975,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 5, carb: null, protein: 10 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Watch video/i })).toBeNull();
@@ -985,7 +988,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 5, carb: null, protein: 10 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireEvent.click(img);
     expect(document.querySelector("iframe")).toBeNull();
@@ -996,7 +999,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
   it("B6: default dayPayload (no photo, fat/protein set) → .df-macros present, Per serving null", async () => {
     stubDay({});
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(document.querySelector(".df-meal-photo")).toBeNull();
     expect(document.querySelector(".df-macros")).toBeTruthy();
@@ -1012,7 +1015,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 22, carb: 3, protein: 34 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = (await screen.findByRole("img", { name: "Belly 2025-02-10" })) as HTMLImageElement;
     expect(img.getAttribute("crossorigin")).toBe("anonymous");
     fireEvent.error(img);
@@ -1043,7 +1046,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 22, carb: 3, protein: 34 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     expect(screen.getByText("Per serving")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
@@ -1058,7 +1061,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 22, carb: 3, protein: 34 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireImgLoad(img as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
@@ -1073,7 +1076,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 0, carb: 0, protein: 0 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     expect(screen.queryByText("Per serving")).toBeNull();
     fireImgLoad(img as HTMLImageElement);
@@ -1098,7 +1101,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 22, carb: 3, protein: 34 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireImgLoad(img as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
@@ -1139,7 +1142,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
 
   it("C6: in-app navigate two cached days → init exactly 2, destroy exactly 1", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(
         JSON.stringify(
           dayPayload(date, {
@@ -1155,7 +1158,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
-    renderShell("/the-daily-fix/250210#belly");
+    renderShell("/the-daily-fix/250210");
     const imgA = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireImgLoad(imgA as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
@@ -1172,7 +1175,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
 
   it("stale-playing / date key: play on 250210 then Next → 250211 has no iframe, has play", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(
         JSON.stringify(
           dayPayload(date, {
@@ -1188,7 +1191,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
-    renderShell("/the-daily-fix/250210#belly");
+    renderShell("/the-daily-fix/250210");
     await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireEvent.click(screen.getByRole("button", { name: "Play the short" }));
     expect(await screen.findByTitle("Belly 2025-02-10 short")).toBeTruthy();
@@ -1229,7 +1232,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 12, carb: 3, protein: 30 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireImgLoad(img as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
@@ -1250,7 +1253,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 12, carb: 3, protein: 30 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" }) as HTMLImageElement;
     fireImgLoad(img);
     const playIdle = screen.getByRole("button", { name: "Play the short" });
@@ -1315,7 +1318,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
   // Prefetch must not inflate glass init; Spec (a) re-init still happens after play/close on the shown day.
   it("C6: bare mount with photo → init exactly 1 (not once per prefetched day)", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const date = new URL(String(input)).searchParams.get("date")!;
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       return new Response(
         JSON.stringify(
           dayPayload(date, {
@@ -1348,7 +1351,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 10, carb: 2, protein: 20 },
     });
     cleanup();
-    renderShell("/the-daily-fix/250210#belly");
+    renderShell("/the-daily-fix/250210");
     const img = await screen.findByRole("img", { name: "Belly 2025-02-10" });
     fireImgLoad(img as HTMLImageElement);
     await waitFor(() => expect(liquidInit).toHaveBeenCalledTimes(1));
@@ -1367,7 +1370,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 10, carb: 2, protein: 20 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Watch video/i })).toBeNull();
@@ -1379,7 +1382,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 39, carb: 0, protein: 42 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByText("Per serving")).toBeTruthy();
     const glass = document.querySelector(".df-meal-macros")!;
     expect(within(glass as HTMLElement).getByText("Protein")).toBeTruthy();
@@ -1397,7 +1400,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 10, carb: null, protein: 20 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(document.querySelector(".df-meal-photo")).toBeNull();
     expect(screen.queryByRole("button", { name: "Play the short" })).toBeNull();
@@ -1415,7 +1418,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 0, carb: 0, protein: 0 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("img", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(screen.queryByText("Per serving")).toBeNull();
     expect(document.querySelector(".df-macros")).toBeNull();
@@ -1430,7 +1433,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
       macros: { fat: 1, carb: 1, protein: 1 },
     });
     cleanup();
-    renderAt("/the-daily-fix/250210#belly");
+    renderAt("/the-daily-fix/250210");
     await screen.findByRole("img", { name: "Belly 2025-02-10" });
     expect(document.querySelector("iframe")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Watch video/i }));

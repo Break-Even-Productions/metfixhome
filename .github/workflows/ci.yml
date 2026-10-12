@@ -29,9 +29,8 @@ jobs:
         run: npm test
 
       - name: Build static site
-        run: npm run build:pages
+        run: npm run build:cf
         env:
-          GITHUB_PAGES: "true"
           GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
@@ -39,3 +38,6 @@ jobs:
 
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk
+
+      - name: Wrangler deploy dry-run
+        run: npx wrangler deploy --dry-run

@@ -8,14 +8,17 @@ import {
   fetchIsoForRoute,
   loadDailyFixDay,
   prefetchDailyFixWindow,
+  seedFromDfInitial,
   syncLoadFromCache,
   type DailyFixLoadState,
 } from "./data";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
+  consumeLegacyHashInBrowser,
   dailyFixCanonicalUrl,
   dailyFixHref,
+  normalizeDailyFixPath,
   parseDailyFixRoute,
 } from "./model";
 
@@ -56,22 +59,23 @@ function jumpTo(id: string) {
   window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
 }
 
-function useDocumentHash() {
-  const [hash, setHash] = useState(() => window.location.hash);
+function useDocumentSearch() {
+  const [search, setSearch] = useState(() => {
+    // Legacy hash → ?tab= before first pillar read (no Belly flash).
+    return consumeLegacyHashInBrowser();
+  });
   useEffect(() => {
-    const sync = () => setHash(window.location.hash);
-    window.addEventListener("hashchange", sync);
+    const sync = () => setSearch(window.location.search);
     window.addEventListener("popstate", sync);
     window.addEventListener("pushState", sync);
     window.addEventListener("replaceState", sync);
     return () => {
-      window.removeEventListener("hashchange", sync);
       window.removeEventListener("popstate", sync);
       window.removeEventListener("pushState", sync);
       window.removeEventListener("replaceState", sync);
     };
   }, []);
-  return hash;
+  return search;
 }
 
 export default function TheDailyFixPage({
@@ -82,14 +86,14 @@ export default function TheDailyFixPage({
   const hookParams = useParams<DailyFixParams>();
   const params = routeParams ?? hookParams;
   const [location, setLocation] = useLocation();
-  const hash = useDocumentHash();
+  const search = useDocumentSearch();
   const route = parseDailyFixRoute({
     date: params.date,
     pillar: params.pillar,
     yy: params.yy,
     mm: params.mm,
     dd: params.dd,
-    hash,
+    search,
   });
   // One BSI-today sample for this mount lifetime (prefetch + bare fetch share it).
   const [todayIso] = useState(() => bsiTodayIso());
@@ -99,9 +103,13 @@ export default function TheDailyFixPage({
   const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
   const routeKey = `${route.kind}:${fetchIso ?? "none"}`;
 
-  const [load, setLoad] = useState<DailyFixLoadState>(() =>
-    syncLoadFromCache(route.kind, fetchIso),
-  );
+  const [load, setLoad] = useState<DailyFixLoadState>(() => {
+    if (fetchIso) {
+      const seeded = seedFromDfInitial(fetchIso, allowCloser);
+      if (seeded) return { status: "loaded", day: seeded };
+    }
+    return syncLoadFromCache(route.kind, fetchIso);
+  });
   const [loadKey, setLoadKey] = useState(routeKey);
 
   // Sync from cache on route change — no skeleton flash when the day is already loaded.
@@ -114,20 +122,20 @@ export default function TheDailyFixPage({
     loadJakartaSans();
   }, []);
 
+  // Normalize path/query (date forms, path pillars, bad tabs) via shared normalizer.
   useEffect(() => {
     if (route.kind === "invalid") return;
+    const normalized = normalizeDailyFixPath(window.location.pathname, window.location.search);
+    if (normalized.kind === "redirect") {
+      setLocation(normalized.location, { replace: true });
+      return;
+    }
     const next = dailyFixCanonicalUrl(route, window.location.search);
-    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const current = `${window.location.pathname}${window.location.search}`;
     if (next !== current) {
       setLocation(next, { replace: true });
     }
-  }, [route, location, hash, setLocation]);
-
-  // Prefetch today/−1/−2 only on bare today route (strip cache). Not a bare-path fallback walk.
-  useEffect(() => {
-    if (route.kind !== "today") return;
-    prefetchDailyFixWindow(todayIso);
-  }, [todayIso, route.kind]);
+  }, [route, location, search, setLocation]);
 
   useEffect(() => {
     if (route.kind === "invalid" || !fetchIso) {
@@ -136,7 +144,15 @@ export default function TheDailyFixPage({
     }
 
     let active = true;
-    setLoad(syncLoadFromCache(route.kind, fetchIso));
+    // df-initial already seeded shown day — skip network for that ISO.
+    const cached = syncLoadFromCache(route.kind, fetchIso);
+    if (cached.status === "loaded") {
+      setLoad(cached);
+      return () => {
+        active = false;
+      };
+    }
+    setLoad(cached);
 
     void loadDailyFixDay(fetchIso, { allowCloser }).then((next) => {
       if (!active) return;
@@ -147,6 +163,12 @@ export default function TheDailyFixPage({
       active = false;
     };
   }, [fetchIso, route.kind, allowCloser]);
+
+  // Prefetch −1/−2 only on bare today route (Q1), after today's load is kicked off.
+  useEffect(() => {
+    if (route.kind !== "today") return;
+    prefetchDailyFixWindow(todayIso);
+  }, [todayIso, route.kind]);
 
   const title = "Daily Fix · MetFix";
   const description =
