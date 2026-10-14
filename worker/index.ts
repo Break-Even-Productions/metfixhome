@@ -1,4 +1,5 @@
 import {
+  archiveCacheKeyRequest,
   bsiTodayIso,
   cacheKeyRequest,
   cacheTtlSeconds,
@@ -7,14 +8,20 @@ import {
   mapDailyFixDay,
   normalizeDailyFixPath,
   resolveDailyFixStatus,
+  secondsUntilNextDfxMidnight,
   sitemapCacheKeyRequest,
+  toArchiveEntry,
   yymmddFromIso,
+  type DailyFixArchive,
+  type DailyFixArchiveEntry,
   type UpstreamOutcome,
 } from "../shared/daily-fix";
 import { buildFullHead, rewriteHtml, type HeadMode } from "./head";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
+  isPublicListItem,
+  LIST_PAGE_SIZE,
   SITEMAP_MAX_SUBREQUESTS,
   type Env,
 } from "./upstream";
@@ -47,6 +54,9 @@ export async function handleRequest(
   // /api/* — worker-owned
   if (path === "/api/daily-fix" || path === "/api/daily-fix/") {
     return handleApi(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
+  }
+  if (path === "/api/daily-fix/archive") {
+    return handleArchive(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
   }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
@@ -433,21 +443,11 @@ async function handleSitemap(
     }
     total = page.page.total;
     for (const item of page.page.items) {
-      // Spec rev 2.1: keep null / published / scheduled; exclude draft and other statuses.
-      if (
-        item.status != null &&
-        item.status !== "published" &&
-        item.status !== "scheduled"
-      ) {
-        continue;
-      }
-      if (isIsoDate(item.date) && item.date <= today) {
-        dates.push(item.date);
-      }
+      if (isPublicListItem(item, today)) dates.push(item.date);
     }
-    // Stop when a page has fewer than 100 items (last page).
-    if (page.page.items.length < 100) break;
-    offset += 100;
+    // Stop on a short page (last page).
+    if (page.page.items.length < LIST_PAGE_SIZE) break;
+    offset += LIST_PAGE_SIZE;
     if (total === 0) break;
   }
 
@@ -495,6 +495,75 @@ async function handleSitemap(
     return new Response(null, { status: 200, headers });
   }
   return new Response(body, { status: 200, headers });
+}
+
+/** BSI list pages can take several seconds each; they are fetched in parallel. */
+const ARCHIVE_PAGE_TIMEOUT_MS = 20_000;
+
+async function handleArchive(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  fetchImpl: typeof fetch,
+  cache: Cache,
+  bsiBaseUrl?: string,
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+  const isHead = method === "HEAD";
+  if (method !== "GET" && !isHead) {
+    return jsonResponse({ error: "method_not_allowed" }, 405, { Allow: "GET, HEAD" }, false);
+  }
+
+  const keyReq = archiveCacheKeyRequest();
+  const cached = await cache.match(keyReq);
+  if (cached) {
+    return apiRawBody(await cached.text(), 200, apiOkHeaders(), isHead);
+  }
+
+  const listOpts = { baseUrl: bsiBaseUrl, timeoutMs: ARCHIVE_PAGE_TIMEOUT_MS };
+  const first = await fetchDailyFixListPage(0, env, fetchImpl, listOpts);
+  if (!first.ok) {
+    return jsonResponse({ error: "unavailable" }, 503, { "Retry-After": "300", "Cache-Control": "no-store" }, isHead);
+  }
+  const offsets: number[] = [];
+  const maxPages = SITEMAP_MAX_SUBREQUESTS - 3;
+  for (let offset = LIST_PAGE_SIZE; offset < first.page.total && offsets.length < maxPages; offset += LIST_PAGE_SIZE) {
+    offsets.push(offset);
+  }
+  const rest = await Promise.all(
+    offsets.map((offset) => fetchDailyFixListPage(offset, env, fetchImpl, listOpts)),
+  );
+  if (rest.some((page) => !page.ok)) {
+    return jsonResponse({ error: "unavailable" }, 503, { "Retry-After": "300", "Cache-Control": "no-store" }, isHead);
+  }
+
+  const today = bsiTodayIso();
+  const byDate = new Map<string, DailyFixArchiveEntry>();
+  for (const page of [first, ...rest]) {
+    if (!page.ok) continue;
+    for (const item of page.page.items) {
+      if (!item.day || byDate.has(item.date) || !isPublicListItem(item, today)) continue;
+      byDate.set(item.date, toArchiveEntry(item.day));
+    }
+  }
+  const archive: DailyFixArchive = {
+    days: Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1)),
+  };
+  const body = JSON.stringify(archive);
+
+  ctx.waitUntil(
+    cache.put(
+      keyReq,
+      new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": `s-maxage=${secondsUntilNextDfxMidnight()}`,
+        },
+      }),
+    ),
+  );
+  return apiRawBody(body, 200, apiOkHeaders(), isHead);
 }
 
 function sitemapUnavailable(method: string): Response {

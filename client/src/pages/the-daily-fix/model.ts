@@ -2,13 +2,14 @@ import {
   BSI_TODAY_TZ,
   addCalendarDays,
   bsiTodayIso,
-  decodeHtmlEntitiesOnce,
   isoFromYymmdd,
   isIsoDate,
   isValidCalendarDay,
   normalizeDailyFixPath,
-  stripTags,
+  plainText,
+  readMinutes,
   yymmddFromIso,
+  type DailyFixArchiveEntry,
   type DailyFixTab,
 } from "@shared/daily-fix";
 import {
@@ -34,9 +35,12 @@ export {
   mapDailyFixDay,
   mapHttpsPhotoUrl,
   normalizeDailyFixPath,
+  plainText,
+  readMinutes,
   yymmddFromIso,
 };
 export type {
+  DailyFixArchiveEntry,
   DailyFixBelly,
   DailyFixBody,
   DailyFixBrain,
@@ -361,27 +365,31 @@ export function isCloserScheduledDay(day: DailyFixDay, requestedIso: string) {
   return Boolean(day.requested_date && day.requested_date !== day.date) || day.date !== requestedIso;
 }
 
+export const FIRST_FIX_ISO = "2025-02-10";
+
+const WP_UPLOAD = /^(https:\/\/[^?#]+\/wp-content\/uploads\/[^?#]+?)(?:-scaled|-\d+x\d+)?(\.(?:jpe?g|png|webp|gif))$/i;
+
+/** WordPress's 150×150 crop of an upload, or null for non-WordPress URLs. */
+export function wpThumbnailUrl(url: string): string | null {
+  const match = WP_UPLOAD.exec(url);
+  return match ? `${match[1]}-150x150${match[2]}` : null;
+}
+
+/** Local-midnight Date for a calendar ISO day (what react-day-picker expects). */
+export function dateFromIso(iso: string): Date {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function isoFromDate(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${m}-${d}`;
+}
+
 export function recentDateStrip(anchorIso: string, days = 21) {
   const start = addCalendarDays(anchorIso, -(days - 1));
   return Array.from({ length: days }, (_, index) => addCalendarDays(start, index));
-}
-
-/** Plain-text, whitespace-collapsed version of upstream HTML (for one-line previews). */
-export function plainText(html: string | null | undefined): string {
-  if (!html) return "";
-  return decodeHtmlEntitiesOnce(stripTags(html.replace(/<br\s*\/?>|<\/p>/gi, " ")))
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const READ_WORDS_PER_MINUTE = 230;
-
-/** Estimated minutes to read the HTML, or null when there is no text. */
-export function readMinutes(html: string | null | undefined): number | null {
-  const text = plainText(html);
-  if (!text) return null;
-  const words = text.split(" ").length;
-  return Math.max(1, Math.round(words / READ_WORDS_PER_MINUTE));
 }
 
 export function brainButtonText(brain: DailyFixBrain) {

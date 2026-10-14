@@ -102,6 +102,13 @@ function stubBrowserApis() {
   });
   window.scrollTo = vi.fn() as typeof window.scrollTo;
   Element.prototype.scrollTo = vi.fn() as typeof Element.prototype.scrollTo;
+  vi.stubGlobal("IntersectionObserver", NeverIntersecting);
+}
+
+/** Keeps the lazy archive from fetching, so per-day fetch counts stay exact. */
+class NeverIntersecting {
+  observe() {}
+  disconnect() {}
 }
 
 function openAddressBar(url: string) {
@@ -274,6 +281,30 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/the-daily-fix/250210?tab=body`),
     );
+  });
+
+  it("2a-iii. calendar chip opens a date picker that navigates and keeps the tab", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
+        return new Response(JSON.stringify(dayPayload(date)), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    renderAt("/the-daily-fix?tab=body");
+    const strip = await screen.findByLabelText("Recent days");
+    fireEvent.click(within(strip).getByRole("button", { name: "Choose a date" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a day" });
+    expect(
+      within(dialog).getByRole("button", { name: /March 12th, 2026/ }).hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: /March 5th, 2026/ }));
+    await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix/260305"));
+    expect(window.location.search).toBe("?tab=body");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("2b. 2.0 workout (custom_workout_id set) → body only", async () => {

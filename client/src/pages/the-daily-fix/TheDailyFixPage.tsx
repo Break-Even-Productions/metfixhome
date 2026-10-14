@@ -18,6 +18,8 @@ import {
   consumeLegacyHashInBrowser,
   dailyFixCanonicalUrl,
   dailyFixHref,
+  dateFromIso,
+  FIRST_FIX_ISO,
   normalizeDailyFixPath,
   parseDailyFixRoute,
 } from "./model";
@@ -26,7 +28,7 @@ const JAKARTA_ID = "daily-fix-jakarta-font";
 const JAKARTA_HREF =
   "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap";
 
-const FIX_EPOCH = new Date(2025, 1, 10);
+const FIX_EPOCH = dateFromIso(FIRST_FIX_ISO);
 
 type DailyFixParams = {
   date?: string;
@@ -161,6 +163,13 @@ export default function TheDailyFixPage({
 
   // Calendar / day label follow the response date when loaded (bare closer-day).
   const panelIso = load.status === "loaded" ? load.day.date : requestedIso;
+  const tabPhoto =
+    load.status === "loaded"
+      ? (load.day[route.pillar].photo_url ?? load.day.belly.photo_url ?? load.day.brain.photo_url)
+      : null;
+  // Hold the last photo through day loads so the search panel doesn't flash.
+  const [backdrop, setBackdrop] = useState(tabPhoto);
+  if (tabPhoto && tabPhoto !== backdrop) setBackdrop(tabPhoto);
 
   const masthead = useMemo(
     () =>
@@ -243,7 +252,7 @@ export default function TheDailyFixPage({
 
         <section id="daily-fix-archive" className="df-card df-card-open">
           <div className="df-pad">
-            <ArchiveBrowser onOpen={() => jumpTo("todays-fix")} />
+            <ArchiveBrowser todayIso={todayIso} backdrop={backdrop} onOpen={() => jumpTo("todays-fix")} />
           </div>
         </section>
 

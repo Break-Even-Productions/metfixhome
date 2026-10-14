@@ -1067,6 +1067,89 @@ describe("Worker HTML / API / sitemap", () => {
     expect(headersObject(head)).toEqual(headersObject(get));
     expect(await head.text()).toBe("");
   });
+
+  it("sitemap reads BSI's live `days` list key", async () => {
+    cache.store.clear();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ days: [{ ...DAY, status: "scheduled" }], meta: { total: 1 } }), {
+        status: 200,
+      }),
+    );
+    const res = await call("/sitemap-daily-fix.xml");
+    expect(await res.text()).toContain("<loc>https://metfix.org/the-daily-fix/261004</loc>");
+  });
+
+  describe("archive /api/daily-fix/archive", () => {
+    function listDay(date: string, status = "scheduled") {
+      return {
+        ...DAY,
+        date,
+        status,
+        belly: { ...DAY.belly, title: `Belly ${date}`, excerpt: "<p>Rich &amp; creamy</p>", protein: { id: 2, name: "Chicken" } },
+        body: { ...DAY.body, excerpt: "<p>Run 400 m<br />10 pull-ups</p>" },
+      };
+    }
+
+    it("pages BSI in parallel, drops future/draft days, returns compact newest-first rows, edge-caches", async () => {
+      cache.store.clear();
+      cache.puts.length = 0;
+      const offsets: number[] = [];
+      fetchMock.mockImplementation(async (url: string) => {
+        const offset = Number(new URL(String(url)).searchParams.get("offset"));
+        offsets.push(offset);
+        const days =
+          offset === 0
+            ? [
+                listDay("2026-10-13"), // tomorrow at frozen 12:00 DFX on 10-12
+                listDay("2026-10-12"),
+                listDay("2026-10-11", "draft"),
+                ...Array.from({ length: 97 }, () => listDay("2026-10-10")),
+              ]
+            : [listDay("2026-09-01")];
+        return new Response(JSON.stringify({ days, meta: { total: 101 } }), { status: 200 });
+      });
+
+      const res = await call("/api/daily-fix/archive");
+      expect(res.status).toBe(200);
+      expect(offsets.sort((a, b) => a - b)).toEqual([0, 100]);
+      const body = (await res.json()) as { days: Array<Record<string, unknown>> };
+      expect(body.days.map((d) => d.date)).toEqual(["2026-10-12", "2026-10-10", "2026-09-01"]);
+      expect(body.days[0]).toEqual({
+        date: "2026-10-12",
+        belly: {
+          title: "Belly 2026-10-12",
+          protein: "Chicken",
+          excerpt: "Rich & creamy",
+          photo: "https://cdn.example.com/belly.jpg",
+        },
+        body: { title: "Body work", excerpt: "Run 400 m 10 pull-ups", photo: "https://cdn.example.com/body.jpg" },
+        brain: { title: "Brain read", excerpt: "Article", photo: "https://cdn.example.com/brain.jpg", minutes: 1 },
+      });
+
+      await flush(ctx);
+      const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/archive-v2");
+      expect(put!.res.headers.get("Cache-Control")).toMatch(/^s-maxage=\d+$/);
+      fetchMock.mockClear();
+      expect((await call("/api/daily-fix/archive")).status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+    });
+
+    it("any failed page → 503, nothing cached", async () => {
+      cache.store.clear();
+      cache.puts.length = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        const offset = Number(new URL(String(url)).searchParams.get("offset"));
+        if (offset > 0) return new Response("nope", { status: 500 });
+        return new Response(JSON.stringify({ days: [listDay("2026-10-12")], meta: { total: 150 } }), {
+          status: 200,
+        });
+      });
+      const res = await call("/api/daily-fix/archive");
+      expect(res.status).toBe(503);
+      await flush(ctx);
+      expect(cache.puts.length).toBe(0);
+    });
+  });
 });
 
 describe("W27 truncation (shared cutDescription)", () => {

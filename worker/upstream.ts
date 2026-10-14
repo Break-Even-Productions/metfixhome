@@ -1,4 +1,5 @@
 import {
+  isIsoDate,
   mapDailyFixDay,
   type DailyFixDay,
   type UpstreamOutcome,
@@ -98,6 +99,8 @@ export type ListItem = {
   date: string;
   /** Present when upstream includes it; filter to published when set. */
   status?: string;
+  /** Full mapped day when the row carries a complete day payload. */
+  day: DailyFixDay | null;
 };
 
 export type ListPage = {
@@ -105,15 +108,25 @@ export type ListPage = {
   total: number;
 };
 
+export const LIST_PAGE_SIZE = 100;
+
+/** True for list rows that may be shown publicly: no status, published, or scheduled, and not in the future. */
+export function isPublicListItem(item: ListItem, todayIso: string): boolean {
+  if (item.status != null && item.status !== "published" && item.status !== "scheduled") {
+    return false;
+  }
+  return isIsoDate(item.date) && item.date <= todayIso;
+}
+
 export async function fetchDailyFixListPage(
   offset: number,
   env: Env,
   fetchImpl: typeof fetch = fetch,
-  opts?: { baseUrl?: string },
+  opts?: { baseUrl?: string; timeoutMs?: number },
 ): Promise<{ ok: true; page: ListPage } | { ok: false; reason: "nokey" | "fail" }> {
   if (!env.DAILY_FIX_API_KEY) return { ok: false, reason: "nokey" };
   const base = opts?.baseUrl ?? BSI_DAILY_FIX_URL;
-  const url = `${base}?limit=100&offset=${offset}`;
+  const url = `${base}?limit=${LIST_PAGE_SIZE}&offset=${offset}`;
   try {
     assertBsiHost(url);
   } catch {
@@ -127,20 +140,22 @@ export async function fetchDailyFixListPage(
         "X-API-Key": env.DAILY_FIX_API_KEY,
         "User-Agent": UPSTREAM_USER_AGENT,
       },
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 3000),
     });
     if (!response.ok) return { ok: false, reason: "fail" };
     const json = (await response.json()) as {
+      days?: unknown;
       items?: unknown;
       meta?: { total?: unknown };
     };
     const total = typeof json.meta?.total === "number" ? json.meta.total : 0;
+    const rows = Array.isArray(json.days) ? json.days : json.items;
     const items: ListItem[] = [];
-    if (Array.isArray(json.items)) {
-      for (const item of json.items) {
+    if (Array.isArray(rows)) {
+      for (const item of rows) {
         if (item && typeof item === "object" && typeof (item as { date?: unknown }).date === "string") {
           const row = item as { date: string; status?: unknown };
-          const entry: ListItem = { date: row.date };
+          const entry: ListItem = { date: row.date, day: mapDailyFixDay(item, row.date) };
           if (typeof row.status === "string") entry.status = row.status;
           items.push(entry);
         }

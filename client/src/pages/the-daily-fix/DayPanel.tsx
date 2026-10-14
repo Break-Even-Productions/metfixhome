@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { Link } from "wouter";
+import { DatePickerDialog } from "./DatePickerDialog";
 import { DayContent } from "./DayContent";
 import type { DailyFixLoadState } from "./data";
 import {
@@ -200,6 +201,7 @@ export function DayPanel({
       </div>
 
       <div ref={stripRef} className="df-strip" aria-label="Recent days">
+        <DatePickerDialog todayIso={todayIso} panelIso={panelIso} pillar={keptPillar} />
         {strip.map((iso) => {
           const parts = dayParts(iso);
           const active = iso === panelIso;

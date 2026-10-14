@@ -66,6 +66,10 @@ beforeEach(() => {
   vi.setSystemTime(FROZEN);
   window.scrollTo = vi.fn() as typeof window.scrollTo;
   Element.prototype.scrollTo = vi.fn() as typeof Element.prototype.scrollTo;
+  vi.stubGlobal("IntersectionObserver", class {
+    observe() {}
+    disconnect() {}
+  });
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     writable: true,

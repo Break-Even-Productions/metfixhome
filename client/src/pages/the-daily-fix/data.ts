@@ -1,5 +1,5 @@
 import { mapDailyFixDay, type DailyFixDay } from "@shared/daily-fix/mapper";
-import { addCalendarDays, bsiTodayIso } from "./model";
+import { addCalendarDays, bsiTodayIso, isIsoDate, type DailyFixArchiveEntry } from "./model";
 
 /** Same-origin Daily Fix API (Cloudflare Worker). */
 export const DAILY_FIX_BFF_URL = "/api/daily-fix";
@@ -271,9 +271,41 @@ export function seedFromDfInitial(
   return forConsumer;
 }
 
+export const DAILY_FIX_ARCHIVE_URL = "/api/daily-fix/archive";
+
+function isArchiveEntry(value: unknown): value is DailyFixArchiveEntry {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  const pillar = (key: string) => {
+    const block = entry[key] as Record<string, unknown> | null | undefined;
+    return Boolean(block) && typeof block!.title === "string" && typeof block!.excerpt === "string";
+  };
+  return typeof entry.date === "string" && isIsoDate(entry.date) && pillar("belly") && pillar("body") && pillar("brain");
+}
+
+let archivePromise: Promise<DailyFixArchiveEntry[] | null> | null = null;
+
+/** Newest-first archive index, fetched once per SPA lifetime. Resolves null on failure (not cached). */
+export function loadDailyFixArchive(): Promise<DailyFixArchiveEntry[] | null> {
+  if (archivePromise) return archivePromise;
+  const promise = fetch(DAILY_FIX_ARCHIVE_URL, { headers: { Accept: "application/json" } })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const payload = (await response.json()) as { days?: unknown };
+      return Array.isArray(payload.days) ? payload.days.filter(isArchiveEntry) : null;
+    })
+    .catch(() => null);
+  archivePromise = promise;
+  void promise.then((days) => {
+    if (!days && archivePromise === promise) archivePromise = null;
+  });
+  return promise;
+}
+
 /** Reset module cache between tests so entries do not leak. */
 export function resetDailyFixDayCache(): void {
   dayCache.clear();
   dfInitialDone = false;
   dfInitialPayload = undefined;
+  archivePromise = null;
 }

@@ -4,3 +4,4 @@ export * from "./mapper";
 export * from "./status";
 export * from "./text";
 export * from "./cacheTtl";
+export * from "./archive";
