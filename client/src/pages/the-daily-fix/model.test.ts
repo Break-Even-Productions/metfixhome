@@ -11,12 +11,29 @@ import {
   isCloserScheduledDay,
   mapHttpsPhotoUrl,
   parseDailyFixRoute,
+  plainText,
+  readMinutes,
   yymmddFromIso,
   sortedIngredients,
   visibleMacros,
   youtubeEmbedUrl,
   type DailyFixDay,
 } from "./model";
+
+describe("tab preview text", () => {
+  it("plainText strips tags, decodes entities once, and splits <br>/<p> into spaces", () => {
+    expect(plainText('<p dir="ltr">Run 400 m<br />10 pull-ups</p><p>Rest &amp; repeat</p>')).toBe(
+      "Run 400 m 10 pull-ups Rest & repeat",
+    );
+    expect(plainText(null)).toBe("");
+  });
+
+  it("readMinutes rounds at 230 wpm with a 1-minute floor; null when empty", () => {
+    expect(readMinutes("<p>short</p>")).toBe(1);
+    expect(readMinutes(`<p>${"word ".repeat(690)}</p>`)).toBe(3);
+    expect(readMinutes("<p> </p>")).toBeNull();
+  });
+});
 
 describe("Daily Fix routes", () => {
   it("treats a bare path as today and does not emit a date", () => {

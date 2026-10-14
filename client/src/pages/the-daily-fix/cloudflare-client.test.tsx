@@ -3,7 +3,7 @@
  *
  * Spec C tests: legacy hash→tab, df-initial seeding, API error statuses.
  */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import TheDailyFixPage from "./TheDailyFixPage";
@@ -65,6 +65,7 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(FROZEN);
   window.scrollTo = vi.fn() as typeof window.scrollTo;
+  Element.prototype.scrollTo = vi.fn() as typeof Element.prototype.scrollTo;
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     writable: true,
@@ -314,7 +315,7 @@ describe("C10 rest day tab=body", () => {
     );
     renderAt("/the-daily-fix/261005?tab=body");
     expect(await screen.findByRole("heading", { name: "Rest" })).toBeTruthy();
-    expect(screen.getByText("Rest day")).toBeTruthy();
+    expect(within(screen.getByRole("tabpanel")).getByText("Rest day")).toBeTruthy();
   });
 });
 

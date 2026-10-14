@@ -101,6 +101,7 @@ function stubBrowserApis() {
     })),
   });
   window.scrollTo = vi.fn() as typeof window.scrollTo;
+  Element.prototype.scrollTo = vi.fn() as typeof Element.prototype.scrollTo;
 }
 
 function openAddressBar(url: string) {
@@ -183,7 +184,7 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     );
     renderAt("/the-daily-fix/250210?tab=body");
     expect(await screen.findByRole("heading", { name: "Rest" })).toBeTruthy();
-    expect(screen.getByText("Rest day")).toBeTruthy();
+    expect(within(screen.getByRole("tabpanel")).getByText("Rest day")).toBeTruthy();
     cleanup();
     renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
@@ -192,14 +193,20 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     expect(await screen.findByRole("heading", { name: "Brain 2025-02-10" })).toBeTruthy();
   });
 
-  it("2. both body and excerpt → uses body", async () => {
+  it("2. legacy workout (no custom_workout_id) → prescription excerpt, then body notes, then scale", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
         new Response(
           JSON.stringify(
             dayPayload("2025-02-10", {
-              body: { title: "Push", body: "<p>Real work</p>", excerpt: "<p>Excerpt</p>" },
+              body: {
+                title: "Push",
+                body: "<p>Real work</p>",
+                excerpt: "<p>Excerpt</p>",
+                scale: "<p>Post loads</p>",
+                custom_workout_id: null,
+              },
             }),
           ),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -207,8 +214,86 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
       ),
     );
     renderAt("/the-daily-fix/250210?tab=body");
-    expect(await screen.findByText("Real work")).toBeTruthy();
-    expect(screen.queryByText("Excerpt")).toBeNull();
+    const panel = await screen.findByRole("tabpanel");
+    await within(panel).findByText("Real work");
+    const blocks = Array.from(panel.querySelectorAll(".df-html")).map((el) => el.textContent);
+    expect(blocks).toEqual(["Excerpt", "Real work", "Post loads"]);
+  });
+
+  it("tab boxes show protein, a one-line excerpt, and brain read time", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify(
+            dayPayload("2025-02-10", {
+              belly: { excerpt: "<p>Seared &amp; buttery.</p>", protein: { id: 2, name: "Chicken" } },
+              body: { title: "AMRAP", body: "<p>Notes</p>", excerpt: "<p>Run 400 m<br />10 pull-ups</p>" },
+              brain: { title: "Study", body: `<p>${"word ".repeat(460)}</p>`, excerpt: "<p>A summary</p>" },
+            }),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    renderAt("/the-daily-fix/250210");
+    const belly = await screen.findByRole("tab", { name: /Belly/ });
+    await within(belly).findByText("Recipe · Chicken");
+    expect(within(belly).getByText("Seared & buttery.")).toBeTruthy();
+    const body = screen.getByRole("tab", { name: /Body/ });
+    expect(within(body).getByText("Run 400 m 10 pull-ups")).toBeTruthy();
+    expect(within(body).getByText("Workout")).toBeTruthy();
+    const brain = screen.getByRole("tab", { name: /Brain/ });
+    expect(within(brain).getByText("A summary")).toBeTruthy();
+    expect(within(brain).getByText("Reading · 2 min read")).toBeTruthy();
+  });
+
+  it("each tab has a share pill; Copy link writes the date-pinned tab URL", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify(dayPayload("2025-02-10")), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+
+    renderAt("/the-daily-fix/250210");
+    expect(await screen.findByRole("button", { name: "Share recipe" })).toBeTruthy();
+    cleanup();
+    renderAt("/the-daily-fix/250210?tab=brain");
+    expect(await screen.findByRole("button", { name: "Share reading" })).toBeTruthy();
+    cleanup();
+    renderAt("/the-daily-fix/250210?tab=body");
+    const trigger = await screen.findByRole("button", { name: "Share workout" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/the-daily-fix/250210?tab=body`),
+    );
+  });
+
+  it("2b. 2.0 workout (custom_workout_id set) → body only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify(
+            dayPayload("2025-02-10", {
+              body: { title: "Push", body: "<p>Real work</p>", excerpt: "<p>Excerpt</p>", custom_workout_id: 12 },
+            }),
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    renderAt("/the-daily-fix/250210?tab=body");
+    const panel = await screen.findByRole("tabpanel");
+    expect(await within(panel).findByText("Real work")).toBeTruthy();
+    expect(within(panel).queryByText("Excerpt")).toBeNull();
   });
 
   it("3. fully null workout → whole day Not available; no belly/brain alone", async () => {

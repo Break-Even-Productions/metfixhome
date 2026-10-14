@@ -1,6 +1,7 @@
 import { Play } from "lucide-react";
 import { useCallback, useState } from "react";
 import { MealPhoto } from "./MealPhoto";
+import { ShareMenu } from "./ShareMenu";
 import {
   brainButtonText,
   sortedIngredients,
@@ -56,14 +57,15 @@ function BellyContent({ day }: { day: DailyFixDay }) {
           ))}
         </dl>
       ) : null}
-      {showWatch ? (
-        <div className="df-belly-chrome">
+      <div className="df-chrome">
+        <ShareMenu dateIso={day.date} pillar="belly" title={belly.title} />
+        {showWatch ? (
           <button type="button" className="df-watch" onClick={onPlay}>
             <Play className="df-watch-icon" aria-hidden="true" />
             Watch video
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       <div className="df-recipe">
         <div>
           <h4>Ingredients</h4>
@@ -101,23 +103,44 @@ function BellyContent({ day }: { day: DailyFixDay }) {
 }
 
 function BodyContent({ day }: { day: DailyFixDay }) {
+  const { body } = day;
+  const prescription = body.legacy && body.hasContent ? body.excerpt : null;
   return (
     <div>
-      <h3 className="df-heading">{day.body.title}</h3>
-      <HtmlBlock html={day.body.html} />
+      <h3 className="df-heading">{body.title}</h3>
+      <div className="df-chrome">
+        <ShareMenu dateIso={day.date} pillar="body" title={body.title} />
+      </div>
+      {prescription ? <HtmlBlock html={prescription} /> : null}
+      <HtmlBlock html={body.html} />
+      {body.scale ? <HtmlBlock html={body.scale} /> : null}
     </div>
   );
 }
 
 function BrainContent({ day }: { day: DailyFixDay }) {
-  const href = day.brain.article_url?.trim();
+  const { brain } = day;
+  const href = brain.article_url?.trim();
   return (
     <div>
-      <h3 className="df-heading">{day.brain.title}</h3>
-      <HtmlBlock html={day.brain.html} />
+      <h3 className="df-heading">{brain.title}</h3>
+      {brain.photo_url ? (
+        <img
+          className="df-photo"
+          src={brain.photo_url}
+          alt={brain.title}
+          width={1024}
+          height={576}
+          decoding="async"
+        />
+      ) : null}
+      <div className="df-chrome">
+        <ShareMenu dateIso={day.date} pillar="brain" title={brain.title} />
+      </div>
+      <HtmlBlock html={brain.html} />
       {href ? (
         <a className="df-article" href={href} target="_blank" rel="noreferrer">
-          {brainButtonText(day.brain)}
+          {brainButtonText(brain)}
           <span aria-hidden="true">→</span>
         </a>
       ) : null}

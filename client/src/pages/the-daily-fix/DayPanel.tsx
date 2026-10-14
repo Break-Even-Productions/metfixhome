@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { Link } from "wouter";
 import { DayContent } from "./DayContent";
 import type { DailyFixLoadState } from "./data";
@@ -9,6 +10,8 @@ import {
   formatDayLabel,
   isCloserScheduledDay,
   pillarLabel,
+  plainText,
+  readMinutes,
   recentDateStrip,
   type DailyFixDay,
   type DailyFixRouteKind,
@@ -65,12 +68,14 @@ function PillarTab({
   pillar,
   active,
   title,
+  excerpt,
   meta,
   href,
 }: {
   pillar: Pillar;
   active: boolean;
   title: string;
+  excerpt: string;
   meta: string;
   href: string;
 }) {
@@ -86,26 +91,39 @@ function PillarTab({
     >
       <span className="df-tab-label">{pillarLabel(pillar)}</span>
       <span className="df-tab-title">{title}</span>
+      {excerpt ? <span className="df-tab-excerpt">{excerpt}</span> : null}
       <span className="df-tab-meta">{meta}</span>
     </Link>
   );
 }
 
+const PILLAR_KIND: Record<Pillar, string> = {
+  belly: "Recipe",
+  body: "Workout",
+  brain: "Reading",
+};
+
 function tabCopy(load: DailyFixLoadState, pillar: Pillar) {
-  if (load.status === "loading") {
-    if (pillar === "belly") return { title: "Recipe", meta: "Loading" };
-    if (pillar === "body") return { title: "Workout", meta: "Loading" };
-    return { title: "Reading", meta: "Loading" };
-  }
-  if (load.status !== "loaded") {
-    if (pillar === "belly") return { title: "Recipe", meta: "Unavailable" };
-    if (pillar === "body") return { title: "Workout", meta: "Unavailable" };
-    return { title: "Reading", meta: "Unavailable" };
-  }
+  const kind = PILLAR_KIND[pillar];
+  if (load.status === "loading") return { title: kind, excerpt: "", meta: "Loading" };
+  if (load.status !== "loaded") return { title: kind, excerpt: "", meta: "Unavailable" };
   const { day } = load;
-  if (pillar === "belly") return { title: day.belly.title, meta: "Recipe" };
-  if (pillar === "body") return { title: day.body.title, meta: "Workout" };
-  return { title: day.brain.title, meta: "Reading" };
+  if (pillar === "belly") {
+    return {
+      title: day.belly.title,
+      excerpt: plainText(day.belly.excerpt),
+      meta: [kind, day.belly.protein_name].filter(Boolean).join(" · "),
+    };
+  }
+  if (pillar === "body") {
+    return { title: day.body.title, excerpt: plainText(day.body.excerpt), meta: kind };
+  }
+  const minutes = readMinutes(day.brain.html);
+  return {
+    title: day.brain.title,
+    excerpt: plainText(day.brain.excerpt),
+    meta: [kind, minutes ? `${minutes} min read` : null].filter(Boolean).join(" · "),
+  };
 }
 
 export function DayPanel({
@@ -130,6 +148,27 @@ export function DayPanel({
     routeKind === "today" && day != null && isCloserScheduledDay(day, requestedIso);
   const keptPillar = pillarExplicit ? pillar : null;
   const loading = load.status === "loading";
+
+  const stripRef = useRef<HTMLDivElement>(null);
+  const stripCenteredRef = useRef(false);
+  useLayoutEffect(() => {
+    const stripEl = stripRef.current;
+    if (!stripEl) return;
+    const chip =
+      stripEl.querySelector<HTMLElement>('[aria-current="date"]') ??
+      stripEl.querySelector<HTMLElement>(".df-chip:last-of-type");
+    if (!chip) return;
+    const stripBox = stripEl.getBoundingClientRect();
+    const chipBox = chip.getBoundingClientRect();
+    const left =
+      stripEl.scrollLeft + chipBox.left - stripBox.left - (stripBox.width - chipBox.width) / 2;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    stripEl.scrollTo({
+      left,
+      behavior: stripCenteredRef.current && !reduce ? "smooth" : "auto",
+    });
+    stripCenteredRef.current = true;
+  }, [panelIso]);
 
   return (
     <div>
@@ -160,7 +199,7 @@ export function DayPanel({
         </div>
       </div>
 
-      <div className="df-strip" aria-label="Recent days">
+      <div ref={stripRef} className="df-strip" aria-label="Recent days">
         {strip.map((iso) => {
           const parts = dayParts(iso);
           const active = iso === panelIso;
@@ -187,6 +226,7 @@ export function DayPanel({
               pillar={item}
               active={pillar === item}
               title={copy.title}
+              excerpt={copy.excerpt}
               meta={copy.meta}
               href={dailyFixHref(todayIso, panelIso, item)}
             />

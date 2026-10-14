@@ -194,7 +194,7 @@ export function MealPhoto({
         <div
           ref={macrosRef}
           className="df-meal-macros"
-          data-config='{"brightness":-0.4,"blurAmount":0.3,"cornerRadius":22,"button":false}'
+          data-config='{"brightness":-0.4,"blurAmount":0.3,"cornerRadius":26,"button":false}'
         >
           <div className="df-meal-macros-inner">
             <p className="df-meal-macros-label">Per serving</p>

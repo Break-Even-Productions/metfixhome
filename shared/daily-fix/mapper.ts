@@ -12,6 +12,9 @@ export type RecipeStep = {
 
 export type DailyFixBelly = {
   title: string;
+  excerpt: string | null;
+  /** Primary protein name (e.g. "Chicken"), or null. */
+  protein_name: string | null;
   body?: string | null;
   steps?: string | null;
   fat: number | null;
@@ -32,6 +35,14 @@ export type DailyFixBelly = {
 export type DailyFixBody = {
   title: string;
   html: string;
+  /**
+   * Legacy (non-2.0, no `custom_workout_id`) workouts carry the prescription in `excerpt`
+   * and only coaching notes in `body`, so both must render.
+   */
+  legacy: boolean;
+  excerpt: string | null;
+  /** Scaling / "post to comments" HTML, or null. */
+  scale: string | null;
   photo_url: string | null;
   /**
    * True when upstream `body.body` is a non-empty string before excerpt fallback.
@@ -43,6 +54,7 @@ export type DailyFixBody = {
 export type DailyFixBrain = {
   title: string;
   html: string;
+  excerpt: string | null;
   photo_url: string | null;
   article_url?: string | null;
   button_text?: string | null;
@@ -117,6 +129,10 @@ function asString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function nonEmpty(value: string | null): string | null {
+  return value && value.length > 0 ? value : null;
+}
+
 function mapIngredients(value: unknown): RecipeIngredient[] {
   if (!Array.isArray(value)) return [];
   const items: RecipeIngredient[] = [];
@@ -159,8 +175,11 @@ function mapBelly(value: unknown): DailyFixBelly | null {
     recipeSteps.length > 0 ||
     (body != null && body.length > 0) ||
     (steps != null && steps.length > 0);
+  const protein = isRecord(value.protein) ? asString(value.protein.name)?.trim() : null;
   return {
     title,
+    excerpt: nonEmpty(asString(value.excerpt)),
+    protein_name: protein ? protein : null,
     body,
     steps,
     fat: macros ? asNullableNumber(macros.fat) : null,
@@ -188,9 +207,13 @@ function mapBody(value: unknown): DailyFixBody | null {
   const excerpt = asString(value.excerpt);
   const html = bodyHtml && bodyHtml.length > 0 ? bodyHtml : excerpt;
   if (title == null || html == null) return null;
+  const scale = asString(value.scale);
   return {
     title,
     html,
+    legacy: value.custom_workout_id == null,
+    excerpt: nonEmpty(excerpt),
+    scale: scale && scale.trim().length > 0 ? scale : null,
     photo_url: mapHttpsPhotoUrl(value.photo_url),
     hasContent: bodyHtml != null && bodyHtml.length > 0,
   };
@@ -206,6 +229,7 @@ function mapBrain(value: unknown): DailyFixBrain | null {
   return {
     title,
     html,
+    excerpt: nonEmpty(excerpt),
     photo_url: mapHttpsPhotoUrl(value.photo_url),
     article_url: asString(value.article_url),
     button_text: asString(value.button_text),

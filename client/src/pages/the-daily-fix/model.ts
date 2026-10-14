@@ -2,10 +2,12 @@ import {
   BSI_TODAY_TZ,
   addCalendarDays,
   bsiTodayIso,
+  decodeHtmlEntitiesOnce,
   isoFromYymmdd,
   isIsoDate,
   isValidCalendarDay,
   normalizeDailyFixPath,
+  stripTags,
   yymmddFromIso,
   type DailyFixTab,
 } from "@shared/daily-fix";
@@ -362,6 +364,24 @@ export function isCloserScheduledDay(day: DailyFixDay, requestedIso: string) {
 export function recentDateStrip(anchorIso: string, days = 21) {
   const start = addCalendarDays(anchorIso, -(days - 1));
   return Array.from({ length: days }, (_, index) => addCalendarDays(start, index));
+}
+
+/** Plain-text, whitespace-collapsed version of upstream HTML (for one-line previews). */
+export function plainText(html: string | null | undefined): string {
+  if (!html) return "";
+  return decodeHtmlEntitiesOnce(stripTags(html.replace(/<br\s*\/?>|<\/p>/gi, " ")))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const READ_WORDS_PER_MINUTE = 230;
+
+/** Estimated minutes to read the HTML, or null when there is no text. */
+export function readMinutes(html: string | null | undefined): number | null {
+  const text = plainText(html);
+  if (!text) return null;
+  const words = text.split(" ").length;
+  return Math.max(1, Math.round(words / READ_WORDS_PER_MINUTE));
 }
 
 export function brainButtonText(brain: DailyFixBrain) {

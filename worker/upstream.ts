@@ -6,6 +6,8 @@ import {
 
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_HOST = "brokenscience.org";
+/** brokenscience.org's Cloudflare bot rules challenge requests with no User-Agent. */
+export const UPSTREAM_USER_AGENT = "metfixhome-worker/1.0";
 
 /**
  * Hard cap on sitemap Cloudflare subrequests (CQ2).
@@ -50,6 +52,7 @@ export async function fetchDailyFixDay(
       headers: {
         Accept: "application/json",
         "X-API-Key": env.DAILY_FIX_API_KEY,
+        "User-Agent": UPSTREAM_USER_AGENT,
       },
       signal: AbortSignal.timeout(3000),
     });
@@ -122,6 +125,7 @@ export async function fetchDailyFixListPage(
       headers: {
         Accept: "application/json",
         "X-API-Key": env.DAILY_FIX_API_KEY,
+        "User-Agent": UPSTREAM_USER_AGENT,
       },
       signal: AbortSignal.timeout(3000),
     });
