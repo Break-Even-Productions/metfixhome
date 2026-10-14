@@ -1,9 +1,10 @@
 import { BookOpen, Dumbbell, UtensilsCrossed } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
+import { HeroGlassMark } from "./HeroGlassMark";
 import {
   fetchIsoForRoute,
   loadDailyFixDay,
@@ -97,6 +98,7 @@ export default function TheDailyFixPage({
     return syncLoadFromCache(route.kind, fetchIso);
   });
   const [loadKey, setLoadKey] = useState(routeKey);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   // Sync from cache on route change — no skeleton flash when the day is already loaded.
   if (routeKey !== loadKey) {
@@ -185,7 +187,8 @@ export default function TheDailyFixPage({
     <main className="daily-fix-page">
       <div className="df-stack">
         <section id="daily-fix" className="df-card">
-          <div className="df-hero">
+          <div ref={heroRef} className="df-hero">
+            <HeroGlassMark rootRef={heroRef} />
             <div className="df-hero-copy">
               <h1>
                 <span>Eat.</span>

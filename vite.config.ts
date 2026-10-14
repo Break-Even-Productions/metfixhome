@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vitest/config";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { asteriskGlass } from "./vite/asterisk-glass";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -206,6 +207,7 @@ function vitePluginStorageProxy(): Plugin {
 const isPagesBuild = process.env.GITHUB_PAGES === "true";
 
 const plugins = [
+  asteriskGlass(),
   react(),
   tailwindcss(),
   jsxLocPlugin(),
@@ -216,6 +218,9 @@ export default defineConfig({
   // Relative base keeps assets on the same origin/protocol (fixes mixed-content on GitHub Pages).
   base: isPagesBuild ? "./" : "/",
   plugins,
+  optimizeDeps: {
+    exclude: ["@ybouane/liquidglass"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
