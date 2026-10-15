@@ -4,6 +4,7 @@ import {
   type DailyFixDay,
   type UpstreamOutcome,
 } from "../shared/daily-fix";
+import * as SharedDailyFix from "../shared/daily-fix";
 
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_HOST = "brokenscience.org";
@@ -122,7 +123,7 @@ export async function fetchDailyFixListPage(
   offset: number,
   env: Env,
   fetchImpl: typeof fetch = fetch,
-  opts?: { baseUrl?: string; timeoutMs?: number },
+  opts?: { baseUrl?: string; timeoutMs?: number; mapDays?: boolean },
 ): Promise<{ ok: true; page: ListPage } | { ok: false; reason: "nokey" | "fail" }> {
   if (!env.DAILY_FIX_API_KEY) return { ok: false, reason: "nokey" };
   const base = opts?.baseUrl ?? BSI_DAILY_FIX_URL;
@@ -150,12 +151,17 @@ export async function fetchDailyFixListPage(
     };
     const total = typeof json.meta?.total === "number" ? json.meta.total : 0;
     const rows = Array.isArray(json.days) ? json.days : json.items;
+    const mapDays = opts?.mapDays !== false;
     const items: ListItem[] = [];
     if (Array.isArray(rows)) {
       for (const item of rows) {
         if (item && typeof item === "object" && typeof (item as { date?: unknown }).date === "string") {
           const row = item as { date: string; status?: unknown };
-          const entry: ListItem = { date: row.date, day: mapDailyFixDay(item, row.date) };
+          const entry: ListItem = {
+            date: row.date,
+            // Namespace call so tests can spy SharedDailyFix.mapDailyFixDay (S4 / T10).
+            day: mapDays ? SharedDailyFix.mapDailyFixDay(item, row.date) : null,
+          };
           if (typeof row.status === "string") entry.status = row.status;
           items.push(entry);
         }

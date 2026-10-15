@@ -9,6 +9,7 @@ import {
   normalizeDailyFixPath,
   outOfRangeLocation,
   resolveDailyFixStatus,
+  nextDfxMidnight,
   secondsUntilNextDfxMidnight,
   sitemapCacheKeyRequest,
   toArchiveEntry,
@@ -25,9 +26,29 @@ import {
   LIST_PAGE_SIZE,
   SITEMAP_MAX_SUBREQUESTS,
   type Env,
+  type ListPage,
 } from "./upstream";
 
 export type { Env };
+
+/** Sitemap-only per-page upstream timeout (other routes keep 3000). */
+const SITEMAP_PAGE_TIMEOUT_MS = 8000;
+/** Overall sitemap build budget; under waitUntil's 30 s with margin. */
+const SITEMAP_BUILD_BUDGET_MS = 20_000;
+/** Cache API retention for the stored sitemap entry. */
+const SITEMAP_STORE_S_MAXAGE = 604800;
+
+type SitemapBuildResult =
+  | { ok: true; body: string; freshUntil: string }
+  | { ok: false };
+
+/** Per-isolate single-flight for sitemap builds (S6). */
+let sitemapBuild: Promise<SitemapBuildResult> | null = null;
+
+/** Test-only: clear single-flight state between cases. */
+export function resetSitemapBuildForTests(): void {
+  sitemapBuild = null;
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -411,6 +432,148 @@ function jsonResponse(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+function sitemapClientHeaders(): HeadersInit {
+  return {
+    "Content-Type": "application/xml",
+    "Cache-Control": "public, max-age=3600",
+  };
+}
+
+function sitemapClientResponse(body: string, method: string): Response {
+  const headers = sitemapClientHeaders();
+  if (method === "HEAD") {
+    return new Response(null, { status: 200, headers });
+  }
+  return new Response(body, { status: 200, headers });
+}
+
+function isSitemapCacheFresh(cached: Response, now = new Date()): boolean {
+  const until = cached.headers.get("X-Sitemap-Fresh-Until");
+  if (!until) return false;
+  const ts = Date.parse(until);
+  if (Number.isNaN(ts)) return false;
+  return now.getTime() < ts;
+}
+
+function buildSitemapXml(dates: string[]): string {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const d of dates) {
+    if (seen.has(d)) continue;
+    seen.add(d);
+    unique.push(d);
+  }
+
+  const bare = "https://metfix.org/the-daily-fix";
+  const dated = unique.map((iso) => {
+    const ymd = yymmddFromIso(iso)!;
+    return { loc: `https://metfix.org/the-daily-fix/${ymd}`, lastmod: iso };
+  });
+
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
+    `  <url><loc>${bare}</loc></url>`,
+    ...dated.map((entry) => `  <url><loc>${entry.loc}</loc><lastmod>${entry.lastmod}</lastmod></url>`),
+    `</urlset>`,
+    ``,
+  ].join("\n");
+}
+
+async function runSitemapBuild(
+  env: Env,
+  fetchImpl: typeof fetch,
+  bsiBaseUrl?: string,
+): Promise<SitemapBuildResult> {
+  const deadline = Date.now() + SITEMAP_BUILD_BUDGET_MS;
+  const listOptsBase = {
+    baseUrl: bsiBaseUrl,
+    mapDays: false as const,
+  };
+
+  // Cap: match=1 + put reserved → at most 38 upstream pages.
+  const maxPages = SITEMAP_MAX_SUBREQUESTS - 2;
+
+  const first = await fetchDailyFixListPage(0, env, fetchImpl, {
+    ...listOptsBase,
+    timeoutMs: SITEMAP_PAGE_TIMEOUT_MS,
+  });
+  if (!first.ok) return { ok: false };
+
+  if (Date.now() >= deadline) return { ok: false };
+
+  const offsets: number[] = [];
+  for (
+    let offset = LIST_PAGE_SIZE;
+    offset < first.page.total && offsets.length < maxPages - 1;
+    offset += LIST_PAGE_SIZE
+  ) {
+    offsets.push(offset);
+  }
+  const covered = LIST_PAGE_SIZE + offsets.length * LIST_PAGE_SIZE;
+  const hitCap = first.page.total > covered && offsets.length >= maxPages - 1;
+
+  // Outer budget abort: remaining wall time capped per page (S3).
+  const remainingMs = Math.max(1, deadline - Date.now());
+  const parallelTimeoutMs = Math.min(SITEMAP_PAGE_TIMEOUT_MS, remainingMs);
+  const rest =
+    offsets.length === 0
+      ? []
+      : await Promise.all(
+          offsets.map((offset) =>
+            fetchDailyFixListPage(offset, env, fetchImpl, {
+              ...listOptsBase,
+              timeoutMs: parallelTimeoutMs,
+            }),
+          ),
+        );
+  if (rest.some((page) => !page.ok)) return { ok: false };
+  if (hitCap) return { ok: false };
+
+  const today = bsiTodayIso();
+  const dates: string[] = [];
+  const pages: ListPage[] = [first.page, ...rest.map((p) => (p as { ok: true; page: ListPage }).page)];
+  for (const page of pages) {
+    for (const item of page.items) {
+      if (isPublicListItem(item, today)) dates.push(item.date);
+    }
+  }
+
+  const freshUntil = nextDfxMidnight().toISOString();
+  return { ok: true, body: buildSitemapXml(dates), freshUntil };
+}
+
+function ensureSitemapBuild(
+  env: Env,
+  fetchImpl: typeof fetch,
+  bsiBaseUrl?: string,
+): Promise<SitemapBuildResult> {
+  if (!sitemapBuild) {
+    sitemapBuild = runSitemapBuild(env, fetchImpl, bsiBaseUrl).finally(() => {
+      sitemapBuild = null;
+    });
+  }
+  return sitemapBuild;
+}
+
+function putSitemapCache(
+  cache: Cache,
+  body: string,
+  freshUntil: string,
+): Promise<void> {
+  return cache.put(
+    sitemapCacheKeyRequest(),
+    new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/xml",
+        "Cache-Control": `s-maxage=${SITEMAP_STORE_S_MAXAGE}`,
+        "X-Sitemap-Fresh-Until": freshUntil,
+      },
+    }),
+  );
+}
+
 async function handleSitemap(
   request: Request,
   env: Env,
@@ -425,91 +588,29 @@ async function handleSitemap(
   }
 
   const keyReq = sitemapCacheKeyRequest();
-  // Cap counts Cache API: match = 1, reserve 1 for put, stop upstream at MAX-1.
-  let subrequests = 1;
   const cached = await cache.match(keyReq);
   if (cached) {
-    if (method === "HEAD") {
-      return new Response(null, { status: cached.status, headers: cached.headers });
+    const body = await cached.text();
+    if (!isSitemapCacheFresh(cached)) {
+      ctx.waitUntil(
+        ensureSitemapBuild(env, fetchImpl, bsiBaseUrl).then((result) => {
+          if (result.ok) return putSitemapCache(cache, result.body, result.freshUntil);
+        }),
+      );
     }
-    return cached;
+    return sitemapClientResponse(body, method);
   }
 
-  const today = bsiTodayIso();
-  const dates: string[] = [];
-  let offset = 0;
-  let total = Infinity;
-  let hitCap = false;
-
-  while (offset < total) {
-    // Stop at MAX-1 so the final slot stays reserved for cache.put.
-    if (subrequests >= SITEMAP_MAX_SUBREQUESTS - 1) {
-      hitCap = true;
-      break;
-    }
-    subrequests += 1;
-    const page = await fetchDailyFixListPage(offset, env, fetchImpl, { baseUrl: bsiBaseUrl });
-    if (!page.ok) {
-      return sitemapUnavailable(method);
-    }
-    total = page.page.total;
-    for (const item of page.page.items) {
-      if (isPublicListItem(item, today)) dates.push(item.date);
-    }
-    // Stop on a short page (last page).
-    if (page.page.items.length < LIST_PAGE_SIZE) break;
-    offset += LIST_PAGE_SIZE;
-    if (total === 0) break;
-  }
-
-  if (hitCap) {
+  const result = await ensureSitemapBuild(env, fetchImpl, bsiBaseUrl);
+  if (!result.ok) {
     return sitemapUnavailable(method);
   }
-
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const d of dates) {
-    if (seen.has(d)) continue;
-    seen.add(d);
-    unique.push(d);
-  }
-
-  const urls = [
-    "https://metfix.org/the-daily-fix",
-    ...unique.map((iso) => {
-      const ymd = yymmddFromIso(iso)!;
-      return { loc: `https://metfix.org/the-daily-fix/${ymd}`, lastmod: iso };
-    }),
-  ];
-
-  const body = [
-    `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
-    `  <url><loc>${urls[0]}</loc></url>`,
-    ...urls.slice(1).map((u) => {
-      const entry = u as { loc: string; lastmod: string };
-      return `  <url><loc>${entry.loc}</loc><lastmod>${entry.lastmod}</lastmod></url>`;
-    }),
-    `</urlset>`,
-    ``,
-  ].join("\n");
-
-  const headers = {
-    "Content-Type": "application/xml",
-    "Cache-Control": "s-maxage=86400",
-  };
-
-  const store = new Response(body, { status: 200, headers });
-  ctx.waitUntil(cache.put(keyReq, store.clone()));
-
-  if (method === "HEAD") {
-    return new Response(null, { status: 200, headers });
-  }
-  return new Response(body, { status: 200, headers });
+  ctx.waitUntil(putSitemapCache(cache, result.body, result.freshUntil));
+  return sitemapClientResponse(result.body, method);
 }
 
 /** BSI list pages can take several seconds each; they are fetched in parallel. */
-const ARCHIVE_PAGE_TIMEOUT_MS = 20_000;
+export const ARCHIVE_PAGE_TIMEOUT_MS = 20_000;
 
 async function handleArchive(
   request: Request,

@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
-import { handleRequest, type Env } from "./index";
-import { assertBsiHost } from "./upstream";
-import { cacheTtlSeconds, cutDescription } from "../shared/daily-fix";
+import { handleRequest, resetSitemapBuildForTests, type Env } from "./index";
+import { assertBsiHost, fetchDailyFixListPage } from "./upstream";
+import { cacheTtlSeconds, cutDescription, nextDfxMidnight } from "../shared/daily-fix";
+import * as dailyFixShared from "../shared/daily-fix";
 
 installHtmlRewriterPolyfill();
 
@@ -78,10 +79,15 @@ function makeCache(): Cache & { store: CacheStore; puts: Array<{ key: string; re
     async match(request: RequestInfo) {
       const key = typeof request === "string" ? request : request.url;
       const hit = store.get(key);
-      return hit ? hit.clone() : undefined;
+      if (!hit) return undefined;
+      // Fresh Response each match so callers can't consume the stored body.
+      const body = await hit.clone().text();
+      return new Response(body, { status: hit.status, headers: new Headers(hit.headers) });
     },
     async put(request: RequestInfo, response: Response) {
       const key = typeof request === "string" ? request : (request as Request).url;
+      // Keep put synchronous through store.set (no await) so waitUntil can't
+      // race past cache.store.clear() in the same test.
       puts.push({ key, res: response.clone() });
       store.set(key, response.clone());
     },
@@ -192,6 +198,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetSitemapBuildForTests();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -1047,7 +1054,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(cache.puts.length).toBe(0);
   });
 
-  it("W48 sitemap cache s-maxage=86400", async () => {
+  it("W48 sitemap cache s-maxage=604800 + fresh-until (S5)", async () => {
     cache.store.clear();
     cache.puts.length = 0;
     fetchMock.mockResolvedValue(
@@ -1055,11 +1062,14 @@ describe("Worker HTML / API / sitemap", () => {
         status: 200,
       }),
     );
-    await call("/sitemap-daily-fix.xml");
+    const client = await call("/sitemap-daily-fix.xml");
+    expect(client.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    expect(client.headers.get("X-Sitemap-Fresh-Until")).toBeNull();
     await flush(ctx);
     const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap");
     expect(put).toBeTruthy();
-    expect(put!.res.headers.get("Cache-Control")).toBe("s-maxage=86400");
+    expect(put!.res.headers.get("Cache-Control")).toBe("s-maxage=604800");
+    expect(put!.res.headers.get("X-Sitemap-Fresh-Until")).toBe(nextDfxMidnight().toISOString());
     fetchMock.mockClear();
     await call("/sitemap-daily-fix.xml");
     expect(fetchMock).toHaveBeenCalledTimes(0);
@@ -1074,6 +1084,7 @@ describe("Worker HTML / API / sitemap", () => {
     );
     const get = await call("/sitemap-daily-fix.xml");
     cache.store.clear();
+    resetSitemapBuildForTests();
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
         status: 200,
@@ -1094,6 +1105,459 @@ describe("Worker HTML / API / sitemap", () => {
     );
     const res = await call("/sitemap-daily-fix.xml");
     expect(await res.text()).toContain("<loc>https://metfix.org/the-daily-fix/261004</loc>");
+  });
+
+  describe("sitemap timeout + stale-ok (acceptance T1–T12)", () => {
+    function listPayload(total: number, offset: number) {
+      const remaining = Math.max(0, total - offset);
+      const count = Math.min(100, remaining);
+      // Unique dates going backward from DFX today so none are filtered as future.
+      const items = Array.from({ length: count }, (_, i) => {
+        const n = offset + i;
+        const d = new Date(Date.UTC(2026, 9, 12));
+        d.setUTCDate(d.getUTCDate() - n);
+        return { date: d.toISOString().slice(0, 10), status: "published" };
+      });
+      return { items, meta: { total } };
+    }
+
+    async function seedSitemapCache(body: string, freshUntil: string) {
+      await cache.put(
+        new Request("https://metfix.org/__dfcache/sitemap"),
+        new Response(body, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/xml",
+            "Cache-Control": "s-maxage=604800",
+            "X-Sitemap-Fresh-Until": freshUntil,
+          },
+        }),
+      );
+      cache.puts.length = 0;
+    }
+
+    it(
+      "T1 slow upstream succeeds with 8s page timeout and 7 calls for total 613",
+      async () => {
+        cache.store.clear();
+        cache.puts.length = 0;
+        let calls = 0;
+        fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+          calls++;
+          const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+          await new Promise<void>((resolve, reject) => {
+            const t = setTimeout(() => resolve(), 4300);
+            init?.signal?.addEventListener("abort", () => {
+              clearTimeout(t);
+              const err = new Error("TimeoutError");
+              err.name = "TimeoutError";
+              reject(err);
+            });
+          });
+          return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
+        });
+        const pending = call("/sitemap-daily-fix.xml");
+        await vi.advanceTimersByTimeAsync(9000);
+        const res = await pending;
+        expect(res.status).toBe(200);
+        const xml = await res.text();
+        expect(xml.match(/<lastmod>/g)?.length).toBe(613);
+        expect(xml).toContain("https://metfix.org/the-daily-fix</loc>");
+        expect(calls).toBe(7);
+
+        // Sitemap passes timeoutMs: 8000 (assert via AbortSignal.timeout spy)
+        const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+        cache.store.clear();
+        cache.puts.length = 0;
+        resetSitemapBuildForTests();
+        fetchMock.mockImplementation(async (url: string) => {
+          const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+          return new Response(JSON.stringify(listPayload(1, offset)), { status: 200 });
+        });
+        await call("/sitemap-daily-fix.xml");
+        expect(timeoutSpy.mock.calls.some((c) => c[0] === 8000)).toBe(true);
+        timeoutSpy.mockRestore();
+
+        // 7.9s page succeeds under 8000ms; 8.1s equivalent fails (hang until abort past 8s)
+        const listEnv = makeEnv(assetsFetch);
+        fetchMock.mockReset();
+        fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+          await new Promise<void>((resolve, reject) => {
+            const t = setTimeout(() => resolve(), 7900);
+            init?.signal?.addEventListener("abort", () => {
+              clearTimeout(t);
+              const err = new Error("TimeoutError");
+              err.name = "TimeoutError";
+              reject(err);
+            });
+          });
+          return new Response(JSON.stringify(listPayload(1, 0)), { status: 200 });
+        });
+        const okPending = fetchDailyFixListPage(0, listEnv, fetchMock as unknown as typeof fetch, {
+          timeoutMs: 8000,
+        });
+        await vi.advanceTimersByTimeAsync(8000);
+        expect(await okPending).toMatchObject({ ok: true });
+
+        fetchMock.mockReset();
+        fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+          await new Promise<void>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              const err = new Error("TimeoutError");
+              err.name = "TimeoutError";
+              reject(err);
+            });
+          });
+          return new Response("{}");
+        });
+        const failPending = fetchDailyFixListPage(0, listEnv, fetchMock as unknown as typeof fetch, {
+          timeoutMs: 8000,
+        });
+        await vi.advanceTimersByTimeAsync(8001);
+        expect(await failPending).toEqual({ ok: false, reason: "fail" });
+      },
+      30_000,
+    );
+
+    it(
+      "T2 other routes still time out at 3s; list default 3000; archive 20000",
+      async () => {
+        const { ARCHIVE_PAGE_TIMEOUT_MS } = await import("./index");
+        expect(ARCHIVE_PAGE_TIMEOUT_MS).toBe(20_000);
+
+        const hangUntilAbort = async (_url: string, init?: RequestInit) => {
+          await new Promise<void>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              const err = new Error("TimeoutError");
+              err.name = "TimeoutError";
+              reject(err);
+            });
+          });
+          return new Response("{}");
+        };
+
+        fetchMock.mockImplementation(hangUntilAbort);
+        const apiPending = call("/api/daily-fix?date=2026-10-04");
+        await vi.advanceTimersByTimeAsync(3100);
+        const api = await apiPending;
+        expect(api.status).toBe(503);
+        expect(await api.json()).toEqual({ error: "unavailable" });
+
+        fetchMock.mockReset();
+        fetchMock.mockImplementation(hangUntilAbort);
+        const htmlPending = call("/the-daily-fix/261004", { headers: { Accept: "text/html" } });
+        await vi.advanceTimersByTimeAsync(3100);
+        const html = await htmlPending;
+        expect(html.status).toBe(503);
+
+        fetchMock.mockReset();
+        fetchMock.mockImplementation(hangUntilAbort);
+        const listEnv = makeEnv(assetsFetch);
+        const listPending = fetchDailyFixListPage(0, listEnv, fetchMock as unknown as typeof fetch);
+        await vi.advanceTimersByTimeAsync(3100);
+        expect(await listPending).toEqual({ ok: false, reason: "fail" });
+      },
+      20_000,
+    );
+
+    it("T3 cache hit makes no upstream call", async () => {
+      const body = `<?xml version="1.0"?>\n<urlset><url><loc>https://metfix.org/the-daily-fix</loc></url></urlset>\n`;
+      await seedSitemapCache(body, nextDfxMidnight().toISOString());
+      fetchMock.mockClear();
+      const res = await call("/sitemap-daily-fix.xml");
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(body);
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+      expect(cache.puts.length).toBe(0);
+      expect(ctx.pending.length).toBe(0);
+    });
+
+    it("T4 stale served while rebuilding", async () => {
+      const staleBody = `<?xml version="1.0"?>\n<urlset><url><loc>stale</loc></url></urlset>\n`;
+      await seedSitemapCache(staleBody, new Date("2020-01-01T00:00:00.000Z").toISOString());
+      let calls = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        calls++;
+        const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+        return new Response(JSON.stringify(listPayload(1, offset)), { status: 200 });
+      });
+      const res = await call("/sitemap-daily-fix.xml");
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(staleBody);
+      expect(ctx.pending.length).toBe(1);
+      await flush(ctx);
+      expect(calls).toBe(1);
+      const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap");
+      expect(put).toBeTruthy();
+      const newBody = await put!.res.clone().text();
+      expect(newBody).not.toBe(staleBody);
+      expect(newBody).toContain("the-daily-fix");
+      expect(put!.res.headers.get("X-Sitemap-Fresh-Until")).toBe(nextDfxMidnight().toISOString());
+    });
+
+    it(
+      "T5 stale kept on failure (500 and timeout)",
+      async () => {
+        for (const mode of ["500", "timeout"] as const) {
+          const staleBody = `<?xml version="1.0"?>\n<urlset><url><loc>stale-${mode}</loc></url></urlset>\n`;
+          await seedSitemapCache(staleBody, new Date("2020-01-01T00:00:00.000Z").toISOString());
+          resetSitemapBuildForTests();
+          if (mode === "500") {
+            fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
+          } else {
+            fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+              await new Promise<void>((_resolve, reject) => {
+                init?.signal?.addEventListener("abort", () => {
+                  const err = new Error("TimeoutError");
+                  err.name = "TimeoutError";
+                  reject(err);
+                });
+              });
+              return new Response("{}");
+            });
+          }
+          const res = await call("/sitemap-daily-fix.xml");
+          expect(await res.text()).toBe(staleBody);
+          expect(ctx.pending.length).toBe(1);
+          if (mode === "timeout") {
+            await vi.advanceTimersByTimeAsync(9000);
+          }
+          await flush(ctx);
+          expect(cache.puts.length).toBe(0);
+          const kept = await cache.match(new Request("https://metfix.org/__dfcache/sitemap"));
+          expect(kept).toBeTruthy();
+          expect(await kept!.text()).toBe(staleBody);
+
+          // next request again serves stale and retries
+          resetSitemapBuildForTests();
+          fetchMock.mockReset();
+          if (mode === "500") {
+            fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
+          } else {
+            fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+              await new Promise<void>((_resolve, reject) => {
+                init?.signal?.addEventListener("abort", () => {
+                  const err = new Error("TimeoutError");
+                  err.name = "TimeoutError";
+                  reject(err);
+                });
+              });
+              return new Response("{}");
+            });
+          }
+          const again = await call("/sitemap-daily-fix.xml");
+          expect(await again.text()).toBe(staleBody);
+          expect(ctx.pending.length).toBe(1);
+          if (mode === "timeout") {
+            await vi.advanceTimersByTimeAsync(9000);
+          }
+          await flush(ctx);
+        }
+      },
+      20_000,
+    );
+
+    it(
+      "T6 partial never cached (page fail, cap, budget)",
+      async () => {
+        // page 3 of 7 fails (offset 200)
+        cache.store.clear();
+        cache.puts.length = 0;
+        resetSitemapBuildForTests();
+        fetchMock.mockImplementation(async (url: string) => {
+          const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+          if (offset === 200) return new Response("nope", { status: 500 });
+          return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
+        });
+        const fail = await call("/sitemap-daily-fix.xml");
+        expect(fail.status).toBe(503);
+        expect(fail.headers.get("Retry-After")).toBe("300");
+        expect(fail.headers.get("Cache-Control")).toBe("no-store");
+        expect(cache.puts.length).toBe(0);
+
+        // cap
+        cache.store.clear();
+        cache.puts.length = 0;
+        resetSitemapBuildForTests();
+        fetchMock.mockImplementation(async (url: string) => {
+          const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+          return new Response(JSON.stringify(listPayload(10000, offset)), { status: 200 });
+        });
+        const cap = await call("/sitemap-daily-fix.xml");
+        expect(cap.status).toBe(503);
+        expect(cache.puts.length).toBe(0);
+
+        // budget: after page 0, clock is past the 20s deadline before parallel
+        cache.store.clear();
+        cache.puts.length = 0;
+        resetSitemapBuildForTests();
+        const startedAt = Date.now();
+        let restCalls = 0;
+        fetchMock.mockImplementation(async (url: string) => {
+          const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+          if (offset === 0) {
+            vi.setSystemTime(startedAt + 20_001);
+            return new Response(JSON.stringify(listPayload(200, 0)), { status: 200 });
+          }
+          restCalls++;
+          return new Response(JSON.stringify(listPayload(200, offset)), { status: 200 });
+        });
+        const budget = await call("/sitemap-daily-fix.xml");
+        expect(budget.status).toBe(503);
+        expect(cache.puts.length).toBe(0);
+        expect(restCalls).toBe(0);
+      },
+      20_000,
+    );
+
+    it("T7 503 never cached — next request hits upstream again", async () => {
+      cache.store.clear();
+      cache.puts.length = 0;
+      fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
+      expect((await call("/sitemap-daily-fix.xml")).status).toBe(503);
+      expect(cache.puts.length).toBe(0);
+      fetchMock.mockClear();
+      resetSitemapBuildForTests();
+      fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
+      expect((await call("/sitemap-daily-fix.xml")).status).toBe(503);
+      expect(fetchMock).toHaveBeenCalled();
+    });
+
+    it("T8 single-flight for concurrent stale hits and cold misses", async () => {
+      // concurrent stale hits
+      const staleBody = `<?xml version="1.0"?>\n<urlset><url><loc>stale</loc></url></urlset>\n`;
+      await seedSitemapCache(staleBody, new Date("2020-01-01T00:00:00.000Z").toISOString());
+      let calls = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((r) => {
+        release = r;
+      });
+      fetchMock.mockImplementation(async (url: string) => {
+        calls++;
+        await gate;
+        const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+        return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
+      });
+      const a = call("/sitemap-daily-fix.xml");
+      const b = call("/sitemap-daily-fix.xml");
+      expect(await (await a).text()).toBe(staleBody);
+      expect(await (await b).text()).toBe(staleBody);
+      expect(ctx.pending.length).toBe(2);
+      release();
+      await flush(ctx);
+      expect(calls).toBe(7);
+
+      // concurrent cold misses
+      cache.store.clear();
+      cache.puts.length = 0;
+      resetSitemapBuildForTests();
+      calls = 0;
+      let release2!: () => void;
+      const gate2 = new Promise<void>((r) => {
+        release2 = r;
+      });
+      fetchMock.mockImplementation(async (url: string) => {
+        calls++;
+        await gate2;
+        const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+        return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
+      });
+      const cPending = call("/sitemap-daily-fix.xml");
+      const dPending = call("/sitemap-daily-fix.xml");
+      // both blocked on page 0 gate; release and finish
+      release2();
+      const [c, d] = await Promise.all([cPending, dPending]);
+      expect(c.status).toBe(200);
+      expect(d.status).toBe(200);
+      expect(await c.text()).toBe(await d.text());
+      expect(calls).toBe(7);
+    });
+
+    it("T9 parallel shape: page 0 first, then 100-600 started before any resolves", async () => {
+      cache.store.clear();
+      const started: number[] = [];
+      const order: string[] = [];
+      const resolvers = new Map<number, () => void>();
+      fetchMock.mockImplementation(async (url: string) => {
+        const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+        started.push(offset);
+        order.push(`start:${offset}`);
+        await new Promise<void>((resolve) => {
+          resolvers.set(offset, resolve);
+        });
+        order.push(`end:${offset}`);
+        return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
+      });
+      const pending = call("/sitemap-daily-fix.xml");
+      // wait for page 0 to start
+      await vi.waitFor(() => expect(started).toContain(0));
+      expect(started).toEqual([0]);
+      resolvers.get(0)!();
+      await vi.waitFor(() => expect(started.length).toBe(7));
+      expect(started.slice(1).sort((a, b) => a - b)).toEqual([100, 200, 300, 400, 500, 600]);
+      // none of the parallel pages have ended yet
+      expect(order.filter((x) => x.startsWith("end:")).length).toBe(1);
+      for (const off of [100, 200, 300, 400, 500, 600]) resolvers.get(off)!();
+      expect((await pending).status).toBe(200);
+    });
+
+    it("T10 no row mapping for sitemap; archive still maps", async () => {
+      const spy = vi.spyOn(dailyFixShared, "mapDailyFixDay");
+      cache.store.clear();
+      fetchMock.mockImplementation(async (url: string) => {
+        const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+        const base = listPayload(1, offset);
+        return new Response(
+          JSON.stringify({
+            days: base.items.map((item) => ({ ...DAY, ...item })),
+            meta: base.meta,
+          }),
+          { status: 200 },
+        );
+      });
+      spy.mockClear();
+      await call("/sitemap-daily-fix.xml");
+      expect(spy).toHaveBeenCalledTimes(0);
+
+      cache.store.clear();
+      resetSitemapBuildForTests();
+      spy.mockClear();
+      await call("/api/daily-fix/archive");
+      expect(spy.mock.calls.length).toBeGreaterThan(0);
+      spy.mockRestore();
+    });
+
+    it("T11 client vs store headers; fresh-until at 23:59:30 Etc/GMT-2", async () => {
+      vi.setSystemTime(new Date("2026-10-12T21:59:30.000Z")); // 23:59:30 Etc/GMT-2
+      cache.store.clear();
+      cache.puts.length = 0;
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
+          status: 200,
+        }),
+      );
+      const get = await call("/sitemap-daily-fix.xml");
+      expect(get.headers.get("Content-Type")).toBe("application/xml");
+      expect(get.headers.get("Cache-Control")).toBe("public, max-age=3600");
+      expect(get.headers.get("X-Sitemap-Fresh-Until")).toBeNull();
+      await flush(ctx);
+      const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap")!;
+      expect(put.res.headers.get("Cache-Control")).toBe("s-maxage=604800");
+      const freshUntil = put.res.headers.get("X-Sitemap-Fresh-Until")!;
+      expect(freshUntil).toBe(nextDfxMidnight(new Date("2026-10-12T21:59:30.000Z")).toISOString());
+      expect(Date.parse(freshUntil) - Date.parse("2026-10-12T21:59:30.000Z")).toBe(30_000);
+
+      cache.store.clear();
+      resetSitemapBuildForTests();
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
+          status: 200,
+        }),
+      );
+      const head = await call("/sitemap-daily-fix.xml", { method: "HEAD" });
+      expect(headersObject(head)).toEqual(headersObject(get));
+      expect(await head.text()).toBe("");
+    });
   });
 
   describe("archive /api/daily-fix/archive", () => {
