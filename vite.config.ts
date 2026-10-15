@@ -204,19 +204,18 @@ function vitePluginStorageProxy(): Plugin {
   };
 }
 
-const isPagesBuild = process.env.GITHUB_PAGES === "true";
-
 const plugins = [
   asteriskGlass(),
   react(),
   tailwindcss(),
   jsxLocPlugin(),
-  ...(isPagesBuild ? [] : [vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy()]),
+  vitePluginManusRuntime(),
+  vitePluginManusDebugCollector(),
+  vitePluginStorageProxy(),
 ];
 
 export default defineConfig({
-  // Relative base keeps assets on the same origin/protocol (fixes mixed-content on GitHub Pages).
-  base: isPagesBuild ? "./" : "/",
+  base: "/",
   plugins,
   optimizeDeps: {
     exclude: ["@ybouane/liquidglass"],

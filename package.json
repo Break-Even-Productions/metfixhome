@@ -7,7 +7,6 @@
     "dev": "vite --host",
     "dev:worker": "vite build && wrangler dev",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "build:pages": "vite build",
     "build:cf": "vite build",
     "assert:liquidglass-chunk": "node scripts/assert-liquidglass-chunk.mjs",
     "start": "NODE_ENV=production node dist/index.js",

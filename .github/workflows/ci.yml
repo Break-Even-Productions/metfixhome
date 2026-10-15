@@ -34,10 +34,17 @@ jobs:
       - name: Build static site
         run: npm run build:cf
         env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
           VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
+
+      - name: No Pages leftovers in dist
+        run: |
+          test ! -e dist/public/CNAME
+          python3 -c 'from pathlib import Path; assert not (Path("dist/public") / ("4"+"04.html")).exists()'
+
+      - name: Social preview asset present
+        run: test -s dist/public/social-preview.jpg
 
       - name: B2 — no API key strings in client bundle
         run: |

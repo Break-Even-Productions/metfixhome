@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Post-build assertion: @ybouane/liquidglass must not land in the main App entry chunk.
- * Run after `npm run build:pages`. Reads dist/public/index.html for the entry module.
+ * Run after `npm run build:cf`. Reads dist/public/index.html for the entry module.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -17,7 +17,7 @@ function fail(message) {
 }
 
 if (!fs.existsSync(indexHtmlPath)) {
-  fail(`missing ${indexHtmlPath} — run npm run build:pages first`);
+  fail(`missing ${indexHtmlPath} — run npm run build:cf first`);
 }
 
 const html = fs.readFileSync(indexHtmlPath, "utf8");
