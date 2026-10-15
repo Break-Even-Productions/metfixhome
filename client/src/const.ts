@@ -13,7 +13,7 @@ const KNOWN_ROUTES = new Set([
   "404",
 ]);
 
-/** Wouter base path for Vite BASE_URL (root deploy uses "/"). */
+/** Wouter base path for GitHub Pages subpaths and custom domains. */
 export function getRouterBase(): string {
   const base = import.meta.env.BASE_URL;
   if (base !== "./") return base.replace(/\/$/, "");
@@ -23,7 +23,7 @@ export function getRouterBase(): string {
   return `/${first}`;
 }
 
-/** Public asset URL with Vite base path. */
+/** Public asset URL with Vite base path (needed for GitHub Pages). */
 export function assetUrl(path: string): string {
   const base =
     (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.BASE_URL) ||

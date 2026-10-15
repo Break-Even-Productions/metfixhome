@@ -21,7 +21,7 @@ describe("Document base", () => {
     expect(indexHtml).toContain('rel="canonical" href="https://metfix.org/"');
   });
 
-  it("resolves Pages relative assets from the site root on nested Daily Fix and unknown paths", () => {
+  it("resolves relative assets from the site root on nested Daily Fix and unknown paths", () => {
     const pages = [
       "/",
       "/classes",
