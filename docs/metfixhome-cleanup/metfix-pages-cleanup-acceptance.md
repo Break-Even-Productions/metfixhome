@@ -1,6 +1,7 @@
-# metfix.org: remove GitHub Pages leftovers, acceptance spec (rev 1.1)
+# metfix.org: remove GitHub Pages leftovers, acceptance spec (rev 1.2)
 
-- Changelog: rev 1.1 (2026-10-15) adds Web Lead's answers: og:image/twitter:image move to metfix.org (E9, A9); Manus plugins out of scope. Rev 1.0 (`2d414d40`) backed up at `metfix-pages-cleanup-acceptance.rev1.0.md`.
+- Changelog: rev 1.2 (2026-10-15, Web Lead) changes only A5: the leftover-grep allowlist is `docs/`, `.github/workflows/ci.yml`, `worker/build.config.test.ts`, and deferred `client/src/const.ts`. Rev 1.1 (`2d6b656a`) backed up at `metfix-pages-cleanup-acceptance.rev1.1.md`.
+- rev 1.1 (2026-10-15) adds Web Lead's answers: og:image/twitter:image move to metfix.org (E9, A9); Manus plugins out of scope. Rev 1.0 (`2d414d40`) backed up at `metfix-pages-cleanup-acceptance.rev1.0.md`.
 
 - Owner: MetFix Web Spec. Consumer: MetFix Web Lead, Web QA Tests, Web Code Quality. One PR.
 - Read from `Break-Even-Productions/metfixhome` `main` at head **`9f7129d72c81cbb3dd70e62becf3692be1301e02`** (2026-10-15), read-only through the GitHub connector. No repo changes.
@@ -50,7 +51,7 @@ PR body (required text): "After merge, Ethan turns off GitHub Pages in the repo 
 - A2. `dist/public/index.html` is byte-identical to the build at `9f7129d7` for the same env, apart from the E4 comment. Asset URLs are absolute `/assets/…`, so base `/` and the Manus plugins are unchanged. QA diffs the two builds.
 - A3. Updated B1 passes. A mutant with `base: "./"`, or with `GITHUB_PAGES` reintroduced, fails it.
 - A4. `npm test`, `npm run check:worker`, `npm run test:workers`, `npm run assert:liquidglass-chunk` and `npx wrangler deploy --dry-run` all pass in CI. `.github/workflows/` contains only `ci.yml`.
-- A5. `git grep -nIiE 'gh-pages|github pages|GITHUB_PAGES|build:pages|deploy-pages|upload-pages-artifact|peaceiris|404\.html'` finds hits only in `docs/metfix-cloudflare-move/` (history) and nowhere else. `git ls-files CNAME` is empty.
+- A5. `git grep -nIiE 'gh-pages|github pages|GITHUB_PAGES|build:pages|deploy-pages|upload-pages-artifact|peaceiris|404\.html'` finds hits only in these paths and nowhere else: `docs/` (all of it; history and specs); `.github/workflows/ci.yml` (the A1 guard's own pattern); `worker/build.config.test.ts` (B1); `client/src/const.ts` (deferred exception, removed with the later getRouterBase removal PR, not this one). Any hit outside this list fails. `git ls-files CNAME` is empty.
 - A6. Worker routing is unchanged: the existing W-tests pass unmodified (SPA fallback for `/not-a-route` via ASSETS, Worker 404 HTML for bad Daily Fix paths, `/api/foo` JSON 404).
 - A7. `git grep -n GITHUB_REPOSITORY` before E7: the only hit is `ci.yml`. Record the result in the PR.
 - A8. After merge (manual, Web Lead): the Workers Builds run for the merge commit is green, and `curl -sI https://metfix.org/` and `https://metfix.org/the-daily-fix/<recent YYMMDD>` return 200. Then Ethan disables Pages.
