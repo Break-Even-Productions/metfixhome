@@ -1,12 +1,13 @@
 import type { DailyFixDay } from "./mapper";
-import { plainText, readMinutes } from "./text";
+import { plainText } from "./text";
 
 /** Compact per-day row for the archive list and client-side search. */
 export type DailyFixArchiveEntry = {
   date: string;
   belly: { title: string; protein: string | null; excerpt: string; photo: string | null };
   body: { title: string; excerpt: string; photo: string | null };
-  brain: { title: string; excerpt: string; photo: string | null; minutes: number | null };
+  /** `button` is BSI's link label for the reading ("Full Article", "Watch", …). */
+  brain: { title: string; excerpt: string; photo: string | null; button: string | null };
 };
 
 export type DailyFixArchive = {
@@ -39,12 +40,12 @@ export function toArchiveEntry(day: DailyFixDay): DailyFixArchiveEntry {
       title: plainText(day.brain.title),
       excerpt: clip(plainText(day.brain.excerpt ?? day.brain.html)),
       photo: day.brain.photo_url,
-      minutes: readMinutes(day.brain.html),
+      button: day.brain.button_text?.trim() || null,
     },
   };
 }
 
 /** Versioned so a shape change never serves a stale cached archive. */
 export function archiveCacheKeyRequest(): Request {
-  return new Request("https://metfix.org/__dfcache/archive-v2", { method: "GET" });
+  return new Request("https://metfix.org/__dfcache/archive-v4", { method: "GET" });
 }

@@ -10,7 +10,7 @@ function entry(date: string, belly: string, protein: string | null, brain: strin
     date,
     belly: { title: belly, protein, excerpt: `${belly} excerpt`, photo: null },
     body: { title: "For load:", excerpt: "Deadlift 5-5-5", photo: null },
-    brain: { title: brain, excerpt: "", photo: null, minutes: null },
+    brain: { title: brain, excerpt: "", photo: null, button: null },
   };
 }
 
@@ -20,7 +20,7 @@ const BRAIN_PHOTO = "https://example.com/cocaine.jpg";
 const today = entry("2026-10-14", "White Fish Chowder", "Seafood", "Keep Your Cocaine");
 today.belly.photo = BELLY_PHOTO;
 today.brain.photo = BRAIN_PHOTO;
-today.brain.minutes = 5;
+today.brain.button = "Watch";
 
 const DAYS = [
   today,
@@ -85,7 +85,7 @@ describe("ArchiveBrowser", () => {
     expect(body.getAttribute("href")).toBe("/the-daily-fix?tab=body");
     expect(within(body).getByText("Deadlift 5-5-5")).toBeTruthy();
     expect(brain.getAttribute("href")).toBe("/the-daily-fix?tab=brain");
-    expect(within(brain).getByText("5 min")).toBeTruthy();
+    expect(within(brain).getByText("Watch")).toBeTruthy();
 
     expect(belly.querySelector("img")?.getAttribute("src")).toBe(
       "https://brokenscience.org/wp-content/uploads/2025/11/chowder-150x150.png",

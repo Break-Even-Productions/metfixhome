@@ -49,7 +49,7 @@ export const DEFAULT_COPYRIGHT_TEXT =
 export const DEFAULT_NAV_LINKS: NavLink[] = [
   { label: "Classes", href: "/classes", openInNewTab: false },
   { label: "Library", href: "https://brokenscience.org/all-content/", openInNewTab: true },
-  { label: "Daily Fix", href: "https://brokenscience.org/fix/", openInNewTab: true },
+  { label: "Daily Fix", href: "/the-daily-fix", openInNewTab: false },
   {
     label: "Seminars",
     href: "https://brokenscience.org/metfix/seminar-calendar/",

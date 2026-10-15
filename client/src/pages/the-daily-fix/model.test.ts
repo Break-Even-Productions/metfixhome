@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addCalendarDays,
+  brainButtonText,
   bsiTodayIso,
   dailyFixCanonicalUrl,
   dailyFixHref,
@@ -12,11 +13,11 @@ import {
   mapHttpsPhotoUrl,
   parseDailyFixRoute,
   plainText,
-  readMinutes,
   yymmddFromIso,
   sortedIngredients,
   visibleMacros,
   youtubeEmbedUrl,
+  type DailyFixBrain,
   type DailyFixDay,
 } from "./model";
 
@@ -28,10 +29,11 @@ describe("tab preview text", () => {
     expect(plainText(null)).toBe("");
   });
 
-  it("readMinutes rounds at 230 wpm with a 1-minute floor; null when empty", () => {
-    expect(readMinutes("<p>short</p>")).toBe(1);
-    expect(readMinutes(`<p>${"word ".repeat(690)}</p>`)).toBe(3);
-    expect(readMinutes("<p> </p>")).toBeNull();
+  it("brainButtonText uses BSI's label, falling back to Full Article", () => {
+    const brain = { button_text: " Watch " } as DailyFixBrain;
+    expect(brainButtonText(brain)).toBe("Watch");
+    expect(brainButtonText({ ...brain, button_text: "  " })).toBe("Full Article");
+    expect(brainButtonText({ ...brain, button_text: null })).toBe("Full Article");
   });
 });
 

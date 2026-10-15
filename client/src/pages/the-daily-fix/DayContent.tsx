@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { ArrowUpRight, Play } from "lucide-react";
 import { useCallback, useState } from "react";
 import { MealPhoto } from "./MealPhoto";
 import { ShareMenu } from "./ShareMenu";
@@ -139,9 +139,9 @@ function BrainContent({ day }: { day: DailyFixDay }) {
       </div>
       <HtmlBlock html={brain.html} />
       {href ? (
-        <a className="df-article" href={href} target="_blank" rel="noreferrer">
+        <a className="df-btn df-btn-ink df-article" href={href} target="_blank" rel="noreferrer">
           {brainButtonText(brain)}
-          <span aria-hidden="true">→</span>
+          <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
         </a>
       ) : null}
     </div>

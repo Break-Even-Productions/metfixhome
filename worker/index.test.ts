@@ -319,6 +319,23 @@ describe("Worker HTML / API / sitemap", () => {
     expect(wrangler.assets.run_worker_first).not.toContain("/__dfcache/*");
   });
 
+  it("W7a out-of-range days 302 to today or the first fix, uncached, without upstream", async () => {
+    let res = await call("/the-daily-fix/261017?tab=body", { headers: { Accept: "text/html" } });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix?tab=body&missing=261017");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+
+    res = await call("/the-daily-fix/241231", { headers: { Accept: "text/html" } });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix/250210?missing=241231");
+
+    res = await call("/the-daily-fix/2024-12-31", { headers: { Accept: "text/html" } });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix/241231");
+
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
   it("W7 date-form 301s", async () => {
     for (const path of [
       "/the-daily-fix/26/10/04?x=1",
@@ -1123,11 +1140,11 @@ describe("Worker HTML / API / sitemap", () => {
           photo: "https://cdn.example.com/belly.jpg",
         },
         body: { title: "Body work", excerpt: "Run 400 m 10 pull-ups", photo: "https://cdn.example.com/body.jpg" },
-        brain: { title: "Brain read", excerpt: "Article", photo: "https://cdn.example.com/brain.jpg", minutes: 1 },
+        brain: { title: "Brain read", excerpt: "Article", photo: "https://cdn.example.com/brain.jpg", button: null },
       });
 
       await flush(ctx);
-      const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/archive-v2");
+      const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/archive-v4");
       expect(put!.res.headers.get("Cache-Control")).toMatch(/^s-maxage=\d+$/);
       fetchMock.mockClear();
       expect((await call("/api/daily-fix/archive")).status).toBe(200);

@@ -38,16 +38,6 @@ export function plainText(html: string | null | undefined): string {
     .trim();
 }
 
-const READ_WORDS_PER_MINUTE = 230;
-
-/** Estimated minutes to read the HTML, or null when there is no text. */
-export function readMinutes(html: string | null | undefined): number | null {
-  const text = plainText(html);
-  if (!text) return null;
-  const words = text.split(" ").length;
-  return Math.max(1, Math.round(words / READ_WORDS_PER_MINUTE));
-}
-
 /** Attribute-escape for HTML attribute values. */
 export function escapeAttr(input: string): string {
   return input

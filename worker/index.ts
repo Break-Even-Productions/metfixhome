@@ -7,6 +7,7 @@ import {
   isIsoDate,
   mapDailyFixDay,
   normalizeDailyFixPath,
+  outOfRangeLocation,
   resolveDailyFixStatus,
   secondsUntilNextDfxMidnight,
   sitemapCacheKeyRequest,
@@ -120,6 +121,16 @@ async function handleDailyFixHtml(
 
   if (normalized.kind === "notFound") {
     return htmlNotFound(request, env);
+  }
+
+  if (normalized.mode === "dated") {
+    const moved = outOfRangeLocation(normalized.iso, bsiTodayIso(), url.search);
+    if (moved) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: moved, "Cache-Control": "no-store" },
+      });
+    }
   }
 
   const isHead = request.method.toUpperCase() === "HEAD";

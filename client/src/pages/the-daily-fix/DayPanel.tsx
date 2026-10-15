@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link } from "wouter";
 import { DatePickerDialog } from "./DatePickerDialog";
 import { DayContent } from "./DayContent";
@@ -12,7 +12,6 @@ import {
   isCloserScheduledDay,
   pillarLabel,
   plainText,
-  readMinutes,
   recentDateStrip,
   type DailyFixDay,
   type DailyFixRouteKind,
@@ -30,6 +29,8 @@ type DayPanelProps = {
   pillarExplicit: boolean;
   load: DailyFixLoadState;
   onOpenArchive: () => void;
+  /** Shown above the eyebrow, e.g. why the reader landed on this day. */
+  notice?: ReactNode;
 };
 
 function UnavailableCopy() {
@@ -119,11 +120,10 @@ function tabCopy(load: DailyFixLoadState, pillar: Pillar) {
   if (pillar === "body") {
     return { title: day.body.title, excerpt: plainText(day.body.excerpt), meta: kind };
   }
-  const minutes = readMinutes(day.brain.html);
   return {
     title: day.brain.title,
     excerpt: plainText(day.brain.excerpt),
-    meta: [kind, minutes ? `${minutes} min read` : null].filter(Boolean).join(" · "),
+    meta: day.brain.button_text?.trim() || kind,
   };
 }
 
@@ -136,6 +136,7 @@ export function DayPanel({
   pillarExplicit,
   load,
   onOpenArchive,
+  notice,
 }: DayPanelProps) {
   const day: DailyFixDay | null = load.status === "loaded" ? load.day : null;
   const displayIso = day?.date ?? panelIso;
@@ -173,6 +174,7 @@ export function DayPanel({
 
   return (
     <div>
+      {notice}
       <div className="df-row">
         <div>
           <p className="df-kicker">{isTodayRequest && !closer ? "Today’s fix" : "This day"}</p>

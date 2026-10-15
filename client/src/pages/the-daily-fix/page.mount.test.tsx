@@ -227,7 +227,7 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     expect(blocks).toEqual(["Excerpt", "Real work", "Post loads"]);
   });
 
-  it("tab boxes show protein, a one-line excerpt, and brain read time", async () => {
+  it("tab boxes show protein, a one-line excerpt, and BSI's brain button label", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -236,7 +236,12 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
             dayPayload("2025-02-10", {
               belly: { excerpt: "<p>Seared &amp; buttery.</p>", protein: { id: 2, name: "Chicken" } },
               body: { title: "AMRAP", body: "<p>Notes</p>", excerpt: "<p>Run 400 m<br />10 pull-ups</p>" },
-              brain: { title: "Study", body: `<p>${"word ".repeat(460)}</p>`, excerpt: "<p>A summary</p>" },
+              brain: {
+                title: "Study",
+                body: `<p>${"word ".repeat(460)}</p>`,
+                excerpt: "<p>A summary</p>",
+                button_text: "12-minute Video",
+              },
             }),
           ),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -252,7 +257,7 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     expect(within(body).getByText("Workout")).toBeTruthy();
     const brain = screen.getByRole("tab", { name: /Brain/ });
     expect(within(brain).getByText("A summary")).toBeTruthy();
-    expect(within(brain).getByText("Reading · 2 min read")).toBeTruthy();
+    expect(within(brain).getByText("12-minute Video")).toBeTruthy();
   });
 
   it("each tab has a share pill; Copy link writes the date-pinned tab URL", async () => {
@@ -305,6 +310,44 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix/260305"));
     expect(window.location.search).toBe("?tab=body");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("2a-iv. unpublished days land on today and pre-launch days on 250210, each with a notice", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const date = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAt("/the-daily-fix/260317?tab=brain");
+    expect(
+      await screen.findByText("Tuesday, March 17, 2026 isn’t published yet. Here’s today’s fix."),
+    ).toBeTruthy();
+    await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix"));
+    expect(window.location.search).toBe("?tab=brain");
+    expect(await screen.findByRole("heading", { name: "Brain 2026-03-11" })).toBeTruthy();
+    expect(requestDates(fetchMock)).not.toContain("2026-03-17");
+    cleanup();
+
+    renderAt("/the-daily-fix/241231");
+    const early = await screen.findByText("Dates before 250210 don’t exist. This is the first Daily Fix.");
+    await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix/250210"));
+    expect(window.location.search).toBe("");
+    const jump = within(early.closest(".df-notice") as HTMLElement).getByRole("link", { name: "Jump to today" });
+    expect(jump.getAttribute("href")).toBe("/the-daily-fix");
+    fireEvent.click(jump);
+    await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix"));
+    await waitFor(() => expect(screen.queryByText(/Dates before 250210/)).toBeNull());
+    cleanup();
+
+    renderAt("/the-daily-fix?missing=260317");
+    expect(await screen.findByText(/March 17, 2026 isn’t published yet/)).toBeTruthy();
+    await waitFor(() => expect(window.location.search).toBe(""));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/isn’t published yet/)).toBeNull();
   });
 
   it("2b. 2.0 workout (custom_workout_id set) → body only", async () => {

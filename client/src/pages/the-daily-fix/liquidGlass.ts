@@ -2,7 +2,10 @@
  * Thin wrapper so MealPhoto can dynamic-import LiquidGlass without pulling
  * the library into the main App chunk, and so tests can mock this module.
  */
-export type LiquidGlassHandle = { destroy: () => void };
+export type LiquidGlassHandle = {
+  destroy: () => void;
+  markChanged: (element?: HTMLElement) => void;
+};
 
 export type LiquidGlassInitOptions = {
   root: HTMLElement;

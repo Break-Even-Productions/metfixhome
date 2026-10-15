@@ -47,7 +47,7 @@ function indexEntry(entry: DailyFixArchiveEntry): Indexed {
     date: formatDayLabel(entry.date).toLowerCase(),
     belly: lower(entry.belly.title, entry.belly.protein, entry.belly.excerpt),
     body: lower(entry.body.title, entry.body.excerpt),
-    brain: lower(entry.brain.title, entry.brain.excerpt),
+    brain: lower(entry.brain.title, entry.brain.excerpt, entry.brain.button),
   };
 }
 
@@ -86,7 +86,7 @@ function ArchiveCard({
     body: { title: entry.body.title, meta: entry.body.excerpt || null, photo: entry.body.photo },
     brain: {
       title: entry.brain.title,
-      meta: entry.brain.minutes ? `${entry.brain.minutes} min` : null,
+      meta: entry.brain.button,
       photo: entry.brain.photo,
     },
   };

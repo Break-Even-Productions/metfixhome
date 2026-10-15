@@ -1,10 +1,10 @@
-import { BookOpen, Dumbbell, UtensilsCrossed } from "lucide-react";
+import { ArrowRight, BookOpen, Dumbbell, UtensilsCrossed, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { DayPanel } from "./DayPanel";
-import { HeroGlassMark } from "./HeroGlassMark";
+import { HeroMark, useHeroGlass } from "./HeroGlass";
 import {
   fetchIsoForRoute,
   loadDailyFixDay,
@@ -21,8 +21,13 @@ import {
   dailyFixHref,
   dateFromIso,
   FIRST_FIX_ISO,
+  formatDayLabel,
+  missingIsoFromSearch,
   normalizeDailyFixPath,
+  outOfRangeLocation,
+  parseDailyFixLocation,
   parseDailyFixRoute,
+  yymmddFromIso,
 } from "./model";
 
 const JAKARTA_ID = "daily-fix-jakarta-font";
@@ -74,7 +79,7 @@ export default function TheDailyFixPage({
   const [location, setLocation] = useLocation();
   // wouter's useSearch subscribes to push/replaceState (C4 tab clicks).
   const search = useSearch();
-  const route = parseDailyFixRoute({
+  const urlRoute = parseDailyFixRoute({
     date: params.date,
     pillar: params.pillar,
     yy: params.yy,
@@ -84,11 +89,28 @@ export default function TheDailyFixPage({
   });
   // One BSI-today sample for this mount lifetime (prefetch + bare fetch share it).
   const [todayIso] = useState(() => bsiTodayIso());
+  // Unpublished or pre-launch days render where the canonical-URL effect is about to send them.
+  const outOfRange =
+    urlRoute.kind === "day" && urlRoute.iso ? outOfRangeLocation(urlRoute.iso, todayIso, search) : null;
+  const route = outOfRange ? parseDailyFixLocation(outOfRange) : urlRoute;
   const fetchIso = fetchIsoForRoute(route.kind, route.iso, todayIso);
   const allowCloser = route.kind === "today";
   // Panel request key: bare uses today; dated uses URL ISO. Highlight uses response date when loaded.
   const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
   const routeKey = `${route.kind}:${fetchIso ?? "none"}`;
+
+  // `?missing=` comes from the edge redirect; outOfRange covers in-app and dev navigation.
+  const missingIso = outOfRange ? urlRoute.iso : missingIsoFromSearch(search);
+  const missingKind =
+    missingIso && missingIso > todayIso ? "future" : missingIso && missingIso < FIRST_FIX_ISO ? "early" : null;
+  const [notice, setNotice] = useState<{ iso: string; kind: "future" | "early"; routeKey: string } | null>(
+    null,
+  );
+  if (missingIso && missingKind && (notice?.iso !== missingIso || notice.routeKey !== routeKey)) {
+    setNotice({ iso: missingIso, kind: missingKind, routeKey });
+  } else if (!missingKind && notice && notice.routeKey !== routeKey) {
+    setNotice(null);
+  }
 
   const [load, setLoad] = useState<DailyFixLoadState>(() => {
     if (fetchIso) {
@@ -99,6 +121,12 @@ export default function TheDailyFixPage({
   });
   const [loadKey, setLoadKey] = useState(routeKey);
   const heroRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const markRef = useRef<HTMLDivElement>(null);
+  const glassReady = useHeroGlass(heroRef, barRef, markRef);
+  const [reduceMotion] = useState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  );
 
   // Sync from cache on route change — no skeleton flash when the day is already loaded.
   if (routeKey !== loadKey) {
@@ -187,8 +215,20 @@ export default function TheDailyFixPage({
     <main className="daily-fix-page">
       <div className="df-stack">
         <section id="daily-fix" className="df-card">
-          <div ref={heroRef} className="df-hero">
-            <HeroGlassMark rootRef={heroRef} />
+          <div ref={heroRef} className={glassReady ? "df-hero is-glass" : "df-hero"}>
+            <video
+              className="df-hero-video"
+              src="/hero.mp4"
+              poster="/hero-poster.jpg"
+              autoPlay={!reduceMotion}
+              muted
+              loop
+              playsInline
+              preload="auto"
+              aria-label="MetFix in real life"
+            />
+            <div className="df-hero-shade" aria-hidden="true" />
+            <HeroMark markRef={markRef} glassReady={glassReady} />
             <div className="df-hero-copy">
               <h1>
                 <span>Eat.</span>
@@ -211,7 +251,7 @@ export default function TheDailyFixPage({
                 </button>
               </div>
             </div>
-            <nav className="df-masthead" aria-label="Today's recipe, workout, and reading">
+            <nav ref={barRef} className="df-masthead" aria-label="Today's recipe, workout, and reading">
               {masthead.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -223,12 +263,12 @@ export default function TheDailyFixPage({
                     <span className="df-masthead-icon">
                       <Icon className="h-4 w-4" strokeWidth={2.35} />
                     </span>
-                    <span>
+                    <span className="df-masthead-text">
                       <span style={{ display: "block", fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>
                         {item.label}
                       </span>
-                      <span style={{ display: "block", marginTop: 2, fontSize: 12, opacity: 0.8 }}>
-                        {item.detail}
+                      <span className="df-masthead-detail">
+                        {load.status === "loaded" ? load.day[item.pillar].title : item.detail}
                       </span>
                     </span>
                   </Link>
@@ -249,6 +289,31 @@ export default function TheDailyFixPage({
               pillarExplicit={route.pillarExplicit}
               load={load}
               onOpenArchive={() => jumpTo("daily-fix-archive")}
+              notice={
+                notice ? (
+                  <div className="df-notice" role="status">
+                    <p>
+                      {notice.kind === "future"
+                        ? `${formatDayLabel(notice.iso)} isn’t published yet. Here’s today’s fix.`
+                        : `Dates before ${yymmddFromIso(FIRST_FIX_ISO)} don’t exist. This is the first Daily Fix.`}
+                    </p>
+                    {notice.kind === "early" ? (
+                      <Link className="df-notice-link" href={dailyFixHref(todayIso, todayIso, route.pillar)}>
+                        Jump to today
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="df-notice-close"
+                      aria-label="Dismiss"
+                      onClick={() => setNotice(null)}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null
+              }
             />
           </div>
         </section>

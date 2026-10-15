@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { initLiquidGlass, type LiquidGlassHandle } from "./liquidGlass";
 
 /** Same geometry as the `shapeSDF` asterisk in vite/asterisk-glass.ts, in a -1..1 box. */
@@ -14,21 +14,28 @@ function AsteriskFallback() {
   );
 }
 
-/** Liquid-glass MetFix asterisk over the hero. `root` is what the glass refracts. */
-export function HeroGlassMark({ rootRef }: { rootRef: RefObject<HTMLElement | null> }) {
-  const markRef = useRef<HTMLDivElement>(null);
-  const [glassReady, setGlassReady] = useState(false);
+/**
+ * Liquid glass over the hero video: the pillar bar and the MetFix asterisk.
+ * Returns true once the glass is drawing, so callers can drop their fallbacks.
+ */
+export function useHeroGlass(
+  rootRef: RefObject<HTMLElement | null>,
+  barRef: RefObject<HTMLElement | null>,
+  markRef: RefObject<HTMLElement | null>,
+) {
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const root = rootRef.current;
+    const bar = barRef.current;
     const mark = markRef.current;
-    if (!root || !mark || typeof WebGLRenderingContext === "undefined") return;
+    if (!root || !bar || !mark || typeof WebGLRenderingContext === "undefined") return;
 
     let cancelled = false;
     let instance: LiquidGlassHandle | null = null;
     void initLiquidGlass({
       root,
-      glassElements: [mark],
+      glassElements: [bar, mark],
       defaults: { brightness: -0.3, blurAmount: 0.25, cornerRadius: 50 },
     })
       .then((next) => {
@@ -37,7 +44,8 @@ export function HeroGlassMark({ rootRef }: { rootRef: RefObject<HTMLElement | nu
           return;
         }
         instance = next;
-        setGlassReady(true);
+        next.markChanged();
+        setReady(true);
       })
       .catch(() => {});
 
@@ -45,8 +53,18 @@ export function HeroGlassMark({ rootRef }: { rootRef: RefObject<HTMLElement | nu
       cancelled = true;
       instance?.destroy();
     };
-  }, [rootRef]);
+  }, [rootRef, barRef, markRef]);
 
+  return ready;
+}
+
+export function HeroMark({
+  markRef,
+  glassReady,
+}: {
+  markRef: RefObject<HTMLDivElement | null>;
+  glassReady: boolean;
+}) {
   return (
     <div ref={markRef} className="df-hero-mark" data-config='{"shape":1}' role="img" aria-label="MetFix">
       {glassReady ? null : <AsteriskFallback />}

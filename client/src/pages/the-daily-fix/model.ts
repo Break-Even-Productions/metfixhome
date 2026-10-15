@@ -2,12 +2,15 @@ import {
   BSI_TODAY_TZ,
   addCalendarDays,
   bsiTodayIso,
+  FIRST_FIX_ISO,
+  isMissingPair,
   isoFromYymmdd,
   isIsoDate,
   isValidCalendarDay,
+  missingIsoFromSearch,
   normalizeDailyFixPath,
+  outOfRangeLocation,
   plainText,
-  readMinutes,
   yymmddFromIso,
   type DailyFixArchiveEntry,
   type DailyFixTab,
@@ -29,14 +32,16 @@ export {
   addCalendarDays,
   bsiTodayIso,
   extractYoutubeId,
+  FIRST_FIX_ISO,
   isoFromYymmdd,
   isIsoDate,
   isValidCalendarDay,
   mapDailyFixDay,
   mapHttpsPhotoUrl,
+  missingIsoFromSearch,
   normalizeDailyFixPath,
+  outOfRangeLocation,
   plainText,
-  readMinutes,
   yymmddFromIso,
 };
 export type {
@@ -266,7 +271,15 @@ function serveToRoute(
   };
 }
 
-/** Canonical path + search for the route (no hash). Drops invalid client-side tab. */
+/** Route for a full `/the-daily-fix...` location (path plus optional query). */
+export function parseDailyFixLocation(location: string): DailyFixRoute {
+  const qIndex = location.indexOf("?");
+  return qIndex === -1
+    ? parseDailyFixRouteFromPath(location, "")
+    : parseDailyFixRouteFromPath(location.slice(0, qIndex), location.slice(qIndex));
+}
+
+/** Canonical path + search for the route (no hash). Drops invalid client-side tab and `?missing=`. */
 export function dailyFixCanonicalUrl(route: DailyFixRoute, search = ""): string {
   const qs = buildSearchWithTab(search, route.tab);
   return `${route.canonicalPath}${qs}`;
@@ -282,6 +295,7 @@ function buildSearchWithTab(search: string, tab: DailyFixTab | null): string {
   const rebuilt: string[] = [];
   let tabPlaced = false;
   for (const p of pairs) {
+    if (isMissingPair(p)) continue;
     const key = pairKey(p);
     if (key === "tab" || key === "tab[]") {
       if (!tabPlaced && (tab === "body" || tab === "brain")) {
@@ -365,8 +379,6 @@ export function isCloserScheduledDay(day: DailyFixDay, requestedIso: string) {
   return Boolean(day.requested_date && day.requested_date !== day.date) || day.date !== requestedIso;
 }
 
-export const FIRST_FIX_ISO = "2025-02-10";
-
 const WP_UPLOAD = /^(https:\/\/[^?#]+\/wp-content\/uploads\/[^?#]+?)(?:-scaled|-\d+x\d+)?(\.(?:jpe?g|png|webp|gif))$/i;
 
 /** WordPress's 150×150 crop of an upload, or null for non-WordPress URLs. */
@@ -394,5 +406,5 @@ export function recentDateStrip(anchorIso: string, days = 21) {
 
 export function brainButtonText(brain: DailyFixBrain) {
   const label = brain.button_text?.trim();
-  return label && label.length > 0 ? label : "FULL ARTICLE";
+  return label && label.length > 0 ? label : "Full Article";
 }
