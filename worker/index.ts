@@ -37,18 +37,22 @@ const SITEMAP_PAGE_TIMEOUT_MS = 8000;
 const SITEMAP_BUILD_BUDGET_MS = 20_000;
 /** Cache API retention for the stored sitemap entry. */
 const SITEMAP_STORE_S_MAXAGE = 604800;
+/** After a failed stale rebuild, suppress new rebuilds for this long (G6). */
+const SITEMAP_FAILURE_BACKOFF_MS = 60_000;
 
 type SitemapBuildResult =
   | { ok: true; body: string; freshUntil: string }
   | { ok: false };
 
-/** Per-isolate single-flight for sitemap builds (S6). */
-let sitemapBuild: Promise<SitemapBuildResult> | null = null;
+type InflightSitemapBuild = {
+  promise: Promise<SitemapBuildResult>;
+  deadline: number;
+};
 
-/** Test-only: clear single-flight state between cases. */
-export function resetSitemapBuildForTests(): void {
-  sitemapBuild = null;
-}
+/** Per-isolate single-flight for sitemap builds (S6). */
+let sitemapBuild: InflightSitemapBuild | null = null;
+/** Per-isolate backoff after a failed stale rebuild (G6). */
+let sitemapRebuildBackoffUntil = 0;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -447,11 +451,12 @@ function sitemapClientResponse(body: string, method: string): Response {
   return new Response(body, { status: 200, headers });
 }
 
+/** Fresh only when header parses to a finite instant strictly later than now (G2, G7). */
 function isSitemapCacheFresh(cached: Response, now = new Date()): boolean {
   const until = cached.headers.get("X-Sitemap-Fresh-Until");
   if (!until) return false;
   const ts = Date.parse(until);
-  if (Number.isNaN(ts)) return false;
+  if (!Number.isFinite(ts)) return false;
   return now.getTime() < ts;
 }
 
@@ -483,9 +488,13 @@ function buildSitemapXml(dates: string[]): string {
 async function runSitemapBuild(
   env: Env,
   fetchImpl: typeof fetch,
+  deadline: number,
   bsiBaseUrl?: string,
 ): Promise<SitemapBuildResult> {
-  const deadline = Date.now() + SITEMAP_BUILD_BUDGET_MS;
+  // G1: freeze DFX day + fresh-until at build START (before page 0).
+  const buildStartedAt = new Date();
+  const freshUntil = nextDfxMidnight(buildStartedAt).toISOString();
+  const today = bsiTodayIso(buildStartedAt);
   const listOptsBase = {
     baseUrl: bsiBaseUrl,
     mapDays: false as const,
@@ -494,13 +503,20 @@ async function runSitemapBuild(
   // Cap: match=1 + put reserved → at most 38 upstream pages.
   const maxPages = SITEMAP_MAX_SUBREQUESTS - 2;
 
+  // S3/CQ7/S8: page 0 timeout clamped to remaining budget.
+  const page0TimeoutMs = Math.min(SITEMAP_PAGE_TIMEOUT_MS, Math.max(1, deadline - Date.now()));
   const first = await fetchDailyFixListPage(0, env, fetchImpl, {
     ...listOptsBase,
-    timeoutMs: SITEMAP_PAGE_TIMEOUT_MS,
+    timeoutMs: page0TimeoutMs,
   });
   if (!first.ok) return { ok: false };
 
+  // S9: exactly at the deadline counts as budget failure.
   if (Date.now() >= deadline) return { ok: false };
+
+  // G5: if page 0 meta.total needs more than 38 pages, fail with no further calls.
+  const pagesNeeded = Math.ceil(first.page.total / LIST_PAGE_SIZE);
+  if (pagesNeeded > maxPages) return { ok: false };
 
   const offsets: number[] = [];
   for (
@@ -510,11 +526,10 @@ async function runSitemapBuild(
   ) {
     offsets.push(offset);
   }
-  const covered = LIST_PAGE_SIZE + offsets.length * LIST_PAGE_SIZE;
-  const hitCap = first.page.total > covered && offsets.length >= maxPages - 1;
 
-  // Outer budget abort: remaining wall time capped per page (S3).
-  const remainingMs = Math.max(1, deadline - Date.now());
+  // S3/CQ7: each parallel page's timeout is min(8000, time left before deadline).
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) return { ok: false };
   const parallelTimeoutMs = Math.min(SITEMAP_PAGE_TIMEOUT_MS, remainingMs);
   const rest =
     offsets.length === 0
@@ -528,9 +543,8 @@ async function runSitemapBuild(
           ),
         );
   if (rest.some((page) => !page.ok)) return { ok: false };
-  if (hitCap) return { ok: false };
+  if (Date.now() >= deadline) return { ok: false };
 
-  const today = bsiTodayIso();
   const dates: string[] = [];
   const pages: ListPage[] = [first.page, ...rest.map((p) => (p as { ok: true; page: ListPage }).page)];
   for (const page of pages) {
@@ -539,7 +553,6 @@ async function runSitemapBuild(
     }
   }
 
-  const freshUntil = nextDfxMidnight().toISOString();
   return { ok: true, body: buildSitemapXml(dates), freshUntil };
 }
 
@@ -547,13 +560,37 @@ function ensureSitemapBuild(
   env: Env,
   fetchImpl: typeof fetch,
   bsiBaseUrl?: string,
-): Promise<SitemapBuildResult> {
+): InflightSitemapBuild {
   if (!sitemapBuild) {
-    sitemapBuild = runSitemapBuild(env, fetchImpl, bsiBaseUrl).finally(() => {
+    const deadline = Date.now() + SITEMAP_BUILD_BUDGET_MS;
+    const promise = runSitemapBuild(env, fetchImpl, deadline, bsiBaseUrl).finally(() => {
       sitemapBuild = null;
     });
+    sitemapBuild = { promise, deadline };
   }
   return sitemapBuild;
+}
+
+/** CQ2: joiners race the in-flight build against the time left in its 20 s budget. */
+async function awaitSitemapBuild(
+  env: Env,
+  fetchImpl: typeof fetch,
+  bsiBaseUrl?: string,
+): Promise<SitemapBuildResult | { ok: false; waiterTimeout: true }> {
+  const inflight = ensureSitemapBuild(env, fetchImpl, bsiBaseUrl);
+  const remainingMs = Math.max(0, inflight.deadline - Date.now());
+  if (remainingMs === 0) {
+    return { ok: false, waiterTimeout: true };
+  }
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<{ ok: false; waiterTimeout: true }>((resolve) => {
+    timeoutId = setTimeout(() => resolve({ ok: false, waiterTimeout: true }), remainingMs);
+  });
+  try {
+    return await Promise.race([inflight.promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 function putSitemapCache(
@@ -574,6 +611,25 @@ function putSitemapCache(
   );
 }
 
+function scheduleStaleRebuild(
+  env: Env,
+  ctx: ExecutionContext,
+  fetchImpl: typeof fetch,
+  cache: Cache,
+  bsiBaseUrl?: string,
+): void {
+  if (Date.now() < sitemapRebuildBackoffUntil) return;
+  ctx.waitUntil(
+    ensureSitemapBuild(env, fetchImpl, bsiBaseUrl).promise.then((result) => {
+      if (result.ok) {
+        sitemapRebuildBackoffUntil = 0;
+        return putSitemapCache(cache, result.body, result.freshUntil);
+      }
+      sitemapRebuildBackoffUntil = Date.now() + SITEMAP_FAILURE_BACKOFF_MS;
+    }),
+  );
+}
+
 async function handleSitemap(
   request: Request,
   env: Env,
@@ -590,18 +646,19 @@ async function handleSitemap(
   const keyReq = sitemapCacheKeyRequest();
   const cached = await cache.match(keyReq);
   if (cached) {
-    const body = await cached.text();
-    if (!isSitemapCacheFresh(cached)) {
-      ctx.waitUntil(
-        ensureSitemapBuild(env, fetchImpl, bsiBaseUrl).then((result) => {
-          if (result.ok) return putSitemapCache(cache, result.body, result.freshUntil);
-        }),
-      );
+    const fresh = isSitemapCacheFresh(cached);
+    if (!fresh) {
+      scheduleStaleRebuild(env, ctx, fetchImpl, cache, bsiBaseUrl);
     }
+    // CQ9: HEAD on a hit returns client headers with no body and does not read the store body.
+    if (method === "HEAD") {
+      return new Response(null, { status: 200, headers: sitemapClientHeaders() });
+    }
+    const body = await cached.text();
     return sitemapClientResponse(body, method);
   }
 
-  const result = await ensureSitemapBuild(env, fetchImpl, bsiBaseUrl);
+  const result = await awaitSitemapBuild(env, fetchImpl, bsiBaseUrl);
   if (!result.ok) {
     return sitemapUnavailable(method);
   }
@@ -610,7 +667,7 @@ async function handleSitemap(
 }
 
 /** BSI list pages can take several seconds each; they are fetched in parallel. */
-export const ARCHIVE_PAGE_TIMEOUT_MS = 20_000;
+const ARCHIVE_PAGE_TIMEOUT_MS = 20_000;
 
 async function handleArchive(
   request: Request,

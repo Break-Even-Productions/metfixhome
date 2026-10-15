@@ -4,7 +4,6 @@ import {
   type DailyFixDay,
   type UpstreamOutcome,
 } from "../shared/daily-fix";
-import * as SharedDailyFix from "../shared/daily-fix";
 
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_HOST = "brokenscience.org";
@@ -159,8 +158,7 @@ export async function fetchDailyFixListPage(
           const row = item as { date: string; status?: unknown };
           const entry: ListItem = {
             date: row.date,
-            // Namespace call so tests can spy SharedDailyFix.mapDailyFixDay (S4 / T10).
-            day: mapDays ? SharedDailyFix.mapDailyFixDay(item, row.date) : null,
+            day: mapDays ? mapDailyFixDay(item, row.date) : null,
           };
           if (typeof row.status === "string") entry.status = row.status;
           items.push(entry);
