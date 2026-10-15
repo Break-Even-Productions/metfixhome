@@ -41,9 +41,9 @@ function makeCache(): Cache & { store: CacheStore; puts: Array<{ key: string; re
     async match(request: RequestInfo) {
       const key = typeof request === "string" ? request : request.url;
       const hit = store.get(key);
-      if (!hit) return undefined;
-      const body = await hit.clone().text();
-      return new Response(body, { status: hit.status, headers: new Headers(hit.headers) });
+      // Return a clone of the stored Response (no body read) so spies on
+      // Response.prototype.text / arrayBuffer see handler reads, not match().
+      return hit ? hit.clone() : undefined;
     },
     async put(request: RequestInfo, response: Response) {
       const key = typeof request === "string" ? request : (request as Request).url;
@@ -322,17 +322,20 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     fetchMock.mockImplementation(async (url: string) => {
       calls++;
       const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
-      return new Response(JSON.stringify(listPayload(1, offset)), { status: 200 });
+      return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
     });
     const res = await call("/sitemap-daily-fix.xml");
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(staleBody);
     expect(ctx.pending.length).toBe(1);
     await flush(ctx);
-    expect(calls).toBe(1);
+    expect(calls).toBe(7);
     const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap");
     expect(put).toBeTruthy();
-    expect(await put!.res.clone().text()).not.toBe(staleBody);
+    const newBody = await put!.res.clone().text();
+    expect(newBody).not.toBe(staleBody);
+    expect(newBody.match(/<lastmod>/g)?.length).toBe(613);
+    expect(put!.res.headers.get("X-Sitemap-Fresh-Until")).toBe(nextDfxMidnight().toISOString());
 
     // Boundary: now === fresh-until → stale (1 rebuild)
     await loadModules();
@@ -343,14 +346,16 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     vi.setSystemTime(boundary);
     await seedSitemapCache(staleBody, boundary.toISOString());
     fetchMock.mockClear();
+    let boundaryCalls = 0;
     fetchMock.mockImplementation(async (url: string) => {
+      boundaryCalls++;
       const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
-      return new Response(JSON.stringify(listPayload(1, offset)), { status: 200 });
+      return new Response(JSON.stringify(listPayload(613, offset)), { status: 200 });
     });
     await call("/sitemap-daily-fix.xml");
     expect(ctx.pending.length).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     await flush(ctx);
+    expect(boundaryCalls).toBe(7);
 
     // fresh-until − 1 ms → fresh (0 rebuilds)
     await loadModules();
@@ -432,15 +437,16 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
       expect(fetchMock).toHaveBeenCalledTimes(0);
       expect(cache.puts.length).toBe(0);
 
-      // Budget: page 0 at 12.5s, parallel would need 8s → deadline trips
+      // Budget: page 0 at 7.9s (under 8s page timeout) + parallel pages at 7.9s,
+      // with the wall clock past the 20s deadline after parallel → budget path.
       await loadModules();
       cache = makeCache();
       ctx = makeCtx();
+      const budgetStart = Date.now();
       fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
         const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
-        const delay = offset === 0 ? 12_500 : 8_000;
         await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(() => resolve(), delay);
+          const t = setTimeout(() => resolve(), 7_900);
           init?.signal?.addEventListener("abort", () => {
             clearTimeout(t);
             const err = new Error("TimeoutError");
@@ -448,10 +454,15 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
             reject(err);
           });
         });
+        // After page 0 + parallel wall (~15.8s) still under 20s; jump to deadline
+        // so the post-parallel budget check (S9) fails — not page-0's 8s timeout.
+        if (offset !== 0) {
+          vi.setSystemTime(budgetStart + 20_000);
+        }
         return new Response(JSON.stringify(listPayload(200, offset)), { status: 200 });
       });
       const budgetPending = call("/sitemap-daily-fix.xml");
-      await vi.advanceTimersByTimeAsync(21_000);
+      await vi.advanceTimersByTimeAsync(16_000);
       const budget = await budgetPending;
       expect(budget.status).toBe(503);
       expect(cache.puts.length).toBe(0);
@@ -461,10 +472,24 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
   );
 
   it("T7 503 never cached; backoff does not apply to cold misses", async () => {
+    // Establish an active failure backoff via a failed stale rebuild (G6).
+    const staleBody = `<?xml version="1.0"?>\n<urlset><url><loc>stale</loc></url></urlset>\n`;
+    await seedSitemapCache(staleBody, new Date("2020-01-01T00:00:00.000Z").toISOString());
+    fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
+    await call("/sitemap-daily-fix.xml");
+    await flush(ctx);
+    expect(cache.puts.length).toBe(0);
+
+    // While backoff is active, a cold miss (no cache) must still hit upstream (T7).
+    cache.store.clear();
+    cache.puts.length = 0;
+    fetchMock.mockClear();
     fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
     expect((await call("/sitemap-daily-fix.xml")).status).toBe(503);
+    expect(fetchMock).toHaveBeenCalled();
     expect(cache.puts.length).toBe(0);
-    // Establish backoff via a failed stale rebuild is irrelevant for cold
+
+    // And a subsequent cold miss retries again (503 never cached).
     fetchMock.mockClear();
     fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
     expect((await call("/sitemap-daily-fix.xml")).status).toBe(503);
@@ -674,7 +699,7 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     const rollPut = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap")!;
     expect(rollPut.res.headers.get("X-Sitemap-Fresh-Until")).toBe("2026-10-13T22:00:00.000Z");
 
-    // HEAD equals GET
+    // HEAD equals GET on a cold miss (W49)
     cache.store.clear();
     await loadModules();
     vi.setSystemTime(new Date("2026-10-12T10:00:00.000Z"));
@@ -693,6 +718,43 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     const head = await call("/sitemap-daily-fix.xml", { method: "HEAD" });
     expect(headersObject(head)).toEqual(headersObject(get2));
     expect(await head.text()).toBe("");
+
+    // HEAD vs GET on a fresh hit
+    await loadModules();
+    cache = makeCache();
+    ctx = makeCtx();
+    vi.setSystemTime(new Date("2026-10-12T10:00:00.000Z"));
+    await seedSitemapCache(
+      `<?xml version="1.0"?>\n<urlset><url><loc>fresh-hit</loc></url></urlset>\n`,
+      nextDfxMidnight().toISOString(),
+    );
+    fetchMock.mockClear();
+    const freshGet = await call("/sitemap-daily-fix.xml");
+    const freshHead = await call("/sitemap-daily-fix.xml", { method: "HEAD" });
+    expect(freshGet.status).toBe(200);
+    expect(await freshGet.text()).toContain("fresh-hit");
+    expect(headersObject(freshHead)).toEqual(headersObject(freshGet));
+    expect(await freshHead.text()).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+    expect(ctx.pending.length).toBe(0);
+
+    // HEAD vs GET on a stale hit
+    await seedSitemapCache(
+      `<?xml version="1.0"?>\n<urlset><url><loc>stale-hit</loc></url></urlset>\n`,
+      new Date("2020-01-01T00:00:00.000Z").toISOString(),
+    );
+    ctx = makeCtx();
+    fetchMock.mockImplementation(async (url: string) => {
+      const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
+      return new Response(JSON.stringify(listPayload(1, offset)), { status: 200 });
+    });
+    const staleGet = await call("/sitemap-daily-fix.xml");
+    const staleHead = await call("/sitemap-daily-fix.xml", { method: "HEAD" });
+    expect(staleGet.status).toBe(200);
+    expect(await staleGet.text()).toContain("stale-hit");
+    expect(headersObject(staleHead)).toEqual(headersObject(staleGet));
+    expect(await staleHead.text()).toBe("");
+    await flush(ctx);
   });
 
   it("T12 cap exactly 1 call; W48 store headers; no legacy one-day s-maxage in tests", async () => {
@@ -864,9 +926,7 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
         );
       }
     }
-    // Production code races waiters with Promise.race (CQ2)
-    const indexSrc = readFileSync(fileURLToPath(new URL("./index.ts", import.meta.url)), "utf8");
-    expect(indexSrc.includes("Promise.race")).toBe(true);
+    // CQ2 Promise.race behavior is covered by T21 (no static includes check).
   });
 
   it(
@@ -916,11 +976,24 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
   });
 
   it("T22 HEAD on stale/fresh hit does not read stored body", async () => {
+    // Spy on the prototype so a clone returned from cache.match is still observed.
+    // Proof: if handleSitemap moved `await cached.text()` above the HEAD return,
+    // these spies would be > 0 and this test would fail.
+    const textSpy = vi.spyOn(Response.prototype, "text");
+    const abSpy = vi.spyOn(Response.prototype, "arrayBuffer");
+
+    // Harness proof: a deliberate read on a match() result is visible (same as a
+    // buggy HEAD path that calls cached.text() before returning).
     const staleBody = `<?xml version="1.0"?>\n<urlset><url><loc>stale</loc></url></urlset>\n`;
     await seedSitemapCache(staleBody, new Date("2020-01-01T00:00:00.000Z").toISOString());
-    const stored = cache.store.get("https://metfix.org/__dfcache/sitemap")!;
-    const textSpy = vi.spyOn(stored, "text");
-    const abSpy = vi.spyOn(stored, "arrayBuffer");
+    textSpy.mockClear();
+    abSpy.mockClear();
+    const matched = await cache.match(new Request("https://metfix.org/__dfcache/sitemap"));
+    await matched!.text();
+    expect(textSpy).toHaveBeenCalled();
+    textSpy.mockClear();
+    abSpy.mockClear();
+
     fetchMock.mockImplementation(async (url: string) => {
       const offset = Number(new URL(String(url)).searchParams.get("offset") ?? "0");
       return new Response(JSON.stringify(listPayload(1, offset)), { status: 200 });
@@ -929,7 +1002,7 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     expect(head.status).toBe(200);
     expect(head.headers.get("Content-Type")).toBe("application/xml");
     expect(head.headers.get("Cache-Control")).toBe("public, max-age=3600");
-    expect(await head.text()).toBe("");
+    expect(head.body).toBeNull();
     expect(textSpy).toHaveBeenCalledTimes(0);
     expect(abSpy).toHaveBeenCalledTimes(0);
     expect(ctx.pending.length).toBe(1);
@@ -941,14 +1014,15 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     ctx = makeCtx();
     const freshBody = `<?xml version="1.0"?>\n<urlset><url><loc>fresh</loc></url></urlset>\n`;
     await seedSitemapCache(freshBody, nextDfxMidnight().toISOString());
-    const storedFresh = cache.store.get("https://metfix.org/__dfcache/sitemap")!;
-    const textSpy2 = vi.spyOn(storedFresh, "text");
-    const abSpy2 = vi.spyOn(storedFresh, "arrayBuffer");
+    textSpy.mockClear();
+    abSpy.mockClear();
     const headFresh = await call("/sitemap-daily-fix.xml", { method: "HEAD" });
     expect(headFresh.status).toBe(200);
-    expect(await headFresh.text()).toBe("");
-    expect(textSpy2).toHaveBeenCalledTimes(0);
-    expect(abSpy2).toHaveBeenCalledTimes(0);
+    expect(headFresh.body).toBeNull();
+    expect(textSpy).toHaveBeenCalledTimes(0);
+    expect(abSpy).toHaveBeenCalledTimes(0);
     expect(ctx.pending.length).toBe(0);
+    textSpy.mockRestore();
+    abSpy.mockRestore();
   });
 });
