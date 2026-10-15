@@ -1265,7 +1265,7 @@ export default function Home() {
                 )}
                 <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                   <div style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "0.7rem" }}>The Daily Fix</div>
-                  <a href="https://brokenscience.org/fix/" target="_blank" rel="noopener noreferrer"
+                  <Link href="/the-daily-fix"
                     style={{ display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", transition: "color 0.2s" }}
                     onMouseEnter={e => (e.currentTarget.style.color = "#C9A96E")}
                     onMouseLeave={e => (e.currentTarget.style.color = "inherit")}>
@@ -1273,7 +1273,7 @@ export default function Home() {
                       Want it daily instead of weekly? A workout, recipe, and reading every morning. Free.
                     </span>
                     <ArrowRight size={14} color="rgba(239,239,239,0.55)" style={{ flexShrink: 0, marginLeft: "0.75rem" }} />
-                  </a>
+                  </Link>
                 </div>
               </div>
             </Reveal>
@@ -1328,7 +1328,7 @@ export default function Home() {
             <div>
               <div style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.25rem" }}>Learn</div>
               {[
-                { label: "The Daily Fix", href: "https://brokenscience.org/fix/" },
+                { label: "The Daily Fix", href: "/the-daily-fix" },
                 { label: "What Is MetFix?", href: "https://whatis.metfix.org/" },
                 { label: "Foundations Seminar", href: "https://brokenscience.org/events/" },
               ].map(l => (

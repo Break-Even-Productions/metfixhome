@@ -11,6 +11,8 @@ build/
 # Environment
 .env
 .env.*
+.dev.vars
+.wrangler/
 
 # Logs
 *.log

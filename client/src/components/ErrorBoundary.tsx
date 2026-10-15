@@ -1,5 +1,9 @@
-import { cn } from "@/lib/utils";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+/**
+ * ErrorBoundary.tsx — runtime error page
+ * Design: "Earned Authority" — matches MetFix dark design system
+ * Colors: #0A0A0A bg | #C9A96E gold | #EFEFEF text
+ */
+import { RotateCcw } from "lucide-react";
 import { Component, ReactNode } from "react";
 
 interface Props {
@@ -24,32 +28,42 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex items-center justify-center min-h-screen p-8 bg-background">
-          <div className="flex flex-col items-center w-full max-w-2xl p-8">
-            <AlertTriangle
-              size={48}
-              className="text-destructive mb-6 flex-shrink-0"
-            />
-
-            <h2 className="text-xl mb-4">Sorry, Unexpected Error on Manus Site EmilyDesigns</h2>
-
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
+        <div style={{ minHeight: "100vh", background: "#0A0A0A", color: "#EFEFEF", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
+          <div style={{ maxWidth: "640px", width: "100%", textAlign: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginBottom: "2.5rem" }}>
+              <div style={{ width: "2rem", height: "1px", background: "#C9A96E" }} />
+              <span style={{ fontFamily: "'DM Mono'", fontSize: "0.7rem", letterSpacing: "0.18em", color: "#C9A96E", textTransform: "uppercase" }}>Unexpected Error</span>
+              <div style={{ width: "2rem", height: "1px", background: "#C9A96E" }} />
             </div>
 
-            <button
-              onClick={() => window.location.reload()}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg",
-                "bg-primary text-primary-foreground",
-                "hover:opacity-90 cursor-pointer"
-              )}
-            >
-              <RotateCcw size={16} />
-              Reload Page
-            </button>
+            <h1 style={{ fontFamily: "'Playfair Display'", fontWeight: 700, fontSize: "clamp(1.75rem, 5vw, 2.5rem)", lineHeight: 1.2, color: "#EFEFEF", marginBottom: "1.25rem" }}>
+              Something went wrong
+            </h1>
+            <p style={{ fontSize: "1rem", lineHeight: 1.6, color: "rgba(239,239,239,0.7)", marginBottom: "3rem" }}>
+              Please reload the page or return to the MetFix home page.
+            </p>
+
+            {import.meta.env.DEV && this.state.error?.stack && (
+              <pre style={{ textAlign: "left", fontSize: "0.75rem", color: "rgba(239,239,239,0.6)", background: "#151515", padding: "1rem", borderRadius: "4px", overflow: "auto", whiteSpace: "pre-wrap", marginBottom: "2rem" }}>
+                {this.state.error.stack}
+              </pre>
+            )}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", justifyContent: "center" }}>
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-primary"
+                style={{ fontSize: "0.85rem", padding: "0.875rem 2rem", display: "inline-flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}
+              >
+                <RotateCcw size={14} /> Reload Page
+              </button>
+              <a
+                href="/"
+                style={{ fontSize: "0.85rem", padding: "0.875rem 2rem", display: "inline-flex", alignItems: "center", color: "#C9A96E", border: "1px solid #C9A96E", textDecoration: "none" }}
+              >
+                Back to MetFix
+              </a>
+            </div>
           </div>
         </div>
       );
