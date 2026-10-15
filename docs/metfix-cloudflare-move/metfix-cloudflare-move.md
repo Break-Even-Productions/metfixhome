@@ -50,7 +50,7 @@ Ethan does these in order:
 4. Verify section 9 on the live site.
 5. Disable Pages in the repo settings.
 
-The Pages fallback files stay in this PR. A separate post-cutover commit removes the root `CNAME`, `.github/workflows/deploy-pages.yml`, and the `cp index.html 404.html` step. Rollback means pointing DNS back to GitHub Pages before that commit lands. Done in PR #<n> (2026-10-15).
+The Pages fallback files stay in this PR. A separate post-cutover commit removes the root `CNAME`, `.github/workflows/deploy-pages.yml`, and the `cp index.html 404.html` step. Rollback means pointing DNS back to GitHub Pages before that commit lands. Done in PR #7 (2026-10-15).
 
 ## 4. Edge routing: normalizeDailyFixPath()
 One pure function takes a path and query and returns one of: serve (bare or dated ISO plus tab), redirect (301 target), or not-found. The worker and the client both use it.
@@ -202,7 +202,7 @@ The hash-pillar lock is superseded by `?tab=`, because Ethan wants per-tab share
 - Production deploys from `main`. Non-main branches get preview URLs.
 - No Cloudflare API token goes into GitHub secrets.
 - GitHub Actions runs CI only: `npm ci --legacy-peer-deps`, vitest, the liquidglass chunk assert, the build, and `wrangler deploy --dry-run`.
-- The Pages workflow is removed in the post-cutover commit. Done in PR #<n> (2026-10-15).
+- The Pages workflow is removed in the post-cutover commit. Done in PR #7 (2026-10-15).
 
 **Ethan's checklist (dashboard steps, in order):**
 1. In Workers Builds, connect `Break-Even-Productions/metfixhome`. Worker name `metfixhome`, production branch `main`, build command `npm ci --legacy-peer-deps && npm run build:cf`, deploy command `npx wrangler deploy`. Assets come from `./dist/public`, which `wrangler.jsonc` sets.
@@ -211,6 +211,6 @@ The hash-pillar lock is superseded by `?tab=`, because Ethan wants per-tab share
 4. Add the custom domain `metfix.org` to the Worker.
 5. Add a Single Redirect rule that sends `www.metfix.org/*` to `https://metfix.org${path}${search}` with a 301 (path already starts with `/`; no double slash).
 6. Add a usage notification for Workers requests at about 70,000 a day, if the free plan allows it.
-7. Disable GitHub Pages, then land the post-cutover cleanup commit. Done in PR #<n> (2026-10-15).
+7. Disable GitHub Pages, then land the post-cutover cleanup commit. Done in PR #7 (2026-10-15).
 
 **Open items:** none. The sitemap CPU fallback stays as written in rev 2.1.
