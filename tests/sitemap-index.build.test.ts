@@ -82,6 +82,18 @@ const STATIC_ALLOW = new Set([
 const TEST_FILE = /^tests\/sitemap-index[^/]*\.test\.ts$/;
 const CI_FILE = ".github/workflows/ci.yml";
 const B7_FILE = "worker/build.config.test.ts";
+/** Timeout slice folded into this PR (#8). Exact paths only. */
+const TIMEOUT_ALLOW = new Set([
+  "docs/metfix-sitemap-timeout/metfix-sitemap-timeout-acceptance.md",
+  "docs/metfix-sitemap-timeout/metfix-sitemap-timeout-tests.md",
+  "shared/daily-fix/cacheTtl.ts",
+  "worker/index.ts",
+  "worker/index.test.ts",
+  "worker/upstream.ts",
+  "worker/sitemap.timeout.test.ts",
+  "worker/sitemap.workers.test.ts",
+]);
+const WORKER_TEST = /^worker\/.*\.test\.ts$/;
 
 function readDist(name: string): string {
   const file = path.join(distPublic, name);
@@ -359,16 +371,28 @@ describe("sitemap index build", () => {
   it("T19 diff is limited to the sitemap allowlist", () => {
     const names = changedPaths();
     for (const name of names) {
-      const allowed = STATIC_ALLOW.has(name) || TEST_FILE.test(name) || name === CI_FILE || name === B7_FILE;
+      const allowed =
+        STATIC_ALLOW.has(name) ||
+        TEST_FILE.test(name) ||
+        name === CI_FILE ||
+        name === B7_FILE ||
+        TIMEOUT_ALLOW.has(name);
       expect(allowed, name).toBe(true);
       expect(name).not.toBe("wrangler.jsonc");
-      expect(name === B7_FILE || !name.startsWith("worker/"), name).toBe(true);
+      const workerOk = name === B7_FILE || TIMEOUT_ALLOW.has(name) || !name.startsWith("worker/");
+      expect(workerOk, name).toBe(true);
       expect(name).not.toBe("client/public/_headers");
     }
   });
 
   it("T20 diff has no production test hooks", () => {
-    const prod = [".", ":(exclude)tests", `:(exclude)${B7_FILE}`];
+    const prod = [
+      ".",
+      ":(exclude)tests",
+      ":(exclude)docs",
+      ":(exclude)worker/*.test.ts",
+      `:(exclude)${B7_FILE}`,
+    ];
     const diffText = [
       git(["diff", `${diffBase()}...HEAD`, "--", ...prod]),
       git(["diff", "HEAD", "--", ...prod]),
@@ -381,7 +405,12 @@ describe("sitemap index build", () => {
     expect(added).not.toMatch(/ForTests|forTests|onlyForTests|__testOnly|testOnlyHook/);
     expect(added).not.toMatch(/\bvi\.mock\b/);
     expect(added).not.toMatch(/cloudflare:test/);
-    expect(diffText).not.toMatch(/^diff --git a\/worker\//m);
+    const workerPaths = [...diffText.matchAll(/^diff --git a\/(\S+) b\//gm)]
+      .map((match) => match[1]!)
+      .filter((file) => file.startsWith("worker/"));
+    for (const file of workerPaths) {
+      expect(TIMEOUT_ALLOW.has(file) && !WORKER_TEST.test(file), file).toBe(true);
+    }
     expect(diffText).not.toMatch(/^diff --git a\/wrangler\.jsonc/m);
     const ciDiff = git(["diff", `${diffBase()}...HEAD`, "--", CI_FILE]) + git(["diff", "HEAD", "--", CI_FILE]);
     const ciAdded = ciDiff
