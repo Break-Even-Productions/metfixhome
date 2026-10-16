@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -38,6 +40,25 @@ jobs:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
           VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
+
+      - name: Sitemap index tests
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p node_modules/.cache
+          cat > node_modules/.cache/vitest.sitemap.config.ts << 'EOF'
+          import { defineConfig } from "vitest/config";
+          export default defineConfig({
+            test: {
+              environment: "node",
+              include: ["tests/sitemap-index*.test.ts"],
+              fileParallelism: false,
+              testTimeout: 60000,
+              hookTimeout: 120000,
+            },
+          });
+          EOF
+          npx vitest run --root . --config node_modules/.cache/vitest.sitemap.config.ts
 
       - name: B2 — no API key strings in client bundle
         run: |
