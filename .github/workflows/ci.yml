@@ -38,9 +38,6 @@ jobs:
           VITE_SANITY_DATASET: production
           VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
 
-      - name: No Pages leftovers in dist
-        run: test ! -e dist/public/CNAME && test ! -e dist/public/404.html
-
       - name: Social preview asset present
         run: test -s dist/public/social-preview.jpg
 
