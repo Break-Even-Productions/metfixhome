@@ -360,10 +360,11 @@ describe("sitemap index build", () => {
   });
 
   it("T20 diff has no production test hooks", () => {
+    const prod = [".", ":(exclude)tests"];
     const diffText = [
-      git(["diff", "origin/main...HEAD"]),
-      git(["diff", "HEAD"]),
-      git(["diff", "--cached"]),
+      git(["diff", "origin/main...HEAD", "--", ...prod]),
+      git(["diff", "HEAD", "--", ...prod]),
+      git(["diff", "--cached", "--", ...prod]),
     ].join("\n");
     expect(diffText).not.toMatch(/ForTests/);
     expect(diffText).not.toMatch(/^diff --git a\/worker\//m);
