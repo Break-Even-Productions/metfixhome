@@ -44,8 +44,6 @@ function useIsDesktop(breakpoint = 900) {
 // ─── Hero Image ────────────────────────────────────────────────
 const HERO_IMG = assetUrl("/hero.png");
 
-// ─── Athlete Image (uploaded asset) ───────────────────────────
-const ATHLETE_IMG = assetUrl("/manus-storage/emily_athlete_9856284c.jpeg");
 const COURSE_HERO_IMG = assetUrl("/what-is-metfix-course-hero.png");
 const AFFILIATION_BG_IMG = assetUrl("/affiliation-bg.png");
 const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";

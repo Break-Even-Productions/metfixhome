@@ -9,7 +9,9 @@ describe("B1/B5/B6/B7 build config", () => {
     );
     expect(pkg.scripts["build:cf"]).toBe("vite build");
     const vite = readFileSync(fileURLToPath(new URL("../vite.config.ts", import.meta.url)), "utf8");
-    expect(vite).toMatch(/base:\s*isPagesBuild\s*\?\s*"\.\/"\s*:\s*"\/"/);
+    expect(vite).toMatch(/base:\s*"\/"/);
+    expect(vite).not.toMatch(/GITHUB_PAGES/);
+    expect(vite).not.toMatch(/isPagesBuild/);
   });
 
   it("B5 CI has dry-run only", () => {

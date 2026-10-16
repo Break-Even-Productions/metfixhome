@@ -255,15 +255,6 @@ export default function AffiliateSeminars() {
         position: "relative",
         overflow: "hidden",
       }}>
-        {/* Seminar photo background */}
-        <div style={{
-          position: "absolute", inset: 0,
-          backgroundImage: "url('/manus-storage/seminar-photo_03aede9d.jpeg')",
-          backgroundSize: "cover",
-          backgroundPosition: "center 40%",
-          opacity: 0.22,
-          pointerEvents: "none",
-        }} />
         {/* Dark gradient overlay — stronger on left so text stays readable */}
         <div style={{
           position: "absolute", inset: 0,
@@ -601,12 +592,7 @@ export default function AffiliateSeminars() {
               </div>
             </Reveal>
             <Reveal direction="right" delay={100}>
-              <div style={{ position: "relative", overflow: "hidden", minHeight: "400px" }}>
-                <img
-                  src="/manus-storage/seminar-group-photo_92821568.jpeg"
-                  alt="Foundations Seminar attendees"
-                  style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }}
-                />
+              <div style={{ position: "relative", overflow: "hidden", minHeight: "400px", background: "#111" }}>
                 <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,10,10,0.8) 0%, rgba(10,10,10,0.2) 60%)" }} />
                 <div style={{ position: "absolute", bottom: "2rem", left: "2rem", right: "2rem" }}>
                   <blockquote style={{ fontFamily: "'Playfair Display'", fontStyle: "italic", fontSize: "1.1rem", color: "#EFEFEF", lineHeight: 1.6, marginBottom: "0.75rem" }}>
@@ -649,15 +635,6 @@ export default function AffiliateSeminars() {
             </Reveal>
             <Reveal direction="right" delay={100}>
               <div>
-                {/* Classroom photo */}
-                <div style={{ position: "relative", overflow: "hidden", marginBottom: "2rem", borderRadius: "2px" }}>
-                  <img
-                    src="/manus-storage/seminar-classroom2_0adda9c4.jpeg"
-                    alt="MetFix Foundations Seminar classroom"
-                    style={{ width: "100%", height: "320px", objectFit: "cover", objectPosition: "center 30%", display: "block" }}
-                  />
-                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,10,10,0.5) 0%, transparent 60%)" }} />
-                </div>
               <div style={{ padding: "2rem", border: "1px solid rgba(255,255,255,0.08)", background: "#0D0D0D" }}>
                 <div style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.5rem" }}>Host Benefits</div>
                 {[
