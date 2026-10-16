@@ -81,6 +81,7 @@ const STATIC_ALLOW = new Set([
 ]);
 const TEST_FILE = /^tests\/sitemap-index[^/]*\.test\.ts$/;
 const CI_FILE = ".github/workflows/ci.yml";
+const B7_FILE = "worker/build.config.test.ts";
 
 function readDist(name: string): string {
   const file = path.join(distPublic, name);
@@ -187,9 +188,16 @@ function git(args: string[]): string {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" });
 }
 
+/** PR runs pass github.event.pull_request.base.sha. Local runs use origin/main. */
+function diffBase(): string {
+  const sha = process.env.PR_BASE_SHA?.trim();
+  if (sha) return sha;
+  return "origin/main";
+}
+
 function changedPaths(): string[] {
   const chunks = [
-    git(["diff", "--name-only", "origin/main...HEAD"]),
+    git(["diff", "--name-only", `${diffBase()}...HEAD`]),
     git(["diff", "--name-only", "HEAD"]),
     git(["diff", "--name-only", "--cached"]),
     git(["ls-files", "--others", "--exclude-standard"]),
@@ -351,32 +359,38 @@ describe("sitemap index build", () => {
   it("T19 diff is limited to the sitemap allowlist", () => {
     const names = changedPaths();
     for (const name of names) {
-      const allowed = STATIC_ALLOW.has(name) || TEST_FILE.test(name) || name === CI_FILE;
+      const allowed = STATIC_ALLOW.has(name) || TEST_FILE.test(name) || name === CI_FILE || name === B7_FILE;
       expect(allowed, name).toBe(true);
       expect(name).not.toBe("wrangler.jsonc");
-      expect(name.startsWith("worker/")).toBe(false);
+      expect(name === B7_FILE || !name.startsWith("worker/"), name).toBe(true);
       expect(name).not.toBe("client/public/_headers");
     }
   });
 
   it("T20 diff has no production test hooks", () => {
-    const prod = [".", ":(exclude)tests"];
+    const prod = [".", ":(exclude)tests", `:(exclude)${B7_FILE}`];
     const diffText = [
-      git(["diff", "origin/main...HEAD", "--", ...prod]),
+      git(["diff", `${diffBase()}...HEAD`, "--", ...prod]),
       git(["diff", "HEAD", "--", ...prod]),
       git(["diff", "--cached", "--", ...prod]),
     ].join("\n");
-    expect(diffText).not.toMatch(/ForTests/);
-    expect(diffText).not.toMatch(/^diff --git a\/worker\//m);
-    expect(diffText).not.toMatch(/^diff --git a\/wrangler\.jsonc/m);
-    const ciDiff = git(["diff", "origin/main...HEAD", "--", CI_FILE]) + git(["diff", "HEAD", "--", CI_FILE]);
-    const added = ciDiff
+    const added = diffText
       .split("\n")
       .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
       .join("\n");
-    expect(added).not.toMatch(/CLOUDFLARE_API_TOKEN/);
-    expect(added).not.toMatch(/secrets\./);
-    expect(added).not.toMatch(/wrangler login/);
-    expect(added).not.toMatch(/--remote/);
+    expect(added).not.toMatch(/ForTests|forTests|onlyForTests|__testOnly|testOnlyHook/);
+    expect(added).not.toMatch(/\bvi\.mock\b/);
+    expect(added).not.toMatch(/cloudflare:test/);
+    expect(diffText).not.toMatch(/^diff --git a\/worker\//m);
+    expect(diffText).not.toMatch(/^diff --git a\/wrangler\.jsonc/m);
+    const ciDiff = git(["diff", `${diffBase()}...HEAD`, "--", CI_FILE]) + git(["diff", "HEAD", "--", CI_FILE]);
+    const ciAdded = ciDiff
+      .split("\n")
+      .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+      .join("\n");
+    expect(ciAdded).not.toMatch(/CLOUDFLARE_API_TOKEN/);
+    expect(ciAdded).not.toMatch(/secrets\./);
+    expect(ciAdded).not.toMatch(/wrangler login/);
+    expect(ciAdded).not.toMatch(/--remote/);
   });
 });

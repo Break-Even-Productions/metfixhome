@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -28,6 +30,9 @@ jobs:
       - name: Typecheck worker
         run: npm run check:worker
 
+      - name: Unit and mount tests
+        run: npm test
+
       - name: Build static site
         run: npm run build:cf
         env:
@@ -37,7 +42,23 @@ jobs:
           VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
 
       - name: Sitemap index tests
-        run: git fetch --no-tags origin main && node --input-type=module -e "import { mkdirSync, writeFileSync } from 'node:fs'; mkdirSync('node_modules/.cache', { recursive: true }); writeFileSync('node_modules/.cache/vitest.sitemap.config.ts', 'import { defineConfig } from \"vitest/config\";\nexport default defineConfig({ test: { environment: \"node\", include: [\"tests/sitemap-index*.test.ts\"], fileParallelism: false, testTimeout: 60000, hookTimeout: 120000 } });\n');" && npx vitest run --root . --config node_modules/.cache/vitest.sitemap.config.ts
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p node_modules/.cache
+          cat > node_modules/.cache/vitest.sitemap.config.ts << 'EOF'
+          import { defineConfig } from "vitest/config";
+          export default defineConfig({
+            test: {
+              environment: "node",
+              include: ["tests/sitemap-index*.test.ts"],
+              fileParallelism: false,
+              testTimeout: 60000,
+              hookTimeout: 120000,
+            },
+          });
+          EOF
+          npx vitest run --root . --config node_modules/.cache/vitest.sitemap.config.ts
 
       - name: B2 — no API key strings in client bundle
         run: |
@@ -55,6 +76,3 @@ jobs:
 
       - name: Wrangler deploy dry-run
         run: npx wrangler deploy --dry-run
-
-      - name: Unit and mount tests
-        run: npm test
