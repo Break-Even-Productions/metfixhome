@@ -22,14 +22,18 @@ export function cacheTtlSeconds(iso: string, now = new Date(), opts?: { bare?: b
   return Math.max(1, secondsUntilMidnight);
 }
 
-/** Seconds until next 00:00 Etc/GMT-2 after `now`. */
-export function secondsUntilNextDfxMidnight(now = new Date()): number {
+/** Instant of the next 00:00 Etc/GMT-2 after `now`. */
+export function nextDfxMidnight(now = new Date()): Date {
   const todayIso = bsiTodayIso(now);
   const [y, m, d] = todayIso.split("-").map(Number);
   // Midnight at start of this DFX day in UTC = local midnight − 2h
   const midnightThisDayUtc = Date.UTC(y, m - 1, d, 0, 0, 0) - 2 * 60 * 60 * 1000;
-  const nextMidnightUtc = midnightThisDayUtc + 24 * 60 * 60 * 1000;
-  return Math.max(1, Math.floor((nextMidnightUtc - now.getTime()) / 1000));
+  return new Date(midnightThisDayUtc + 24 * 60 * 60 * 1000);
+}
+
+/** Seconds until next 00:00 Etc/GMT-2 after `now`. */
+export function secondsUntilNextDfxMidnight(now = new Date()): number {
+  return Math.max(1, Math.floor((nextDfxMidnight(now).getTime() - now.getTime()) / 1000));
 }
 
 export function cacheKeyRequest(iso: string): Request {

@@ -35,3 +35,4 @@ Allow: /
 # llms-full.txt: https://metfix.org/llms-full.txt
 
 Sitemap: https://metfix.org/sitemap.xml
+Sitemap: https://metfix.org/sitemap-daily-fix.xml

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
 import { handleRequest, type Env } from "./index";
 import { assertBsiHost } from "./upstream";
-import { cacheTtlSeconds, cutDescription } from "../shared/daily-fix";
+import { cacheTtlSeconds, cutDescription, nextDfxMidnight } from "../shared/daily-fix";
 
 installHtmlRewriterPolyfill();
 
@@ -78,10 +78,15 @@ function makeCache(): Cache & { store: CacheStore; puts: Array<{ key: string; re
     async match(request: RequestInfo) {
       const key = typeof request === "string" ? request : request.url;
       const hit = store.get(key);
-      return hit ? hit.clone() : undefined;
+      if (!hit) return undefined;
+      // Fresh Response each match so callers can't consume the stored body.
+      const body = await hit.clone().text();
+      return new Response(body, { status: hit.status, headers: new Headers(hit.headers) });
     },
     async put(request: RequestInfo, response: Response) {
       const key = typeof request === "string" ? request : (request as Request).url;
+      // Keep put synchronous through store.set (no await) so waitUntil can't
+      // race past cache.store.clear() in the same test.
       puts.push({ key, res: response.clone() });
       store.set(key, response.clone());
     },
@@ -1007,7 +1012,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(xml).not.toContain("tab=");
   });
 
-  it("sitemap subrequest cap: total 10000 → 503, no put, ≤40 upstream", async () => {
+  it("sitemap subrequest cap: total 10000 → 503, no put, exactly 1 upstream (G5)", async () => {
     cache.store.clear();
     cache.puts.length = 0;
     let calls = 0;
@@ -1021,9 +1026,7 @@ describe("Worker HTML / API / sitemap", () => {
     const res = await call("/sitemap-daily-fix.xml");
     expect(res.status).toBe(503);
     expect(cache.puts.length).toBe(0);
-    // match=1 + reserve put; upstream stops at MAX-1 → at most 38 fetches, never >40
-    expect(calls).toBeLessThanOrEqual(40);
-    expect(calls).toBe(38);
+    expect(calls).toBe(1);
   });
 
   it("W47 page-2 failure → 503, no cache", async () => {
@@ -1047,7 +1050,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(cache.puts.length).toBe(0);
   });
 
-  it("W48 sitemap cache s-maxage=86400", async () => {
+  it("W48 sitemap cache s-maxage=604800 + fresh-until (S5)", async () => {
     cache.store.clear();
     cache.puts.length = 0;
     fetchMock.mockResolvedValue(
@@ -1055,11 +1058,14 @@ describe("Worker HTML / API / sitemap", () => {
         status: 200,
       }),
     );
-    await call("/sitemap-daily-fix.xml");
+    const client = await call("/sitemap-daily-fix.xml");
+    expect(client.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    expect(client.headers.get("X-Sitemap-Fresh-Until")).toBeNull();
     await flush(ctx);
     const put = cache.puts.find((p) => p.key === "https://metfix.org/__dfcache/sitemap");
     expect(put).toBeTruthy();
-    expect(put!.res.headers.get("Cache-Control")).toBe("s-maxage=86400");
+    expect(put!.res.headers.get("Cache-Control")).toBe("s-maxage=604800");
+    expect(put!.res.headers.get("X-Sitemap-Fresh-Until")).toBe(nextDfxMidnight().toISOString());
     fetchMock.mockClear();
     await call("/sitemap-daily-fix.xml");
     expect(fetchMock).toHaveBeenCalledTimes(0);
