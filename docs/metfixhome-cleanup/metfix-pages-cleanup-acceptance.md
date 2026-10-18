@@ -1,5 +1,7 @@
-# metfix.org: remove GitHub Pages leftovers, acceptance spec (rev 1.3)
+# metfix.org: remove GitHub Pages leftovers, acceptance spec (rev 1.4.1)
 
+- Changelog: rev 1.4.1 (2026-10-18, Web Lead) replaces only the provisional §6 "Manus removal (pending Ethan's order via CEO)" with the record of Ethan's order as relayed by MetFix CEO. Nothing else changes. Rev 1.4 (rebuilt, `d2933460`) backed up at `metfix-pages-cleanup-acceptance.rev1.4-rebuilt.md`.
+- Changelog: rev 1.4 (Web Lead) cuts the copy committed on #7 at `46e43022` (md5 `03face13`), which had been edited in place under the rev 1.3 title, as a proper revision. Its 8 in-place edits for the Manus removal are kept unchanged: the 2026-10-16 changelog line, the rev 1.1 changelog line, F4, E2, the removed out-of-scope line, the "Must not change" line, A2 and §5. The record of Ethan's order goes in §6, which is provisional. Rev 1.3 (`119c0f51`) backed up at `metfix-pages-cleanup-acceptance.rev1.3.md`; the `03face13` copy backed up at `metfix-pages-cleanup-acceptance.pr7-46e43022.md`. (Rebuilt on 2026-10-18 after the box copy was lost; the original rev 1.4 md5 `5b90320f` is not recoverable, so this file's md5 differs.)
 - Changelog: Ethan (2026-10-16) overrides the earlier line that kept the preview-runtime plugins. Those plugins, the debug collector, the storage proxy, their assets, and image URLs that only that proxy served are removed. Every other check in this document stays.
 - Changelog: rev 1.3 (2026-10-16, Web Lead, for #7 head 962d27d0). Removes the `git ls-files CNAME` check from A5, and drops the requirement for the ci.yml "No Pages leftovers in dist" step from A1. Nothing else changes. Rev 1.2 (`7165abdf`) backed up at `metfix-pages-cleanup-acceptance.rev1.2.md`.
 - Changelog: rev 1.2 (2026-10-15, Web Lead) changes only A5: the leftover-grep allowlist is `docs/`, `.github/workflows/ci.yml`, `worker/build.config.test.ts`, and deferred `client/src/const.ts`. Rev 1.1 (`2d6b656a`) backed up at `metfix-pages-cleanup-acceptance.rev1.1.md`.
@@ -66,3 +68,6 @@ PR body (required text): "After merge, Ethan turns off GitHub Pages in the repo 
 
 ## 5. Open questions
 - None. Q1 (og:image) is resolved as E9. Q2 is closed: Ethan ordered the preview-runtime plugins removed.
+
+## 6. Manus removal
+- Ethan's order confirmed, as relayed by MetFix CEO: asked whether he told the Project to strip Manus from #7, Ethan replied in CEO's chat on Sun 2026-10-18 at 2:46 PM PT: "yeah that was me".
