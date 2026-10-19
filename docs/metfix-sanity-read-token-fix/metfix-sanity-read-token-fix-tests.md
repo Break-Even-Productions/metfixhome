@@ -1,5 +1,8 @@
-# metfix.org: Sanity read-token removal — QA test list (rev 1.1, round 1)
-- Rev 1.1, 2026-10-19 ~4:10 PM PT. Rev 1.0 (`19ce522c3bff732296417508a504cae1`) kept at `metfix-sanity-read-token-fix-tests.r1.md`. Rev 1.0 items below are unchanged in wording/strength, except where the spec's G rulings supersede them (marked). New items: §V (vite.config guard), K3.8–K3.10, K4.6, K6.5, K7, and the round-1 results table (§R).
+# metfix.org: Sanity read-token removal — QA test list (rev 1.4, pre-round-3)
+- Rev 1.4, 2026-10-19 ~4:30 PM PT. Points at spec **rev 1.1.3, md5 `aefcc701aa7bf6a71d5086d1cf296ccd`** (verified; diff vs 1.1.2: K1 names the K1.6 exceptions; R4b gains the V3 whitespace ruling and requires Vite's `loadEnv` precedence; new K8(d) = QA V2b). Rev 1.3 (`253889edcbbed59df8c5c4a94dddf231`) kept at `metfix-sanity-read-token-fix-tests.r1.3.md`. Changes: V2b rewritten to K8(d) per the Web Lead correction of 10-19 (a blank shell value wins, guard passes, no throw), with mutations so it can fail; K1.7 confirmed against 1.1.3; D1 now targets the rev 1.4 md5. Nothing weakened. The rev 1.3 per-source-throw requirement is dropped by ruling, not loosened, because it contradicted Vite's actual inlining and would have rewarded a wrong fallback.
+- (Rev 1.3 history) Rev 1.3, 2026-10-19 ~4:25 PM PT. Rev 1.2 (`2aecd7f702619e2863acf43bba5ed0b6`) kept at `metfix-sanity-read-token-fix-tests.r1.2.md`. Changes: V3 rewritten per the **Web Lead ruling of 10-19** (a whitespace-only value counts as unset and passes, matching spec 1.1.2 R4b/K8(b)); new items K1.7, V2b (required behavior), V11 (temp envDir), V10 (temp outDir) and D1 (docs copy). No assertion weakened: V3 keeps the throw on padded real tokens and adds dist and source checks.
+- (Rev 1.2 history) Rev 1.2, 2026-10-19 ~4:25 PM PT, round 2 at `0d362f6f`. Rev 1.1 (`3c4341554e8e2e12066bfcd41aa9e623`) kept at `metfix-sanity-read-token-fix-tests.r1.1.md`. Spec now rev 1.1.2, md5 `9f0f405441f6e83c3a407e40b955da3c`. 1.1 → 1.1.2 adds R4a/R4b, R7 (no bare `import.meta.env` in `client/src`), K8, T7, and K6 entries for `vite.config.ts` and `client/src/const.ts`; it also restates K3(c), moves K4.3 to `wrangler dev --local`, makes K4.5 post-deploy only, and allows no bypass switch. No rev 1.1 assertion is weakened here; §V V3 is flagged below. Rev 1.2 adds K1.6, V2b, V10, V11, K8.1 and §R2.
+- (Rev 1.1 history) Rev 1.1, 2026-10-19 ~4:10 PM PT. Rev 1.0 (`19ce522c3bff732296417508a504cae1`) kept at `metfix-sanity-read-token-fix-tests.r1.md`. Rev 1.0 items below are unchanged in wording/strength, except where the spec's G rulings supersede them (marked). New items: §V (vite.config guard), K3.8–K3.10, K4.6, K6.5, K7, and the round-1 results table (§R).
 - Spec: `metfix-sanity-read-token-fix-acceptance.md` rev 1.1, md5 `c2e48ca44109637684e062a03bf76077` (verified 2026-10-19). Rev 1.0 was `5e21d58c`. 1.0 → 1.1: K1 exception list; R4 scope = `dist/public` text assets, value regex primary; K4.1 void; K2 via `sanityClient.config()`; `useCdn:true`; apiVersion `2025-01-01` pinned (G7); R1 mandatory and merge-blocking; K7 added; QA gap rulings G1–G7.
 - Author: MetFix Web QA Tests. Repo Break-Even-Productions/metfixhome, base main `9f7129d7`. Read-only; test sign-off only (merge needs Ethan's go).
 - Decision under test: option A (no token, `perspective:"published"`, `useCdn:true` → `etg9lezr.apicdn.sanity.io`, per Web Lead).
@@ -77,13 +80,48 @@ Shorthand: `NAME=VITE_SANITY_API_READ_TOKEN`, `PAT='\bsk[A-Za-z0-9]{40,}\b'`, `D
 Shell line in ci.yml stays as the second check.
 - V1 `vite.config.ts` throws when `VITE_SANITY_API_READ_TOKEN` is non-empty in `process.env`. M: remove the throw → the test FAILS.
 - V2 It also throws when the var is set **only** in a `.env` file: the test writes a temp `.env` in the root Vite actually uses (the config's `root`/`envDir`, read from the config, not assumed) and runs the real config through `loadEnv`. M: guard reads `process.env` only → V2 FAILS.
-- V3 A whitespace-only value (`"   "`) counts as non-empty and throws. M: `.trim()` before the check → FAILS.
+- V3 (Web Lead ruling, 10-19: whitespace-only = unset, passes; matches spec 1.1.2 R4b/K8(b). Replaces the rev 1.0–1.2 wording "whitespace-only throws".) Must assert all of:
+  - (a) Each whitespace-only value, `' '`, `'\t'` and `'\n'`, in `process.env` does not throw for `serve` or `build`, and `npm run build:cf` exits 0 with that value set.
+  - (b) After the (a) build: `dist/public` has 0 occurrences of that value as the token. The inlined `VITE_SANITY_API_READ_TOKEN` is absent, or only as `VITE_SANITY_API_READ_TOKEN:""`. Assert with a regex on `VITE_SANITY_API_READ_TOKEN:"[^"]` → 0 matches; it must not match `:" "`, `:"\t"` or `:"\n"` (escaped forms included).
+  - (c) A real dummy padded with spaces and newlines (`'  sk…  '`, `'\nsk…\n'`) STILL throws, separately from `process.env` and from `.env` (V11 temp envDir). The error message, stdout and stderr never contain the dummy or its trimmed form.
+  - M(c): treat any trimmed non-empty value as unset (e.g. `if (false && sanityReadToken)`, or skip values with leading/trailing whitespace) → (c) FAILS.
+  - M(a): remove `.trim()` → (a) FAILS (whitespace becomes non-empty and throws).
+  - M(b): with R4b removed in scratch and `const.ts` reverted, set `' '` → the (b) regex must match (proves (b) can fail).
+
 - V4 The error message contains `VITE_SANITY_API_READ_TOKEN` and never the value: assert that the dummy is absent from the error message and from captured stdout/stderr. M: interpolate the value into the message → FAILS.
 - V5 It throws for both `command:"serve"` and `command:"build"`. M: guard only on build → the serve case FAILS.
 - V6 The test calls the real exported default config function (or real `loadEnv` + config). No helper exported just for the test (rule 4). M: add `export function __checkToken` → K6.3-style grep FAILS.
 - V7 Unset or empty `""` → no throw, and `npm run build:cf` exits 0. M: throw on defined-but-empty → FAILS.
 - V8 (reasoning, no direct test) Workers Builds runs `vite build` with this config, so V1–V3 cover it. Record the build command from the Cloudflare dashboard as evidence (Ethan/Web Lead).
 - V9 BLOCKER: K6.5 spec doc-only rev must be pinned before V1–V7 land.
+
+- V2b = spec 1.1.3 **K8(d)** (Web Lead correction, 10-19: no throw expected). Setup: dummy in `.env` (V11 temp envDir) and `VITE_SANITY_API_READ_TOKEN=` (present, blank) in the shell. The guard must decide on exactly what Vite inlines, i.e. the `loadEnv` result, where a key present in `process.env` overrides `.env` even when it's empty. Assert:
+  - (a) The config resolves for `serve` and `build`, `build:cf` exits 0, and `dist/public` has 0 dummy matches (`grep -rIl` count 0, value never printed). Also required: the (b) regex from V3 shows `VITE_SANITY_API_READ_TOKEN` absent or only `:""`. A `.env` value inlined = FAIL (K8(d)).
+  - (b) The guard tracks Vite's precedence. Two mutations, each recorded:
+    - M1, `process.env` only (guard ignores `.env`): the V2 `.env`-only case (shell unset) must FAIL. Round 2 recorded this: the "process.env only" mutation failed V2.
+    - M2, fallback `process.env.X || fileValue` (or `?? ` on a trimmed empty): V2b must FAIL because the guard throws while Vite inlines `""`.
+  - (c) The opposite case, cross-reference V2: shell **unset** plus dummy in `.env` → throws (serve and build), and the message never shows the value.
+  - The rev 1.3 "throw on each source separately" requirement is removed per the ruling.
+
+- V10 (rev 1.3) V7's `build:cf` builds into a temp outDir (e.g. `vite build --outDir <tmp> --emptyOutDir`) and leaves `dist/public` untouched. Assert by recording, before and after the V7 test, a recursive listing with mtimes and the md5 of every file in `dist/public` (or that it is still absent): they must be identical. Clean up the temp outDir. M: drop `--outDir` → the snapshot differs → FAIL. Rationale (round 2): `emptyOutDir` on the shared dist can clobber a running `wrangler dev`/`test:workers`.
+
+- V11 (rev 1.3) V2, V2b and V3(c) use a temp envDir and never touch `<repo>/.env`. With no test hook (rule 4), copy the real `vite.config.ts` into a temp dir and import it from there, so its envDir is the temp dir. Assert:
+  - the `<repo>/.env` mtime and md5 are unchanged before and after the suite (or it is still absent), with a sentinel `.env` present during the run;
+  - **kill case:** run the V2 test in a child process, send SIGKILL after the temp `.env` is written (a test-only wait via env or file is allowed in the test, not in production code), then assert `<repo>/.env` still has the same mtime and md5 and contains no dummy.
+  M: write `<repo>/.env` (the round-2 approach) → the mtime/md5 check FAILS, and the kill case leaves the dummy → FAIL.
+
+- K1.6 (CQ round 2) K1 greps must include dotfiles: `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .` (plain rg skips `.github`). Exact expected hits after #7: `vite.config.ts:212,215`, `.github/workflows/ci.yml:47`, `client/src/lib/sanity.vite-guard.test.ts:7`, `client/src/lib/sanity.config.test.ts:32`. Spec gap: the K1 exception list in 1.1.2 does not yet name `vite.config.ts` (R4b) or `sanity.vite-guard.test.ts`. Spec must add them by name. M: re-add the token read to `sanity.ts` → extra hit → FAIL.
+- K8.1 R7: `rg -nP 'import\.meta\.env(?!\.[A-Za-z_])' client/src` returns 0 hits. Scratch proof: remove R4b, build with the dummy set → 0 dummy files in `dist/public`. With R4b removed and `const.ts` reverted to main → 1 dummy file and R4a exits 1, which proves the check catches a regression.
+
+- K1.7 Spec 1.1.3 K1 names `vite.config.ts:212`, `vite.config.ts:215` and `client/src/lib/sanity.vite-guard.test.ts:7` (md5 `aefcc701…` verified). Confirmed at `0d362f6f` with `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .`. Exactly 6 hits, no drift:
+  - `vite.config.ts:212` and `:215` (named);
+  - `client/src/lib/sanity.vite-guard.test.ts:7` (named);
+  - `client/src/lib/sanity.config.test.ts:32` (category: config test);
+  - `.github/workflows/ci.yml:47` (category: R4 step);
+  - `.github/workflows/deploy-pages.yml:40` (not allowed; BLOCKED on #7, must be 0 after the rebase).
+  Any line shift or extra hit on a later head = FAIL until Spec re-pins it. Status: PASS for the named exceptions; the K1 overall stays BLOCKED on #7.
+
+- D1 (round 3; target is rev 1.4 md5 and spec 1.1.3 `aefcc701…`) The PR's `docs/metfix-sanity-read-token-fix/metfix-sanity-read-token-fix-tests.md` md5 equals this list's current rev md5. The acceptance copy equals the current spec rev md5. M: any byte difference → FAIL.
 
 ## K7
 - K7.1 `worker/build.config.test.ts` (reads ci.yml) passes unchanged on the PR head. Present at base and head; re-run after the #7 rebase too.
@@ -135,3 +173,28 @@ Legend: PASS / FAIL / BLOCKED / PENDING. Owner: QA = this list, CQ = Code Qualit
 | K6.2 | QA | PASS | Only hit is this list's own text in docs/ |
 | K6.5 / V9 | CQ | BLOCKER | Spec rev for vite.config.ts |
 | K7.1 | QA | PASS | `worker/build.config.test.ts` passed in the local 305/305 run at head; file unchanged by #10 |
+
+## §R2 Round-2 results at 0d362f6f (QA ran every item on a local clone; scratch worktree for the R4b removal, never committed)
+| Item | Owner | Status | Evidence |
+|---|---|---|---|
+| CI | QA | PASS | Run 39339532106, head_sha 0d362f6f…, success. Log: `Tests 312 passed (312)`, `sanity.vite-guard.test.ts (7 tests)`, workers `Tests 8 passed (8)`, "No Sanity token in dist" step success. Local run: 312/312, 16 files |
+| 305→312 | QA | — | +7 = the new `sanity.vite-guard.test.ts` V1–V7. config 2 and fetch 1 are unchanged in count |
+| Docs copies | QA | PASS (stale) | PR `docs/` acceptance = 9f0f4054 (= 1.1.2), tests = 3c434155 (= rev 1.1). Rev 1.2 supersedes the tests copy, so the PR must update it to the rev 1.2 md5 |
+| K1.1/K1.5 | QA | BLOCKED on #7 | `rg --hidden`: the only non-allowed hit is `deploy-pages.yml:40` |
+| K1.6 | both | FAIL (spec doc) | `vite.config.ts` and `sanity.vite-guard.test.ts` hits are not in the spec's K1 exception list |
+| K1.2–K1.4, K2.*, K6.1–K6.4, K7.1 | QA | PASS | Unchanged from round 1. K6: the 2 new paths (`vite.config.ts`, `const.ts`) plus `sanity.vite-guard.test.ts` are allowed in 1.1.2 |
+| K3.1/K3.2/K3.4–K3.6 | QA | PASS | 0 maps emitted |
+| K3.3 | QA | PASS | Guard in, dummy in shell → build exit 1 with `Error: VITE_SANITY_API_READ_TOKEN must not be set`, dummy count in output 0. Dummy only in `.env` → exit 1, dummy count 0. Scratch with R4b removed + dummy → build 0, 0 dummy files, R4a exit 0. Scratch with `const.ts` also reverted → 1 file, R4a exit 1 |
+| K8.1 / R7 | QA | PASS | rg PCRE 0 hits. The R7 change is only in `client/src/const.ts` |
+| K3.8 / V1,V2,V4–V7 | QA | PASS | Mutations, each made the named tests fail: remove throw → V1–V5 fail; process.env only → V2 fails; value in message → V4 fails; serve exempt → V4,V5 fail; build exempt → V1,V2,V3,V5 fail; throw on empty → V3,V7 fail; `export function __checkToken` → all 7 fail; broken import in main.tsx → V7 fails. `vite dev` with the dummy also exits 1 and names the variable |
+| V3 | QA | CONFLICT | Spec 1.1.2 says whitespace-only passes; needs Web Lead confirmation (no-trim mutation → V3 fails) |
+| V2b | CQ | FAIL (non-blocking gap) | Blank shell value + `.env` dummy → build 0 (guard misses), 0 dummy files in dist. With R4b removed and `const.ts` reverted, still 0 (inlined as an empty string; Vite gives the shell precedence). No leak; needs a test case |
+| V10 | CQ | OPEN (non-blocking) | See item |
+| V11 | CQ | OPEN (non-blocking) | Confirmed by reading the code (V2 writes `<repo>/.env`) |
+| K3.9 | QA | PASS (by reasoning, V8) | `build:cf` = `vite build` with no `--config`, so it loads `vite.config.ts`. The Workers Builds dashboard command is still to be recorded by Ethan/Web Lead |
+| K3.10 | QA | PENDING on R1 | Spec 1.1.2 still conditions the legacy pattern on R1's finding and defines none |
+| K4.2 / K4.6 | QA | PASS | XHR stub and `xhrCounts` gone. Duplicates gone (config line 16; fetch lines 99–100 now reads one `toBe("published")`). New `config().withCredentials` assertion at fetch:80 fails alone under `withCredentials:true`. The `token:"x"` mutation fails at the Authorization line |
+| K4.3 | QA | PASS (headers/host/data) | `wrangler dev --local`, no secrets or `.dev.vars`, no `--remote`. Origin 127.0.0.1:8799: every apicdn request is CORS-rejected (Sanity returns 403 to that Origin; only `https://metfix.org` is allowed), but 0 carry auth/cookie and all have perspective=published. Re-run served at https://metfix.org mapped to local wrangler (`--host-resolver-rules`, local bundle index-Du1heQHs) → all sanity requests 200, hosts apicdn plus cdn.sanity.io (images), 0 auth/cookie, 0 set-cookie. Response counts: courses 9, testimonials 6, FAQs 6. HARs in `/workspace/pr-token/har/` |
+| K4.4 | QA | PASS | Set-cookie 0 in the HARs |
+| K4.5 | QA | PENDING (post-deploy only, not a merge gate) | — |
+| K5 | Ethan | PENDING | Merge blocked until Ethan confirms |
