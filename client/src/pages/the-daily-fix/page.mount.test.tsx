@@ -149,8 +149,17 @@ function renderShell(url: string) {
   );
 }
 
+function isCommentsRequest(input: unknown): boolean {
+  return String(input).includes("/api/daily-fix/comments");
+}
+
+/** Day GETs only. Comments ride along after a loaded day and must not change these counts. */
+function dayCalls(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.filter((call) => !isCommentsRequest(call[0]));
+}
+
 function requestDates(fetchMock: ReturnType<typeof vi.fn>): string[] {
-  return fetchMock.mock.calls.map((call) => {
+  return dayCalls(fetchMock).map((call) => {
     const url = new URL(String(call[0]), "https://metfix.org");
     expect(url.pathname).toBe(DAILY_FIX_BFF_URL);
     expect(url.searchParams.has("key")).toBe(false);
@@ -423,14 +432,14 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
     renderAt("/the-daily-fix");
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
     expect(await screen.findByRole("heading", { name: formatDayLabel(TODAY) })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
     await act(async () => {
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dayCalls(fetchMock)).toHaveLength(3);
   });
 
   it("6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date", async () => {
@@ -454,7 +463,12 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     const strip = screen.getByLabelText("Recent days");
     const active = within(strip).getByRole("link", { current: "date" });
     expect(active.textContent).toContain("9");
-    // Note for PR #2 rebase only: comments GET must key on response date 2026-03-09, not today.
+    await waitFor(() => {
+      const comments = fetchMock.mock.calls.filter((call) => isCommentsRequest(call[0]));
+      expect(comments).toHaveLength(1);
+      expect(String(comments[0][0])).toContain(`date=${MINUS2}`);
+      expect(String(comments[0][0])).not.toContain(`date=${TODAY}`);
+    });
   });
 
   it.each([
@@ -522,7 +536,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
       renderAt("/the-daily-fix");
       expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
       expect(window.location.pathname).toBe("/the-daily-fix");
-      await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+      await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
       expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
       expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
       expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
@@ -548,7 +562,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
   });
 
   it("17. bare: 200 with no date key → Not available, not cached", async () => {
@@ -571,7 +585,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
     expect(peekLoadedDailyFixDay(TODAY)).toBeNull();
@@ -587,7 +601,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     cleanup();
     renderAt("/the-daily-fix/260311");
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
-    expect(fetchMock.mock.calls.length).toBe(4);
+    expect(dayCalls(fetchMock)).toHaveLength(4);
     expect(requestDates(fetchMock).slice(-1)).toEqual([TODAY]);
   });
 
@@ -603,14 +617,14 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
 
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
     expect(screen.queryByText("Loading")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dayCalls(fetchMock)).toHaveLength(3);
   });
 
   it("18. bare mount stays exactly three GETs even when today returns a different date", async () => {
@@ -626,9 +640,9 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     cleanup();
     renderAt("/the-daily-fix");
     await screen.findByText(/closest scheduled Daily Fix/i);
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
-    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes(MINUS2)).length).toBe(1);
+    expect(dayCalls(fetchMock).filter((c) => String(c[0]).includes(MINUS2)).length).toBe(1);
   });
 });
 
@@ -644,20 +658,20 @@ describe("Daily Fix page mount — prefetch cache", () => {
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
     renderAt("/the-daily-fix");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
 
     cleanup();
     renderAt("/the-daily-fix/260310");
     expect(await screen.findByRole("heading", { name: `Belly ${MINUS1}` })).toBeTruthy();
     expect(screen.queryByText("Loading")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dayCalls(fetchMock)).toHaveLength(3);
 
     cleanup();
     renderAt("/the-daily-fix/260309");
     expect(await screen.findByRole("heading", { name: `Belly ${MINUS2}` })).toBeTruthy();
     expect(screen.queryByText("Loading")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dayCalls(fetchMock)).toHaveLength(3);
   });
 
   it("9. prefetch closer for −1 caches under returned date; /260309 hits; /260310 Not available without second fetch", async () => {
@@ -672,13 +686,13 @@ describe("Daily Fix page mount — prefetch cache", () => {
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
     renderAt("/the-daily-fix");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
 
     cleanup();
     renderAt("/the-daily-fix/260309");
     expect(await screen.findByRole("heading", { name: `Belly ${MINUS2}` })).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dayCalls(fetchMock)).toHaveLength(3);
     expect(screen.queryByText(/closest scheduled Daily Fix/i)).toBeNull();
 
     cleanup();
@@ -686,7 +700,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
     expect(window.location.pathname).toBe("/the-daily-fix/260310");
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS2}` })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(dayCalls(fetchMock)).toHaveLength(3);
   });
 
   it("10. failed prefetch not cached; visit refetches once and succeeds; failed prefetch never changes visible day", async () => {
@@ -705,7 +719,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
     expect(screen.getByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
 
@@ -713,7 +727,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     cleanup();
     renderAt("/the-daily-fix/260310");
     expect(await screen.findByRole("heading", { name: `Belly ${MINUS1}` })).toBeTruthy();
-    expect(fetchMock.mock.calls.length).toBe(4);
+    expect(dayCalls(fetchMock)).toHaveLength(4);
   });
 
   it("10. failed prefetch stay failed on visit → Not available; never changed visible day during prefetch", async () => {
@@ -731,7 +745,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     cleanup();
     renderAt("/the-daily-fix");
     expect(await screen.findByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
     expect(screen.getByRole("heading", { name: `Belly ${TODAY}` })).toBeTruthy();
@@ -741,7 +755,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
     expect(window.location.pathname).toBe("/the-daily-fix/260310");
     expect(screen.queryByRole("heading", { name: `Belly ${MINUS1}` })).toBeNull();
-    expect(fetchMock.mock.calls.length).toBe(4);
+    expect(dayCalls(fetchMock)).toHaveLength(4);
   });
 
   it("11. dated /250210 makes exactly one GET for 2025-02-10; no today-window prefetch", async () => {
@@ -756,7 +770,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     renderAt("/the-daily-fix/250210");
     expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(requestDates(fetchMock)).toEqual(["2025-02-10"]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(dayCalls(fetchMock)).toHaveLength(1);
   });
 
   it("12. pillar tab 0 extra fetches; invalid dates and four-segment path 0 fetches / no prefetch", async () => {
@@ -769,7 +783,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
     renderAt("/the-daily-fix/250210?tab=brain");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(1));
     await act(async () => {
       window.history.replaceState(null, "", "/the-daily-fix/250210?tab=body");
       window.dispatchEvent(new PopStateEvent("popstate"));
@@ -778,7 +792,7 @@ describe("Daily Fix page mount — prefetch cache", () => {
       window.history.replaceState(null, "", "/the-daily-fix/250210");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(dayCalls(fetchMock)).toHaveLength(1);
 
     for (const path of [
       "/the-daily-fix/250231",
@@ -889,7 +903,7 @@ describe("Daily Fix page mount — skeleton, copy, dated mismatch", () => {
       expect(await screen.findByRole("heading", { name: "Not available" })).toBeTruthy();
       expect(screen.queryByText(/closest scheduled Daily Fix/i)).toBeNull();
       expect(window.location.pathname).toBe("/the-daily-fix/250210");
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(dayCalls(fetchMock)).toHaveLength(1);
       expect(requestDates(fetchMock)).toEqual(["2025-02-10"]);
     }
   });
@@ -996,7 +1010,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     expect(screen.getByRole("heading", { name: "Ingredients", level: 4 })).toBeTruthy();
     expect(screen.getByText("Marinate the steak")).toBeTruthy();
     expect(requestDates(fetchMock)).toEqual(["2025-02-10"]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(dayCalls(fetchMock)).toHaveLength(1);
   });
 
   it("B1b: photo + all-null macros → no Per serving and no .df-macros", async () => {
@@ -1494,7 +1508,7 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     vi.stubGlobal("fetch", fetchMock);
     cleanup();
     renderShell("/the-daily-fix");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(dayCalls(fetchMock)).toHaveLength(3));
     expect(requestDates(fetchMock)).toEqual([TODAY, MINUS1, MINUS2]);
     const img = await screen.findByRole("img", { name: `Belly ${TODAY}` });
     fireImgLoad(img as HTMLImageElement);
@@ -1598,5 +1612,137 @@ describe("Daily Fix page mount — MealPhoto belly media", () => {
     fireEvent.click(screen.getByRole("button", { name: /Watch video/i }));
     const iframe = await screen.findByTitle("Belly 2025-02-10 short");
     expect(iframe.getAttribute("src")).toBe(EMBED);
+  });
+});
+
+describe("Daily Fix comments", () => {
+  const emptyCommentsBody = {
+    comments: { belly: [], body: [], brain: [] },
+  };
+  const forbiddenStorageKeys = [
+    "metfix-daily-fix-comments",
+    "metfix-daily-fix-author",
+    "metfix-daily-fix-author-id",
+    "metfix-join-demo",
+  ] as const;
+
+  function commentsCalls(fetchMock: ReturnType<typeof vi.fn>) {
+    return fetchMock.mock.calls.filter((call) => isCommentsRequest(call[0]));
+  }
+
+  function mockDayAndComments(options?: { commentsStatus?: number; commentsBody?: unknown }) {
+    const commentsStatus = options?.commentsStatus ?? 200;
+    const commentsBody = options?.commentsBody ?? emptyCommentsBody;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).not.toContain("brokenscience.org");
+      if (isCommentsRequest(url)) {
+        return new Response(JSON.stringify(commentsBody), {
+          status: commentsStatus,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(dayPayload("2025-02-10")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("keeps the day loaded when comments return 404", async () => {
+    const fetchMock = mockDayAndComments({
+      commentsStatus: 404,
+      commentsBody: { error: "not_found" },
+    });
+    cleanup();
+    renderAt("/the-daily-fix/250210");
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(await screen.findByText(/Comments are unavailable right now/i)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Not available" })).toBeNull();
+    expect(screen.queryByText(/No comments yet/i)).toBeNull();
+    expect(dayCalls(fetchMock)).toHaveLength(1);
+    expect(commentsCalls(fetchMock)).toHaveLength(1);
+    expect(String(commentsCalls(fetchMock)[0][0])).toBe(
+      "/api/daily-fix/comments?date=2025-02-10&type=all",
+    );
+  });
+
+  it("thrown comments fetch keeps the day; loading never shows No comments yet", async () => {
+    let rejectComments!: (reason?: unknown) => void;
+    const pendingComments = new Promise<Response>((_resolve, reject) => {
+      rejectComments = reject;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).not.toContain("brokenscience.org");
+      if (isCommentsRequest(url)) return pendingComments;
+      return new Response(JSON.stringify(dayPayload("2025-02-10")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    cleanup();
+    renderAt("/the-daily-fix/250210");
+
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(screen.getByText(/Loading comments/i)).toBeTruthy();
+    expect(screen.queryByText(/No comments yet/i)).toBeNull();
+    expect(screen.queryByText(/Comments are unavailable right now/i)).toBeNull();
+
+    await act(async () => {
+      rejectComments(new TypeError("network"));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText(/Comments are unavailable right now/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Not available" })).toBeNull();
+    expect(screen.queryByText(/No comments yet/i)).toBeNull();
+  });
+
+  it("shows No comments yet only after a real empty list", async () => {
+    mockDayAndComments();
+    cleanup();
+    renderAt("/the-daily-fix/250210");
+    expect(await screen.findByText("No comments yet.")).toBeTruthy();
+    expect(screen.queryByText(/Comments are unavailable/i)).toBeNull();
+  });
+
+  it("logged-out submit opens the join modal and does not POST or store a session", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = mockDayAndComments();
+    cleanup();
+    renderAt("/the-daily-fix/250210?tab=body");
+    expect(await screen.findByRole("heading", { name: "Body 2025-02-10" })).toBeTruthy();
+    await waitFor(() => expect(commentsCalls(fetchMock)).toHaveLength(1));
+    const callsAfterLoad = fetchMock.mock.calls.length;
+
+    fireEvent.change(screen.getByPlaceholderText("Your name"), { target: { value: "Pat" } });
+    fireEvent.change(screen.getByPlaceholderText(/Share a thought/i), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByRole("button", { name: /Post comment/i }));
+
+    expect(await screen.findByRole("dialog", { name: /Join MetFix Today/i })).toBeTruthy();
+    expect(window.location.pathname).toBe("/the-daily-fix/250210");
+    expect(window.location.search).toBe("?tab=body");
+
+    const joinDialog = screen.getByRole("dialog", { name: /Join MetFix Today/i });
+    fireEvent.change(within(joinDialog).getByPlaceholderText("you@email.com"), {
+      target: { value: "pat@example.com" },
+    });
+    fireEvent.click(within(joinDialog).getByRole("button", { name: /Join with Email/i }));
+    fireEvent.click(within(joinDialog).getByRole("button", { name: /Continue with Google/i }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterLoad);
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).not.toContain("brokenscience.org");
+      expect((call[1] as RequestInit | undefined)?.method ?? "GET").not.toBe("POST");
+    }
+    for (const key of forbiddenStorageKeys) {
+      expect(setItemSpy).not.toHaveBeenCalledWith(key, expect.anything());
+    }
+    expect(window.location.href).not.toMatch(/accounts\.google|oauth|openid/i);
   });
 });

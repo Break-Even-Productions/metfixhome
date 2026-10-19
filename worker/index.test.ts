@@ -949,6 +949,84 @@ describe("Worker HTML / API / sitemap", () => {
     expect(cache.puts.length).toBe(0);
   });
 
+  it("comments proxy forwards GET to BSI and returns the raw body", async () => {
+    const raw = JSON.stringify({
+      comments: { belly: [], body: [], brain: [] },
+      meta: { date: "2026-10-04", type: "all" },
+    });
+    fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
+    const res = await call("/api/daily-fix/comments?date=2026-10-04&type=all");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=60");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    const body = await res.text();
+    expect(body).toBe(raw);
+    expect(body).not.toContain("test-secret-key");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstream, init] = fetchMock.mock.calls[0];
+    expect(String(upstream)).toBe(
+      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2026-10-04&type=all",
+    );
+    expect((init?.headers as Record<string, string>)["X-API-Key"]).toBe("test-secret-key");
+    await flush(ctx);
+    expect(cache.puts.length).toBe(0);
+
+    fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
+    const head = await call("/api/daily-fix/comments?date=2026-10-04&type=all", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+  });
+
+  it("comments proxy rejects bad input and non-GET without calling upstream", async () => {
+    for (const method of ["POST", "PUT", "DELETE", "OPTIONS", "PATCH"]) {
+      fetchMock.mockClear();
+      const res = await call("/api/daily-fix/comments?date=2026-10-04&type=all", { method });
+      expect(res.status).toBe(405);
+      expect(res.headers.get("Allow")).toBe("GET, HEAD");
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+    }
+    for (const q of ["", "?date=2026-02-31", "?date=261004", "?type=all", "?date=2026-10-04"]) {
+      fetchMock.mockClear();
+      const res = await call(`/api/daily-fix/comments${q}`);
+      expect(res.status).toBe(400);
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+    }
+    const missingType = await call("/api/daily-fix/comments?date=2026-10-04");
+    expect(await missingType.json()).toEqual({ error: "bad_type" });
+    const badDate = await call("/api/daily-fix/comments?date=261004&type=all");
+    expect(await badDate.json()).toEqual({ error: "bad_date" });
+  });
+
+  it("comments proxy maps upstream failures and refuses a non-BSI host", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 404 }));
+    const notFound = await call("/api/daily-fix/comments?date=2026-08-01&type=all");
+    expect(notFound.status).toBe(404);
+    expect(await notFound.json()).toEqual({ error: "not_found" });
+
+    fetchMock.mockResolvedValue(new Response("x", { status: 500 }));
+    const down = await call("/api/daily-fix/comments?date=2026-08-02&type=all");
+    expect(down.status).toBe(503);
+    expect(await down.json()).toEqual({ error: "unavailable" });
+    expect(down.headers.get("Retry-After")).toBe("300");
+    expect(down.headers.get("Cache-Control")).toBe("no-store");
+
+    fetchMock.mockReset();
+    const nokey = await call("/api/daily-fix/comments?date=2026-08-03&type=all", {}, "");
+    expect(nokey.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    const evil = await call(
+      "/api/daily-fix/comments?date=2026-08-04&type=all",
+      {},
+      "test-secret-key",
+      { bsiBaseUrl: "https://evil.example/wp-json/metfix/v1/daily-fix" },
+    );
+    expect(evil.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
   it("W45 sitemap paging total 250/200/0 + X-API-Key each page + Content-Type", async () => {
     async function runTotal(total: number, expectedCalls: number) {
       cache.store.clear();

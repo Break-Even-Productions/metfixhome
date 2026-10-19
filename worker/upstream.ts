@@ -170,3 +170,48 @@ export async function fetchDailyFixListPage(
 export function outcomeForCache(outcome: UpstreamOutcome): DailyFixDay | null {
   return outcome.kind === "ok" ? outcome.mapped : null;
 }
+
+export type CommentsUpstream =
+  | { kind: "ok"; bodyText: string }
+  | { kind: "not_found" }
+  | { kind: "nokey" }
+  | { kind: "unavailable" };
+
+/**
+ * GET BSI comments for one ISO date. Raw body only — the client maps type=all.
+ * Does not touch the day cache.
+ */
+export async function fetchDailyFixComments(
+  iso: string,
+  type: string,
+  env: Env,
+  fetchImpl: typeof fetch = fetch,
+  opts?: { baseUrl?: string },
+): Promise<CommentsUpstream> {
+  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
+
+  const base = opts?.baseUrl ?? BSI_DAILY_FIX_URL;
+  const url = `${base}/comments?date=${encodeURIComponent(iso)}&type=${encodeURIComponent(type)}`;
+  try {
+    assertBsiHost(url);
+  } catch {
+    return { kind: "unavailable" };
+  }
+
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-API-Key": env.DAILY_FIX_API_KEY,
+        "User-Agent": UPSTREAM_USER_AGENT,
+      },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (response.status === 404) return { kind: "not_found" };
+    if (!response.ok) return { kind: "unavailable" };
+    return { kind: "ok", bodyText: await response.text() };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}

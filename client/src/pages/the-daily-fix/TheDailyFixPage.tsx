@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
+import { CommentThread } from "./CommentThread";
 import { DayPanel } from "./DayPanel";
 import { HeroMark, useHeroGlass } from "./HeroGlass";
 import {
@@ -13,6 +14,7 @@ import {
   syncLoadFromCache,
   type DailyFixLoadState,
 } from "./data";
+import { fetchDailyFixComments, type CommentsLoadState } from "./comments";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
@@ -120,6 +122,9 @@ export default function TheDailyFixPage({
     return syncLoadFromCache(route.kind, fetchIso);
   });
   const [loadKey, setLoadKey] = useState(routeKey);
+  const [commentsLoad, setCommentsLoad] = useState<CommentsLoadState>(() =>
+    route.kind === "invalid" ? { status: "unavailable" } : { status: "loading" },
+  );
   const heroRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
@@ -179,6 +184,30 @@ export default function TheDailyFixPage({
       active = false;
     };
   }, [fetchIso, route.kind, allowCloser]);
+
+  // Comments key on the loaded response date (closer-day), not the requested today ISO.
+  // Failures stay in the comment panel and never replace the day load state.
+  const commentIso = load.status === "loaded" ? load.day.date : null;
+  useEffect(() => {
+    if (route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable") {
+      setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    if (!commentIso) {
+      setCommentsLoad({ status: "loading" });
+      return;
+    }
+    const controller = new AbortController();
+    setCommentsLoad({ status: "loading" });
+    void fetchDailyFixComments(commentIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCommentsLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [commentIso, load.status, route.kind]);
 
   // Prefetch −1/−2 only on bare today route (Q1), after today's load is kicked off.
   useEffect(() => {
@@ -315,6 +344,7 @@ export default function TheDailyFixPage({
                 ) : null
               }
             />
+            {route.kind !== "invalid" ? <CommentThread load={commentsLoad} /> : null}
           </div>
         </section>
 

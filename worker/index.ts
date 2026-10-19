@@ -19,6 +19,7 @@ import {
 } from "../shared/daily-fix";
 import { buildFullHead, rewriteHtml, type HeadMode } from "./head";
 import {
+  fetchDailyFixComments,
   fetchDailyFixDay,
   fetchDailyFixListPage,
   isPublicListItem,
@@ -58,6 +59,9 @@ export async function handleRequest(
   }
   if (path === "/api/daily-fix/archive") {
     return handleArchive(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
+  }
+  if (path === "/api/daily-fix/comments" || path === "/api/daily-fix/comments/") {
+    return handleComments(request, env, fetchImpl, bsiBaseUrl);
   }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
@@ -374,6 +378,52 @@ async function handleApi(
     );
   }
 
+  return jsonResponse(
+    { error: "unavailable" },
+    503,
+    { "Retry-After": "300", "Cache-Control": "no-store" },
+    method === "HEAD",
+  );
+}
+
+async function handleComments(
+  request: Request,
+  env: Env,
+  fetchImpl: typeof fetch,
+  bsiBaseUrl?: string,
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    return jsonResponse(
+      { error: "method_not_allowed" },
+      405,
+      { Allow: "GET, HEAD" },
+      method === "HEAD",
+    );
+  }
+
+  const url = new URL(request.url);
+  const date = url.searchParams.get("date");
+  if (!date || !isIsoDate(date)) {
+    return jsonResponse({ error: "bad_date" }, 400, {}, method === "HEAD");
+  }
+  const type = url.searchParams.get("type");
+  if (!type) {
+    return jsonResponse({ error: "bad_type" }, 400, {}, method === "HEAD");
+  }
+
+  const outcome = await fetchDailyFixComments(date, type, env, fetchImpl, { baseUrl: bsiBaseUrl });
+  if (outcome.kind === "ok") {
+    return apiRawBody(outcome.bodyText, 200, apiOkHeaders(), method === "HEAD");
+  }
+  if (outcome.kind === "not_found") {
+    return jsonResponse(
+      { error: "not_found" },
+      404,
+      { "Cache-Control": "public, max-age=60" },
+      method === "HEAD",
+    );
+  }
   return jsonResponse(
     { error: "unavailable" },
     503,
