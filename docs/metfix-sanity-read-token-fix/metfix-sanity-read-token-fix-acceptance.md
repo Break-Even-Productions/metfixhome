@@ -1,6 +1,8 @@
 # metfix.org: remove the Sanity read token from the client bundle (acceptance + threats)
-- Rev 1.1, 2026-10-19. Author: MetFix Web Spec. Status: for Web Lead; not signed.
+- Rev 1.1.2, 2026-10-19 (~4:01 PM PT). Author: MetFix Web Spec. Status: for Web Lead; not signed. Doc-only rev after PR #10 (head `45fdc15a`) failed round 1.
 - Changelog:
+  - rev 1.1.2 (Web Lead rulings): (1) No skip or bypass switch in shipped code; the K3(c) bypass is removed. QA removes R4b in a scratch local checkout only. The PR contains no env or flag that disables R4b. (2) `deploy-pages.yml` stays out of #10: #7 deletes it, #10 rebases after #7 merges, and K1 covers it. Point closed. (3) Every bare `import.meta.env` under `client/src` is fixed in #10, listed in the PR body, and added to K6 by name (R7, K6 updated). Rev 1.1.1 (`b1bedd50`) backed up at `metfix-sanity-read-token-fix-acceptance.rev1.1.1.md`.
+  - rev 1.1.1 (Web Lead rulings after #10 round 1): (1) K6 allowlist adds `vite.config.ts` and `client/src/const.ts`. (2) R4 gains R4b, a `vite.config.ts` guard (`loadEnv`, trimmed, throws on serve and build, names the variable only); the CI shell guard stays as a second check (R4a). (3) New R7: fix the root cause at `client/src/const.ts:29` (whole-env `import.meta.env &&` reference) with new evidence in §1 and acceptance K8. K3(c) restated: passes only with a dummy set and 0 dummy matches in `dist/public`. (4) QA K4.3 runs its HAR against the head served by `wrangler dev --local`; QA K4.5 is a post-deploy check, not a merge gate. (5) QA's combined list pinned to rev 1.1, md5 `3c4341554e8e2e12066bfcd41aa9e623` (verified on the box). Rev 1.1 (`c2e48ca4`) backed up at `metfix-sanity-read-token-fix-acceptance.rev1.1.md`.
   - rev 1.1: folds in CQ's pre-round-1 notes 1–9 as ruled by Web Lead (K1 exception list; R4 scans `dist/public` text assets, value regex primary; U2/K4 mounted-test reference removed; K2 asserts via `sanityClient.config()`; `useCdn:true` ruled; duplicate queries out of scope; apiVersion/perspective note with doc citation; `.dev.vars.example` corrected; K5/K3 no-echo; K7 build.config test). Adds Web Lead's CI-history finding: R1 is mandatory and blocks merge. Adds QA's test list (`metfix-sanity-read-token-fix-tests.md`, md5 `19ce522c3bff732296417508a504cae1`) with gap rulings G1–G7 (§6).
   - Rev 1.0 (`5e21d58c`) backed up at `metfix-sanity-read-token-fix-acceptance.rev1.0.md`.
 - Order: its own PR off main, landing **before** the Affiliate Seminars image PR (`metfix-foundations-image-acceptance.md` rev 1.1 depends on it).
@@ -15,6 +17,7 @@ Uses of the name (presence only):
 - `.dev.vars.example` exists at the repo root and is clean. Verified via cursor-github on `main` and on `01f4a8f`: its only line is an empty `DAILY_FIX_API_KEY=`, with no Sanity variable. No other `.env*` file or `wrangler.*` Sanity entry is in the repo. Spec can't see the Workers Builds env vars from here (Q1).
 - Vite build (`vite.config.ts` build block, at 9f7129d7 and 01f4a8f): `outDir: dist/public`, with no `build.sourcemap` key. Vite's default is `false`, so **no sourcemaps are emitted** today. R4 scans `*.map` anyway (G6).
 - **CI history (finding attributed to Web Lead, not verified by Spec):** every CI build since the GitHub secret was set put the token into `dist/public`. CI has no artifact upload, so exposure is through CI runners and logs and any copy of those builds. Combined with T1, this makes R1 mandatory.
+- **Root cause found in #10 round 1 (QA K3.3 FAIL; verified by Spec via cursor-github, 2026-10-19):** `client/src/const.ts:29`, inside `assetUrl()` (lines 27–32), reads `(typeof import.meta !== "undefined" && import.meta.env && import.meta.env.BASE_URL) ||`. The bare `import.meta.env` operand is a whole-object reference, so Vite replaces it with the full env object and inlines **every** `VITE_*` variable set at build time (token included) into the main chunk, even though `sanity.ts` no longer reads the token. The line is identical on main `9f7129d7` and the #10 head `45fdc15a` (whole file unchanged by #10). `const.ts:18` (`import.meta.env.BASE_URL` in `getRouterBase()`) is a specific-key reference and is fine.
 - Separate and server-side only: `scripts/seed-sanity.ts:36` uses `SANITY_API_WRITE_TOKEN` from local `.env`, and `SANITY.md:59` shows only the placeholder `sk...`. That's out of scope, but it must never get a `VITE_` prefix.
 
 Production bundle `https://metfix.org/assets/index-aZcK-OxC.js` (842,440 B, fetched 2026-10-19, about 3:30 PM PT):
@@ -41,13 +44,17 @@ Option (B), a Worker proxy, isn't needed. It stays in reserve if Q2 finds privat
 - R2 `client/src/lib/sanity.ts`: no `token` option and no reference to `VITE_SANITY_API_READ_TOKEN`. **`useCdn: true`** (Web Lead ruling), so reads go to `etg9lezr.apicdn.sanity.io`. Set `perspective: "published"` explicitly. Keep `apiVersion` as the code's `2025-01-01` (G7). Fix the stale comment. No new export just for tests.
   - Why pinning is required: the code uses `apiVersion` `2025-01-01`. Sanity's docs say the default perspective is `raw` for API versions before `v2025-02-19` and changed to `published` from that version on ("With the release of API version 2025-02-19, the default perspective changed from `raw` to `published`"; "the `raw` perspective (the default for API versions before v2025-02-19)"). Source: https://www.sanity.io/docs/perspectives (fetched 2026-10-19). With `raw`, an authenticated client would get drafts, so `published` must be pinned.
 - R3 Remove the name from `client/src/vite-env.d.ts`, from `ci.yml` build env (`VITE_SANITY_PROJECT_ID`/`DATASET` may stay), and, as an Ethan step, from the GitHub secret, the Workers Builds env and any `.env.example`/local `.env`.
-- R4 CI guard step `No Sanity token in dist` in `.github/workflows/ci.yml`, after "Build static site" and before "Wrangler deploy dry-run". It scans the Vite outDir `dist/public`, text assets only (`*.js`, `*.html`, `*.css`, `*.map`), recursively:
+- R4 Two guards; both required.
+- R4a CI guard step `No Sanity token in dist` (second check, kept) in `.github/workflows/ci.yml`, after "Build static site" and before "Wrangler deploy dry-run". It scans the Vite outDir `dist/public`, text assets only (`*.js`, `*.html`, `*.css`, `*.map`), recursively:
   - Primary (the real check), value regex: `\bsk[A-Za-z0-9]{40,}\b`.
   - Secondary, name: `VITE_SANITY_API_READ_TOKEN`.
   - If R1 shows the revoked token used a legacy (non-`sk`) format, add a matching pattern in this PR. It must never be the token value itself.
   - On a match, print only file names (`grep -l`), never the matched text.
+- R4b Build-time guard in `vite.config.ts` (first check). Use Vite's `loadEnv(mode, root, "")` merged with `process.env` so `.env`, `.env.local` and `.env.[mode]` files count, not just the shell env. Trim the value of `VITE_SANITY_API_READ_TOKEN`; if it is non-empty, throw. It throws on **both** `serve` and `build` (no `command` exemption). The error message names only the variable, never its value or any part of it. Empty or unset passes. The guard is always on: **the PR contains no env var, flag, mode or other switch that disables, skips or bypasses R4b.**
 - R5 Never send any Sanity token to the client in any form (env, inline, fetched config, cookie).
 - R6 Reads keep working: home, affiliate, courses, testimonials, FAQs and site settings render the same content as before on the PR preview.
+
+- R7 Root-cause fix in `client/src/const.ts`: no whole-env reference. Every `import.meta.env` use must be a specific key (`import.meta.env.BASE_URL` etc.); `import.meta.env` must not appear as a bare operand, argument, spread, or in `typeof`/`&&`/`?.` guards. Line 29 becomes e.g. `const base = import.meta.env.BASE_URL || "/";`. The same rule applies to every file under `client/src` (the K8 grep checks all of it). Any bare `import.meta.env` found there is fixed **in #10**; each such path is listed in the PR body and added to the K6 allowlist by name (R7 change only).
 
 **Read path the image PR assumes after this fix:** the browser calls `@sanity/client` with no token, `perspective:"published"`, and `useCdn:true` to `https://etg9lezr.apicdn.sanity.io` only. Images come from `https://cdn.sanity.io/images/etg9lezr/production/...`. There's no Worker hop.
 
@@ -57,12 +64,14 @@ Option (B), a Worker proxy, isn't needed. It stays in reserve if Q2 finds privat
 - K3 CI R4 step present and green on the PR head. One-time local proof (G2), not committed:
   - (a) temporarily restore the token read in `sanity.ts` and build with a realistic dummy (`sk` plus ≥ 80 alphanumerics, generated, not a real token) → the step fails;
   - (b) directly inject the dummy, and separately the name, into a file in `dist/public` (including a `*.map`) → the step fails each time;
-  - (c) clean head built with the dummy env set → the step passes, with 0 matches.
+  - (c) in a **scratch local checkout only**, QA removes the R4b guard from `vite.config.ts`, builds the head with the dummy env set, and expects **0 dummy matches in `dist/public`** (QA K3.3); R4a passes. K3 passes only on this; a build with the variable unset does not prove the fix. The removal is never committed or pushed, and the PR ships R4b always on with no switch.
   The dummy goes in via env or a file and is never echoed into CI or agent logs.
-- K4 New mounted fetch test (QA K4.2): mock the transport the client actually uses, **assert the mock was called** (G4), host is `etg9lezr.apicdn.sanity.io` (G5), `perspective=published`, and there's no Authorization header. On preview, no `*.sanity.io` request carries Authorization or cookies, and pages render Sanity content (R6). There are no existing mounted content tests to rely on.
+- K4 (QA K4.3: HAR runs against the PR head served locally via `wrangler dev --local` after `build:cf`, not a preview deployment. QA K4.5: post-deploy observation on prod, **not a merge gate**.) New mounted fetch test (QA K4.2): mock the transport the client actually uses, **assert the mock was called** (G4), host is `etg9lezr.apicdn.sanity.io` (G5), `perspective=published`, and there's no Authorization header. On preview, no `*.sanity.io` request carries Authorization or cookies, and pages render Sanity content (R6). There are no existing mounted content tests to rely on.
 - K5 Ethan confirms R1 and R3 in his own words (tokens revoked; GitHub secret and Workers Builds variable deleted); a relay doesn't count. After that, a request with the old token returns 401. The token is passed via env or file and never echoed into CI or agent logs. **Merge is blocked until K5 passes.**
-- K6 Allowlist: `client/src/lib/sanity.ts`, `client/src/vite-env.d.ts`, `.github/workflows/ci.yml` (build env plus the R4 guard step), test files matching `^client/src/lib/sanity[^/]*\.test\.ts$` (incl. `sanity.config.test.ts`, `sanity.fetch.test.ts`), `SANITY.md`, `docs/`. Nothing in `worker/`.
+- K6 Allowlist: `client/src/lib/sanity.ts`, `client/src/vite-env.d.ts`, `.github/workflows/ci.yml` (build env plus the R4 guard step), test files matching `^client/src/lib/sanity[^/]*\.test\.ts$` (incl. `sanity.config.test.ts`, `sanity.fetch.test.ts`), `SANITY.md`, `docs/`, `vite.config.ts` (R4b guard only), `client/src/const.ts` (R7 only), plus any other `client/src` file with a bare `import.meta.env`, each added here by name and listed in the PR body (R7 only). Nothing in `worker/`. `.github/workflows/deploy-pages.yml` is not in #10: #7 deletes it and #10 rebases after #7 merges; K1 then covers it (no hit may remain there).
 - K7 `worker/build.config.test.ts` (which reads `ci.yml`) still passes unchanged with the new guard step. QA confirms on the PR head. If it needs an edit, that's a new path and needs Web Lead's ruling (rule 6).
+
+- K8 R4b/R7 proof: (a) `rg -n 'import\.meta\.env(?!\.[A-Za-z_])' client/src` (PCRE) returns 0 hits on the head; (b) building or `vite` serving with `VITE_SANITY_API_READ_TOKEN` set to a dummy (in shell env, and separately in a `.env` file, and separately as whitespace-padded) fails with an error naming the variable and not containing the dummy; whitespace-only passes; (c) QA §V items pass.
 
 ## 5. Threats
 - T1 The old token stays valid until it's revoked. Code removal alone fixes nothing for copies already out (CI dists, local builds, any past deploy), so R1 is mandatory and K5 checks it.
@@ -71,9 +80,10 @@ Option (B), a Worker proxy, isn't needed. It stays in reserve if Q2 finds privat
 - T4 Cache poisoning: N/A in A (Sanity's CDN). In B: cache key = query name + validated params only, cache only 200 JSON, short TTL, never vary on client headers.
 - T5 Quota and abuse: public reads count against the project's API/CDN quota. Prefer apicdn (R2). Watch usage in Sanity manage (Q4). There's no token whose rate limit could be abused.
 - T6 Regression: R4 blocks re-adding any `VITE_` Sanity token.
+- T7 Whole-env inlining: any bare `import.meta.env` ships every `VITE_*` var set at build time. Mitigated by R7 + K8(a), with R4a as backstop.
 
 ## 6. Test list
-QA's list: `metfix-sanity-read-token-fix-tests.md`, md5 `19ce522c3bff732296417508a504cae1` (verified). It's adopted as written, with these rulings (Web Lead):
+QA's combined list: `metfix-sanity-read-token-fix-tests.md` **rev 1.1**, md5 `3c4341554e8e2e12066bfcd41aa9e623` (verified on the box 2026-10-19; rev 1.0 was `19ce522c`). It's adopted as written, with these rulings (Web Lead):
 - G1 = CQ1: K1.1/K1.5 use the K1 exception list.
 - G2: K3 proof = restore the token read and build with the dummy, plus direct injection into `dist/public` (K3(a)–(c)).
 - G3 = CQ2: the scan covers `dist/public` text assets (`*.js,*.html,*.css,*.map`), not all of `dist/`. QA K3.1's "all of dist/" shape and K3.7 are superseded by R4.
@@ -81,6 +91,7 @@ QA's list: `metfix-sanity-read-token-fix-tests.md`, md5 `19ce522c3bff73229641750
 - G5: `useCdn` is true; apicdn host only.
 - G6: sourcemaps aren't emitted (§1). `*.map` is scanned anyway, and K3.4's injection runs on a created `.map`.
 - G7: apiVersion is asserted equal to the code's `2025-01-01`.
+- 1.1.1: K3.3 = K3(c) above; K4.3 uses `wrangler dev --local`; K4.5 post-deploy only; K6.5 closed by this rev.
 - CQ3: QA K4.1 (existing mounted tests) is void; there are none.
 ## 7. Out of scope
 - Duplicate `siteSettings` and home queries across `content.ts`/`homeContent.ts` (own follow-up PR).

@@ -8,8 +8,6 @@ type RequestOptions = https.RequestOptions & {
   path?: string;
   href?: string;
   headers?: Record<string, string>;
-  withCredentials?: boolean;
-  credentials?: string;
 };
 
 function jsonResponse(body: unknown): IncomingMessage {
@@ -24,24 +22,12 @@ function jsonResponse(body: unknown): IncomingMessage {
 describe("sanity course fetch", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.resetModules();
   });
 
   it("requests published courses on the API CDN without credentials", async () => {
     const calls: RequestOptions[] = [];
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const xhrCounts = { open: 0 };
-    const OriginalXHR = globalThis.XMLHttpRequest;
-    if (typeof OriginalXHR === "function") {
-      vi.stubGlobal(
-        "XMLHttpRequest",
-        class {
-          open() {
-            xhrCounts.open += 1;
-          }
-          send() {}
-        },
-      );
-    }
 
     vi.spyOn(https, "request").mockImplementation(((
       options: RequestOptions,
@@ -83,11 +69,15 @@ describe("sanity course fetch", () => {
     }) as typeof https.request);
 
     const { fetchCourses } = await import("./content");
+    const { sanityClient } = await import("./sanity");
     const courses = await fetchCourses();
 
     expect(calls.length).toBeGreaterThanOrEqual(1);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(xhrCounts.open).toBe(0);
+
+    expect(sanityClient).not.toBeNull();
+    // Bites on withCredentials:true in createClient without depending on host/CDN.
+    expect(sanityClient!.config().withCredentials).toBeFalsy();
 
     const options = calls[0];
     const host = options.hostname || options.host;
@@ -96,16 +86,12 @@ describe("sanity course fetch", () => {
     expect(url.host).toBe("etg9lezr.apicdn.sanity.io");
     expect(url.pathname).toContain("/data/query/production");
     expect(url.searchParams.get("perspective")).toBe("published");
-    expect(url.searchParams.get("perspective")).not.toBe("drafts");
-    expect(url.searchParams.get("perspective")).not.toBe("raw");
     const query = url.searchParams.get("query") || "";
     expect(query).toContain('*[_type == "course"]');
     expect(query).not.toContain("drafts.**");
     expect(new Headers(options.headers).has("authorization")).toBe(false);
     expect(url.searchParams.has("token")).toBe(false);
     expect(url.searchParams.has("access_token")).toBe(false);
-    expect(options.credentials).not.toBe("include");
-    expect(options.withCredentials).not.toBe(true);
     expect(courses).toHaveLength(9);
     expect(courses.every((course) => !course.id.startsWith("drafts."))).toBe(true);
   });

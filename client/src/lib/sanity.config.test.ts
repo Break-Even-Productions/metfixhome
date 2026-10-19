@@ -13,7 +13,6 @@ describe("sanity client config", () => {
 
     const cfg = sanityClient.config();
     expect(cfg.token).toBeUndefined();
-    expect("token" in cfg && cfg.token).toBeFalsy();
     expect(cfg.perspective).toBe("published");
     expect(cfg.useCdn).toBe(true);
     expect(cfg.projectId).toBe("etg9lezr");
