@@ -40,7 +40,16 @@ jobs:
         env:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
-          VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
+
+      - name: No Sanity token in dist
+        run: |
+          test -d dist/public
+          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' '\bsk[A-Za-z0-9]{40,}\b' dist/public; then
+            exit 1
+          fi
+          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'VITE_SANITY_API_READ_TOKEN' dist/public; then
+            exit 1
+          fi
 
       - name: Social preview asset present
         run: test -s dist/public/social-preview.jpg
