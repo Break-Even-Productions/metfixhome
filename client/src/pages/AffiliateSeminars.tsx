@@ -571,7 +571,7 @@ export default function AffiliateSeminars() {
                     { step: "01", label: "What Is MetFix?", note: "Free, start here", href: "https://whatis.metfix.org/" },
                     { step: "02", label: "MetFix Essentials", note: "Core online curriculum", href: "/classes" },
                     { step: "03", label: "Specialty Track", note: "Choose your focus area", href: "/classes" },
-                    { step: "04", label: "Daily Fix & Community", note: "Ongoing education", href: "https://brokenscience.org/fix/" },
+                    { step: "04", label: "Daily Fix & Community", note: "Ongoing education", href: "/the-daily-fix" },
                     { step: "05", label: "Foundations Seminar", note: "You are here", href: "#calendar", active: true },
                     { step: "06", label: "Spark", note: "Implementation master guide", href: "/classes" },
                   ].map((item, i) => (

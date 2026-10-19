@@ -1,28 +1,42 @@
-import { BookOpen, Dumbbell, UtensilsCrossed } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "wouter";
+import { ArrowRight, BookOpen, Dumbbell, UtensilsCrossed, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { CommentThread } from "./CommentThread";
-import {
-  fetchDailyFixComments,
-  type CommentsLoadState,
-} from "./comments";
 import { DayPanel } from "./DayPanel";
-import { fetchDailyFixDay, fetchIsoForRoute, type DailyFixLoadState } from "./data";
+import { HeroMark, useHeroGlass } from "./HeroGlass";
+import {
+  fetchIsoForRoute,
+  loadDailyFixDay,
+  prefetchDailyFixWindow,
+  seedFromDfInitial,
+  syncLoadFromCache,
+  type DailyFixLoadState,
+} from "./data";
+import { fetchDailyFixComments, type CommentsLoadState } from "./comments";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
+  consumeLegacyHashInBrowser,
   dailyFixCanonicalUrl,
   dailyFixHref,
+  dateFromIso,
+  FIRST_FIX_ISO,
+  formatDayLabel,
+  missingIsoFromSearch,
+  normalizeDailyFixPath,
+  outOfRangeLocation,
+  parseDailyFixLocation,
   parseDailyFixRoute,
+  yymmddFromIso,
 } from "./model";
 
 const JAKARTA_ID = "daily-fix-jakarta-font";
 const JAKARTA_HREF =
   "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap";
 
-const FIX_EPOCH = new Date(2025, 1, 10);
+const FIX_EPOCH = dateFromIso(FIRST_FIX_ISO);
 
 type DailyFixParams = {
   date?: string;
@@ -55,91 +69,137 @@ function jumpTo(id: string) {
   window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
 }
 
-function useDocumentHash() {
-  const [hash, setHash] = useState(() => window.location.hash);
-  useEffect(() => {
-    const sync = () => setHash(window.location.hash);
-    window.addEventListener("hashchange", sync);
-    window.addEventListener("popstate", sync);
-    window.addEventListener("pushState", sync);
-    window.addEventListener("replaceState", sync);
-    return () => {
-      window.removeEventListener("hashchange", sync);
-      window.removeEventListener("popstate", sync);
-      window.removeEventListener("pushState", sync);
-      window.removeEventListener("replaceState", sync);
-    };
-  }, []);
-  return hash;
-}
-
 export default function TheDailyFixPage({
   params: routeParams,
 }: {
   params?: DailyFixParams;
 }) {
+  // Legacy hash → ?tab= before first pillar read (no Belly flash).
+  useState(() => consumeLegacyHashInBrowser());
   const hookParams = useParams<DailyFixParams>();
   const params = routeParams ?? hookParams;
   const [location, setLocation] = useLocation();
-  const hash = useDocumentHash();
-  const route = parseDailyFixRoute({
+  // wouter's useSearch subscribes to push/replaceState (C4 tab clicks).
+  const search = useSearch();
+  const urlRoute = parseDailyFixRoute({
     date: params.date,
     pillar: params.pillar,
     yy: params.yy,
     mm: params.mm,
     dd: params.dd,
-    hash,
+    search,
   });
-  const todayIso = bsiTodayIso();
-  const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
+  // One BSI-today sample for this mount lifetime (prefetch + bare fetch share it).
+  const [todayIso] = useState(() => bsiTodayIso());
+  // Unpublished or pre-launch days render where the canonical-URL effect is about to send them.
+  const outOfRange =
+    urlRoute.kind === "day" && urlRoute.iso ? outOfRangeLocation(urlRoute.iso, todayIso, search) : null;
+  const route = outOfRange ? parseDailyFixLocation(outOfRange) : urlRoute;
   const fetchIso = fetchIsoForRoute(route.kind, route.iso, todayIso);
-  const [load, setLoad] = useState<DailyFixLoadState>(() =>
-    route.kind === "invalid" ? { status: "invalid" } : { status: "loading" },
+  const allowCloser = route.kind === "today";
+  // Panel request key: bare uses today; dated uses URL ISO. Highlight uses response date when loaded.
+  const requestedIso = route.kind === "day" && route.iso ? route.iso : todayIso;
+  const routeKey = `${route.kind}:${fetchIso ?? "none"}`;
+
+  // `?missing=` comes from the edge redirect; outOfRange covers in-app and dev navigation.
+  const missingIso = outOfRange ? urlRoute.iso : missingIsoFromSearch(search);
+  const missingKind =
+    missingIso && missingIso > todayIso ? "future" : missingIso && missingIso < FIRST_FIX_ISO ? "early" : null;
+  const [notice, setNotice] = useState<{ iso: string; kind: "future" | "early"; routeKey: string } | null>(
+    null,
   );
+  if (missingIso && missingKind && (notice?.iso !== missingIso || notice.routeKey !== routeKey)) {
+    setNotice({ iso: missingIso, kind: missingKind, routeKey });
+  } else if (!missingKind && notice && notice.routeKey !== routeKey) {
+    setNotice(null);
+  }
+
+  const [load, setLoad] = useState<DailyFixLoadState>(() => {
+    if (fetchIso) {
+      const seeded = seedFromDfInitial(fetchIso, allowCloser);
+      if (seeded) return { status: "loaded", day: seeded };
+    }
+    return syncLoadFromCache(route.kind, fetchIso);
+  });
+  const [loadKey, setLoadKey] = useState(routeKey);
   const [commentsLoad, setCommentsLoad] = useState<CommentsLoadState>(() =>
     route.kind === "invalid" ? { status: "unavailable" } : { status: "loading" },
   );
+  const heroRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const markRef = useRef<HTMLDivElement>(null);
+  const glassReady = useHeroGlass(heroRef, barRef, markRef);
+  const [reduceMotion] = useState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  );
+
+  // Sync from cache on route change — no skeleton flash when the day is already loaded.
+  if (routeKey !== loadKey) {
+    setLoadKey(routeKey);
+    setLoad(syncLoadFromCache(route.kind, fetchIso));
+  }
 
   useEffect(() => {
     loadJakartaSans();
   }, []);
 
+  // Normalize path/query (date forms, path pillars, bad tabs) via shared normalizer.
   useEffect(() => {
     if (route.kind === "invalid") return;
+    const normalized = normalizeDailyFixPath(window.location.pathname, window.location.search);
+    if (normalized.kind === "redirect") {
+      setLocation(normalized.location, { replace: true });
+      return;
+    }
     const next = dailyFixCanonicalUrl(route, window.location.search);
-    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const current = `${window.location.pathname}${window.location.search}`;
     if (next !== current) {
       setLocation(next, { replace: true });
     }
-  }, [route, location, hash, setLocation]);
+  }, [route, location, search, setLocation]);
 
   useEffect(() => {
     if (route.kind === "invalid" || !fetchIso) {
       setLoad({ status: "invalid" });
       return;
     }
-    const controller = new AbortController();
-    setLoad({ status: "loading" });
-    void fetchDailyFixDay(fetchIso, controller.signal)
-      .then((next) => {
-        if (!controller.signal.aborted) setLoad(next);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setLoad({ status: "unavailable" });
-      });
-    return () => controller.abort();
-  }, [fetchIso, route.kind]);
 
-  // One comment read per ISO date. Invalid dates do not fetch. Failures stay in the
-  // comment panel and never replace the day load state.
+    let active = true;
+    // df-initial already seeded shown day — skip network for that ISO.
+    const cached = syncLoadFromCache(route.kind, fetchIso);
+    if (cached.status === "loaded") {
+      setLoad(cached);
+      return () => {
+        active = false;
+      };
+    }
+    setLoad(cached);
+
+    void loadDailyFixDay(fetchIso, { allowCloser }).then((next) => {
+      if (!active) return;
+      setLoad(next);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [fetchIso, route.kind, allowCloser]);
+
+  // Comments key on the loaded response date (closer-day), not the requested today ISO.
+  // Failures stay in the comment panel and never replace the day load state.
+  const commentIso = load.status === "loaded" ? load.day.date : null;
   useEffect(() => {
-    if (route.kind === "invalid" || !fetchIso) {
+    if (route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable") {
       setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    if (!commentIso) {
+      setCommentsLoad({ status: "loading" });
       return;
     }
     const controller = new AbortController();
     setCommentsLoad({ status: "loading" });
-    void fetchDailyFixComments(fetchIso, controller.signal)
+    void fetchDailyFixComments(commentIso, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) setCommentsLoad(next);
       })
@@ -147,12 +207,28 @@ export default function TheDailyFixPage({
         if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
       });
     return () => controller.abort();
-  }, [fetchIso, route.kind]);
+  }, [commentIso, load.status, route.kind]);
+
+  // Prefetch −1/−2 only on bare today route (Q1), after today's load is kicked off.
+  useEffect(() => {
+    if (route.kind !== "today") return;
+    prefetchDailyFixWindow(todayIso);
+  }, [todayIso, route.kind]);
 
   const title = "Daily Fix · MetFix";
   const description =
     load.status === "loaded" ? `${load.day.belly.title} Daily Fix` : undefined;
   usePageMeta({ title, description });
+
+  // Calendar / day label follow the response date when loaded (bare closer-day).
+  const panelIso = load.status === "loaded" ? load.day.date : requestedIso;
+  const tabPhoto =
+    load.status === "loaded"
+      ? (load.day[route.pillar].photo_url ?? load.day.belly.photo_url ?? load.day.brain.photo_url)
+      : null;
+  // Hold the last photo through day loads so the search panel doesn't flash.
+  const [backdrop, setBackdrop] = useState(tabPhoto);
+  if (tabPhoto && tabPhoto !== backdrop) setBackdrop(tabPhoto);
 
   const masthead = useMemo(
     () =>
@@ -168,7 +244,20 @@ export default function TheDailyFixPage({
     <main className="daily-fix-page">
       <div className="df-stack">
         <section id="daily-fix" className="df-card">
-          <div className="df-hero">
+          <div ref={heroRef} className={glassReady ? "df-hero is-glass" : "df-hero"}>
+            <video
+              className="df-hero-video"
+              src="/hero.mp4"
+              poster="/hero-poster.jpg"
+              autoPlay={!reduceMotion}
+              muted
+              loop
+              playsInline
+              preload="auto"
+              aria-label="MetFix in real life"
+            />
+            <div className="df-hero-shade" aria-hidden="true" />
+            <HeroMark markRef={markRef} glassReady={glassReady} />
             <div className="df-hero-copy">
               <h1>
                 <span>Eat.</span>
@@ -191,24 +280,24 @@ export default function TheDailyFixPage({
                 </button>
               </div>
             </div>
-            <nav className="df-masthead" aria-label="Today's recipe, workout, and reading">
+            <nav ref={barRef} className="df-masthead" aria-label="Today's recipe, workout, and reading">
               {masthead.map((item) => {
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.pillar}
-                    href={dailyFixHref(todayIso, requestedIso, item.pillar)}
+                    href={dailyFixHref(todayIso, panelIso, item.pillar)}
                     onClick={() => jumpTo("todays-fix")}
                   >
                     <span className="df-masthead-icon">
                       <Icon className="h-4 w-4" strokeWidth={2.35} />
                     </span>
-                    <span>
+                    <span className="df-masthead-text">
                       <span style={{ display: "block", fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>
                         {item.label}
                       </span>
-                      <span style={{ display: "block", marginTop: 2, fontSize: 12, opacity: 0.8 }}>
-                        {item.detail}
+                      <span className="df-masthead-detail">
+                        {load.status === "loaded" ? load.day[item.pillar].title : item.detail}
                       </span>
                     </span>
                   </Link>
@@ -222,10 +311,38 @@ export default function TheDailyFixPage({
           <div className="df-pad">
             <DayPanel
               requestedIso={requestedIso}
+              panelIso={panelIso}
+              todayIso={todayIso}
+              routeKind={route.kind}
               pillar={route.pillar}
               pillarExplicit={route.pillarExplicit}
               load={load}
               onOpenArchive={() => jumpTo("daily-fix-archive")}
+              notice={
+                notice ? (
+                  <div className="df-notice" role="status">
+                    <p>
+                      {notice.kind === "future"
+                        ? `${formatDayLabel(notice.iso)} isn’t published yet. Here’s today’s fix.`
+                        : `Dates before ${yymmddFromIso(FIRST_FIX_ISO)} don’t exist. This is the first Daily Fix.`}
+                    </p>
+                    {notice.kind === "early" ? (
+                      <Link className="df-notice-link" href={dailyFixHref(todayIso, todayIso, route.pillar)}>
+                        Jump to today
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="df-notice-close"
+                      aria-label="Dismiss"
+                      onClick={() => setNotice(null)}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : null
+              }
             />
             {route.kind !== "invalid" ? <CommentThread load={commentsLoad} /> : null}
           </div>
@@ -233,7 +350,7 @@ export default function TheDailyFixPage({
 
         <section id="daily-fix-archive" className="df-card df-card-open">
           <div className="df-pad">
-            <ArchiveBrowser onOpen={() => jumpTo("todays-fix")} />
+            <ArchiveBrowser todayIso={todayIso} backdrop={backdrop} onOpen={() => jumpTo("todays-fix")} />
           </div>
         </section>
 

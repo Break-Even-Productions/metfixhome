@@ -1,12 +1,9 @@
-import { DAILY_FIX_BFF_URL } from "./data";
 import { PILLARS, type Pillar } from "./model";
 
-/** Same Worker origin as the day fetch. No key, no VITE_ override. */
+/** Same-origin comments proxy. No key, no VITE_ override, no metfix-bff host. */
 export function dailyFixCommentsRequestUrl(isoDate: string): string {
-  const url = new URL("/daily-fix/comments", new URL(DAILY_FIX_BFF_URL).origin);
-  url.searchParams.set("date", isoDate);
-  url.searchParams.set("type", "all");
-  return url.toString();
+  const params = new URLSearchParams({ date: isoDate, type: "all" });
+  return `/api/daily-fix/comments?${params.toString()}`;
 }
 
 export type DailyFixComment = {
@@ -66,7 +63,7 @@ export function mapDailyFixComments(payload: unknown): DailyFixComment[] | null 
 }
 
 /**
- * Load Daily Fix comments from the BFF for one ISO date.
+ * Load Daily Fix comments from the same-origin Worker for one ISO date.
  * 404 / 503 / non-200 / bad JSON / thrown fetch → unavailable (not an empty list).
  */
 export async function fetchDailyFixComments(

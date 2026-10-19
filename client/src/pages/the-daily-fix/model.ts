@@ -1,25 +1,62 @@
+import {
+  BSI_TODAY_TZ,
+  addCalendarDays,
+  bsiTodayIso,
+  FIRST_FIX_ISO,
+  isMissingPair,
+  isoFromYymmdd,
+  isIsoDate,
+  isValidCalendarDay,
+  missingIsoFromSearch,
+  normalizeDailyFixPath,
+  outOfRangeLocation,
+  plainText,
+  yymmddFromIso,
+  type DailyFixArchiveEntry,
+  type DailyFixTab,
+} from "@shared/daily-fix";
+import {
+  extractYoutubeId,
+  mapDailyFixDay,
+  mapHttpsPhotoUrl,
+  type DailyFixBelly,
+  type DailyFixBody,
+  type DailyFixBrain,
+  type DailyFixDay,
+  type RecipeIngredient,
+  type RecipeStep,
+} from "@shared/daily-fix/mapper";
+
+export {
+  BSI_TODAY_TZ,
+  addCalendarDays,
+  bsiTodayIso,
+  extractYoutubeId,
+  FIRST_FIX_ISO,
+  isoFromYymmdd,
+  isIsoDate,
+  isValidCalendarDay,
+  mapDailyFixDay,
+  mapHttpsPhotoUrl,
+  missingIsoFromSearch,
+  normalizeDailyFixPath,
+  outOfRangeLocation,
+  plainText,
+  yymmddFromIso,
+};
+export type {
+  DailyFixArchiveEntry,
+  DailyFixBelly,
+  DailyFixBody,
+  DailyFixBrain,
+  DailyFixDay,
+  DailyFixTab,
+  RecipeIngredient,
+  RecipeStep,
+};
+
 export const PILLARS = ["belly", "body", "brain"] as const;
 export type Pillar = (typeof PILLARS)[number];
-
-/** BSI "today" is Etc/GMT-2 (UTC+2), not the browser's local calendar date. */
-export const BSI_TODAY_TZ = "Etc/GMT-2";
-
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const YYMMDD = /^(\d{2})(\d{2})(\d{2})$/;
-const YYYYMMDD = /^(\d{4})(\d{2})(\d{2})$/;
-const TWO_DIGITS = /^\d{2}$/;
-const MIN_YEAR = 2000;
-const MAX_YEAR = 2099;
-
-export type RecipeIngredient = {
-  display: string;
-  sort_order: number;
-};
-
-export type RecipeStep = {
-  instruction: string;
-  sort_order: number;
-};
 
 export type BellyMacros = {
   fat: number | null;
@@ -27,38 +64,32 @@ export type BellyMacros = {
   protein: number | null;
 };
 
-export type DailyFixBelly = {
-  title: string;
-  body?: string | null;
-  steps?: string | null;
-  fat: number | null;
-  carb: number | null;
-  protein: number | null;
-  has_structured_ingredients: boolean;
-  has_structured_steps: boolean;
-  recipe_ingredients: RecipeIngredient[];
-  recipe_steps: RecipeStep[];
-};
+/** Build the autoplay embed URL for a parsed YouTube id. Never pass a raw page URL. */
+export function youtubeEmbedUrl(videoId: string): string {
+  const embed = new URL(`https://www.youtube.com/embed/${videoId}`);
+  embed.searchParams.set("autoplay", "1");
+  embed.searchParams.set("rel", "0");
+  embed.searchParams.set("playsinline", "1");
+  return embed.toString();
+}
 
-export type DailyFixBody = {
-  title: string;
-  html: string;
-};
-
-export type DailyFixBrain = {
-  title: string;
-  html: string;
-  article_url?: string | null;
-  button_text?: string | null;
-};
-
-export type DailyFixDay = {
-  date: string;
-  requested_date?: string | null;
-  belly: DailyFixBelly;
-  body: DailyFixBody;
-  brain: DailyFixBrain;
-};
+/**
+ * Glass overlay macros: Protein → Fat → Carbs, only values that are numbers > 0.
+ * Null and 0g rows are omitted. Empty means no glass macros card.
+ */
+export function glassMacroRows(macros: BellyMacros): { label: string; grams: number }[] {
+  const rows: { label: string; grams: number }[] = [];
+  if (typeof macros.protein === "number" && macros.protein > 0) {
+    rows.push({ label: "Protein", grams: macros.protein });
+  }
+  if (typeof macros.fat === "number" && macros.fat > 0) {
+    rows.push({ label: "Fat", grams: macros.fat });
+  }
+  if (typeof macros.carb === "number" && macros.carb > 0) {
+    rows.push({ label: "Carbs", grams: macros.carb });
+  }
+  return rows;
+}
 
 export type DailyFixRouteKind = "today" | "day" | "invalid";
 
@@ -69,10 +100,11 @@ export type DailyFixRoute = {
   /** Canonical YYMMDD when kind is "day". */
   code: string | null;
   pillar: Pillar;
-  /** True when a valid pillar was explicit in the path or hash. */
+  /** True when a valid pillar was explicit in the path or ?tab=. */
   pillarExplicit: boolean;
   canonicalPath: string;
-  canonicalHash: string;
+  /** Allowed share tab (`body`/`brain`), or null for belly / no param. */
+  tab: DailyFixTab | null;
 };
 
 export type DailyFixRouteInput = {
@@ -81,50 +113,9 @@ export type DailyFixRouteInput = {
   yy?: string;
   mm?: string;
   dd?: string;
-  hash?: string;
+  /** Raw location.search (with or without `?`). */
+  search?: string;
 };
-
-export function bsiTodayIso(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: BSI_TODAY_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-
-export function isValidCalendarDay(year: number, month: number, day: number): boolean {
-  if (year < MIN_YEAR || year > MAX_YEAR) return false;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
-  const utc = new Date(Date.UTC(year, month - 1, day));
-  return utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
-}
-
-export function isIsoDate(value: string): boolean {
-  const match = ISO_DATE.exec(value);
-  if (!match) return false;
-  return isValidCalendarDay(Number(match[1]), Number(match[2]), Number(match[3]));
-}
-
-export function yymmddFromIso(iso: string): string | null {
-  const match = ISO_DATE.exec(iso);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!isValidCalendarDay(year, month, day)) return null;
-  return `${String(year).slice(2)}${match[2]}${match[3]}`;
-}
-
-export function isoFromYymmdd(code: string): string | null {
-  const match = YYMMDD.exec(code);
-  if (!match) return null;
-  const year = MIN_YEAR + Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!isValidCalendarDay(year, month, day)) return null;
-  return `${year}-${match[2]}-${match[3]}`;
-}
 
 export function isPillar(value: string | undefined): value is Pillar {
   return value === "belly" || value === "body" || value === "brain";
@@ -134,139 +125,206 @@ export function parsePillar(value: string | undefined): Pillar {
   return isPillar(value) ? value : "belly";
 }
 
-function hashToken(hash: string | undefined): string {
-  if (!hash) return "";
-  return hash.startsWith("#") ? hash.slice(1) : hash;
+function pairKey(pair: string): string {
+  const eq = pair.indexOf("=");
+  return eq === -1 ? pair : pair.slice(0, eq);
 }
 
-function resolvePillar(pathPillar: string | undefined, hash: string | undefined): {
-  pillar: Pillar;
-  explicit: boolean;
-} {
-  if (pathPillar != null && pathPillar !== "") {
-    if (isPillar(pathPillar)) return { pillar: pathPillar, explicit: true };
-    return { pillar: "belly", explicit: false };
+/**
+ * Apply legacy `#belly|#body|#brain` → `?tab=` (belly drops param) via replaceState
+ * before the first render reads the pillar. Returns the search string to use.
+ * Rewrites raw query pairs (no URLSearchParams set/delete) so encoding is preserved.
+ */
+export function consumeLegacyHashInBrowser(): string {
+  if (typeof window === "undefined") return "";
+  const token = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  const path = window.location.pathname;
+  const search = window.location.search;
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const pairs = raw ? raw.split("&") : [];
+
+  if (token !== "belly" && token !== "body" && token !== "brain") {
+    // C3: drop unknown hashes (#bogus) so they don't linger.
+    if (window.location.hash) {
+      window.history.replaceState(window.history.state, "", `${path}${search}`);
+    }
+    return search;
   }
-  const token = hashToken(hash);
-  if (!token) return { pillar: "belly", explicit: false };
-  if (isPillar(token)) return { pillar: token, explicit: true };
-  return { pillar: "belly", explicit: false };
+
+  const rebuilt: string[] = [];
+  let tabPlaced = false;
+  for (const p of pairs) {
+    const key = pairKey(p);
+    if (key === "tab" || key === "tab[]") {
+      if (!tabPlaced && (token === "body" || token === "brain")) {
+        rebuilt.push(`tab=${token}`);
+        tabPlaced = true;
+      }
+      continue;
+    }
+    rebuilt.push(p);
+  }
+  if (!tabPlaced && (token === "body" || token === "brain")) {
+    rebuilt.push(`tab=${token}`);
+  }
+
+  const nextSearch = rebuilt.length ? `?${rebuilt.join("&")}` : "";
+  const next = `${path}${nextSearch}`;
+  const current = `${path}${search}${window.location.hash}`;
+  if (next !== current.replace(/#.*$/, "") || window.location.hash) {
+    window.history.replaceState(window.history.state, "", next);
+  }
+  return nextSearch;
 }
 
-function todayRoute(hash: string | undefined): DailyFixRoute {
-  const { pillar, explicit } = resolvePillar(undefined, hash);
-  return {
-    kind: "today",
-    iso: null,
-    code: null,
-    pillar,
-    pillarExplicit: explicit,
-    canonicalPath: "/the-daily-fix",
-    canonicalHash: explicit ? `#${pillar}` : "",
-  };
+/**
+ * Client route parse. Prefers shared normalizeDailyFixPath for path+query when
+ * the path is under /the-daily-fix; falls back for param-based router input.
+ * Legacy hashes are handled by consumeLegacyHashInBrowser before this runs.
+ */
+export function parseDailyFixRoute(input: DailyFixRouteInput = {}): DailyFixRoute {
+  // Build a path from router params when present
+  let path = "/the-daily-fix";
+  if (input.yy != null && input.mm != null && input.dd != null) {
+    path = `/the-daily-fix/${input.yy}/${input.mm}/${input.dd}`;
+  } else if (input.date) {
+    path = input.pillar
+      ? `/the-daily-fix/${input.date}/${input.pillar}`
+      : `/the-daily-fix/${input.date}`;
+  }
+
+  const search = input.search ?? "";
+  const normalized = normalizeDailyFixPath(path, search);
+
+  if (normalized.kind === "notFound") {
+    return {
+      kind: "invalid",
+      iso: null,
+      code: null,
+      pillar: "belly",
+      pillarExplicit: false,
+      canonicalPath: "",
+      tab: null,
+    };
+  }
+
+  if (normalized.kind === "redirect") {
+    // Client still needs a usable route for in-app rewrite; parse the target.
+    const loc = normalized.location;
+    const qIndex = loc.indexOf("?");
+    const p = qIndex === -1 ? loc : loc.slice(0, qIndex);
+    const s = qIndex === -1 ? "" : loc.slice(qIndex);
+    return parseDailyFixRouteFromPath(p, s);
+  }
+
+  return serveToRoute(normalized);
 }
 
-function dayRoute(iso: string, code: string, pathPillar: string | undefined, hash: string | undefined): DailyFixRoute {
-  const { pillar, explicit } = resolvePillar(pathPillar, hash);
-  return {
-    kind: "day",
-    iso,
-    code,
-    pillar,
-    pillarExplicit: explicit,
-    canonicalPath: `/the-daily-fix/${code}`,
-    canonicalHash: explicit ? `#${pillar}` : "",
-  };
-}
-
-function invalidRoute(hash: string | undefined, pathPillar?: string): DailyFixRoute {
-  const { pillar, explicit } = resolvePillar(pathPillar, hash);
+function parseDailyFixRouteFromPath(path: string, search: string): DailyFixRoute {
+  const normalized = normalizeDailyFixPath(path, search);
+  if (normalized.kind === "serve") return serveToRoute(normalized);
+  if (normalized.kind === "redirect") {
+    const loc = normalized.location;
+    const qIndex = loc.indexOf("?");
+    const p = qIndex === -1 ? loc : loc.slice(0, qIndex);
+    const s = qIndex === -1 ? "" : loc.slice(qIndex);
+    const again = normalizeDailyFixPath(p, s);
+    if (again.kind === "serve") return serveToRoute(again);
+  }
   return {
     kind: "invalid",
     iso: null,
     code: null,
-    pillar,
-    pillarExplicit: explicit,
+    pillar: "belly",
+    pillarExplicit: false,
     canonicalPath: "",
-    canonicalHash: "",
+    tab: null,
   };
 }
 
-function parseDateSegment(segment: string, pathPillar: string | undefined, hash: string | undefined): DailyFixRoute {
-  const six = YYMMDD.exec(segment);
-  if (six) {
-    const iso = isoFromYymmdd(segment);
-    if (!iso) return invalidRoute(hash, pathPillar);
-    return dayRoute(iso, segment, pathPillar, hash);
+function serveToRoute(
+  normalized: Extract<ReturnType<typeof normalizeDailyFixPath>, { kind: "serve" }>,
+): DailyFixRoute {
+  const tab = normalized.tab;
+  const pillar: Pillar = tab ?? "belly";
+  if (normalized.mode === "bare") {
+    return {
+      kind: "today",
+      iso: null,
+      code: null,
+      pillar,
+      pillarExplicit: tab != null,
+      canonicalPath: "/the-daily-fix",
+      tab,
+    };
   }
-
-  const eight = YYYYMMDD.exec(segment);
-  if (eight) {
-    const year = Number(eight[1]);
-    const month = Number(eight[2]);
-    const day = Number(eight[3]);
-    if (!isValidCalendarDay(year, month, day)) return invalidRoute(hash, pathPillar);
-    const iso = `${eight[1]}-${eight[2]}-${eight[3]}`;
-    const code = yymmddFromIso(iso);
-    if (!code) return invalidRoute(hash, pathPillar);
-    return dayRoute(iso, code, pathPillar, hash);
-  }
-
-  const isoMatch = ISO_DATE.exec(segment);
-  if (isoMatch) {
-    const year = Number(isoMatch[1]);
-    const month = Number(isoMatch[2]);
-    const day = Number(isoMatch[3]);
-    if (!isValidCalendarDay(year, month, day)) return invalidRoute(hash, pathPillar);
-    const code = yymmddFromIso(segment);
-    if (!code) return invalidRoute(hash, pathPillar);
-    return dayRoute(segment, code, pathPillar, hash);
-  }
-
-  return invalidRoute(hash, pathPillar);
+  return {
+    kind: "day",
+    iso: normalized.iso,
+    code: normalized.yymmdd,
+    pillar,
+    pillarExplicit: tab != null,
+    canonicalPath: `/the-daily-fix/${normalized.yymmdd}`,
+    tab,
+  };
 }
 
-function parseSlashDate(yy: string, mm: string, dd: string, hash: string | undefined): DailyFixRoute {
-  if (!TWO_DIGITS.test(yy) || !TWO_DIGITS.test(mm) || !TWO_DIGITS.test(dd)) {
-    return invalidRoute(hash);
-  }
-  const code = `${yy}${mm}${dd}`;
-  const iso = isoFromYymmdd(code);
-  if (!iso) return invalidRoute(hash);
-  return dayRoute(iso, code, undefined, hash);
+/** Route for a full `/the-daily-fix...` location (path plus optional query). */
+export function parseDailyFixLocation(location: string): DailyFixRoute {
+  const qIndex = location.indexOf("?");
+  return qIndex === -1
+    ? parseDailyFixRouteFromPath(location, "")
+    : parseDailyFixRouteFromPath(location.slice(0, qIndex), location.slice(qIndex));
 }
 
-export function parseDailyFixRoute(input: DailyFixRouteInput = {}): DailyFixRoute {
-  if (input.yy != null && input.mm != null && input.dd != null) {
-    return parseSlashDate(input.yy, input.mm, input.dd, input.hash);
-  }
-  if (!input.date) return todayRoute(input.hash);
-  return parseDateSegment(input.date, input.pillar, input.hash);
-}
-
+/** Canonical path + search for the route (no hash). Drops invalid client-side tab and `?missing=`. */
 export function dailyFixCanonicalUrl(route: DailyFixRoute, search = ""): string {
-  return `${route.canonicalPath}${search}${route.canonicalHash}`;
+  const qs = buildSearchWithTab(search, route.tab);
+  return `${route.canonicalPath}${qs}`;
+}
+
+/**
+ * Rebuild search keeping `tab` in its original pair position (edge parity).
+ * Non-tab pairs keep their raw encoding.
+ */
+function buildSearchWithTab(search: string, tab: DailyFixTab | null): string {
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const pairs = raw ? raw.split("&") : [];
+  const rebuilt: string[] = [];
+  let tabPlaced = false;
+  for (const p of pairs) {
+    if (isMissingPair(p)) continue;
+    const key = pairKey(p);
+    if (key === "tab" || key === "tab[]") {
+      if (!tabPlaced && (tab === "body" || tab === "brain")) {
+        rebuilt.push(`tab=${tab}`);
+        tabPlaced = true;
+      }
+      continue;
+    }
+    rebuilt.push(p);
+  }
+  if (!tabPlaced && (tab === "body" || tab === "brain")) {
+    rebuilt.push(`tab=${tab}`);
+  }
+  return rebuilt.length ? `?${rebuilt.join("&")}` : "";
 }
 
 export function dailyFixPath(code?: string | null, pillar?: Pillar | null): string {
-  if (!code) return pillar ? `/the-daily-fix#${pillar}` : "/the-daily-fix";
-  return pillar ? `/the-daily-fix/${code}#${pillar}` : `/the-daily-fix/${code}`;
+  const tab = pillar === "body" || pillar === "brain" ? pillar : null;
+  if (!code) {
+    return tab ? `/the-daily-fix?tab=${tab}` : "/the-daily-fix";
+  }
+  return tab ? `/the-daily-fix/${code}?tab=${tab}` : `/the-daily-fix/${code}`;
 }
 
-/** Today uses the bare path (plus optional hash). Other days use YYMMDD, never YYYY-MM-DD or a path pillar. */
+/** Today uses the bare path (plus optional ?tab=). Other days use YYMMDD. */
 export function dailyFixHref(todayIso: string, dateIso: string, pillar: Pillar | null): string {
   if (dateIso === todayIso) return dailyFixPath(null, pillar);
   const code = yymmddFromIso(dateIso);
   return dailyFixPath(code, pillar);
-}
-
-export function addCalendarDays(iso: string, delta: number): string {
-  const [year, month, day] = iso.split("-").map(Number);
-  const utc = new Date(Date.UTC(year, month - 1, day + delta));
-  const y = utc.getUTCFullYear();
-  const m = String(utc.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(utc.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }
 
 export function dayParts(iso: string) {
@@ -321,6 +379,26 @@ export function isCloserScheduledDay(day: DailyFixDay, requestedIso: string) {
   return Boolean(day.requested_date && day.requested_date !== day.date) || day.date !== requestedIso;
 }
 
+const WP_UPLOAD = /^(https:\/\/[^?#]+\/wp-content\/uploads\/[^?#]+?)(?:-scaled|-\d+x\d+)?(\.(?:jpe?g|png|webp|gif))$/i;
+
+/** WordPress's 150×150 crop of an upload, or null for non-WordPress URLs. */
+export function wpThumbnailUrl(url: string): string | null {
+  const match = WP_UPLOAD.exec(url);
+  return match ? `${match[1]}-150x150${match[2]}` : null;
+}
+
+/** Local-midnight Date for a calendar ISO day (what react-day-picker expects). */
+export function dateFromIso(iso: string): Date {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export function isoFromDate(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${m}-${d}`;
+}
+
 export function recentDateStrip(anchorIso: string, days = 21) {
   const start = addCalendarDays(anchorIso, -(days - 1));
   return Array.from({ length: days }, (_, index) => addCalendarDays(start, index));
@@ -328,5 +406,5 @@ export function recentDateStrip(anchorIso: string, days = 21) {
 
 export function brainButtonText(brain: DailyFixBrain) {
   const label = brain.button_text?.trim();
-  return label && label.length > 0 ? label : "FULL ARTICLE";
+  return label && label.length > 0 ? label : "Full Article";
 }

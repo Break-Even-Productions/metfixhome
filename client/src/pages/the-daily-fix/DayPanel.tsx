@@ -1,45 +1,42 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link } from "wouter";
+import { DatePickerDialog } from "./DatePickerDialog";
 import { DayContent } from "./DayContent";
 import type { DailyFixLoadState } from "./data";
 import {
   addCalendarDays,
-  bsiTodayIso,
   dailyFixHref,
   dayParts,
   formatDayLabel,
   isCloserScheduledDay,
   pillarLabel,
+  plainText,
   recentDateStrip,
   type DailyFixDay,
+  type DailyFixRouteKind,
   type Pillar,
 } from "./model";
 
 type DayPanelProps = {
+  /** Route request ISO (today for bare; URL ISO for dated). */
   requestedIso: string;
+  /** Calendar highlight / prev-next anchor: response date when loaded. */
+  panelIso: string;
+  todayIso: string;
+  routeKind: DailyFixRouteKind;
   pillar: Pillar;
   pillarExplicit: boolean;
   load: DailyFixLoadState;
   onOpenArchive: () => void;
+  /** Shown above the eyebrow, e.g. why the reader landed on this day. */
+  notice?: ReactNode;
 };
 
 function UnavailableCopy() {
   return (
     <div className="df-status" role="status">
-      <h3>This day could not be loaded</h3>
-      <p>
-        Daily Fix could not load this day right now. It does not invent a recipe, workout, or reading to
-        fill the gap. Try again later, or pick another day.
-      </p>
-    </div>
-  );
-}
-
-function LoadingCopy() {
-  return (
-    <div className="df-status" role="status">
-      <h3>Loading this day’s fix</h3>
-      <p>Fetching the recipe, workout, and reading for this date.</p>
+      <h3>Not available</h3>
     </div>
   );
 }
@@ -50,9 +47,21 @@ function InvalidCopy() {
       <h3>That day isn’t a Daily Fix date</h3>
       <p>
         Use <code>/the-daily-fix</code> for today, or <code>/the-daily-fix/YYMMDD</code> for a
-        calendar day. Pillars live in the hash: <code>#belly</code>, <code>#body</code>, or{" "}
-        <code>#brain</code>.
+        calendar day. Pillars use <code>?tab=body</code> or <code>?tab=brain</code> (belly is the
+        default with no param).
       </p>
+    </div>
+  );
+}
+
+function DaySkeleton() {
+  return (
+    <div className="df-skeleton" aria-hidden="true">
+      <div className="df-skeleton-title" />
+      <div className="df-skeleton-image" />
+      <div className="df-skeleton-line" />
+      <div className="df-skeleton-line df-skeleton-line-short" />
+      <div className="df-skeleton-line" />
     </div>
   );
 }
@@ -61,18 +70,21 @@ function PillarTab({
   pillar,
   active,
   title,
+  excerpt,
   meta,
   href,
 }: {
   pillar: Pillar;
   active: boolean;
   title: string;
+  excerpt: string;
   meta: string;
   href: string;
 }) {
   return (
     <Link
       href={href}
+      replace
       role="tab"
       id={`fix-tab-${pillar}`}
       aria-selected={active}
@@ -81,51 +93,91 @@ function PillarTab({
     >
       <span className="df-tab-label">{pillarLabel(pillar)}</span>
       <span className="df-tab-title">{title}</span>
+      {excerpt ? <span className="df-tab-excerpt">{excerpt}</span> : null}
       <span className="df-tab-meta">{meta}</span>
     </Link>
   );
 }
 
+const PILLAR_KIND: Record<Pillar, string> = {
+  belly: "Recipe",
+  body: "Workout",
+  brain: "Reading",
+};
+
 function tabCopy(load: DailyFixLoadState, pillar: Pillar) {
-  if (load.status === "loading") {
-    if (pillar === "belly") return { title: "Recipe", meta: "Loading" };
-    if (pillar === "body") return { title: "Workout", meta: "Loading" };
-    return { title: "Reading", meta: "Loading" };
-  }
-  if (load.status !== "loaded") {
-    if (pillar === "belly") return { title: "Recipe", meta: "Unavailable" };
-    if (pillar === "body") return { title: "Workout", meta: "Unavailable" };
-    return { title: "Reading", meta: "Unavailable" };
-  }
+  const kind = PILLAR_KIND[pillar];
+  if (load.status === "loading") return { title: kind, excerpt: "", meta: "Loading" };
+  if (load.status !== "loaded") return { title: kind, excerpt: "", meta: "Unavailable" };
   const { day } = load;
-  if (pillar === "belly") return { title: day.belly.title, meta: "Recipe" };
-  if (pillar === "body") return { title: day.body.title, meta: "Workout" };
-  return { title: day.brain.title, meta: "Reading" };
+  if (pillar === "belly") {
+    return {
+      title: day.belly.title,
+      excerpt: plainText(day.belly.excerpt),
+      meta: [kind, day.belly.protein_name].filter(Boolean).join(" · "),
+    };
+  }
+  if (pillar === "body") {
+    return { title: day.body.title, excerpt: plainText(day.body.excerpt), meta: kind };
+  }
+  return {
+    title: day.brain.title,
+    excerpt: plainText(day.brain.excerpt),
+    meta: day.brain.button_text?.trim() || kind,
+  };
 }
 
 export function DayPanel({
   requestedIso,
+  panelIso,
+  todayIso,
+  routeKind,
   pillar,
   pillarExplicit,
   load,
   onOpenArchive,
+  notice,
 }: DayPanelProps) {
-  const todayIso = bsiTodayIso();
   const day: DailyFixDay | null = load.status === "loaded" ? load.day : null;
-  const displayIso = day?.date ?? requestedIso;
-  const isToday = requestedIso === todayIso;
-  const older = addCalendarDays(requestedIso, -1);
-  const newer = addCalendarDays(requestedIso, 1);
+  const displayIso = day?.date ?? panelIso;
+  const isTodayRequest = requestedIso === todayIso && routeKind === "today";
+  const older = addCalendarDays(panelIso, -1);
+  const newer = addCalendarDays(panelIso, 1);
   const newerDisabled = newer > todayIso;
   const strip = recentDateStrip(todayIso);
-  const closer = day && isCloserScheduledDay(day, requestedIso);
+  // Closer-day disclaimer only on bare /the-daily-fix — never on dated URLs.
+  const closer =
+    routeKind === "today" && day != null && isCloserScheduledDay(day, requestedIso);
   const keptPillar = pillarExplicit ? pillar : null;
+  const loading = load.status === "loading";
+
+  const stripRef = useRef<HTMLDivElement>(null);
+  const stripCenteredRef = useRef(false);
+  useLayoutEffect(() => {
+    const stripEl = stripRef.current;
+    if (!stripEl) return;
+    const chip =
+      stripEl.querySelector<HTMLElement>('[aria-current="date"]') ??
+      stripEl.querySelector<HTMLElement>(".df-chip:last-of-type");
+    if (!chip) return;
+    const stripBox = stripEl.getBoundingClientRect();
+    const chipBox = chip.getBoundingClientRect();
+    const left =
+      stripEl.scrollLeft + chipBox.left - stripBox.left - (stripBox.width - chipBox.width) / 2;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    stripEl.scrollTo({
+      left,
+      behavior: stripCenteredRef.current && !reduce ? "smooth" : "auto",
+    });
+    stripCenteredRef.current = true;
+  }, [panelIso]);
 
   return (
     <div>
+      {notice}
       <div className="df-row">
         <div>
-          <p className="df-kicker">{isToday ? "Today’s fix" : "This day"}</p>
+          <p className="df-kicker">{isTodayRequest && !closer ? "Today’s fix" : "This day"}</p>
           <h2 className="df-heading">{formatDayLabel(displayIso)}</h2>
         </div>
         <div className="df-actions">
@@ -150,10 +202,11 @@ export function DayPanel({
         </div>
       </div>
 
-      <div className="df-strip" aria-label="Recent days">
+      <div ref={stripRef} className="df-strip" aria-label="Recent days">
+        <DatePickerDialog todayIso={todayIso} panelIso={panelIso} pillar={keptPillar} />
         {strip.map((iso) => {
           const parts = dayParts(iso);
-          const active = iso === requestedIso;
+          const active = iso === panelIso;
           return (
             <Link
               key={iso}
@@ -177,8 +230,9 @@ export function DayPanel({
               pillar={item}
               active={pillar === item}
               title={copy.title}
+              excerpt={copy.excerpt}
               meta={copy.meta}
-              href={dailyFixHref(todayIso, requestedIso, item)}
+              href={dailyFixHref(todayIso, panelIso, item)}
             />
           );
         })}
@@ -189,6 +243,7 @@ export function DayPanel({
         id={`fix-panel-${pillar}`}
         aria-labelledby={`fix-tab-${pillar}`}
         className="df-panel"
+        aria-busy={loading ? "true" : undefined}
       >
         {closer ? (
           <p className="df-disclaimer">
@@ -197,11 +252,18 @@ export function DayPanel({
           </p>
         ) : null}
         {load.status === "invalid" ? <InvalidCopy /> : null}
-        {load.status === "loading" ? <LoadingCopy /> : null}
+        {loading ? (
+          <div role="status">
+            <span className="sr-only">Loading</span>
+            <DaySkeleton />
+          </div>
+        ) : null}
         {load.status === "unavailable" ? <UnavailableCopy /> : null}
-        {load.status === "loaded" && day ? <DayContent day={day} pillar={pillar} /> : null}
+        {load.status === "loaded" && day ? (
+          <DayContent key={day.date} day={day} pillar={pillar} />
+        ) : null}
       </div>
-      <p className="sr-only">{dailyFixHref(todayIso, requestedIso, keptPillar)}</p>
+      <p className="sr-only">{dailyFixHref(todayIso, panelIso, keptPillar)}</p>
     </div>
   );
 }

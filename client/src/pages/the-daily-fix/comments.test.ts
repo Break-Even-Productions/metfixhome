@@ -4,7 +4,6 @@ import {
   fetchDailyFixComments,
   mapDailyFixComments,
 } from "./comments";
-import { DAILY_FIX_BFF_URL } from "./data";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -12,12 +11,12 @@ afterEach(() => {
 });
 
 describe("Daily Fix comments request", () => {
-  it("asks the same Worker origin for ISO date + type=all, never YYMMDD", () => {
+  it("asks the same-origin Worker for ISO date + type=all, never YYMMDD", () => {
     const url = dailyFixCommentsRequestUrl("2025-02-10");
-    const origin = new URL(DAILY_FIX_BFF_URL).origin;
-    expect(url).toBe(`${origin}/daily-fix/comments?date=2025-02-10&type=all`);
+    expect(url).toBe("/api/daily-fix/comments?date=2025-02-10&type=all");
     expect(url).not.toContain("250210");
     expect(url).not.toContain("X-API-Key");
+    expect(url).not.toContain("metfix-bff");
   });
 });
 

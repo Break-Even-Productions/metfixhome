@@ -22,9 +22,12 @@ export default function NotFound() {
           <div style={{ width: "2rem", height: "1px", background: "#C9A96E" }} />
         </div>
 
-        <h1 style={{ fontFamily: "'Playfair Display'", fontWeight: 700, fontSize: "clamp(1.75rem, 5vw, 2.5rem)", lineHeight: 1.2, color: "#EFEFEF", marginBottom: "3rem" }}>
-          Sorry, Unexpected Error on Manus Site EmilyDesigns
+        <h1 style={{ fontFamily: "'Playfair Display'", fontWeight: 700, fontSize: "clamp(1.75rem, 5vw, 2.5rem)", lineHeight: 1.2, color: "#EFEFEF", marginBottom: "1.25rem" }}>
+          We couldn't find that page
         </h1>
+        <p style={{ fontSize: "1rem", lineHeight: 1.6, color: "rgba(239,239,239,0.7)", marginBottom: "3rem" }}>
+          The page you're looking for may have moved or no longer exists.
+        </p>
 
         <Link href="/" className="btn-primary" style={{ fontSize: "0.85rem", padding: "0.875rem 2rem", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
           Back to MetFix <ArrowRight size={14} />

@@ -3,8 +3,9 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig, type Plugin, type ViteDevServer } from "vite";
+import { defineConfig, type Plugin, type ViteDevServer } from "vitest/config";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { asteriskGlass } from "./vite/asterisk-glass";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -206,6 +207,7 @@ function vitePluginStorageProxy(): Plugin {
 const isPagesBuild = process.env.GITHUB_PAGES === "true";
 
 const plugins = [
+  asteriskGlass(),
   react(),
   tailwindcss(),
   jsxLocPlugin(),
@@ -216,6 +218,9 @@ export default defineConfig({
   // Relative base keeps assets on the same origin/protocol (fixes mixed-content on GitHub Pages).
   base: isPagesBuild ? "./" : "/",
   plugins,
+  optimizeDeps: {
+    exclude: ["@ybouane/liquidglass"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -228,6 +233,16 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+  },
+  test: {
+    environment: "node",
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "../shared/**/*.test.ts",
+      "../worker/**/*.test.ts",
+    ],
+    exclude: ["../worker/**/*.workers.test.ts", "**/node_modules/**"],
   },
   server: {
     port: 3000,
@@ -242,6 +257,12 @@ export default defineConfig({
       "localhost",
       "127.0.0.1",
     ],
+    proxy: {
+      "/api": {
+        target: process.env.DAILY_FIX_API_PROXY || "http://localhost:8787",
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
