@@ -330,49 +330,62 @@ describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
     60_000,
   );
 
-  it("V11 kill case: SIGKILL after temp .env write leaves repo .env untouched", async () => {
-    const before = envFingerprint(REPO_ENV);
-    const tmp = makeTempEnvProject();
-    const readyFile = path.join(tmp, "ready");
-    const scriptPath = path.join(tmp, "kill-wait.mjs");
-    fs.writeFileSync(
-      scriptPath,
-      `
+  it(
+    "V11 kill case: SIGKILL after temp .env write leaves repo .env untouched",
+    async () => {
+      const before = envFingerprint(REPO_ENV);
+      const tmp = makeTempEnvProject();
+      const readyFile = path.join(tmp, "ready");
+      const scriptPath = path.join(tmp, "kill-wait.mjs");
+      fs.writeFileSync(
+        scriptPath,
+        `
       import fs from "node:fs";
       import path from "node:path";
       const tmp = process.env.GUARD_TMP;
+      const ready = process.env.GUARD_READY;
       fs.writeFileSync(path.join(tmp, ".env"), process.env.GUARD_NAME + "=" + process.env.GUARD_DUMMY + "\\n");
-      fs.writeFileSync(process.env.GUARD_READY, "1");
-      await new Promise(() => {});
+      fs.writeFileSync(ready, "1");
+      setInterval(() => {}, 1e6);
       `,
-    );
+      );
 
-    const child = spawn(process.execPath, [scriptPath], {
-      env: {
-        ...process.env,
-        GUARD_TMP: tmp,
-        GUARD_NAME: NAME,
-        GUARD_DUMMY: DUMMY,
-        GUARD_READY: readyFile,
-      },
-      stdio: "ignore",
-    });
+      const child = spawn(process.execPath, [scriptPath], {
+        env: {
+          ...process.env,
+          GUARD_TMP: tmp,
+          GUARD_NAME: NAME,
+          GUARD_DUMMY: DUMMY,
+          GUARD_READY: readyFile,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
-    const started = Date.now();
-    while (!fs.existsSync(readyFile)) {
-      if (Date.now() - started > 5000) {
-        child.kill("SIGKILL");
-        throw new Error("child never wrote ready file");
+      let childErr = "";
+      child.stderr?.on("data", (chunk) => {
+        childErr += String(chunk);
+      });
+
+      const started = Date.now();
+      while (!fs.existsSync(readyFile)) {
+        if (child.exitCode !== null) {
+          throw new Error(`child exited early (${child.exitCode}): ${childErr}`);
+        }
+        if (Date.now() - started > 10000) {
+          child.kill("SIGKILL");
+          throw new Error(`child never wrote ready file: ${childErr}`);
+        }
+        await new Promise((r) => setTimeout(r, 20));
       }
-      await new Promise((r) => setTimeout(r, 20));
-    }
 
-    child.kill("SIGKILL");
-    await new Promise((r) => child.once("exit", r));
+      child.kill("SIGKILL");
+      await new Promise((r) => child.once("exit", r));
 
-    expect(envFingerprint(REPO_ENV)).toEqual(before);
-    if (fs.existsSync(REPO_ENV)) {
-      expect(fs.readFileSync(REPO_ENV, "utf8")).not.toContain(DUMMY);
-    }
-  });
+      expect(envFingerprint(REPO_ENV)).toEqual(before);
+      if (fs.existsSync(REPO_ENV)) {
+        expect(fs.readFileSync(REPO_ENV, "utf8")).not.toContain(DUMMY);
+      }
+    },
+    20_000,
+  );
 });
