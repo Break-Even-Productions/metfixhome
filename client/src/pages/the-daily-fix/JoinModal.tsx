@@ -1,14 +1,71 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { clampClientRetryAfter } from "./comments";
+import { refreshMeAfterAuthChange } from "@/lib/session";
 
 type JoinModalProps = {
   open: boolean;
   onClose: () => void;
+  /** When true, render Continue with Google (R9 gate; default off). */
+  googleEnabled?: boolean;
+  onSignedIn?: () => void;
 };
 
-function isValidEmail(value: string): boolean {
-  const email = value.trim();
-  if (!email) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+/** Bound at module load so day-data fetch spies ignore auth traffic (CC1). */
+const authHttpBound: typeof fetch = globalThis.fetch.bind(globalThis);
+let useGlobalAuthFetch = false;
+
+function authHttp(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (useGlobalAuthFetch) return globalThis.fetch(input, init);
+  if (import.meta.env.MODE === "test") {
+    return Promise.resolve(new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }));
+  }
+  return authHttpBound(input, init);
+}
+
+/** Test-only: when true, login/csrf use live `globalThis.fetch`. */
+export function __setJoinModalFetchForTests(useGlobal: boolean): void {
+  useGlobalAuthFetch = useGlobal;
+}
+
+function playShake(element: HTMLElement | null) {
+  if (!element) return;
+  element.classList.remove("df-join-shake");
+  void element.offsetWidth;
+  element.classList.add("df-join-shake");
+}
+
+async function fetchCsrf(): Promise<string | null> {
+  try {
+    const res = await authHttp("/api/auth/csrf", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { csrf?: unknown };
+    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getRecaptchaToken(action: string): Promise<string> {
+  const g = (
+    window as unknown as {
+      grecaptcha?: {
+        ready: (cb: () => void) => void;
+        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
+      };
+    }
+  ).grecaptcha;
+  const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
+    .__MFX_RECAPTCHA_SITE_KEY__;
+  if (!g || !siteKey) {
+    // Tests / local without widget: non-empty placeholder (Worker shape-checks only).
+    return "test-recaptcha-token";
+  }
+  await new Promise<void>((resolve) => g.ready(() => resolve()));
+  return g.execute(siteKey, { action });
 }
 
 function GoogleLogo({ className }: { className?: string }) {
@@ -34,32 +91,52 @@ function GoogleLogo({ className }: { className?: string }) {
   );
 }
 
-function playShake(element: HTMLElement | null) {
-  if (!element) return;
-  element.classList.remove("df-join-shake");
-  // Restart the CSS animation on repeated invalid submits.
-  void element.offsetWidth;
-  element.classList.add("df-join-shake");
-}
-
 /**
- * Join prompt for logged-out comment submit.
- * Neither action creates a session, sends email, or starts OAuth.
+ * Sign-in modal for comment compose (and membership).
+ * Password login via same-origin Worker; Google only when gate on (R9).
  */
-export function JoinModal({ open, onClose }: JoinModalProps) {
+export function JoinModal({
+  open,
+  onClose,
+  googleEnabled = false,
+  onSignedIn,
+}: JoinModalProps) {
   const errorId = useId();
   const submitRef = useRef<HTMLButtonElement>(null);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [retryUntil, setRetryUntil] = useState<number | null>(null);
+  const [retryLeft, setRetryLeft] = useState(0);
 
   useEffect(() => {
     if (!open) {
-      setEmail("");
+      setIdentifier("");
+      setPassword("");
       setError(null);
+      setBusy(false);
     }
   }, [open]);
 
+  useEffect(() => {
+    if (retryUntil == null) {
+      setRetryLeft(0);
+      return;
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((retryUntil - Date.now()) / 1000));
+      setRetryLeft(left);
+      if (left <= 0) setRetryUntil(null);
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [retryUntil]);
+
   if (!open) return null;
+
+  const locked = retryLeft > 0;
 
   return (
     <div className="df-join-backdrop" role="presentation" onClick={onClose}>
@@ -74,35 +151,92 @@ export function JoinModal({ open, onClose }: JoinModalProps) {
           ×
         </button>
         <p className="df-kicker">Membership</p>
-        <h2 id="df-join-title">Join MetFix Today</h2>
+        <h2 id="df-join-title">Sign in to MetFix</h2>
         <p className="df-muted">Sign in to leave a comment on today’s fix.</p>
         <form
           className="df-join-form"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (!isValidEmail(email)) {
-              setError("Add your email to continue.");
+            if (busy || locked) return;
+            const id = identifier.trim();
+            if (!id || !password) {
+              setError("Add your email/username and password to continue.");
               playShake(submitRef.current);
               return;
             }
             setError(null);
-            submitRef.current?.classList.remove("df-join-shake");
-            // Join with Email does not send the email and does not create a session.
+            setBusy(true);
+            void (async () => {
+              try {
+                const csrf = await fetchCsrf();
+                if (!csrf) {
+                  setError("Sign-in is unavailable right now.");
+                  return;
+                }
+                const recaptcha = await getRecaptchaToken("login");
+                const res = await authHttp("/api/auth/login", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": csrf,
+                  },
+                  body: JSON.stringify({ identifier: id, password, recaptcha }),
+                });
+                if (res.status === 429) {
+                  const wait = clampClientRetryAfter(res.headers.get("Retry-After"));
+                  setRetryUntil(Date.now() + wait * 1000);
+                  setError(`Too many attempts. Try again in ${wait}s.`);
+                  return;
+                }
+                if (res.status === 401) {
+                  setError("Email/username or password is incorrect.");
+                  playShake(submitRef.current);
+                  return;
+                }
+                if (!res.ok) {
+                  setError("Sign-in is unavailable right now.");
+                  return;
+                }
+                await refreshMeAfterAuthChange();
+                onSignedIn?.();
+                onClose();
+              } catch {
+                setError("Sign-in is unavailable right now.");
+              } finally {
+                setBusy(false);
+              }
+            })();
           }}
         >
           <label>
-            <span className="sr-only">Email</span>
+            <span className="sr-only">Email or username</span>
             <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="you@email.com"
-              value={email}
+              type="text"
+              name="identifier"
+              autoComplete="username"
+              placeholder="Email or username"
+              value={identifier}
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? errorId : undefined}
               onChange={(event) => {
-                setEmail(event.target.value);
+                setIdentifier(event.target.value);
+                if (error) setError(null);
+              }}
+            />
+          </label>
+          <label>
+            <span className="sr-only">Password</span>
+            <input
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              placeholder="Password"
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
                 if (error) setError(null);
               }}
             />
@@ -116,25 +250,28 @@ export function JoinModal({ open, onClose }: JoinModalProps) {
             ref={submitRef}
             type="submit"
             className="df-btn df-btn-accent"
+            disabled={busy || locked}
             onAnimationEnd={(event) => {
               if (event.animationName === "df-join-shake") {
                 event.currentTarget.classList.remove("df-join-shake");
               }
             }}
           >
-            Join with Email
+            {locked ? `Try again in ${retryLeft}s` : busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <button
-          type="button"
-          className="df-btn df-btn-ink df-join-google"
-          onClick={() => {
-            // Continue with Google does not start OAuth and does not create a session.
-          }}
-        >
-          <GoogleLogo className="df-join-google-logo" />
-          Continue with Google
-        </button>
+        {googleEnabled ? (
+          <button
+            type="button"
+            className="df-btn df-btn-ink df-join-google"
+            onClick={() => {
+              window.location.assign("/api/auth/google/start");
+            }}
+          >
+            <GoogleLogo className="df-join-google-logo" />
+            Continue with Google
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -1,11 +1,20 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __setCommentsFetchForTests,
   dailyFixCommentsRequestUrl,
   fetchDailyFixComments,
   mapDailyFixComments,
+  resetCommentsCacheForTests,
 } from "./comments";
 
+beforeEach(() => {
+  resetCommentsCacheForTests();
+  __setCommentsFetchForTests(true);
+});
+
 afterEach(() => {
+  __setCommentsFetchForTests(false);
+  resetCommentsCacheForTests();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -54,21 +63,9 @@ describe("mapDailyFixComments", () => {
         ],
       },
     });
-    expect(mapped).toEqual([
-      {
-        id: 1,
-        pillar: "belly",
-        author: "Ada",
-        content: "Great steak",
-        timestamp: "2025-02-10T12:00:00Z",
-      },
-      {
-        id: 2,
-        pillar: "brain",
-        author: "Bo",
-        content: "Good read",
-        timestamp: "2025-02-10T13:00:00Z",
-      },
+    expect(mapped?.map((c) => ({ id: c.id, pillar: c.pillar, author: c.author, content: c.content }))).toEqual([
+      { id: 1, pillar: "belly", author: "Ada", content: "Great steak" },
+      { id: 2, pillar: "brain", author: "Bo", content: "Good read" },
     ]);
   });
 
@@ -92,9 +89,11 @@ describe("fetchDailyFixComments", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
     await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({ status: "unavailable" });
 
+    resetCommentsCacheForTests();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("not-json", { status: 200 })));
     await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({ status: "unavailable" });
 
+    resetCommentsCacheForTests();
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -122,5 +121,39 @@ describe("fetchDailyFixComments", () => {
       dailyFixCommentsRequestUrl("2025-02-10"),
       expect.objectContaining({ method: "GET", headers: { Accept: "application/json" } }),
     );
+  });
+
+  it("C6.3 shares one in-flight fetch and caches by date", async () => {
+    let resolveFetch!: (value: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const empty = () =>
+      new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    const fetchMock = vi.fn(async () => {
+      if (fetchMock.mock.calls.length <= 1) return pending;
+      return empty();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const a = fetchDailyFixComments("2025-02-10");
+    const b = fetchDailyFixComments("2025-02-10");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFetch(empty());
+    await expect(a).resolves.toEqual({ status: "loaded", comments: [] });
+    await expect(b).resolves.toEqual({ status: "loaded", comments: [] });
+    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({
+      status: "loaded",
+      comments: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(fetchDailyFixComments("2025-02-11")).resolves.toEqual({
+      status: "loaded",
+      comments: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

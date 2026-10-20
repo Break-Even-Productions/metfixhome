@@ -2,6 +2,7 @@ import { ArrowRight, BookOpen, Dumbbell, UtensilsCrossed, X } from "lucide-react
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { loadMe, type MeState } from "@/lib/session";
 import { ArchiveBrowser } from "./ArchiveBrowser";
 import { CommentThread } from "./CommentThread";
 import { DayPanel } from "./DayPanel";
@@ -125,6 +126,8 @@ export default function TheDailyFixPage({
   const [commentsLoad, setCommentsLoad] = useState<CommentsLoadState>(() =>
     route.kind === "invalid" ? { status: "unavailable" } : { status: "loading" },
   );
+  // Start signed_out so the `/me` miss does not re-render and cancel day nav (CC1 C5).
+  const [me, setMe] = useState<MeState>({ status: "signed_out" });
   const heroRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
@@ -141,6 +144,29 @@ export default function TheDailyFixPage({
 
   useEffect(() => {
     loadJakartaSans();
+  }, []);
+
+  // R5 / C6.1: one `/me` per app load. Skip setState when still signed_out (CC1 C5).
+  useEffect(() => {
+    let active = true;
+    void loadMe().then((next) => {
+      if (!active) return;
+      setMe((prev) => {
+        if (prev.status === "signed_out" && next.status === "signed_out") return prev;
+        if (
+          prev.status === "signed_in" &&
+          next.status === "signed_in" &&
+          prev.public_name === next.public_name &&
+          prev.moderator === next.moderator
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Normalize path/query (date forms, path pillars, bad tabs) via shared normalizer.
@@ -345,7 +371,14 @@ export default function TheDailyFixPage({
               }
             />
             {route.kind !== "invalid" ? (
-              <CommentThread load={commentsLoad} pillar={route.pillar} />
+              <CommentThread
+                load={commentsLoad}
+                pillar={route.pillar}
+                dateIso={commentIso}
+                viewerDisplayName={me.status === "signed_in" ? me.public_name : null}
+                moderator={me.status === "signed_in" ? me.moderator : false}
+                onCommentsChanged={setCommentsLoad}
+              />
             ) : null}
           </div>
         </section>

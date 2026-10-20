@@ -10,6 +10,8 @@ import { Route, Router, Switch } from "wouter";
 import NotFound from "@/pages/NotFound";
 import TheDailyFixPage from "./TheDailyFixPage";
 import { MealPhoto } from "./MealPhoto";
+import { __setSessionFetchForTests, resetMeCacheForTests } from "@/lib/session";
+import { __setCommentsFetchForTests, resetCommentsCacheForTests } from "./comments";
 import { DAILY_FIX_BFF_URL, peekLoadedDailyFixDay, resetDailyFixDayCache } from "./data";
 import { formatDayLabel } from "./model";
 
@@ -153,9 +155,15 @@ function isCommentsRequest(input: unknown): boolean {
   return String(input).includes("/api/daily-fix/comments");
 }
 
-/** Day GETs only. Comments ride along after a loaded day and must not change these counts. */
+function isAuthRequest(input: unknown): boolean {
+  return String(input).includes("/api/auth/");
+}
+
+/** Day GETs only. Comments/`/me` ride along and must not change these counts. */
 function dayCalls(fetchMock: ReturnType<typeof vi.fn>) {
-  return fetchMock.mock.calls.filter((call) => !isCommentsRequest(call[0]));
+  return fetchMock.mock.calls.filter(
+    (call) => !isCommentsRequest(call[0]) && !isAuthRequest(call[0]),
+  );
 }
 
 function requestDates(fetchMock: ReturnType<typeof vi.fn>): string[] {
@@ -172,6 +180,11 @@ beforeEach(() => {
   stubBrowserApis();
   openAddressBar("/");
   resetDailyFixDayCache();
+  resetCommentsCacheForTests();
+  resetMeCacheForTests();
+  // Route comments/`/me` through whatever `globalThis.fetch` the test stubs (CC1 opt-in).
+  __setCommentsFetchForTests(true);
+  __setSessionFetchForTests(true);
   liquidInit.mockClear();
   liquidDestroy.mockClear();
   liquidInit.mockImplementation(async () => ({ destroy: liquidDestroy }));
@@ -182,6 +195,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetDailyFixDayCache();
+  resetCommentsCacheForTests();
+  resetMeCacheForTests();
+  __setCommentsFetchForTests(false);
+  __setSessionFetchForTests(false);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -1636,6 +1653,12 @@ describe("Daily Fix comments", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       expect(url).not.toContain("brokenscience.org");
+      if (url.includes("/api/auth/me")) {
+        return new Response(JSON.stringify({ signed_in: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (isCommentsRequest(url)) {
         return new Response(JSON.stringify(commentsBody), {
           status: commentsStatus,
@@ -1677,6 +1700,9 @@ describe("Daily Fix comments", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       expect(url).not.toContain("brokenscience.org");
+      if (url.includes("/api/auth/me")) {
+        return new Response(JSON.stringify({ signed_in: false }), { status: 200 });
+      }
       if (isCommentsRequest(url)) return pendingComments;
       return new Response(JSON.stringify(dayPayload("2025-02-10")), {
         status: 200,
@@ -1711,37 +1737,36 @@ describe("Daily Fix comments", () => {
     expect(screen.queryByText(/Comments are unavailable/i)).toBeNull();
   });
 
-  it("logged-out submit opens the join modal and does not POST or store a session", async () => {
+  it("logged-out submit opens the join modal and does not POST a comment or store a session", async () => {
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
     const fetchMock = mockDayAndComments();
     cleanup();
     renderAt("/the-daily-fix/250210?tab=body");
     expect(await screen.findByRole("heading", { name: "Body 2025-02-10" })).toBeTruthy();
     await waitFor(() => expect(commentsCalls(fetchMock)).toHaveLength(1));
-    const callsAfterLoad = fetchMock.mock.calls.length;
+    const postsBefore = fetchMock.mock.calls.filter(
+      (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
+    ).length;
 
     expect(screen.getByRole("button", { name: /Comment type/i }).textContent).toMatch(/Body/i);
-    fireEvent.change(screen.getByPlaceholderText("Your name"), { target: { value: "Pat" } });
+    expect(screen.queryByPlaceholderText("Your name")).toBeNull();
     fireEvent.change(screen.getByPlaceholderText(/Share a thought/i), { target: { value: "Hello" } });
     fireEvent.click(screen.getByRole("button", { name: /Post comment/i }));
 
-    expect(await screen.findByRole("dialog", { name: /Join MetFix Today/i })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: /Sign in to MetFix/i })).toBeTruthy();
     expect(window.location.pathname).toBe("/the-daily-fix/250210");
     expect(window.location.search).toBe("?tab=body");
 
-    const joinDialog = screen.getByRole("dialog", { name: /Join MetFix Today/i });
+    const joinDialog = screen.getByRole("dialog", { name: /Sign in to MetFix/i });
     expect(within(joinDialog).getByText(/Sign in to leave a comment/i)).toBeTruthy();
-    expect(within(joinDialog).queryByText(/does not create a session/i)).toBeNull();
-    fireEvent.change(within(joinDialog).getByPlaceholderText("you@email.com"), {
-      target: { value: "pat@example.com" },
-    });
-    fireEvent.click(within(joinDialog).getByRole("button", { name: /Join with Email/i }));
-    fireEvent.click(within(joinDialog).getByRole("button", { name: /Continue with Google/i }));
+    expect(within(joinDialog).queryByRole("button", { name: /Continue with Google/i })).toBeNull();
 
-    expect(fetchMock).toHaveBeenCalledTimes(callsAfterLoad);
+    const postsAfterOpen = fetchMock.mock.calls.filter(
+      (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
+    ).length;
+    expect(postsAfterOpen).toBe(postsBefore);
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).not.toContain("brokenscience.org");
-      expect((call[1] as RequestInit | undefined)?.method ?? "GET").not.toBe("POST");
     }
     for (const key of forbiddenStorageKeys) {
       expect(setItemSpy).not.toHaveBeenCalledWith(key, expect.anything());
