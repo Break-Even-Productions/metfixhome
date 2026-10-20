@@ -1659,12 +1659,56 @@ a.df-article {
   font-size: 0.95rem;
 }
 
-.df-comment-pillar {
+.df-comment-pillar,
+.df-comment-type {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--df-accent-2);
+}
+
+.df-comment-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--df-accent-2);
+  cursor: pointer;
+  outline: none;
+}
+
+.df-comment-type:focus-visible {
+  outline: 2px solid var(--df-accent-2);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.df-comment-type-caret {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex-shrink: 0;
+}
+
+.df-comment-type[data-state="open"] .df-comment-type-caret {
+  transform: rotate(180deg);
+}
+
+.df-comment-type-menu {
+  min-width: 8rem;
+}
+
+.df-composer-meta {
+  display: flex;
+  align-items: center;
 }
 
 .df-comment-body {
@@ -1759,8 +1803,49 @@ a.df-article {
   outline: none;
 }
 
+.df-join-form input[aria-invalid="true"] {
+  border-color: #c44b3c;
+}
+
+.df-join-error {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #c44b3c;
+}
+
+@keyframes df-join-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+.df-join-shake {
+  animation: df-join-shake 0.45s ease;
+}
+
 .df-join-google {
   width: 100%;
   margin-top: 0.55rem;
   justify-content: center;
+  gap: 0.55rem;
+}
+
+.df-join-google-logo {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
 }
