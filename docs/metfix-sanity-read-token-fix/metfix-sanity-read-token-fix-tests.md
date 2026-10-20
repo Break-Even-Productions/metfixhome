@@ -281,7 +281,7 @@ Safety rule applied by QA: every run happened in my clone `/workspace/pr-token/r
 | K7.1 | PASS at head | — | `worker/build.config.test.ts` passes (it's on main). Re-run after the #7 rebase. "Pending" in the Project rollup is wrong as a status; the only thing pending is the post-rebase re-run |
 Project rollup disagreements (Project: V 12/0, K4 3, K7 pending): V has 5 FAILs (V3(b) safety, V3(c), V11 sentinel, V11 kill, interrupted-run cleanup). K4 = 4 PASS (K4.2, K4.3, K4.4, K4.6). K7.1 = PASS. The other K counts are consistent.
 
-## §R5 Round-5 results at e1038211689bfd391ecf661ab6322b78f731c75f (judged against rev 1.6.1; results only)
+## §R5 Round-5 results at e1038211689bfd391ecf661ab6322b78f731c75f (judged against rev 1.6.1; results only) — SUPERSEDED by §R6
 CI 39348987788: head_sha e1038211…, completed/success (it was in progress at first poll; completed on re-poll). Log: `Tests 325 passed (325)`, `sanity.vite-guard.test.ts (20 tests)`, workers `Tests 8 passed (8)`, no dummy in the log. **No `git status --porcelain --ignored` before/after step in ci.yml.** Local: 325/325.
 319→325 = +6 in vite-guard (14→20): +8 new (V3(c) .env test, V12(a) static, M-a1…M-a4, V12(b), V12(c)), −2 deleted (V11 kill, V11 mutations).
 Scope/Rule 6: since b14be635 only `sanity.vite-guard.test.ts` and the docs/ tests copy changed. OK. D1: docs tests = 3e9c6599 (rev 1.6) and acceptance = aefcc701. Equal to the targets set at dispatch. The copy must move to the final rev 1.6.1 md5.
@@ -308,3 +308,26 @@ QA setup before every run: dev `.env` (`MY_DEV_SECRET=keepme-r5`) and untracked 
 | K3.3, K4.6, K8.1 | PASS | — | Production and fetch/config test files byte-identical to round 3 (`git diff --quiet be43c48 HEAD`) |
 | K1.1/K1.5 BLOCKED (#7); K3.10 PENDING (R1); K4.5 PENDING (post-deploy); K5 PENDING (Ethan); K7.1 PASS (re-run after rebase) | — | — | |
 | Flake loop | 4/4 serial clean; **concurrent runs interfere** | — | Serial runs 1–3, plus a final clean run: 20/20 each (about 70 s to 4 min). Run 4 overlapped with a leftover loop iteration and failed V12(b): the canary untracked file `.metfix-v12-canary-untracked` was deleted by the other run's `unstageRepoCanary`. Two later overlapped runs failed the same way. Fixed repo canary and `/tmp` start paths make the suite unsafe to run in parallel. Another reason the in-suite canaries FAIL under 1.6.1. 10× not completed: the in-suite nested `npm test` makes each run slow |
+
+## §R6 — round 6, head f1d8d5c2 (rev 1.6.2 / spec aefcc701) — PARTIAL, blocked
+| Item | Result | Evidence |
+|---|---|---|
+| CI 39352353158 @ f1d8d5c2 | FAIL | conclusion failure, "Unit and mount tests" exit 1; log tail truncated at 64 KB |
+| V12(b) CI porcelain gate | FAIL (must-fix) | Local fresh run of exact step (bash -e, no .env, no node_modules/.vite): 318/318 tests pass, step exits 1, diff = `!! node_modules/.vite/vitest/results.json` (vitest's own results cache) |
+| Test count | 318 (Δ −7 vs 325) | local run |
+| Deletions rg (stageRepoCanary/V12_HARNESS/SIGKILL) | PASS | 0 hits |
+| D1 docs copies | PASS | 9492957a / aefcc701 |
+| Bite proofs, vacuity, .vite* snapshot, concurrency, kill script + 10× loop, V1–V10 mutations, K1.7/K3.3/K4.6/K8.1, scope/Rule 6 | NOT RUN | blocked behind the gate failure; re-run next head |
+| CQ round-6 notes | awaiting | not relayed |
+| K5 | pending Ethan | |
+Verdict: NOT signed off. Test sign-off only; merge needs Ethan's go.
+
+### §R6 addendum (CQ round-6 steering folded in)
+| Item | Result | Evidence |
+|---|---|---|
+| CQ round 6 | signed off on code, conditional on CI 39352353158 green → condition NOT met | CI failed |
+| Gate cause = vitest results cache | CONFIRMED | local fresh gate: only diff `!! node_modules/.vite/vitest/results.json`; required fix `test:{cache:false}` (not output filtering) |
+| cache:false proof | PASS | `vitest run --no-cache` from fresh state: exit 0, no node_modules/.vite created |
+| Gate placement | ci.yml:31–32 (step name 31, run 32), after npm ci (:26); no set +e / continue-on-error / filtering | ci.yml |
+| test:workers (ci.yml:63) outside gate | FAIL V12(b) (must-fix) | between two porcelain snapshots it adds `!! node_modules/.vite/vitest/vitest/results.json`; needs cache:false in vitest.workers.config.ts too (local exit 1 only because dist/ was absent; the write happened anyway) |
+| Non-blocking notes | recorded | ~74k-line dump on failure (print diff only); spawnSync maxBuffer; NAME position; stray md5 on §R4 heading |

@@ -44,6 +44,8 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
     },
     test: {
+      // V12(b): do not write node_modules/.vite/vitest/results.json during npm test.
+      cache: false,
       environment: "node",
       include: [
         "src/**/*.test.ts",

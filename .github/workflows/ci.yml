@@ -33,7 +33,7 @@ jobs:
         run: npm run check:worker
 
       - name: Unit and mount tests
-        run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; printf 'BEFORE:\n%s\nAFTER:\n%s\n' "$before" "$after"; exit 1; fi
+        run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
       - name: Build static site
         run: npm run build:cf
@@ -89,7 +89,6 @@ jobs:
         env:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
-          VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
 
       - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
         run: npm run test:workers
