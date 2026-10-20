@@ -12,6 +12,7 @@
   - §R4's interrupted-run cleanup item is replaced by V12(c); /tmp leftovers are exempt.
   - D1 targets the rev 1.6 md5.
   - Nothing else changes and nothing is weakened. Every V11 harm (repo `.env` written, deleted or left dirty, including under a kill) is now an unconditional V12 requirement.
+- (Rev 1.6.3) 2026-10-19 ~7:05 PM PT. Spec pointer moves to **rev 1.1.5, md5 `9937adb39cdc41d768db8f1bdc4a7a8a`** (doc-only; K6 allows the test-cache and workers-optimizer keys; new K9 = 8/8 workers tests). D1 targets: this list's rev 1.6.2+§R6 `85de10ff…` and spec `9937adb3…`. §R6 marked superseded, §R7 added. No assertion changed. Pre-edit copy (`85de10ff…`) kept at `metfix-sanity-read-token-fix-tests.r1.6.2-R6.md`.
 - (Rev 1.5 history) Rev 1.5, 2026-10-19 ~5:35 PM PT. Results-only rev: §R3 marked superseded, §R4 added. No assertion changed. Rev 1.4 + §R3 (`e4743a35b4a67d993c87458293d77334`) kept at `metfix-sanity-read-token-fix-tests.r1.4.1.md`. Pinned spec unchanged: 1.1.3 `aefcc701`.
 - (Rev 1.4 history) Rev 1.4, 2026-10-19 ~4:30 PM PT. Points at spec **rev 1.1.3, md5 `aefcc701aa7bf6a71d5086d1cf296ccd`** (verified; diff vs 1.1.2: K1 names the K1.6 exceptions; R4b gains the V3 whitespace ruling and requires Vite's `loadEnv` precedence; new K8(d) = QA V2b). Rev 1.3 (`253889edcbbed59df8c5c4a94dddf231`) kept at `metfix-sanity-read-token-fix-tests.r1.3.md`. Changes: V2b rewritten to K8(d) per the Web Lead correction of 10-19 (a blank shell value wins, guard passes, no throw), with mutations so it can fail; K1.7 confirmed against 1.1.3; D1 now targets the rev 1.4 md5. Nothing weakened. The rev 1.3 per-source-throw requirement is dropped by ruling, not loosened, because it contradicted Vite's actual inlining and would have rewarded a wrong fallback.
 - (Rev 1.3 history) Rev 1.3, 2026-10-19 ~4:25 PM PT. Rev 1.2 (`2aecd7f702619e2863acf43bba5ed0b6`) kept at `metfix-sanity-read-token-fix-tests.r1.2.md`. Changes: V3 rewritten per the **Web Lead ruling of 10-19** (a whitespace-only value counts as unset and passes, matching spec 1.1.2 R4b/K8(b)); new items K1.7, V2b (required behavior), V11 (temp envDir), V10 (temp outDir) and D1 (docs copy). No assertion weakened: V3 keeps the throw on padded real tokens and adds dist and source checks.
@@ -309,7 +310,7 @@ QA setup before every run: dev `.env` (`MY_DEV_SECRET=keepme-r5`) and untracked 
 | K1.1/K1.5 BLOCKED (#7); K3.10 PENDING (R1); K4.5 PENDING (post-deploy); K5 PENDING (Ethan); K7.1 PASS (re-run after rebase) | — | — | |
 | Flake loop | 4/4 serial clean; **concurrent runs interfere** | — | Serial runs 1–3, plus a final clean run: 20/20 each (about 70 s to 4 min). Run 4 overlapped with a leftover loop iteration and failed V12(b): the canary untracked file `.metfix-v12-canary-untracked` was deleted by the other run's `unstageRepoCanary`. Two later overlapped runs failed the same way. Fixed repo canary and `/tmp` start paths make the suite unsafe to run in parallel. Another reason the in-suite canaries FAIL under 1.6.1. 10× not completed: the in-suite nested `npm test` makes each run slow |
 
-## §R6 — round 6, head f1d8d5c2 (rev 1.6.2 / spec aefcc701) — PARTIAL, blocked
+## §R6 — SUPERSEDED by §R7 — round 6, head f1d8d5c2 (rev 1.6.2 / spec aefcc701) — PARTIAL, blocked
 | Item | Result | Evidence |
 |---|---|---|
 | CI 39352353158 @ f1d8d5c2 | FAIL | conclusion failure, "Unit and mount tests" exit 1; log tail truncated at 64 KB |
@@ -331,3 +332,30 @@ Verdict: NOT signed off. Test sign-off only; merge needs Ethan's go.
 | Gate placement | ci.yml:31–32 (step name 31, run 32), after npm ci (:26); no set +e / continue-on-error / filtering | ci.yml |
 | test:workers (ci.yml:63) outside gate | FAIL V12(b) (must-fix) | between two porcelain snapshots it adds `!! node_modules/.vite/vitest/vitest/results.json`; needs cache:false in vitest.workers.config.ts too (local exit 1 only because dist/ was absent; the write happened anyway) |
 | Non-blocking notes | recorded | ~74k-line dump on failure (print diff only); spawnSync maxBuffer; NAME position; stray md5 on §R4 heading |
+
+## §R7 — round 7, head 7e7d5ae09727328c90b0efde63b21de770c9693b (list rev 1.6.2+§R6 / spec 1.1.5 `9937adb3`)
+| Item | Result | Evidence |
+|---|---|---|
+| Claimed changes | PASS | Diff since f1d8d5c2 has 4 files: ci.yml (gate at :32 now prints `diff -u`; :63 wraps test:workers in the same gate), vite.config.ts (`test.cache: false`), vitest.workers.config.ts (`cache: false`, `deps.optimizer.{ssr,web}.enabled: false`), docs tests copy |
+| Gate unfiltered, fail-closed | PASS | No `set +e`/`continue-on-error`/`shell:` override. `diff -u … \|\| true` only feeds the printout; `exit 1` is unconditional on mismatch. A failing git exits the step (rc 128) |
+| CI 39353509678 @ 7e7d5ae | PASS | Job test-and-build success; step 6 "Unit and mount tests" success (318/318, 16 files); step 11 "Pool-workers" success (8/8, 1 file) |
+| Local fresh full-job emulation | PASS | git clean -fdx + npm ci, then every ci.yml run step: all rc=0, 318/318 and 8/8; poller saw no node_modules/.vite* during the run |
+| Bite proofs | PASS | Gate 1: test writing `.env` → rc 1 `+!! .env`; test writing `node_modules/.vite/qa-x` → rc 1. Gate 2: write in vitest.workers.config.ts (Node side) → rc 1 `+!! node_modules/.vite/qa-w`. A bite inside the workerd test cannot write (EPERM), so it isn't evidence |
+| Vacuity | PASS | `before` taken before the run; git failure → rc 128; clean run → rc 0. Known accepted gap: overwriting an existing ignored file isn't caught by porcelain (covered by QA .env md5) |
+| No suite writes to node_modules/.vite* | PASS | npm test and the client guard run create nothing. `npm run build:cf` leaves an empty `node_modules/.vite-temp/` (Vite's own config bundling, not the suite; empty dir, invisible to git) — non-blocking note |
+| Unique temp names / concurrency | PASS | Two concurrent guard suites: both rc 0, no EEXIST/ENOENT |
+| 10× serial loop (dev .env + untracked file present) | PASS | 10/10 rc 0; .env md5, porcelain (-uall --ignored) and ignored-file hashes unchanged every run |
+| kill-v12c.sh (start detection adapted to the new temp dir) | PASS | V2, V2b, V3(b), V3(c), V7 killed mid-run (temp project / vite build): porcelain same, .env same, const.ts = HEAD, 0 orphans. Killed runs leave /tmp/metfix-v12-*/outdir-* dirs (outside the repo; removed) |
+| V1–V10 mutations | PASS | console.error → 10 fail; M1 (no process.env) → V2b fails; M2 (.env wins) → V2b fails; no-trim → 2 fail (V2b, V3); value-in-message → 6 fail; remove-throw → 10 fail |
+| K1.7 | PASS | Same 6 lines (vite.config.ts:212,215; ci.yml:47; deploy-pages.yml:40 (left for #7/K1); vite-guard.test.ts:7; config.test.ts:32) |
+| K3.3 | PASS | Scratch worktree with R4b disabled: fixed const.ts → 0 dummy hits; const.ts reverted to main → 1 hit |
+| K4.6, K8.1 | PASS | sanity.ts/const.ts/vite-env.d.ts/fetch+config tests byte-identical to be43c48; no bare `import.meta.env` in client/src |
+| K6 vs spec 1.1.5 | PASS | Paths vs main are all on the allowlist; vite.config.ts beyond R4b adds only `test.cache:false`; vitest.workers.config.ts only `cache:false` + the two optimizer keys; ci.yml only the gates |
+| K9 | PASS | After build:cf, test:workers 8/8 with the gate unchanged, in CI (step 11) and locally. The old config gives 8/8 too, so the optimizer keys dropped no test |
+| 8 vs 9 workers count | 8 is correct for #10 | main and 7e7d5ae have 8 `it(` cases (file identical to main). #7 (01f4a8ff) has 9: it adds "social-preview.jpg from ASSETS is image/jpeg". Nothing is missing from #10; the 9/0 was #7's own count. After #10 rebases on #7 the expected number is 9 |
+| Scope / Rule 6 | PASS | Nothing beyond the claimed fixes |
+| D1 | FAIL (must-fix) | PR docs tests copy = `85de10ff` (OK), but PR docs acceptance copy = `aefcc701` (1.1.3), not `9937adb3` (1.1.5) |
+| CQ round 7 | folded in | K6 → re-judged PASS under 1.1.5; CI green, both gates pass (verified); workers 8/8 (K9). Note: shared gate script with `shell: bash` |
+| K5 | pending Ethan | relayed confirmation doesn't count |
+Non-blocking notes: duplicated gate line at ci.yml:32/:63 (use one script with `shell: bash`); empty .vite-temp from build:cf; spawnSync maxBuffer; NAME position; stray md5 on the §R4 heading.
+Verdict: NOT signed off while D1 fails (the docs spec copy is behind). Otherwise every item passes. Test sign-off only; merge needs Ethan's go and K5.
