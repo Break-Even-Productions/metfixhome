@@ -57,15 +57,10 @@ export async function handleMe(request: Request, env: Env): Promise<Response> {
     /* display from KV is fine */
   }
 
-  return authJson(
-    {
-      signed_in: true,
-      public_name: me.user_public_name,
-      // CM6: moderator always false if can_moderate omitted/non-boolean at store time.
-      moderator: me.can_moderate === true,
-    },
-    200,
-    {},
-    setCookies,
-  );
+  const body: { signed_in: true; public_name: string; moderator?: boolean } = {
+    signed_in: true,
+    public_name: me.user_public_name,
+  };
+  if (me.can_moderate === true) body.moderator = true;
+  return authJson(body, 200, {}, setCookies);
 }

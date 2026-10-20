@@ -71,7 +71,7 @@ async function refreshIfNeeded(
     if (typeof tok.access_token !== "string") return null;
     const updated = await applyRefreshResult(env, sid, {
       access_token: tok.access_token,
-      refresh_token: tok.refresh_token,
+      refresh_token: tok.refresh_token ?? record.bsi_refresh,
       expires_in: tok.expires_in,
       public_name: tok.public_name,
       user_id: tok.user_id,
@@ -163,7 +163,7 @@ export async function refreshAfterUnauthorized(
   if (typeof tok.access_token !== "string") return null;
   const updated = await applyRefreshResult(env, ctx.sid, {
     access_token: tok.access_token,
-    refresh_token: tok.refresh_token,
+    refresh_token: tok.refresh_token ?? ctx.record.bsi_refresh,
     expires_in: tok.expires_in,
     public_name: tok.public_name,
     user_id: tok.user_id,
