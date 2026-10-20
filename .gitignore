@@ -16,7 +16,6 @@ build/
 
 # Logs
 *.log
-.manus-logs/
 
 # OS / editor
 .DS_Store

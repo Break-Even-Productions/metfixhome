@@ -208,6 +208,14 @@ describe("pool-workers HTMLRewriter (built dist)", () => {
     expect(text).not.toContain("</script>");
   });
 
+  it("social-preview.jpg from ASSETS is image/jpeg", async () => {
+    const res = await SELF.fetch("https://metfix.org/social-preview.jpg");
+    expect(res.status).toBe(200);
+    expect((res.headers.get("content-type") || "").toLowerCase()).toMatch(
+      /^image\/jpeg/,
+    );
+  });
+
   it("404: noindex, site title, no canonical", async () => {
     interceptDay(404, "{}");
     const res = await SELF.fetch("https://metfix.org/the-daily-fix/261004", {
