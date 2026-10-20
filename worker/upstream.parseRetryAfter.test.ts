@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { parseRetryAfter } from "./upstream";
 
-describe("parseRetryAfter (AU26.11 / list r1.23)", () => {
-  it("clamps all-digit values to 1..600", () => {
+describe("AU26.11 parseRetryAfter", () => {
+  it("AU26.11 clamps all-digit values to 1..600", () => {
     expect(parseRetryAfter("0")).toBe(1);
     expect(parseRetryAfter("000")).toBe(1);
     expect(parseRetryAfter("1")).toBe(1);
@@ -13,11 +15,12 @@ describe("parseRetryAfter (AU26.11 / list r1.23)", () => {
     expect(parseRetryAfter("99999")).toBe(600);
     expect(parseRetryAfter("999999")).toBe(600);
     expect(parseRetryAfter("1000000")).toBe(600);
+    expect(parseRetryAfter("123456789012345678901234567890")).toBe(600);
     expect(parseRetryAfter("1".repeat(30))).toBe(600);
     expect(parseRetryAfter("1".repeat(400))).toBe(600);
   });
 
-  it("defaults missing / non-numeric / HTTP-date / decimal to 60", () => {
+  it("AU26.11 defaults missing / non-numeric / HTTP-date / decimal to 60", () => {
     expect(parseRetryAfter(null)).toBe(60);
     expect(parseRetryAfter(undefined)).toBe(60);
     expect(parseRetryAfter("")).toBe(60);
@@ -29,5 +32,28 @@ describe("parseRetryAfter (AU26.11 / list r1.23)", () => {
     expect(parseRetryAfter("17abc")).toBe(60);
     expect(parseRetryAfter("-5")).toBe(60);
     expect(parseRetryAfter("Wed, 21 Oct 2015 07:28:00 GMT")).toBe(60);
+  });
+
+  it("AU26.11 single parseRetryAfter definition in worker/**", () => {
+    const root = join(process.cwd(), "worker");
+    const defs: string[] = [];
+    const walk = (dir: string) => {
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, ent.name);
+        if (ent.isDirectory()) {
+          if (ent.name === "node_modules" || ent.name === "__fixtures__") continue;
+          walk(p);
+          continue;
+        }
+        if (!ent.name.endsWith(".ts")) continue;
+        if (ent.name.endsWith(".test.ts") || ent.name.endsWith(".test-d.ts")) continue;
+        const text = readFileSync(p, "utf8");
+        if (/export\s+function\s+parseRetryAfter\b/.test(text) || /function\s+parseRetryAfter\b/.test(text)) {
+          defs.push(p.replace(process.cwd() + "/", ""));
+        }
+      }
+    };
+    walk(root);
+    expect(defs).toEqual(["worker/upstream.ts"]);
   });
 });

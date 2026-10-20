@@ -917,7 +917,7 @@ describe("TK1", () => {
 
 describe("TK1.g", () => {
   it.skipIf(!hasPr10SanityGuard())(
-    "TK1.g rejects build when N is set with exact guard message (needs #10 on main)",
+    "TK1.g rejects build when N is set with exact guard message",
     async () => {
     const N = tokenName();
     const canary = `guard-canary-${randomBytes(8).toString("hex")}`;
@@ -1048,7 +1048,7 @@ describe("C5.3", () => {
 
 describe("C5.2", () => {
   it.skipIf(!hasPr10SanityGuard())(
-    "C5.2 scans TK1 build output for bff-origin patterns (needs #10 on main)",
+    "C5.2 scans TK1 build output for bff-origin patterns",
     async () => {
       assertNAbsentForTk1();
       const snap = snapshotEnv([tokenName(), ...CANARY_KEYS]);
@@ -1129,7 +1129,7 @@ function hasMergedMainForTk2m(): boolean {
 
 describe("TK2.m", () => {
   it.skipIf(!hasMergedMainForTk2m())(
-    "TK2.m merged main fixture tree has zero TK2 hits (R-A on handoff SHA only)",
+    "TK2.m merged main fixture tree has zero TK2 hits",
     () => {
       const { filesScanned, hits } = scanTk2(REPO_ROOT);
       expect(filesScanned).toBeGreaterThan(0);

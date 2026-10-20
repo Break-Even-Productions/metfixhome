@@ -136,7 +136,9 @@ async function mapWebLoginOutcome(
     const tok = upstream.json as TokenPairBody;
     if (
       typeof tok.access_token !== "string" ||
+      tok.access_token.length === 0 ||
       typeof tok.refresh_token !== "string" ||
+      tok.refresh_token.length === 0 ||
       typeof tok.public_name !== "string" ||
       tok.user_id == null
     ) {

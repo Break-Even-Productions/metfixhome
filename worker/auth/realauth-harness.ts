@@ -45,7 +45,10 @@ function makeDoState() {
     get: async (key: string) => map.get(key),
     put: async (key: string, value: unknown) => map.set(key, value),
     delete: async (key: string) => map.delete(key),
-    deleteAll: async () => map.clear(),
+    deleteAll: async () => {
+      map.clear();
+      alarmAt = null;
+    },
     list: async () => {
       const out = new Map<string, unknown>();
       for (const [k, v] of map) out.set(k, v);
@@ -170,13 +173,28 @@ export type Harness = ReturnType<typeof createHarness>;
 export function createHarness(opts?: {
   googleEnabled?: boolean;
   sessionOutage?: "throw";
+  /** Optional previous session encryption key (ENC.T2). */
+  sessionEncKeyPrev?: string;
   webLogin?: (req: Request) => Response | Promise<Response>;
+  /** Optional BSI-C4 revoke mock (`throw` rejects the fetch). */
+  revoke?: "throw" | ((req: Request) => Response | Promise<Response>);
+  /** Optional override for BSI-C3 /oauth/token refresh. */
+  refresh?: (req: Request) => Response | Promise<Response>;
+  /** Optional siteverify mock. */
+  siteverify?: (req: Request) => Response | Promise<Response>;
 }) {
   let now = Date.now();
   const kv = makeRecordingKv(() => now);
-  const sessionNs = makeNamespace(SessionDO, { SESSION_ENC_KEY: ENCKEY }, {
-    throwAll: opts?.sessionOutage === "throw",
-  });
+  const sessionNs = makeNamespace(
+    SessionDO,
+    {
+      SESSION_ENC_KEY: ENCKEY,
+      SESSION_ENC_KEY_PREV: opts?.sessionEncKeyPrev,
+    },
+    {
+      throwAll: opts?.sessionOutage === "throw",
+    },
+  );
   const throttleNs = makeNamespace(LoginThrottleDO, {});
   const oauthNs = makeNamespace(OauthStateDO, {});
 
@@ -204,7 +222,15 @@ export function createHarness(opts?: {
           ? input.href
           : (input as Request).url;
     const method = (init?.method ?? "GET").toUpperCase();
-    const bodyText = typeof init?.body === "string" ? init.body : "";
+    const rawBody = init?.body;
+    const bodyText =
+      typeof rawBody === "string"
+        ? rawBody
+        : rawBody instanceof URLSearchParams
+          ? rawBody.toString()
+          : rawBody == null
+            ? ""
+            : String(rawBody);
     const headers: Record<string, string> = {};
     new Headers(init?.headers).forEach((v, k) => {
       headers[k.toLowerCase()] = v;
@@ -213,9 +239,15 @@ export function createHarness(opts?: {
     fetches.push(rec);
     if (url.includes("recaptcha/api/siteverify")) {
       siteverifyCalls.push(rec);
-      return Response.json({ success: true, score: 0.9, action: "login", hostname: "metfix.org" });
+      if (opts?.siteverify) {
+        return opts.siteverify(new Request(url, { method, headers, body: bodyText }));
+      }
+      // Default action `comment` for write routes; signup/login tests override via `siteverify`.
+      return Response.json({ success: true, score: 0.9, action: "comment", hostname: "metfix.org" });
     }
-    if (!url.includes("brokenscience.org")) return new Response("x", { status: 502 });
+    if (!url.includes("brokenscience.org") && !url.includes("oauth2.googleapis.com")) {
+      return new Response("x", { status: 502 });
+    }
     if (url.includes("/auth/web-login")) {
       if (opts?.webLogin) return opts.webLogin(new Request(url, { method, headers, body: bodyText }));
       return Response.json({
@@ -227,6 +259,7 @@ export function createHarness(opts?: {
       });
     }
     if (url.includes("/proxy/oauth/token")) {
+      if (opts?.refresh) return opts.refresh(new Request(url, { method, headers, body: bodyText }));
       const parsed = JSON.parse(bodyText || "{}") as { refresh_token?: string };
       if (parsed.refresh_token === REFRESH1) {
         return Response.json({
@@ -239,7 +272,13 @@ export function createHarness(opts?: {
       }
       return Response.json({ code: "invalid_grant" }, { status: 400 });
     }
-    if (url.includes("/proxy/oauth/revoke")) return new Response(null, { status: 200 });
+    if (url.includes("/proxy/oauth/revoke")) {
+      if (opts?.revoke === "throw") throw new Error("revoke_timeout");
+      if (typeof opts?.revoke === "function") {
+        return opts.revoke(new Request(url, { method, headers, body: bodyText }));
+      }
+      return new Response(null, { status: 200 });
+    }
     if (url.includes("/daily-fix/comments") && method === "GET") return Response.json(COMMENTS_FIXTURE);
     if (url.includes("/daily-fix/comments") && method === "POST") {
       return Response.json(
@@ -334,6 +373,8 @@ export function createHarness(opts?: {
     env,
     kv,
     sessionNs,
+    throttleNs,
+    oauthNs,
     fetches,
     siteverifyCalls,
     call,
