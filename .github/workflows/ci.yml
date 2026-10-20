@@ -33,7 +33,7 @@ jobs:
         run: npm run check:worker
 
       - name: Unit and mount tests
-        run: npm test
+        run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; printf 'BEFORE:\n%s\nAFTER:\n%s\n' "$before" "$after"; exit 1; fi
 
       - name: Build static site
         run: npm run build:cf

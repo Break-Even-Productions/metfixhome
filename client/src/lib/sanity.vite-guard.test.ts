@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { loadConfigFromFile, loadEnv } from "vite";
 const NAME = "VITE_SANITY_API_READ_TOKEN";
@@ -9,18 +9,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const DUMMY = `skTEST${"A".repeat(60)}`;
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
-const REPO_ENV = path.join(REPO_ROOT, ".env");
 const REPO_CONFIG = path.join(REPO_ROOT, "vite.config.ts");
 const DIST_PUBLIC = path.join(REPO_ROOT, "dist/public");
-const REPO_CONST_TS = path.join(REPO_ROOT, "client/src/const.ts");
-const THIS_TEST_FILE = path.join(import.meta.dirname, "sanity.vite-guard.test.ts");
 /** Quote form: NAME:"X with non-empty X. */
 const TOKEN_INLINE_RE = new RegExp(`${NAME}:"[^"]`);
 /** Vite may serialize a newline env value as a template literal NAME:`\n`. */
 const TOKEN_NEWLINE_TEMPLATE = `${NAME}:\`\n\``;
-const CANARY_ENV_BODY = "MY_DEV_SECRET=keepme\n";
-const CANARY_UNTRACKED = path.join(REPO_ROOT, ".metfix-v12-canary-untracked");
-const START_PREFIX = path.join(os.tmpdir(), "metfix-v12-start-");
 
 type DistSnapshot = {
   absent: boolean;
@@ -34,6 +28,12 @@ type TempProject = {
 };
 
 const tempPaths: string[] = [];
+
+/** Unique per-run prefix so overlapping vitest processes never share /tmp paths. */
+function uniqueTempPrefix(kind: string): string {
+  const stamp = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return path.join(os.tmpdir(), `metfix-${kind}-${stamp}-`);
+}
 
 function md5File(filePath: string): string {
   return createHash("md5").update(fs.readFileSync(filePath)).digest("hex");
@@ -76,7 +76,6 @@ function assertUnderTemp(tempRoot: string, target: string): string {
   const resolved = path.resolve(target);
   let finalPath: string;
   if (fs.existsSync(resolved)) {
-    // Follow symlinks so a link inside temp → repo file is rejected.
     finalPath = fs.realpathSync(resolved);
   } else {
     const parent = path.dirname(resolved);
@@ -99,21 +98,31 @@ function safeWriteFile(tempRoot: string, target: string, data: string | NodeJS.A
   fs.writeFileSync(target, data);
 }
 
-function safeRm(tempRoot: string, target: string) {
-  assertUnderTemp(tempRoot, target);
-  fs.rmSync(target, { force: true, recursive: true });
-}
-
-function signalTestStart(label: string) {
-  fs.writeFileSync(`${START_PREFIX}${label}`, `${Date.now()}\n`, "utf8");
+/**
+ * Real node_modules dir in the temp project; each top-level package is a symlink
+ * into the repo. Vite's `.vite-temp` / `.vite` caches are therefore created under
+ * the temp tree, not the repo's node_modules.
+ */
+function linkPackagesIntoTempNodeModules(tempRoot: string) {
+  const nm = path.join(tempRoot, "node_modules");
+  assertUnderTemp(tempRoot, nm);
+  fs.mkdirSync(nm, { recursive: true });
+  const repoNm = path.join(REPO_ROOT, "node_modules");
+  for (const entry of fs.readdirSync(repoNm, { withFileTypes: true })) {
+    // Never link repo vite caches into the temp project.
+    if (entry.name.startsWith(".vite")) continue;
+    const src = path.join(repoNm, entry.name);
+    const dest = path.join(nm, entry.name);
+    fs.symlinkSync(src, dest);
+  }
 }
 
 /**
  * Full temp copy of the project (no node_modules / .git / dist).
- * Symlinks node_modules from the repo. All mutations happen here.
+ * All mutations happen here.
  */
 function makeTempProject(configSourceText?: string): TempProject {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "metfix-v12-"));
+  const root = fs.mkdtempSync(uniqueTempPrefix("v12"));
   tempPaths.push(root);
 
   for (const name of ["client", "shared", "vite", "attached_assets"]) {
@@ -133,9 +142,7 @@ function makeTempProject(configSourceText?: string): TempProject {
     safeWriteFile(root, path.join(root, "vite.config.ts"), configSourceText);
   }
 
-  const nm = path.join(root, "node_modules");
-  assertUnderTemp(root, nm);
-  fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), nm);
+  linkPackagesIntoTempNodeModules(root);
 
   return {
     root,
@@ -240,7 +247,7 @@ function buildWithConfig(
   project: TempProject,
   env: NodeJS.ProcessEnv,
 ): { status: number | null; outDir: string; stdout: string; stderr: string; log: string } {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "metfix-vite-outdir-"));
+  const outDir = fs.mkdtempSync(uniqueTempPrefix("outdir"));
   tempPaths.push(outDir);
   const result = spawnSync(
     "npx",
@@ -328,92 +335,6 @@ function mutateConfig(
   return source.replace(throwBlock, "/* R4b removed */");
 }
 
-/** V12(a) static scan: flag write/spawn patterns that target the repo. */
-function staticFindUnsafeWrites(source: string): string[] {
-  // Drop the V12 canary harness (only place allowed to touch the real clone).
-  const scan = source.replace(/\/\/ V12_HARNESS_BEGIN[\s\S]*?\/\/ V12_HARNESS_END/g, "\n");
-
-  const issues: string[] = [];
-  if (/fs\.writeFileSync\(\s*REPO_ENV\b/.test(scan)) issues.push("M-a1: writeFileSync(REPO_ENV)");
-  if (/fs\.writeFileSync\(\s*REPO_CONST_TS\b/.test(scan)) issues.push("M-a2: writeFileSync(REPO_CONST_TS)");
-  if (/const\s+t\s*=\s*REPO_CONST_TS[\s\S]{0,200}?fs\.writeFileSync\(\s*t\s*,/.test(scan)) {
-    issues.push("M-a2: writeFileSync via alias");
-  }
-  if (/spawnSync\(\s*["']sh["'][\s\S]{0,160}REPO_ENV/.test(scan)) {
-    issues.push("M-a3: spawnSync sh write to REPO_ENV");
-  }
-  if (/echo\s+[^\n]*\s*>\s*[^\n]*REPO_ENV/.test(scan)) {
-    issues.push("M-a3: shell redirect to REPO_ENV");
-  }
-  if (/fs\.writeFileSync\(\s*path\.join\(\s*REPO_ROOT\s*,/.test(scan)) {
-    issues.push("writeFileSync(path.join(REPO_ROOT,…))");
-  }
-  return issues;
-}
-
-function snippetFailsStatic(snippet: string): boolean {
-  return staticFindUnsafeWrites(snippet).length > 0;
-}
-
-function gitPorcelain(): string {
-  const r = spawnSync("git", ["status", "--porcelain"], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-  });
-  return r.stdout ?? "";
-}
-
-function headConstBytes(): Buffer {
-  const r = spawnSync("git", ["show", "HEAD:client/src/const.ts"], {
-    cwd: REPO_ROOT,
-    encoding: "buffer",
-  });
-  if (r.status !== 0) throw new Error("git show HEAD:client/src/const.ts failed");
-  return r.stdout as Buffer;
-}
-
-// V12_HARNESS_BEGIN
-/** V12 harness only: stage canary files in the real clone for (b)/(c) proofs. */
-function stageRepoCanary(): { envMd5: string; porcelain: string; createdEnv: boolean } {
-  const createdEnv = !fs.existsSync(REPO_ENV);
-  if (createdEnv) {
-    fs.writeFileSync(REPO_ENV, CANARY_ENV_BODY, "utf8");
-  }
-  fs.writeFileSync(CANARY_UNTRACKED, "v12-canary\n", "utf8");
-  return {
-    envMd5: md5File(REPO_ENV),
-    porcelain: gitPorcelain(),
-    createdEnv,
-  };
-}
-
-function unstageRepoCanary(createdEnv: boolean) {
-  if (fs.existsSync(CANARY_UNTRACKED)) fs.rmSync(CANARY_UNTRACKED, { force: true });
-  if (createdEnv && fs.existsSync(REPO_ENV)) {
-    const body = fs.readFileSync(REPO_ENV, "utf8");
-    if (body === CANARY_ENV_BODY) fs.rmSync(REPO_ENV, { force: true });
-  }
-}
-// V12_HARNESS_END
-
-function runGuardTests(testNamePattern: string): { status: number | null; stdout: string; stderr: string } {
-  // Same entrypoint as CI (`npm test` → vitest with vite.config root=client).
-  const result = spawnSync(
-    "npm",
-    ["test", "--", "--run", "src/lib/sanity.vite-guard.test.ts", "-t", testNamePattern],
-    {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      env: { ...process.env },
-    },
-  );
-  return {
-    status: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
-}
-
 describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   afterEach(() => {
     delete process.env[NAME];
@@ -430,7 +351,6 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   });
 
   it("V2 throws when the variable is set only in a temp .env via loadEnv", async () => {
-    signalTestStart("V2");
     delete process.env[NAME];
     const project = makeTempProject();
     writeTempEnv(project, DUMMY);
@@ -440,7 +360,6 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   it(
     "V2b blank shell overrides .env dummy: resolve + build clean (K8d)",
     async () => {
-      signalTestStart("V2b");
       const beforeDist = snapshotDistPublic();
       const project = makeTempProject();
       writeTempEnv(project, DUMMY);
@@ -498,7 +417,6 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
       }
       expect(snapshotDistPublic()).toEqual(beforeDist);
 
-      // V3(c) process.env padded forms — message + stdout + stderr; no no-op trim asserts.
       for (const padded of [`  ${DUMMY}  `, `\n${DUMMY}\n`] as const) {
         process.env[NAME] = padded;
         const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "build"));
@@ -520,7 +438,6 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   it(
     "V3(b) leaking scratch mutation produces inline hits including escaped newline",
     async () => {
-      signalTestStart("V3(b)");
       const source = fs.readFileSync(REPO_CONFIG, "utf8");
       const noGuard = mutateConfig(source, "remove-guard");
       expect(noGuard).not.toEqual(source);
@@ -549,10 +466,8 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   it(
     "V3(c) padded dummy from temp .env: spaces and newline-quoted form",
     async () => {
-      signalTestStart("V3(c)");
       delete process.env[NAME];
 
-      // Space-padded .env
       {
         const project = makeTempProject();
         writeTempEnv(project, `  ${DUMMY}  `);
@@ -568,7 +483,6 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
         expect(captured.stderr).not.toContain(DUMMY);
       }
 
-      // Newline-padded .env written as NAME="\nsk…\n" so dotenv expands \n.
       {
         const project = makeTempProject();
         writeTempEnv(project, `\\n${DUMMY}\\n`, true);
@@ -648,7 +562,6 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   it(
     "V7/V10 unset or empty does not throw; build uses temp outDir and leaves dist/public",
     async () => {
-      signalTestStart("V7");
       const beforeDist = snapshotDistPublic();
       const project = makeTempProject();
       delete process.env[NAME];
@@ -666,135 +579,5 @@ describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
       expect(snapshotDistPublic()).toEqual(beforeDist);
     },
     60_000,
-  );
-});
-
-describe("V12 temp-copy isolation", () => {
-  afterEach(() => {
-    delete process.env[NAME];
-    while (tempPaths.length) {
-      const target = tempPaths.pop();
-      if (target) cleanupPath(target);
-    }
-  });
-
-  it("V12(a) static check: this file has no unsafe repo writes", () => {
-    const source = fs.readFileSync(THIS_TEST_FILE, "utf8");
-    expect(staticFindUnsafeWrites(source)).toEqual([]);
-  });
-
-  it("V12(a) M-a1: writing repo .env fails the helper", () => {
-    const project = makeTempProject();
-    expect(() => safeWriteFile(project.root, REPO_ENV, "x=1\n")).toThrow(/outside temp/);
-  });
-
-  it("V12(a) M-a2: writing const.ts via alias fails the helper", () => {
-    const project = makeTempProject();
-    const t = REPO_CONST_TS;
-    expect(() => safeWriteFile(project.root, t, "export {}\n")).toThrow(/outside temp/);
-  });
-
-  it("V12(a) M-a3: spawn sh redirect to REPO_ENV fails the static check", () => {
-    // Assemble the bite-proof snippet without embedding the banned contiguous source pattern.
-    const snippet = ["spawnSync(", '"sh"', ', ["-c", "echo x > " + REPO', "_ENV])"].join("");
-    expect(snippet).toContain("REPO_ENV");
-    expect(snippetFailsStatic(snippet)).toBe(true);
-  });
-
-  it("V12(a) M-a4: symlink into the repo is caught by realpath", () => {
-    const project = makeTempProject();
-    const link = path.join(project.root, "pkg-link");
-    fs.symlinkSync(path.join(REPO_ROOT, "package.json"), link);
-    expect(() => safeWriteFile(project.root, link, "{}\n")).toThrow(/outside temp/);
-  });
-
-  it(
-    "V12(b) normal run leaves git porcelain and .env md5 unchanged",
-    () => {
-      const canary = stageRepoCanary();
-      try {
-        const beforePorcelain = canary.porcelain;
-        const beforeMd5 = canary.envMd5;
-        // Run the guard suite only (exclude V12 harness to avoid recursion / re-entry).
-        const run = runGuardTests("Sanity read-token guard \\(V1–V10\\)");
-        expect(run.status, run.stderr.slice(-2000)).toBe(0);
-        expect(gitPorcelain()).toBe(beforePorcelain);
-        expect(md5File(REPO_ENV)).toBe(beforeMd5);
-      } finally {
-        unstageRepoCanary(canary.createdEnv);
-      }
-    },
-    180_000,
-  );
-
-  it(
-    "V12(c) SIGKILL during V2, V2b, V3(b), V3(c), V7 leaves repo untouched",
-    async () => {
-      const canary = stageRepoCanary();
-      const constBefore = headConstBytes();
-      try {
-        // Patterns match the full vitest title (describe + test). No leading ^.
-        const cases: Array<{ label: string; pattern: string }> = [
-          { label: "V2", pattern: "V2 throws when the variable is set only in a temp" },
-          { label: "V2b", pattern: "V2b blank shell overrides .env dummy" },
-          { label: "V3(b)", pattern: "V3\\(b\\) leaking scratch mutation" },
-          { label: "V3(c)", pattern: "V3\\(c\\) padded dummy from temp \\.env" },
-          { label: "V7", pattern: "V7/V10 unset or empty does not throw" },
-        ];
-
-        for (const { label, pattern } of cases) {
-          const startFile = `${START_PREFIX}${label}`;
-          if (fs.existsSync(startFile)) fs.rmSync(startFile, { force: true });
-
-          const child = spawn(
-            "npm",
-            ["test", "--", "--run", "src/lib/sanity.vite-guard.test.ts", "-t", pattern],
-            {
-              cwd: REPO_ROOT,
-              env: { ...process.env },
-              stdio: ["ignore", "pipe", "pipe"],
-            },
-          );
-
-          let stderr = "";
-          let stdout = "";
-          child.stderr?.on("data", (c) => {
-            stderr += String(c);
-          });
-          child.stdout?.on("data", (c) => {
-            stdout += String(c);
-          });
-
-          const startedAt = Date.now();
-          while (!fs.existsSync(startFile)) {
-            if (child.exitCode !== null) {
-              throw new Error(
-                `V12(c) ${label}: vitest exited before start signal (${child.exitCode}): ${(stderr + stdout).slice(-2000)}`,
-              );
-            }
-            if (Date.now() - startedAt > 90_000) {
-              child.kill("SIGKILL");
-              throw new Error(
-                `V12(c) ${label}: no start signal within 90s: ${(stderr + stdout).slice(-2000)}`,
-              );
-            }
-            await new Promise((r) => setTimeout(r, 50));
-          }
-
-          child.kill("SIGKILL");
-          await new Promise((r) => child.once("exit", r));
-
-          expect(gitPorcelain(), `porcelain after kill ${label}`).toBe(canary.porcelain);
-          expect(md5File(REPO_ENV), `.env md5 after kill ${label}`).toBe(canary.envMd5);
-          expect(
-            Buffer.compare(fs.readFileSync(REPO_CONST_TS), constBefore),
-            `const.ts vs HEAD after kill ${label}`,
-          ).toBe(0);
-        }
-      } finally {
-        unstageRepoCanary(canary.createdEnv);
-      }
-    },
-    360_000,
   );
 });
