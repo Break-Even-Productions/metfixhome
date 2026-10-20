@@ -1,16 +1,34 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { CommentsLoadState } from "./comments";
 import { JoinModal } from "./JoinModal";
-import { pillarLabel } from "./model";
+import { PILLARS, pillarLabel, type Pillar } from "./model";
 
 type CommentThreadProps = {
   load: CommentsLoadState;
+  /** Active day tab; seeds the comment-type control. */
+  pillar: Pillar;
+  /** When set, the composer uses this display name and hides the name field. */
+  viewerDisplayName?: string | null;
 };
 
-export function CommentThread({ load }: CommentThreadProps) {
+export function CommentThread({ load, pillar, viewerDisplayName = null }: CommentThreadProps) {
+  const loggedIn = Boolean(viewerDisplayName?.trim());
   const [name, setName] = useState("");
   const [body, setBody] = useState("");
+  const [commentType, setCommentType] = useState<Pillar>(pillar);
   const [joinOpen, setJoinOpen] = useState(false);
+
+  useEffect(() => {
+    setCommentType(pillar);
+  }, [pillar]);
 
   return (
     <section className="df-comments" aria-labelledby="df-comments-title">
@@ -58,20 +76,46 @@ export function CommentThread({ load }: CommentThreadProps) {
         onSubmit={(event) => {
           event.preventDefault();
           // Logged-out: do not POST a comment and do not create a session.
-          setJoinOpen(true);
+          if (!loggedIn) {
+            setJoinOpen(true);
+            return;
+          }
+          // Logged-in POST is not wired yet.
         }}
       >
-        <label>
-          <span className="sr-only">Name</span>
-          <input
-            type="text"
-            name="name"
-            autoComplete="nickname"
-            placeholder="Your name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
+        <div className="df-composer-meta">
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger className="df-comment-type" aria-label="Comment type">
+              {pillarLabel(commentType)}
+              <ChevronDown className="df-comment-type-caret" aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" sideOffset={8} className="df-share-menu df-comment-type-menu">
+              <DropdownMenuRadioGroup
+                value={commentType}
+                onValueChange={(value) => setCommentType(value as Pillar)}
+              >
+                {PILLARS.map((item) => (
+                  <DropdownMenuRadioItem key={item} value={item}>
+                    {pillarLabel(item)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        {loggedIn ? null : (
+          <label>
+            <span className="sr-only">Name</span>
+            <input
+              type="text"
+              name="name"
+              autoComplete="nickname"
+              placeholder="Your name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+        )}
         <label>
           <span className="sr-only">Comment</span>
           <textarea

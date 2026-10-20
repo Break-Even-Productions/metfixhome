@@ -1720,6 +1720,7 @@ describe("Daily Fix comments", () => {
     await waitFor(() => expect(commentsCalls(fetchMock)).toHaveLength(1));
     const callsAfterLoad = fetchMock.mock.calls.length;
 
+    expect(screen.getByRole("button", { name: /Comment type/i }).textContent).toMatch(/Body/i);
     fireEvent.change(screen.getByPlaceholderText("Your name"), { target: { value: "Pat" } });
     fireEvent.change(screen.getByPlaceholderText(/Share a thought/i), { target: { value: "Hello" } });
     fireEvent.click(screen.getByRole("button", { name: /Post comment/i }));
@@ -1729,6 +1730,8 @@ describe("Daily Fix comments", () => {
     expect(window.location.search).toBe("?tab=body");
 
     const joinDialog = screen.getByRole("dialog", { name: /Join MetFix Today/i });
+    expect(within(joinDialog).getByText(/Sign in to leave a comment/i)).toBeTruthy();
+    expect(within(joinDialog).queryByText(/does not create a session/i)).toBeNull();
     fireEvent.change(within(joinDialog).getByPlaceholderText("you@email.com"), {
       target: { value: "pat@example.com" },
     });
@@ -1746,3 +1749,4 @@ describe("Daily Fix comments", () => {
     expect(window.location.href).not.toMatch(/accounts\.google|oauth|openid/i);
   });
 });
+

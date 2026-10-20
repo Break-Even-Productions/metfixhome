@@ -344,7 +344,9 @@ export default function TheDailyFixPage({
                 ) : null
               }
             />
-            {route.kind !== "invalid" ? <CommentThread load={commentsLoad} /> : null}
+            {route.kind !== "invalid" ? (
+              <CommentThread load={commentsLoad} pillar={route.pillar} />
+            ) : null}
           </div>
         </section>
 
