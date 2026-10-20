@@ -1,5 +1,13 @@
-# metfix.org: Sanity read-token removal — QA test list (rev 1.4, pre-round-3)
-- Rev 1.4, 2026-10-19 ~4:30 PM PT. Points at spec **rev 1.1.3, md5 `aefcc701aa7bf6a71d5086d1cf296ccd`** (verified; diff vs 1.1.2: K1 names the K1.6 exceptions; R4b gains the V3 whitespace ruling and requires Vite's `loadEnv` precedence; new K8(d) = QA V2b). Rev 1.3 (`253889edcbbed59df8c5c4a94dddf231`) kept at `metfix-sanity-read-token-fix-tests.r1.3.md`. Changes: V2b rewritten to K8(d) per the Web Lead correction of 10-19 (a blank shell value wins, guard passes, no throw), with mutations so it can fail; K1.7 confirmed against 1.1.3; D1 now targets the rev 1.4 md5. Nothing weakened. The rev 1.3 per-source-throw requirement is dropped by ruling, not loosened, because it contradicted Vite's actual inlining and would have rewarded a wrong fallback.
+# metfix.org: Sanity read-token removal — QA test list (rev 1.6, final test scope)
+- Rev 1.6, 2026-10-19 ~5:45 PM PT. **Final test-scope rev: no new items will be added after this** (Web Lead, round 5). Later revs may only record results or apply Web Lead rulings. Rev 1.5 (`5d8dfe8e27293505c3c436dfc3b8d81e`) kept at `metfix-sanity-read-token-fix-tests.r1.5.md`. Changes, per Web Lead's ruling of 10-19:
+  - V11 is deleted. The kill-time risk is closed structurally by V12 (temp-copy isolation) instead of being tested at runtime.
+  - V12 is added.
+  - V3(c) gains the newline-padded `.env` case and drops the no-op `DUMMY.trim()` assertions.
+  - §R4's interrupted-run cleanup item is replaced by V12(c); /tmp leftovers are exempt.
+  - D1 targets the rev 1.6 md5.
+  - Nothing else changes and nothing is weakened. Every V11 harm (repo `.env` written, deleted or left dirty, including under a kill) is now an unconditional V12 requirement.
+- (Rev 1.5 history) Rev 1.5, 2026-10-19 ~5:35 PM PT. Results-only rev: §R3 marked superseded, §R4 added. No assertion changed. Rev 1.4 + §R3 (`e4743a35b4a67d993c87458293d77334`) kept at `metfix-sanity-read-token-fix-tests.r1.4.1.md`. Pinned spec unchanged: 1.1.3 `aefcc701`.
+- (Rev 1.4 history) Rev 1.4, 2026-10-19 ~4:30 PM PT. Points at spec **rev 1.1.3, md5 `aefcc701aa7bf6a71d5086d1cf296ccd`** (verified; diff vs 1.1.2: K1 names the K1.6 exceptions; R4b gains the V3 whitespace ruling and requires Vite's `loadEnv` precedence; new K8(d) = QA V2b). Rev 1.3 (`253889edcbbed59df8c5c4a94dddf231`) kept at `metfix-sanity-read-token-fix-tests.r1.3.md`. Changes: V2b rewritten to K8(d) per the Web Lead correction of 10-19 (a blank shell value wins, guard passes, no throw), with mutations so it can fail; K1.7 confirmed against 1.1.3; D1 now targets the rev 1.4 md5. Nothing weakened. The rev 1.3 per-source-throw requirement is dropped by ruling, not loosened, because it contradicted Vite's actual inlining and would have rewarded a wrong fallback.
 - (Rev 1.3 history) Rev 1.3, 2026-10-19 ~4:25 PM PT. Rev 1.2 (`2aecd7f702619e2863acf43bba5ed0b6`) kept at `metfix-sanity-read-token-fix-tests.r1.2.md`. Changes: V3 rewritten per the **Web Lead ruling of 10-19** (a whitespace-only value counts as unset and passes, matching spec 1.1.2 R4b/K8(b)); new items K1.7, V2b (required behavior), V11 (temp envDir), V10 (temp outDir) and D1 (docs copy). No assertion weakened: V3 keeps the throw on padded real tokens and adds dist and source checks.
 - (Rev 1.2 history) Rev 1.2, 2026-10-19 ~4:25 PM PT, round 2 at `0d362f6f`. Rev 1.1 (`3c4341554e8e2e12066bfcd41aa9e623`) kept at `metfix-sanity-read-token-fix-tests.r1.1.md`. Spec now rev 1.1.2, md5 `9f0f405441f6e83c3a407e40b955da3c`. 1.1 → 1.1.2 adds R4a/R4b, R7 (no bare `import.meta.env` in `client/src`), K8, T7, and K6 entries for `vite.config.ts` and `client/src/const.ts`; it also restates K3(c), moves K4.3 to `wrangler dev --local`, makes K4.5 post-deploy only, and allows no bypass switch. No rev 1.1 assertion is weakened here; §V V3 is flagged below. Rev 1.2 adds K1.6, V2b, V10, V11, K8.1 and §R2.
 - (Rev 1.1 history) Rev 1.1, 2026-10-19 ~4:10 PM PT. Rev 1.0 (`19ce522c3bff732296417508a504cae1`) kept at `metfix-sanity-read-token-fix-tests.r1.md`. Rev 1.0 items below are unchanged in wording/strength, except where the spec's G rulings supersede them (marked). New items: §V (vite.config guard), K3.8–K3.10, K4.6, K6.5, K7, and the round-1 results table (§R).
@@ -83,7 +91,10 @@ Shell line in ci.yml stays as the second check.
 - V3 (Web Lead ruling, 10-19: whitespace-only = unset, passes; matches spec 1.1.2 R4b/K8(b). Replaces the rev 1.0–1.2 wording "whitespace-only throws".) Must assert all of:
   - (a) Each whitespace-only value, `' '`, `'\t'` and `'\n'`, in `process.env` does not throw for `serve` or `build`, and `npm run build:cf` exits 0 with that value set.
   - (b) After the (a) build: `dist/public` has 0 occurrences of that value as the token. The inlined `VITE_SANITY_API_READ_TOKEN` is absent, or only as `VITE_SANITY_API_READ_TOKEN:""`. Assert with a regex on `VITE_SANITY_API_READ_TOKEN:"[^"]` → 0 matches; it must not match `:" "`, `:"\t"` or `:"\n"` (escaped forms included).
-  - (c) A real dummy padded with spaces and newlines (`'  sk…  '`, `'\nsk…\n'`) STILL throws, separately from `process.env` and from `.env` (V11 temp envDir). The error message, stdout and stderr never contain the dummy or its trimmed form.
+  - (c) A real dummy padded with spaces or newlines STILL throws. Required cases:
+    - `process.env` = `'  sk…  '` and `'\nsk…\n'`;
+    - temp-copy `.env` (V12) = `  sk…  ` (space-padded) **and** a newline-padded value, written double-quoted as `NAME="\nsk…\n"` so dotenv expands the `\n`. The test asserts the loaded value really starts and ends with `\n` (e.g. by reading `loadEnv` on that temp dir) before it asserts the throw.
+    - The error message, stdout and stderr (all captured) never contain the dummy. The untrimmed padded string must be absent too. No-op assertions such as `DUMMY.trim()` (equal to DUMMY) are dropped and don't count as evidence.
   - M(c): treat any trimmed non-empty value as unset (e.g. `if (false && sanityReadToken)`, or skip values with leading/trailing whitespace) → (c) FAILS.
   - M(a): remove `.trim()` → (a) FAILS (whitespace becomes non-empty and throws).
   - M(b): with R4b removed in scratch and `const.ts` reverted, set `' '` → the (b) regex must match (proves (b) can fail).
@@ -105,10 +116,20 @@ Shell line in ci.yml stays as the second check.
 
 - V10 (rev 1.3) V7's `build:cf` builds into a temp outDir (e.g. `vite build --outDir <tmp> --emptyOutDir`) and leaves `dist/public` untouched. Assert by recording, before and after the V7 test, a recursive listing with mtimes and the md5 of every file in `dist/public` (or that it is still absent): they must be identical. Clean up the temp outDir. M: drop `--outDir` → the snapshot differs → FAIL. Rationale (round 2): `emptyOutDir` on the shared dist can clobber a running `wrangler dev`/`test:workers`.
 
-- V11 (rev 1.3) V2, V2b and V3(c) use a temp envDir and never touch `<repo>/.env`. With no test hook (rule 4), copy the real `vite.config.ts` into a temp dir and import it from there, so its envDir is the temp dir. Assert:
-  - the `<repo>/.env` mtime and md5 are unchanged before and after the suite (or it is still absent), with a sentinel `.env` present during the run;
-  - **kill case:** run the V2 test in a child process, send SIGKILL after the temp `.env` is written (a test-only wait via env or file is allowed in the test, not in production code), then assert `<repo>/.env` still has the same mtime and md5 and contains no dummy.
-  M: write `<repo>/.env` (the round-2 approach) → the mtime/md5 check FAILS, and the kill case leaves the dummy → FAIL.
+- V11 **DELETED** (Web Lead ruling, 10-19). Reason: the kill-time risk is closed structurally by V12 instead of tested at runtime. Its requirements (never touch `<repo>/.env`, including under a kill) move into V12(b)/(c) unconditionally.
+- V12 (rev 1.6) Temp-copy isolation. Every test that writes, deletes or mutates a file (`.env`, `const.ts`, `vite.config.ts`, any fixture) runs inside a temp copy of the project (under `os.tmpdir()`). The suite never opens a repo-root or working-tree path for writing. No sentinel, no restore and no mtime re-baseline may exist in the suite (`rg -n 'sentinel|restoreSentinel|utimes' client/src/lib/*.test.ts` → 0).
+  - (a) Static check plus a helper-level assert, both required unless the static check is shown to be alias-proof:
+    - Static check: a grep or test that scans test files for `fs.write*`, `fs.rm*`, `fs.unlink*`, `fs.rename*`, `fs.copyFile*` (destination), `fs.mkdir*`, `appendFile`, `createWriteStream`, and spawned shell writes (`echo … >`, `cp`, `mv`, `rm`, in `spawn`/`spawnSync`/`exec*` args). It fails if any target isn't provably inside the test's temp dir.
+    - Helper-level assert: every write goes through a helper that does `path.resolve(target)` (plus `fs.realpathSync` on the parent, to defeat symlinks) and requires it to be under `os.tmpdir()` or the test's temp root, else throws.
+    - Bite proofs (M), each must FAIL the check:
+      - M-a1: a test that writes `path.join(repoRoot, ".env")`.
+      - M-a2: a test that writes `const.ts` through a variable alias (`const t = CONST_TS; fs.writeFileSync(t, …)`).
+      - M-a3: `spawnSync("sh", ["-c", "echo x > " + REPO_ENV])`.
+      - M-a4: a symlink inside the temp dir pointing at the repo, then a write through it (helper `realpath` must catch it).
+      If M-a2 or M-a3 evades the static check, the helper assert is mandatory and must catch it.
+  - (b) Normal run: put a real-looking dev `.env` (e.g. `MY_DEV_SECRET=keepme`) and an untracked file in the clone before the run. After the full suite, `git status --porcelain` is byte-identical to before (the untracked file is still listed, nothing else changed), and the `.env` md5 is unchanged.
+  - (c) Killed run: the same (b) setup. SIGKILL vitest partway through **each** mutating test (V2, V2b, V3(b), V3(c), V7), each in its own run, filtered with `-t`, killed after that test has started (verified via a log line or a temp-dir appearance), never on a fixed sleep alone. After each kill, `git status --porcelain` and the `.env` md5 are unchanged, and `client/src/const.ts` is byte-identical to HEAD. Leftover `/tmp/metfix-*` dirs after a kill are acceptable and **not** a gate (Web Lead ruling).
+  M: any test writing a repo path (M-a1…M-a4) → V12(a) FAILS; restoring the round-4 `const.ts` rewrite → V12(c) FAILS on the V3(b) kill.
 
 - K1.6 (CQ round 2) K1 greps must include dotfiles: `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .` (plain rg skips `.github`). Exact expected hits after #7: `vite.config.ts:212,215`, `.github/workflows/ci.yml:47`, `client/src/lib/sanity.vite-guard.test.ts:7`, `client/src/lib/sanity.config.test.ts:32`. Spec gap: the K1 exception list in 1.1.2 does not yet name `vite.config.ts` (R4b) or `sanity.vite-guard.test.ts`. Spec must add them by name. M: re-add the token read to `sanity.ts` → extra hit → FAIL.
 - K8.1 R7: `rg -nP 'import\.meta\.env(?!\.[A-Za-z_])' client/src` returns 0 hits. Scratch proof: remove R4b, build with the dummy set → 0 dummy files in `dist/public`. With R4b removed and `const.ts` reverted to main → 1 dummy file and R4a exits 1, which proves the check catches a regression.
@@ -121,7 +142,7 @@ Shell line in ci.yml stays as the second check.
   - `.github/workflows/deploy-pages.yml:40` (not allowed; BLOCKED on #7, must be 0 after the rebase).
   Any line shift or extra hit on a later head = FAIL until Spec re-pins it. Status: PASS for the named exceptions; the K1 overall stays BLOCKED on #7.
 
-- D1 (round 3; target is rev 1.4 md5 and spec 1.1.3 `aefcc701…`) The PR's `docs/metfix-sanity-read-token-fix/metfix-sanity-read-token-fix-tests.md` md5 equals this list's current rev md5. The acceptance copy equals the current spec rev md5. M: any byte difference → FAIL.
+- D1 (target: **this list's rev 1.6 md5**, as reported with the rev and recorded in the round-5 notes, and spec 1.1.3 `aefcc701…`) The PR's `docs/metfix-sanity-read-token-fix/metfix-sanity-read-token-fix-tests.md` md5 equals this list's current rev md5. The acceptance copy equals the current spec rev md5. M: any byte difference → FAIL.
 
 ## K7
 - K7.1 `worker/build.config.test.ts` (reads ci.yml) passes unchanged on the PR head. Present at base and head; re-run after the #7 rebase too.
@@ -199,7 +220,7 @@ Legend: PASS / FAIL / BLOCKED / PENDING. Owner: QA = this list, CQ = Code Qualit
 | K4.5 | QA | PENDING (post-deploy only, not a merge gate) | — |
 | K5 | Ethan | PENDING | Merge blocked until Ethan confirms |
 
-## §R3 Round-3 results at be43c485 (results only; no assertion changed. Rev 1.4 assertions as of f940a449; spec 1.1.3 aefcc701)
+## §R3 Round-3 results at be43c485 — SUPERSEDED by §R4 (results only; no assertion changed. Rev 1.4 assertions as of f940a449; spec 1.1.3 aefcc701)
 CI 39342499472: head_sha be43c4850d65…, 16 steps success, log `Tests 315 passed (315)`, `sanity.vite-guard.test.ts (10 tests)`, workers `Tests 8 passed (8)`. Local: 315/315.
 312→315: vite-guard went from 7 to 10 tests. V1–V7 were reworked; new tests are V2b, the V2b mutation meta-test, and the V11 kill case (V7 and V10 are merged into one).
 Scope: since 0d362f6f only `client/src/lib/sanity.vite-guard.test.ts` and the two `docs/` copies changed. The full diff vs 9f7129d has 10 paths, all on the K6 list (1.1.3). Rule 6 OK: no new path beyond the round-3 batch.
@@ -227,3 +248,31 @@ CQ = Code Quality round-3 notes as relayed (CQ signed off and called them non-bl
 | K4.5 | PENDING post-deploy | — | |
 | K5 | PENDING on Ethan | — | merge blocked |
 | §R2 doc rows | FIXED here | CQ5 | §R2 marked superseded; §R3 added |
+
+## §R4 Round-4 results at b14be635 (V11 rows refer to the item deleted in rev 1.6; the harms are now V12)fd5af8dd28779b82b5cb4dfd773e6857
+CI 39345587628: head_sha b14be635…, pull_request, all steps success. Log: `Tests 319 passed (319)`, `sanity.vite-guard.test.ts (14 tests)`, workers `Tests 8 passed (8)`, no dummy in the log. Local: 319/319 (16 files).
+315→319 = +4 vite-guard tests: V3(b) leak-mutation proof, V3(c)/V4 console.error mutation proof, V4 value-in-message mutation proof, and V11 mutations.
+Scope/Rule 6: since be43c485 only `sanity.vite-guard.test.ts` and the docs/ tests copy changed. 10 paths total, all on K6. OK.
+D1: PR docs/ tests = e4743a35 and acceptance = aefcc701, byte-equal by md5. PASS at this head. After rev 1.5 the tests copy must move to the new md5 (CQ7).
+Safety rule applied by QA: every run happened in my clone `/workspace/pr-token/repo` only. Any `.env` I placed there was mine.
+| Item | QA | CQ (round 4, not signed off) | Evidence |
+|---|---|---|---|
+| V3(a) | PASS | — | ' ', '\t', '\n' each build exit 0. (b) checks include escaped forms. no-trim mutation → V3 fails |
+| V3(b) | **FAIL (safety)** | CQ2 agrees | Leak proof works (scratch mutation → hits > 0 for all three values, including '\n'). But it rewrites the real `client/src/const.ts`. A clean run leaves porcelain empty. **SIGKILL during V3(b) leaves ` M client/src/const.ts` with `const env = import.meta.env;`, the whole-env leak itself, in the working tree.** Must copy const.ts into the temp project instead |
+| V3(c) | **FAIL** | CQ4 agrees | console.error, process.stdout.write and process.stderr.write mutations each fail V3 and V4 ✓. But the temp `.env` path (:471) is only padded with spaces, and `DUMMY.trim()` (:461/463/465) equals DUMMY, a no-op. The list requires both padded forms from .env; '\nsk…\n' from .env is untested |
+| V4 | PASS | — | stdio captured. All three print mutations and value-in-message fail it |
+| V11 sentinel | **FAIL (safety)** | CQ1, CQ5 agree | beforeAll accepts **any** existing repo `.env` with no fail-fast. With a real dev `.env` (`MY_DEV_SECRET=keepme`, md5 af4795ba…) in my clone, the suite **overwrote it** (after: 822884e5…, sentinel body). `restoreSentinelBytes` writes SENTINEL_BODY over whatever was there. The write-repo-env and write-then-delete mutations target the real repo `.env`. `restoreSentinelBytes` re-baselines `sentinelBefore` on an mtime change (:376-378), which weakens the afterAll mtime check |
+| V11 kill case | **FAIL** | CQ3, CQ6 agree | Child writes `ready` (:622) before `loadConfigFromFile`, and the parent kills on ready, so whether the config ever runs is a race. In my runs, "config writes repo .env" was caught (by timing), but "config writes then deletes repo .env" **passed**. The sibling mutation relies on a 500 ms sleep. Child stdout is piped and never drained. Flake check: the full file ran 10× → 14/14 each time, no flakes |
+| V11 deletion (CQ proposal) | NEEDS Web Lead ruling | CQ3 | Deleting V11 is not a pass on this list. Coverage note: the per-test `afterEach` md5+exists check already catches a config write or delete of the repo `.env` in-process, but not under a kill. With a temp-only design the kill case is the only crash-safety proof |
+| makeTempEnvProject | PASS | — | Each rewrite asserts it matched. Breaking client/src, shared, attached_assets or root each makes V2 fail |
+| V2, V2b, M1/M2, V5, V6 | PASS | — | M1 → V2 fails. Raw-file `\|\|` M2 → V2b and the M2 meta-test fail |
+| V7/V10 | PASS | CQ8 note | Dropping --outDir → V7/V10 fails. About 8 builds; file takes 33–44 s, with 120 s timeouts on V3/V3(b). Note only |
+| Interrupted-run cleanup | REPLACED by V12(c) in rev 1.6 (/tmp leftovers exempt). Round-4 status was FAIL | — | SIGKILL mid-suite leaves the sentinel `.env` in the repo, `metfix-vite-*` temp dirs in /tmp, and (V3(b)) a dirty const.ts |
+| K1.7 | PASS | — | Lines unchanged (only the test file changed; K1 files untouched) |
+| K3.3, K4.6, K8.1 | PASS | — | Production files byte-identical to round 3 |
+| K1.1/K1.5 | BLOCKED on #7 | — | |
+| K3.10 | PENDING on R1 | — | |
+| K4.5 | PENDING post-deploy | — | |
+| K5 | PENDING on Ethan | — | |
+| K7.1 | PASS at head | — | `worker/build.config.test.ts` passes (it's on main). Re-run after the #7 rebase. "Pending" in the Project rollup is wrong as a status; the only thing pending is the post-rebase re-run |
+Project rollup disagreements (Project: V 12/0, K4 3, K7 pending): V has 5 FAILs (V3(b) safety, V3(c), V11 sentinel, V11 kill, interrupted-run cleanup). K4 = 4 PASS (K4.2, K4.3, K4.4, K4.6). K7.1 = PASS. The other K counts are consistent.

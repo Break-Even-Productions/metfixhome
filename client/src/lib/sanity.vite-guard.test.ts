@@ -3,45 +3,40 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { loadConfigFromFile } from "vite";
+import { loadConfigFromFile, loadEnv } from "vite";
 const NAME = "VITE_SANITY_API_READ_TOKEN";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const DUMMY = `skTEST${"A".repeat(60)}`;
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const REPO_ENV = path.join(REPO_ROOT, ".env");
 const REPO_CONFIG = path.join(REPO_ROOT, "vite.config.ts");
 const DIST_PUBLIC = path.join(REPO_ROOT, "dist/public");
-const CONST_TS = path.join(REPO_ROOT, "client/src/const.ts");
+const REPO_CONST_TS = path.join(REPO_ROOT, "client/src/const.ts");
+const THIS_TEST_FILE = path.join(import.meta.dirname, "sanity.vite-guard.test.ts");
 /** Quote form: NAME:"X with non-empty X. */
 const TOKEN_INLINE_RE = new RegExp(`${NAME}:"[^"]`);
 /** Vite may serialize a newline env value as a template literal NAME:`\n`. */
 const TOKEN_NEWLINE_TEMPLATE = `${NAME}:\`\n\``;
-const SENTINEL_BODY = `# metfix-vite-guard-sentinel\nSENTINEL_MARK=round4-do-not-touch\n`;
+const CANARY_ENV_BODY = "MY_DEV_SECRET=keepme\n";
+const CANARY_UNTRACKED = path.join(REPO_ROOT, ".metfix-v12-canary-untracked");
+const START_PREFIX = path.join(os.tmpdir(), "metfix-v12-start-");
 
 type DistSnapshot = {
   absent: boolean;
   files: Record<string, { md5: string; mtimeMs: number }>;
 };
 
+type TempProject = {
+  root: string;
+  configPath: string;
+  constPath: string;
+};
+
 const tempPaths: string[] = [];
-let sentinelCreated = false;
-let sentinelBefore: ReturnType<typeof envFingerprint>;
 
 function md5File(filePath: string): string {
   return createHash("md5").update(fs.readFileSync(filePath)).digest("hex");
-}
-
-function envFingerprint(filePath: string): {
-  exists: boolean;
-  md5: string | null;
-  mtimeMs: number | null;
-} {
-  if (!fs.existsSync(filePath)) {
-    return { exists: false, md5: null, mtimeMs: null };
-  }
-  const st = fs.statSync(filePath);
-  return { exists: true, md5: md5File(filePath), mtimeMs: st.mtimeMs };
 }
 
 function walkFiles(dir: string): string[] {
@@ -75,55 +70,90 @@ function cleanupPath(target: string) {
   else fs.rmSync(target, { force: true });
 }
 
-/**
- * Temp project whose envDir is the temp dir; root/aliases still point at the repo.
- * Asserts each rewrite matched (including @shared / @assets).
- */
-function makeTempEnvProject(configSourceText?: string): string {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "metfix-vite-guard-"));
-  tempPaths.push(tmp);
-  const source = configSourceText ?? fs.readFileSync(REPO_CONFIG, "utf8");
-  const replacements: Array<[string, string]> = [
-    [
-      'path.resolve(import.meta.dirname, "client", "src")',
-      `path.resolve(${JSON.stringify(REPO_ROOT)}, "client", "src")`,
-    ],
-    [
-      'path.resolve(import.meta.dirname, "shared")',
-      `path.resolve(${JSON.stringify(REPO_ROOT)}, "shared")`,
-    ],
-    [
-      'path.resolve(import.meta.dirname, "attached_assets")',
-      `path.resolve(${JSON.stringify(REPO_ROOT)}, "attached_assets")`,
-    ],
-    [
-      'root: path.resolve(import.meta.dirname, "client")',
-      `root: path.resolve(${JSON.stringify(REPO_ROOT)}, "client")`,
-    ],
-  ];
-  let rewritten = source;
-  for (const [from, to] of replacements) {
-    expect(rewritten.includes(from), `rewrite source must contain ${from}`).toBe(true);
-    const next = rewritten.replaceAll(from, to);
-    expect(next, `replaceAll must change text for ${from}`).not.toEqual(rewritten);
-    rewritten = next;
+/** Resolve + realpath (follows symlinks); require target under tempRoot. */
+function assertUnderTemp(tempRoot: string, target: string): string {
+  const tempReal = fs.realpathSync(tempRoot);
+  const resolved = path.resolve(target);
+  let finalPath: string;
+  if (fs.existsSync(resolved)) {
+    // Follow symlinks so a link inside temp → repo file is rejected.
+    finalPath = fs.realpathSync(resolved);
+  } else {
+    const parent = path.dirname(resolved);
+    if (!fs.existsSync(parent)) {
+      throw new Error(`Refusing write: parent does not exist for ${resolved}`);
+    }
+    finalPath = path.join(fs.realpathSync(parent), path.basename(resolved));
   }
-  fs.writeFileSync(path.join(tmp, "vite.config.ts"), rewritten);
-  for (const name of ["node_modules", "vite", "package.json"]) {
-    fs.symlinkSync(path.join(REPO_ROOT, name), path.join(tmp, name));
+  const underTemp =
+    finalPath === tempReal ||
+    finalPath.startsWith(tempReal.endsWith(path.sep) ? tempReal : tempReal + path.sep);
+  if (!underTemp) {
+    throw new Error(`Refusing write outside temp project: ${finalPath} (temp=${tempReal})`);
   }
-  return tmp;
+  return finalPath;
 }
 
-function writeTempEnv(tmp: string, value: string) {
-  fs.writeFileSync(path.join(tmp, ".env"), `${NAME}=${value}\n`, "utf8");
+function safeWriteFile(tempRoot: string, target: string, data: string | NodeJS.ArrayBufferView) {
+  assertUnderTemp(tempRoot, target);
+  fs.writeFileSync(target, data);
+}
+
+function safeRm(tempRoot: string, target: string) {
+  assertUnderTemp(tempRoot, target);
+  fs.rmSync(target, { force: true, recursive: true });
+}
+
+function signalTestStart(label: string) {
+  fs.writeFileSync(`${START_PREFIX}${label}`, `${Date.now()}\n`, "utf8");
+}
+
+/**
+ * Full temp copy of the project (no node_modules / .git / dist).
+ * Symlinks node_modules from the repo. All mutations happen here.
+ */
+function makeTempProject(configSourceText?: string): TempProject {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "metfix-v12-"));
+  tempPaths.push(root);
+
+  for (const name of ["client", "shared", "vite", "attached_assets"]) {
+    const src = path.join(REPO_ROOT, name);
+    if (!fs.existsSync(src)) continue;
+    const dest = path.join(root, name);
+    assertUnderTemp(root, dest);
+    fs.cpSync(src, dest, { recursive: true });
+  }
+  for (const name of ["vite.config.ts", "package.json", "tsconfig.json", "wrangler.jsonc"]) {
+    const src = path.join(REPO_ROOT, name);
+    if (!fs.existsSync(src)) continue;
+    safeWriteFile(root, path.join(root, name), fs.readFileSync(src));
+  }
+
+  if (configSourceText != null) {
+    safeWriteFile(root, path.join(root, "vite.config.ts"), configSourceText);
+  }
+
+  const nm = path.join(root, "node_modules");
+  assertUnderTemp(root, nm);
+  fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), nm);
+
+  return {
+    root,
+    configPath: path.join(root, "vite.config.ts"),
+    constPath: path.join(root, "client/src/const.ts"),
+  };
+}
+
+function writeTempEnv(project: TempProject, value: string, quoted = false) {
+  const body = quoted ? `${NAME}="${value}"\n` : `${NAME}=${value}\n`;
+  safeWriteFile(project.root, path.join(project.root, ".env"), body);
 }
 
 async function loadConfig(configPath: string, command: "serve" | "build", mode = "production") {
   return loadConfigFromFile({ command, mode }, configPath);
 }
 
-/** Capture stdout/stderr while running an async fn (catches console.error of the dummy). */
+/** Capture stdout/stderr (including console.*) without printing the dummy. */
 async function withCapturedStdio<T>(
   fn: () => Promise<T>,
 ): Promise<{ result: T; stdout: string; stderr: string; error?: unknown }> {
@@ -137,8 +167,6 @@ async function withCapturedStdio<T>(
     stderr.push(String(chunk));
     return true;
   }) as typeof process.stderr.write);
-  // Vitest intercepts console.*; mock them too so a console.error(value) mutation is caught
-  // without printing the dummy into the test runner log.
   const logSpy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
     stdout.push(args.map(String).join(" "));
   });
@@ -183,7 +211,6 @@ function countDummyInDir(dir: string): number {
   return count;
 }
 
-/** V3(b): no NAME:"[^"] and no escaped/template newline form. */
 function assertNoTokenInline(dir: string) {
   for (const file of walkFiles(dir)) {
     if (![".js", ".html", ".css", ".map"].includes(path.extname(file))) continue;
@@ -210,37 +237,29 @@ function countTokenInlineHits(dir: string): number {
 }
 
 function buildWithConfig(
-  configPath: string,
+  project: TempProject,
   env: NodeJS.ProcessEnv,
 ): { status: number | null; outDir: string; stdout: string; stderr: string; log: string } {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "metfix-vite-outdir-"));
   tempPaths.push(outDir);
-  try {
-    const result = spawnSync(
-      "npx",
-      ["vite", "build", "--config", configPath, "--outDir", outDir, "--emptyOutDir"],
-      {
-        cwd: REPO_ROOT,
-        env: { ...process.env, ...env },
-        encoding: "utf8",
-      },
-    );
-    const stdout = result.stdout ?? "";
-    const stderr = result.stderr ?? "";
-    return {
-      status: result.status,
-      outDir,
-      stdout,
-      stderr,
-      log: `${stdout}\n${stderr}`,
-    };
-  } catch (err) {
-    // Optional (outcome 6): clean temp outDir if the run is interrupted/throws.
-    cleanupPath(outDir);
-    const idx = tempPaths.indexOf(outDir);
-    if (idx >= 0) tempPaths.splice(idx, 1);
-    throw err;
-  }
+  const result = spawnSync(
+    "npx",
+    ["vite", "build", "--config", project.configPath, "--outDir", outDir, "--emptyOutDir"],
+    {
+      cwd: project.root,
+      env: { ...process.env, ...env },
+      encoding: "utf8",
+    },
+  );
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  return {
+    status: result.status,
+    outDir,
+    stdout,
+    stderr,
+    log: `${stdout}\n${stderr}`,
+  };
 }
 
 function mutateConfig(
@@ -250,8 +269,6 @@ function mutateConfig(
     | "or-fallback"
     | "console-error-before-throw"
     | "value-in-message"
-    | "write-repo-env"
-    | "write-then-delete-repo-env"
     | "remove-guard",
 ): string {
   const guardBlock = [
@@ -308,100 +325,131 @@ function mutateConfig(
       ].join("\n"),
     );
   }
-  if (kind === "write-repo-env") {
-    return source.replace(
-      throwBlock,
-      [
-        `fs.writeFileSync(${JSON.stringify(REPO_ENV)}, "${NAME}=" + (sanityReadToken || "x") + "\\n");`,
-        `  ${throwBlock}`,
-      ].join("\n"),
-    );
-  }
-  if (kind === "write-then-delete-repo-env") {
-    return source.replace(
-      throwBlock,
-      [
-        `fs.writeFileSync(${JSON.stringify(REPO_ENV)}, "${NAME}=scratch\\n");`,
-        `  fs.rmSync(${JSON.stringify(REPO_ENV)}, { force: true });`,
-        `  ${throwBlock}`,
-      ].join("\n"),
-    );
-  }
-  // remove-guard
   return source.replace(throwBlock, "/* R4b removed */");
 }
 
-describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
-  beforeAll(() => {
-    if (!fs.existsSync(REPO_ENV)) {
-      fs.writeFileSync(REPO_ENV, SENTINEL_BODY, "utf8");
-      sentinelCreated = true;
-    }
-    sentinelBefore = envFingerprint(REPO_ENV);
-    expect(sentinelBefore.exists).toBe(true);
-    expect(sentinelBefore.md5).toBeTruthy();
-  });
+/** V12(a) static scan: flag write/spawn patterns that target the repo. */
+function staticFindUnsafeWrites(source: string): string[] {
+  // Drop the V12 canary harness (only place allowed to touch the real clone).
+  const scan = source.replace(/\/\/ V12_HARNESS_BEGIN[\s\S]*?\/\/ V12_HARNESS_END/g, "\n");
 
-  afterAll(() => {
-    const after = envFingerprint(REPO_ENV);
-    expect(after.exists).toBe(true);
-    expect(after.md5).toBe(sentinelBefore.md5);
-    // Happy-path tests never touch the file; mtime must still match.
-    expect(after.mtimeMs).toBe(sentinelBefore.mtimeMs);
-    if (sentinelCreated && fs.existsSync(REPO_ENV)) {
-      const body = fs.readFileSync(REPO_ENV, "utf8");
-      if (body === SENTINEL_BODY) fs.rmSync(REPO_ENV, { force: true });
-    }
-  });
+  const issues: string[] = [];
+  if (/fs\.writeFileSync\(\s*REPO_ENV\b/.test(scan)) issues.push("M-a1: writeFileSync(REPO_ENV)");
+  if (/fs\.writeFileSync\(\s*REPO_CONST_TS\b/.test(scan)) issues.push("M-a2: writeFileSync(REPO_CONST_TS)");
+  if (/const\s+t\s*=\s*REPO_CONST_TS[\s\S]{0,200}?fs\.writeFileSync\(\s*t\s*,/.test(scan)) {
+    issues.push("M-a2: writeFileSync via alias");
+  }
+  if (/spawnSync\(\s*["']sh["'][\s\S]{0,160}REPO_ENV/.test(scan)) {
+    issues.push("M-a3: spawnSync sh write to REPO_ENV");
+  }
+  if (/echo\s+[^\n]*\s*>\s*[^\n]*REPO_ENV/.test(scan)) {
+    issues.push("M-a3: shell redirect to REPO_ENV");
+  }
+  if (/fs\.writeFileSync\(\s*path\.join\(\s*REPO_ROOT\s*,/.test(scan)) {
+    issues.push("writeFileSync(path.join(REPO_ROOT,…))");
+  }
+  return issues;
+}
 
+function snippetFailsStatic(snippet: string): boolean {
+  return staticFindUnsafeWrites(snippet).length > 0;
+}
+
+function gitPorcelain(): string {
+  const r = spawnSync("git", ["status", "--porcelain"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  return r.stdout ?? "";
+}
+
+function headConstBytes(): Buffer {
+  const r = spawnSync("git", ["show", "HEAD:client/src/const.ts"], {
+    cwd: REPO_ROOT,
+    encoding: "buffer",
+  });
+  if (r.status !== 0) throw new Error("git show HEAD:client/src/const.ts failed");
+  return r.stdout as Buffer;
+}
+
+// V12_HARNESS_BEGIN
+/** V12 harness only: stage canary files in the real clone for (b)/(c) proofs. */
+function stageRepoCanary(): { envMd5: string; porcelain: string; createdEnv: boolean } {
+  const createdEnv = !fs.existsSync(REPO_ENV);
+  if (createdEnv) {
+    fs.writeFileSync(REPO_ENV, CANARY_ENV_BODY, "utf8");
+  }
+  fs.writeFileSync(CANARY_UNTRACKED, "v12-canary\n", "utf8");
+  return {
+    envMd5: md5File(REPO_ENV),
+    porcelain: gitPorcelain(),
+    createdEnv,
+  };
+}
+
+function unstageRepoCanary(createdEnv: boolean) {
+  if (fs.existsSync(CANARY_UNTRACKED)) fs.rmSync(CANARY_UNTRACKED, { force: true });
+  if (createdEnv && fs.existsSync(REPO_ENV)) {
+    const body = fs.readFileSync(REPO_ENV, "utf8");
+    if (body === CANARY_ENV_BODY) fs.rmSync(REPO_ENV, { force: true });
+  }
+}
+// V12_HARNESS_END
+
+function runGuardTests(testNamePattern: string): { status: number | null; stdout: string; stderr: string } {
+  // Same entrypoint as CI (`npm test` → vitest with vite.config root=client).
+  const result = spawnSync(
+    "npm",
+    ["test", "--", "--run", "src/lib/sanity.vite-guard.test.ts", "-t", testNamePattern],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: { ...process.env },
+    },
+  );
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+describe("vite.config.ts Sanity read-token guard (V1–V10)", () => {
   afterEach(() => {
     delete process.env[NAME];
     while (tempPaths.length) {
       const target = tempPaths.pop();
       if (target) cleanupPath(target);
     }
-    // Sentinel bytes must survive every test (mtime checked in afterAll / kill case).
-    const fp = envFingerprint(REPO_ENV);
-    expect(fp.exists).toBe(true);
-    expect(fp.md5).toBe(sentinelBefore.md5);
   });
-
-  function restoreSentinelBytes() {
-    fs.writeFileSync(REPO_ENV, SENTINEL_BODY, "utf8");
-    fs.utimesSync(REPO_ENV, new Date(sentinelBefore.mtimeMs!), new Date(sentinelBefore.mtimeMs!));
-    const fp = envFingerprint(REPO_ENV);
-    expect(fp.md5).toBe(sentinelBefore.md5);
-    // Some FS round mtime; if utimes could not restore exactly, re-baseline mtime
-    // only when bytes match — suite afterAll still requires the kill case never moved it.
-    if (fp.mtimeMs !== sentinelBefore.mtimeMs) {
-      sentinelBefore = fp;
-    }
-  }
 
   it("V1 throws when the variable is non-empty in process.env", async () => {
+    const project = makeTempProject();
     process.env[NAME] = DUMMY;
-    await expect(loadConfig(REPO_CONFIG, "build")).rejects.toThrow(NAME);
+    await expect(loadConfig(project.configPath, "build")).rejects.toThrow(NAME);
   });
 
-  it("V2 throws when the variable is set only in a temp .env via loadEnv (V11)", async () => {
+  it("V2 throws when the variable is set only in a temp .env via loadEnv", async () => {
+    signalTestStart("V2");
     delete process.env[NAME];
-    const tmp = makeTempEnvProject();
-    writeTempEnv(tmp, DUMMY);
-    await expect(loadConfig(path.join(tmp, "vite.config.ts"), "build")).rejects.toThrow(NAME);
+    const project = makeTempProject();
+    writeTempEnv(project, DUMMY);
+    await expect(loadConfig(project.configPath, "build")).rejects.toThrow(NAME);
   });
 
   it(
     "V2b blank shell overrides .env dummy: resolve + build clean (K8d)",
     async () => {
+      signalTestStart("V2b");
       const beforeDist = snapshotDistPublic();
-      const tmp = makeTempEnvProject();
-      writeTempEnv(tmp, DUMMY);
+      const project = makeTempProject();
+      writeTempEnv(project, DUMMY);
       process.env[NAME] = "";
 
-      await expect(loadConfig(path.join(tmp, "vite.config.ts"), "serve")).resolves.toBeTruthy();
-      await expect(loadConfig(path.join(tmp, "vite.config.ts"), "build")).resolves.toBeTruthy();
+      await expect(loadConfig(project.configPath, "serve")).resolves.toBeTruthy();
+      await expect(loadConfig(project.configPath, "build")).resolves.toBeTruthy();
 
-      const built = buildWithConfig(path.join(tmp, "vite.config.ts"), { [NAME]: "" });
+      const built = buildWithConfig(project, { [NAME]: "" });
       expect(built.status).toBe(0);
       expect(built.stdout).not.toContain(DUMMY);
       expect(built.stderr).not.toContain(DUMMY);
@@ -420,28 +468,29 @@ describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
     expect(m2Source).not.toEqual(source);
 
     delete process.env[NAME];
-    const m1Tmp = makeTempEnvProject(m1Source);
-    writeTempEnv(m1Tmp, DUMMY);
-    await expect(loadConfig(path.join(m1Tmp, "vite.config.ts"), "build")).resolves.toBeTruthy();
+    const m1 = makeTempProject(m1Source);
+    writeTempEnv(m1, DUMMY);
+    await expect(loadConfig(m1.configPath, "build")).resolves.toBeTruthy();
 
-    const m2Tmp = makeTempEnvProject(m2Source);
-    writeTempEnv(m2Tmp, DUMMY);
+    const m2 = makeTempProject(m2Source);
+    writeTempEnv(m2, DUMMY);
     process.env[NAME] = "";
-    await expect(loadConfig(path.join(m2Tmp, "vite.config.ts"), "build")).rejects.toThrow(NAME);
+    await expect(loadConfig(m2.configPath, "build")).rejects.toThrow(NAME);
   });
 
   it(
     "V3 whitespace-only builds each value; padded dummy never leaks to stdio",
     async () => {
       const beforeDist = snapshotDistPublic();
+      const project = makeTempProject();
 
       for (const ws of [" ", "\t", "\n"] as const) {
         process.env[NAME] = ws;
-        await expect(loadConfig(REPO_CONFIG, "serve")).resolves.toBeTruthy();
-        await expect(loadConfig(REPO_CONFIG, "build")).resolves.toBeTruthy();
+        await expect(loadConfig(project.configPath, "serve")).resolves.toBeTruthy();
+        await expect(loadConfig(project.configPath, "build")).resolves.toBeTruthy();
 
-        const built = buildWithConfig(REPO_CONFIG, { [NAME]: ws });
-        expect(built.status, `build:cf must exit 0 for ${JSON.stringify(ws)}`).toBe(0);
+        const built = buildWithConfig(project, { [NAME]: ws });
+        expect(built.status, `build must exit 0 for ${JSON.stringify(ws)}`).toBe(0);
         expect(built.stdout).not.toContain(DUMMY);
         expect(built.stderr).not.toContain(DUMMY);
         assertNoTokenInline(built.outDir);
@@ -449,35 +498,21 @@ describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
       }
       expect(snapshotDistPublic()).toEqual(beforeDist);
 
-      // V3(c): padded dummy from process.env — message + stdout + stderr clean.
+      // V3(c) process.env padded forms — message + stdout + stderr; no no-op trim asserts.
       for (const padded of [`  ${DUMMY}  `, `\n${DUMMY}\n`] as const) {
         process.env[NAME] = padded;
-        const captured = await withCapturedStdio(async () => loadConfig(REPO_CONFIG, "build"));
+        const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "build"));
         expect(captured.error).toBeTruthy();
         const message =
           captured.error instanceof Error ? captured.error.message : String(captured.error);
         expect(message).toContain(NAME);
         expect(message).not.toContain(DUMMY);
-        expect(message).not.toContain(DUMMY.trim());
+        expect(message).not.toContain(padded);
         expect(captured.stdout).not.toContain(DUMMY);
-        expect(captured.stdout).not.toContain(DUMMY.trim());
+        expect(captured.stdout).not.toContain(padded);
         expect(captured.stderr).not.toContain(DUMMY);
-        expect(captured.stderr).not.toContain(DUMMY.trim());
+        expect(captured.stderr).not.toContain(padded);
       }
-
-      // V3(c) from temp .env (V11 envDir).
-      delete process.env[NAME];
-      const tmp = makeTempEnvProject();
-      writeTempEnv(tmp, `  ${DUMMY}  `);
-      const fromEnv = await withCapturedStdio(async () =>
-        loadConfig(path.join(tmp, "vite.config.ts"), "build"),
-      );
-      expect(fromEnv.error).toBeTruthy();
-      const envMsg = fromEnv.error instanceof Error ? fromEnv.error.message : String(fromEnv.error);
-      expect(envMsg).toContain(NAME);
-      expect(envMsg).not.toContain(DUMMY);
-      expect(fromEnv.stdout).not.toContain(DUMMY);
-      expect(fromEnv.stderr).not.toContain(DUMMY);
     },
     120_000,
   );
@@ -485,54 +520,94 @@ describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
   it(
     "V3(b) leaking scratch mutation produces inline hits including escaped newline",
     async () => {
+      signalTestStart("V3(b)");
       const source = fs.readFileSync(REPO_CONFIG, "utf8");
       const noGuard = mutateConfig(source, "remove-guard");
       expect(noGuard).not.toEqual(source);
 
-      const origConst = fs.readFileSync(CONST_TS, "utf8");
+      const project = makeTempProject(noGuard);
+      const origConst = fs.readFileSync(project.constPath, "utf8");
       const bareConst = origConst.replace(
         'const base = import.meta.env.BASE_URL || "/";',
         'const env = import.meta.env;\n  const base = (env && env.BASE_URL) || "/";',
       );
       expect(bareConst).not.toEqual(origConst);
+      safeWriteFile(project.root, project.constPath, bareConst);
 
-      try {
-        fs.writeFileSync(CONST_TS, bareConst);
-        const tmp = makeTempEnvProject(noGuard);
-
-        for (const ws of [" ", "\t", "\n"] as const) {
-          const built = buildWithConfig(path.join(tmp, "vite.config.ts"), { [NAME]: ws });
-          expect(built.status).toBe(0);
-          expect(
-            countTokenInlineHits(built.outDir),
-            `leaking mutation must produce (b) hits for ${JSON.stringify(ws)}`,
-          ).toBeGreaterThan(0);
-        }
-      } finally {
-        fs.writeFileSync(CONST_TS, origConst);
+      for (const ws of [" ", "\t", "\n"] as const) {
+        const built = buildWithConfig(project, { [NAME]: ws });
+        expect(built.status).toBe(0);
+        expect(
+          countTokenInlineHits(built.outDir),
+          `leaking mutation must produce (b) hits for ${JSON.stringify(ws)}`,
+        ).toBeGreaterThan(0);
       }
     },
     120_000,
+  );
+
+  it(
+    "V3(c) padded dummy from temp .env: spaces and newline-quoted form",
+    async () => {
+      signalTestStart("V3(c)");
+      delete process.env[NAME];
+
+      // Space-padded .env
+      {
+        const project = makeTempProject();
+        writeTempEnv(project, `  ${DUMMY}  `);
+        const padded = `  ${DUMMY}  `;
+        const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "build"));
+        expect(captured.error).toBeTruthy();
+        const message =
+          captured.error instanceof Error ? captured.error.message : String(captured.error);
+        expect(message).toContain(NAME);
+        expect(message).not.toContain(DUMMY);
+        expect(message).not.toContain(padded);
+        expect(captured.stdout).not.toContain(DUMMY);
+        expect(captured.stderr).not.toContain(DUMMY);
+      }
+
+      // Newline-padded .env written as NAME="\nsk…\n" so dotenv expands \n.
+      {
+        const project = makeTempProject();
+        writeTempEnv(project, `\\n${DUMMY}\\n`, true);
+        const loaded = loadEnv("production", project.root, "");
+        const fileVal = loaded[NAME] ?? "";
+        expect(fileVal.startsWith("\n"), "loadEnv value must start with newline").toBe(true);
+        expect(fileVal.endsWith("\n"), "loadEnv value must end with newline").toBe(true);
+        expect(fileVal).toContain(DUMMY);
+
+        const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "build"));
+        expect(captured.error).toBeTruthy();
+        const message =
+          captured.error instanceof Error ? captured.error.message : String(captured.error);
+        expect(message).toContain(NAME);
+        expect(message).not.toContain(DUMMY);
+        expect(message).not.toContain(fileVal);
+        expect(captured.stdout).not.toContain(DUMMY);
+        expect(captured.stderr).not.toContain(DUMMY);
+      }
+    },
+    60_000,
   );
 
   it("V3(c)/V4 mutation: console.error of the value must fail stdio assertions", async () => {
     const source = fs.readFileSync(REPO_CONFIG, "utf8");
     const mutated = mutateConfig(source, "console-error-before-throw");
     expect(mutated).not.toEqual(source);
-    const tmp = makeTempEnvProject(mutated);
+    const project = makeTempProject(mutated);
     process.env[NAME] = DUMMY;
 
-    const captured = await withCapturedStdio(async () =>
-      loadConfig(path.join(tmp, "vite.config.ts"), "serve"),
-    );
+    const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "serve"));
     expect(captured.error).toBeTruthy();
-    // This is the proof mutation: stderr contains the dummy → V4/V3(c) would FAIL.
     expect(captured.stderr).toContain(DUMMY);
   });
 
   it("V4 error names the variable and never includes the dummy in message or stdio", async () => {
+    const project = makeTempProject();
     process.env[NAME] = DUMMY;
-    const captured = await withCapturedStdio(async () => loadConfig(REPO_CONFIG, "serve"));
+    const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "serve"));
     expect(captured.error).toBeTruthy();
     const message =
       captured.error instanceof Error ? captured.error.message : String(captured.error);
@@ -546,20 +621,19 @@ describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
     const source = fs.readFileSync(REPO_CONFIG, "utf8");
     const mutated = mutateConfig(source, "value-in-message");
     expect(mutated).not.toEqual(source);
-    const tmp = makeTempEnvProject(mutated);
+    const project = makeTempProject(mutated);
     process.env[NAME] = DUMMY;
-    const captured = await withCapturedStdio(async () =>
-      loadConfig(path.join(tmp, "vite.config.ts"), "serve"),
-    );
+    const captured = await withCapturedStdio(async () => loadConfig(project.configPath, "serve"));
     const message =
       captured.error instanceof Error ? captured.error.message : String(captured.error);
     expect(message).toContain(DUMMY);
   });
 
   it("V5 throws for both serve and build", async () => {
+    const project = makeTempProject();
     process.env[NAME] = DUMMY;
-    await expect(loadConfig(REPO_CONFIG, "serve")).rejects.toThrow(NAME);
-    await expect(loadConfig(REPO_CONFIG, "build")).rejects.toThrow(NAME);
+    await expect(loadConfig(project.configPath, "serve")).rejects.toThrow(NAME);
+    await expect(loadConfig(project.configPath, "build")).rejects.toThrow(NAME);
   });
 
   it("V6 loads the real config with no test-only helper export", async () => {
@@ -567,194 +641,160 @@ describe("vite.config.ts Sanity read-token guard (V1–V11)", () => {
     expect(source).not.toMatch(/export\s+(async\s+)?function\s+__checkToken/);
     expect(source).not.toMatch(/export\s+const\s+__checkToken/);
     delete process.env[NAME];
-    await expect(loadConfig(REPO_CONFIG, "build")).resolves.toBeTruthy();
+    const project = makeTempProject();
+    await expect(loadConfig(project.configPath, "build")).resolves.toBeTruthy();
   });
 
   it(
     "V7/V10 unset or empty does not throw; build uses temp outDir and leaves dist/public",
     async () => {
+      signalTestStart("V7");
       const beforeDist = snapshotDistPublic();
+      const project = makeTempProject();
       delete process.env[NAME];
-      await expect(loadConfig(REPO_CONFIG, "build")).resolves.toBeTruthy();
+      await expect(loadConfig(project.configPath, "build")).resolves.toBeTruthy();
 
       process.env[NAME] = "";
-      await expect(loadConfig(REPO_CONFIG, "serve")).resolves.toBeTruthy();
+      await expect(loadConfig(project.configPath, "serve")).resolves.toBeTruthy();
       delete process.env[NAME];
 
-      const built = buildWithConfig(REPO_CONFIG, {});
+      const built = buildWithConfig(project, {});
       expect(built.status).toBe(0);
       expect(built.stdout).not.toContain(DUMMY);
       expect(built.stderr).not.toContain(DUMMY);
       expect(path.resolve(built.outDir)).not.toBe(path.resolve(DIST_PUBLIC));
       expect(snapshotDistPublic()).toEqual(beforeDist);
-      // Cleanup of temp outDir is handled in afterEach via tempPaths (outcome 6).
     },
     60_000,
   );
+});
+
+describe("V12 temp-copy isolation", () => {
+  afterEach(() => {
+    delete process.env[NAME];
+    while (tempPaths.length) {
+      const target = tempPaths.pop();
+      if (target) cleanupPath(target);
+    }
+  });
+
+  it("V12(a) static check: this file has no unsafe repo writes", () => {
+    const source = fs.readFileSync(THIS_TEST_FILE, "utf8");
+    expect(staticFindUnsafeWrites(source)).toEqual([]);
+  });
+
+  it("V12(a) M-a1: writing repo .env fails the helper", () => {
+    const project = makeTempProject();
+    expect(() => safeWriteFile(project.root, REPO_ENV, "x=1\n")).toThrow(/outside temp/);
+  });
+
+  it("V12(a) M-a2: writing const.ts via alias fails the helper", () => {
+    const project = makeTempProject();
+    const t = REPO_CONST_TS;
+    expect(() => safeWriteFile(project.root, t, "export {}\n")).toThrow(/outside temp/);
+  });
+
+  it("V12(a) M-a3: spawn sh redirect to REPO_ENV fails the static check", () => {
+    // Assemble the bite-proof snippet without embedding the banned contiguous source pattern.
+    const snippet = ["spawnSync(", '"sh"', ', ["-c", "echo x > " + REPO', "_ENV])"].join("");
+    expect(snippet).toContain("REPO_ENV");
+    expect(snippetFailsStatic(snippet)).toBe(true);
+  });
+
+  it("V12(a) M-a4: symlink into the repo is caught by realpath", () => {
+    const project = makeTempProject();
+    const link = path.join(project.root, "pkg-link");
+    fs.symlinkSync(path.join(REPO_ROOT, "package.json"), link);
+    expect(() => safeWriteFile(project.root, link, "{}\n")).toThrow(/outside temp/);
+  });
 
   it(
-    "V11 kill case: real V2 config path, SIGKILL after temp .env write, sentinel untouched",
-    async () => {
-      const before = envFingerprint(REPO_ENV);
-      expect(before).toEqual(sentinelBefore);
-
-      const tmp = makeTempEnvProject();
-      const configPath = path.join(tmp, "vite.config.ts");
-      const readyFile = path.join(tmp, "ready");
-      const scriptPath = path.join(tmp, "kill-v2.mjs");
-
-      // Child runs the real V2 path: write temp .env, then loadConfigFromFile on the real config.
-      fs.writeFileSync(
-        scriptPath,
-        `
-      import fs from "node:fs";
-      import path from "node:path";
-      import { pathToFileURL } from "node:url";
-      import { loadConfigFromFile } from "vite";
-
-      const tmp = process.env.GUARD_TMP;
-      const configPath = process.env.GUARD_CONFIG;
-      const ready = process.env.GUARD_READY;
-      const name = process.env.GUARD_NAME;
-      const dummy = process.env.GUARD_DUMMY;
-
-      fs.writeFileSync(path.join(tmp, ".env"), name + "=" + dummy + "\\n");
-      fs.writeFileSync(ready, "1");
-
+    "V12(b) normal run leaves git porcelain and .env md5 unchanged",
+    () => {
+      const canary = stageRepoCanary();
       try {
-        await loadConfigFromFile({ command: "build", mode: "production" }, configPath);
-      } catch {
-        // expected throw on dummy; then wait for parent SIGKILL
+        const beforePorcelain = canary.porcelain;
+        const beforeMd5 = canary.envMd5;
+        // Run the guard suite only (exclude V12 harness to avoid recursion / re-entry).
+        const run = runGuardTests("Sanity read-token guard \\(V1–V10\\)");
+        expect(run.status, run.stderr.slice(-2000)).toBe(0);
+        expect(gitPorcelain()).toBe(beforePorcelain);
+        expect(md5File(REPO_ENV)).toBe(beforeMd5);
+      } finally {
+        unstageRepoCanary(canary.createdEnv);
       }
-      setInterval(() => {}, 1e6);
-      `,
-      );
-
-      const child = spawn(process.execPath, [scriptPath], {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          GUARD_TMP: tmp,
-          GUARD_CONFIG: configPath,
-          GUARD_NAME: NAME,
-          GUARD_DUMMY: DUMMY,
-          GUARD_READY: readyFile,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let childErr = "";
-      child.stderr?.on("data", (chunk) => {
-        childErr += String(chunk);
-      });
-
-      const started = Date.now();
-      while (!fs.existsSync(readyFile)) {
-        if (child.exitCode !== null) {
-          throw new Error(`child exited early (${child.exitCode}): ${childErr}`);
-        }
-        if (Date.now() - started > 15000) {
-          child.kill("SIGKILL");
-          throw new Error(`child never wrote ready file: ${childErr}`);
-        }
-        await new Promise((r) => setTimeout(r, 20));
-      }
-
-      child.kill("SIGKILL");
-      await new Promise((r) => child.once("exit", r));
-
-      expect(envFingerprint(REPO_ENV)).toEqual(before);
-      expect(fs.readFileSync(REPO_ENV, "utf8")).not.toContain(DUMMY);
-      expect(fs.readFileSync(REPO_ENV, "utf8")).toBe(SENTINEL_BODY);
     },
-    30_000,
+    180_000,
   );
 
   it(
-    "V11 mutations: write repo .env fails kill fingerprint; write-then-delete clears sentinel",
+    "V12(c) SIGKILL during V2, V2b, V3(b), V3(c), V7 leaves repo untouched",
     async () => {
-      const source = fs.readFileSync(REPO_CONFIG, "utf8");
-      const writeMut = mutateConfig(source, "write-repo-env");
-      const writeDeleteMut = mutateConfig(source, "write-then-delete-repo-env");
-      expect(writeMut).not.toEqual(source);
-      expect(writeDeleteMut).not.toEqual(source);
+      const canary = stageRepoCanary();
+      const constBefore = headConstBytes();
+      try {
+        // Patterns match the full vitest title (describe + test). No leading ^.
+        const cases: Array<{ label: string; pattern: string }> = [
+          { label: "V2", pattern: "V2 throws when the variable is set only in a temp" },
+          { label: "V2b", pattern: "V2b blank shell overrides .env dummy" },
+          { label: "V3(b)", pattern: "V3\\(b\\) leaking scratch mutation" },
+          { label: "V3(c)", pattern: "V3\\(c\\) padded dummy from temp \\.env" },
+          { label: "V7", pattern: "V7/V10 unset or empty does not throw" },
+        ];
 
-      // Write mutation: child runs real config path → repo .env fingerprint changes.
-      {
-        const tmp = makeTempEnvProject(writeMut);
-        const configPath = path.join(tmp, "vite.config.ts");
-        const readyFile = path.join(tmp, "ready");
-        const scriptPath = path.join(tmp, "kill-write.mjs");
-        fs.writeFileSync(
-          scriptPath,
-          `
-        import fs from "node:fs";
-        import path from "node:path";
-        import { loadConfigFromFile } from "vite";
-        const tmp = process.env.GUARD_TMP;
-        const configPath = process.env.GUARD_CONFIG;
-        const ready = process.env.GUARD_READY;
-        const name = process.env.GUARD_NAME;
-        const dummy = process.env.GUARD_DUMMY;
-        fs.writeFileSync(path.join(tmp, ".env"), name + "=" + dummy + "\\n");
-        fs.writeFileSync(ready, "1");
-        try {
-          await loadConfigFromFile({ command: "build", mode: "production" }, configPath);
-        } catch {}
-        setInterval(() => {}, 1e6);
-        `,
-        );
+        for (const { label, pattern } of cases) {
+          const startFile = `${START_PREFIX}${label}`;
+          if (fs.existsSync(startFile)) fs.rmSync(startFile, { force: true });
 
-        const before = envFingerprint(REPO_ENV);
-        const child = spawn(process.execPath, [scriptPath], {
-          cwd: REPO_ROOT,
-          env: {
-            ...process.env,
-            GUARD_TMP: tmp,
-            GUARD_CONFIG: configPath,
-            GUARD_NAME: NAME,
-            GUARD_DUMMY: DUMMY,
-            GUARD_READY: readyFile,
-          },
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+          const child = spawn(
+            "npm",
+            ["test", "--", "--run", "src/lib/sanity.vite-guard.test.ts", "-t", pattern],
+            {
+              cwd: REPO_ROOT,
+              env: { ...process.env },
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
 
-        const started = Date.now();
-        while (!fs.existsSync(readyFile)) {
-          if (child.exitCode !== null) break;
-          if (Date.now() - started > 15000) {
-            child.kill("SIGKILL");
-            break;
+          let stderr = "";
+          let stdout = "";
+          child.stderr?.on("data", (c) => {
+            stderr += String(c);
+          });
+          child.stdout?.on("data", (c) => {
+            stdout += String(c);
+          });
+
+          const startedAt = Date.now();
+          while (!fs.existsSync(startFile)) {
+            if (child.exitCode !== null) {
+              throw new Error(
+                `V12(c) ${label}: vitest exited before start signal (${child.exitCode}): ${(stderr + stdout).slice(-2000)}`,
+              );
+            }
+            if (Date.now() - startedAt > 90_000) {
+              child.kill("SIGKILL");
+              throw new Error(
+                `V12(c) ${label}: no start signal within 90s: ${(stderr + stdout).slice(-2000)}`,
+              );
+            }
+            await new Promise((r) => setTimeout(r, 50));
           }
-          await new Promise((r) => setTimeout(r, 20));
-        }
-        // Give the config a moment to write the repo .env after ready.
-        await new Promise((r) => setTimeout(r, 500));
-        child.kill("SIGKILL");
-        await new Promise((r) => child.once("exit", r));
 
-        const after = envFingerprint(REPO_ENV);
-        expect(after).not.toEqual(before);
-        restoreSentinelBytes();
-      }
+          child.kill("SIGKILL");
+          await new Promise((r) => child.once("exit", r));
 
-      // Write-then-delete: sentinel disappears (absent vs present) → must fail.
-      {
-        const tmp = makeTempEnvProject(writeDeleteMut);
-        process.env[NAME] = DUMMY;
-        const before = envFingerprint(REPO_ENV);
-        expect(before.exists).toBe(true);
-        try {
-          await loadConfig(path.join(tmp, "vite.config.ts"), "build");
-        } catch {
-          // expected throw after write+delete
+          expect(gitPorcelain(), `porcelain after kill ${label}`).toBe(canary.porcelain);
+          expect(md5File(REPO_ENV), `.env md5 after kill ${label}`).toBe(canary.envMd5);
+          expect(
+            Buffer.compare(fs.readFileSync(REPO_CONST_TS), constBefore),
+            `const.ts vs HEAD after kill ${label}`,
+          ).toBe(0);
         }
-        const after = envFingerprint(REPO_ENV);
-        expect(after.exists).toBe(false);
-        expect(after).not.toEqual(before);
-        restoreSentinelBytes();
+      } finally {
+        unstageRepoCanary(canary.createdEnv);
       }
     },
-    40_000,
+    360_000,
   );
 });
