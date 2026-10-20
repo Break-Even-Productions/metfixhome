@@ -314,7 +314,7 @@ export type CommentsUpstream =
   | { kind: "bad_request" }
   | { kind: "unauthorized" }
   | { kind: "forbidden" }
-  | { kind: "rate_limited" }
+  | { kind: "rate_limited"; retryAfter: RetryAfterSeconds }
   | { kind: "nokey" }
   | { kind: "unavailable" };
 
@@ -349,7 +349,12 @@ export async function fetchDailyFixComments(
     if (response.status === 404) return { kind: "not_found" };
     if (response.status === 401) return { kind: "unauthorized" };
     if (response.status === 403) return { kind: "forbidden" };
-    if (response.status === 429) return { kind: "rate_limited" };
+    if (response.status === 429) {
+      return {
+        kind: "rate_limited",
+        retryAfter: parseRetryAfter(response.headers.get("Retry-After")),
+      };
+    }
     if (!response.ok) return { kind: "unavailable" };
     return { kind: "ok", bodyText: await response.text() };
   } catch (err) {

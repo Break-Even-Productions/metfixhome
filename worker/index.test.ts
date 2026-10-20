@@ -253,7 +253,15 @@ describe("Worker HTML / API / sitemap", () => {
     key = "test-secret-key",
     extra: { bsiBaseUrl?: string } = {},
   ) {
-    const req = new Request(`https://metfix.org${path}`, init);
+    // undici forbids TRACE; synthesize method for W2.1.
+    let req: Request;
+    try {
+      req = new Request(`https://metfix.org${path}`, init);
+    } catch {
+      const method = String(init.method ?? "GET").toUpperCase();
+      req = new Request(`https://metfix.org${path}`, { ...init, method: "GET" });
+      Object.defineProperty(req, "method", { get: () => method });
+    }
     return handleRequest(req, makeEnv(assetsFetch, key), ctx, {
       fetchImpl: fetchMock as unknown as typeof fetch,
       cachesDefault: cache,

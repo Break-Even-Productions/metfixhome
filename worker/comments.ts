@@ -2,6 +2,7 @@
  * Daily Fix comments Worker handlers — GET shaping + write/like routes.
  */
 import { isIsoDate } from "../shared/daily-fix";
+import { publicDisplayName } from "./public-name";
 import {
   bsiDeleteComment,
   bsiLikeComment,
@@ -24,42 +25,90 @@ function isCommentType(v: string): v is CommentType {
   return COMMENT_TYPES.has(v);
 }
 
-/** W7 whitelist shape: force Member display names until D-NAME. */
-export function shapeCommentsPayload(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object") return raw;
-  const root = raw as { comments?: unknown };
-  if (!root.comments || typeof root.comments !== "object") return raw;
-  const grouped = root.comments as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const key of ["belly", "body", "brain"] as const) {
-    const threads = grouped[key];
-    if (!Array.isArray(threads)) {
-      out[key] = threads;
-      continue;
-    }
-    out[key] = threads.map(shapeThread);
-  }
-  return { ...root, comments: out };
+function commentsCacheKeyRequest(isoDate: string): Request {
+  return new Request(`https://cache.metfix.internal/daily-fix/comments?date=${isoDate}`);
 }
 
-function shapeThread(thread: unknown): unknown {
-  if (!thread || typeof thread !== "object") return thread;
-  const t = { ...(thread as Record<string, unknown>) };
-  const deleted = t.deleted;
-  if (deleted === 2) {
-    t.user = { display_name: "[Anonymous]" };
-  } else {
-    t.user = { display_name: "Member" };
+function hasDuplicateQueryParam(url: URL, keys: string[]): boolean {
+  const counts = new Map<string, number>();
+  for (const key of url.searchParams.keys()) {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  if (Array.isArray(t.replies)) {
-    t.replies = t.replies.map(shapeThread);
+  return keys.some((k) => (counts.get(k) ?? 0) > 1);
+}
+
+function logCommentsKind(kind: string): void {
+  console.info(`daily-fix-comments kind=${kind}`);
+}
+
+/** W7 whitelist + W8 soft-delete + B4-W Member fail-closed. */
+export function shapeCommentsPayload(raw: unknown, type: CommentType = "all"): unknown | null {
+  if (!raw || typeof raw !== "object") return null;
+  const root = raw as { comments?: unknown; meta?: unknown };
+  const meta = "meta" in root ? root.meta : {};
+
+  if (type === "all") {
+    if (!root.comments || typeof root.comments !== "object" || Array.isArray(root.comments)) {
+      return null;
+    }
+    const grouped = root.comments as Record<string, unknown>;
+    const belly = shapeThreadList(grouped.belly);
+    const body = shapeThreadList(grouped.body);
+    const brain = shapeThreadList(grouped.brain);
+    if (!belly || !body || !brain) return null;
+    return { comments: { belly, body, brain }, meta };
   }
-  // Strip non-whitelist fields commonly leaked
-  delete t.email;
-  delete t.user_login;
-  delete t.user_email;
-  delete t.ip;
-  return t;
+
+  const list = shapeThreadList(root.comments);
+  if (!list) return null;
+  return { comments: list, meta };
+}
+
+function shapeThreadList(threads: unknown): Record<string, unknown>[] | null {
+  if (!Array.isArray(threads)) return null;
+  const out: Record<string, unknown>[] = [];
+  for (const thread of threads) {
+    const shaped = shapeThread(thread);
+    if (shaped) out.push(shaped);
+  }
+  return out;
+}
+
+function shapeThread(thread: unknown): Record<string, unknown> | null {
+  if (!thread || typeof thread !== "object") return null;
+  const t = thread as Record<string, unknown>;
+  const deleted = typeof t.deleted === "number" ? t.deleted : Number(t.deleted);
+  if (deleted === 1) return null; // W8 soft-delete: omit row + replies
+
+  const id = t.id;
+  if (typeof id !== "number" && typeof id !== "string") return null;
+  if (typeof t.content !== "string") return null;
+
+  const userRaw =
+    t.user && typeof t.user === "object" && !Array.isArray(t.user)
+      ? (t.user as { display_name?: unknown; public_name_safe?: unknown })
+      : null;
+  const displayName =
+    deleted === 2 ? "[Anonymous]" : publicDisplayName(userRaw, { allowAnonymous: false });
+
+  const repliesIn = Array.isArray(t.replies) ? t.replies : [];
+  const replies: Record<string, unknown>[] = [];
+  for (const child of repliesIn) {
+    const shaped = shapeThread(child);
+    if (shaped) replies.push(shaped);
+  }
+
+  return {
+    id: typeof id === "number" ? id : Number(id),
+    user: { display_name: displayName },
+    content: t.content,
+    timestamp: typeof t.timestamp === "string" ? t.timestamp : null,
+    like_count: typeof t.like_count === "number" ? t.like_count : 0,
+    parent_id: t.parent_id == null ? null : t.parent_id,
+    deleted: deleted === 2 ? 2 : 0,
+    edited: typeof t.edited === "number" ? t.edited : 0,
+    replies,
+  };
 }
 
 /** Index entrypoint (nullable for path fall-through). */
@@ -82,6 +131,7 @@ export async function handleCommentsRoutes(
   }
   return handleCommentsRequest(request, env, deps.fetchImpl ?? fetch, {
     baseUrl: deps.bsiBaseUrl,
+    cache: deps.cachesDefault,
   });
 }
 
@@ -89,21 +139,24 @@ export async function handleCommentsRequest(
   request: Request,
   env: Env,
   fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string },
+  opts?: { baseUrl?: string; cache?: Cache },
 ): Promise<Response> {
   const method = request.method.toUpperCase();
   const url = new URL(request.url);
+  const path = url.pathname;
 
   if (method === "GET" || method === "HEAD") {
+    // Collection GET only — /comments/:id → 404 (W1.2).
+    if (path !== "/api/daily-fix/comments") {
+      return jsonNoStore({ error: "not_found" }, 404);
+    }
     return handleCommentsGet(request, env, fetchImpl, opts, method === "HEAD");
   }
 
-  // Write routes: /api/daily-fix/comments and /api/daily-fix/comments/:id[/like]
-  const path = url.pathname.replace(/\/+$/, "");
-  const likeMatch = path.match(/\/api\/daily-fix\/comments\/([^/]+)\/like$/);
-  const idMatch = path.match(/\/api\/daily-fix\/comments\/([^/]+)$/);
+  const likeMatch = path.match(/^\/api\/daily-fix\/comments\/([^/]+)\/like$/);
+  const idMatch = path.match(/^\/api\/daily-fix\/comments\/([^/]+)$/);
 
-  if (method === "POST" && path.endsWith("/comments")) {
+  if (method === "POST" && path === "/api/daily-fix/comments") {
     return handleCommentPost(request, env, fetchImpl, opts);
   }
   if (likeMatch && method === "POST") {
@@ -116,19 +169,32 @@ export async function handleCommentsRequest(
     return handleCommentDelete(request, env, fetchImpl, opts, idMatch[1]!);
   }
 
-  return jsonNoStore({ error: "method_not_allowed" }, 405, {
-    Allow: "GET, HEAD, POST, PATCH, DELETE",
-  });
+  // Collection wrong methods (W2.1): Allow exactly GET, HEAD, POST.
+  if (path === "/api/daily-fix/comments") {
+    return jsonNoStore({ error: "method_not_allowed" }, 405, {
+      Allow: "GET, HEAD, POST",
+    });
+  }
+  if (likeMatch) {
+    return jsonNoStore({ error: "method_not_allowed" }, 405, { Allow: "POST" });
+  }
+  if (idMatch) {
+    return jsonNoStore({ error: "method_not_allowed" }, 405, { Allow: "PATCH, DELETE" });
+  }
+  return jsonNoStore({ error: "not_found" }, 404);
 }
 
 async function handleCommentsGet(
   request: Request,
   env: Env,
   fetchImpl: FetchImpl,
-  opts: { baseUrl?: string } | undefined,
+  opts: { baseUrl?: string; cache?: Cache } | undefined,
   head: boolean,
 ): Promise<Response> {
   const url = new URL(request.url);
+  if (hasDuplicateQueryParam(url, ["date", "type"])) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
   const date = url.searchParams.get("date");
   if (!date || !isIsoDate(date)) {
     return jsonNoStore({ error: "invalid_date" }, 400);
@@ -138,25 +204,53 @@ async function handleCommentsGet(
     return jsonNoStore({ error: "invalid_type" }, 400);
   }
 
+  const cache = opts?.cache ?? caches.default;
+  if (type === "all") {
+    const cached = await cache.match(commentsCacheKeyRequest(date));
+    if (cached) {
+      if (head) return new Response(null, { status: cached.status, headers: cached.headers });
+      return cached;
+    }
+  }
+
   const outcome = await fetchDailyFixComments(date, type, env, fetchImpl, opts);
   if (outcome.kind === "ok") {
     let shaped: unknown;
     try {
-      shaped = shapeCommentsPayload(JSON.parse(outcome.bodyText));
+      shaped = shapeCommentsPayload(JSON.parse(outcome.bodyText), type);
     } catch {
       return unavailable();
     }
+    if (shaped == null) return unavailable();
     const body = JSON.stringify(shaped);
     const headers = new Headers({
       "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
+      "Cache-Control": "public, max-age=0, s-maxage=60",
       "X-Content-Type-Options": "nosniff",
     });
+    if (type === "all" && !head) {
+      await cache.put(commentsCacheKeyRequest(date), new Response(body, { status: 200, headers }));
+    }
     if (head) return new Response(null, { status: 200, headers });
     return new Response(body, { status: 200, headers });
   }
+  if (outcome.kind === "bad_request") {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
   if (outcome.kind === "not_found") {
     return jsonNoStore({ error: "not_found" }, 404);
+  }
+  if (outcome.kind === "unauthorized") {
+    logCommentsKind("unauthorized");
+    return unavailable();
+  }
+  if (outcome.kind === "forbidden") {
+    logCommentsKind("forbidden");
+    return unavailable();
+  }
+  if (outcome.kind === "rate_limited") {
+    // W6.5: GET maps 429 → 503 unavailable; RA from parseRetryAfter (default 60).
+    return unavailable(outcome.retryAfter);
   }
   return unavailable();
 }

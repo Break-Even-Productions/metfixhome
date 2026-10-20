@@ -146,12 +146,42 @@ export default function TheDailyFixPage({
     loadJakartaSans();
   }, []);
 
+  // R5 / C6.1: one `/me` per app load. Skip setState when still signed_out (CC1 C5).
+  useEffect(() => {
+    let active = true;
+    void loadMe().then((next) => {
+      if (!active) return;
+      setMe((prev) => {
+        if (prev.status === "signed_out" && next.status === "signed_out") return prev;
+        if (
+          prev.status === "signed_in" &&
+          next.status === "signed_in" &&
+          prev.public_name === next.public_name &&
+          prev.moderator === next.moderator
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Normalize path/query (date forms, path pillars, bad tabs) via shared normalizer.
-  // Canonicalize from the address bar (not `route` params) so in-app Link navigations
-  // are not reverted when comments/`/me` re-renders briefly with stale params (CC1/C5).
+  // Canonicalize from the address bar (not stale `route` params) so in-app Link
+  // navigations are not reverted when comments/`/me` re-render (CC1/C5).
+  // Out-of-range days still rewrite the bar (2a-iv) before that pass.
   useEffect(() => {
     if (route.kind === "invalid") return;
+    if (outOfRange) {
+      const current = `${window.location.pathname}${window.location.search}`;
+      if (current !== outOfRange) {
+        setLocation(outOfRange, { replace: true });
+      }
+      return;
+    }
     const pathname = window.location.pathname;
     const searchNow = window.location.search;
     const normalized = normalizeDailyFixPath(pathname, searchNow);
@@ -166,7 +196,7 @@ export default function TheDailyFixPage({
     if (next !== current) {
       setLocation(next, { replace: true });
     }
-  }, [route, location, search, setLocation]);
+  }, [route, location, search, setLocation, outOfRange]);
 
   useEffect(() => {
     if (route.kind === "invalid" || !fetchIso) {

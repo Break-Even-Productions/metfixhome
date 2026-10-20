@@ -193,12 +193,14 @@ export function resetCommentsCacheForTests(): void {
   commentsCache.clear();
 }
 
-/** Client Retry-After cap (CW13.3): wait = min(value, 600). */
+/** Client Retry-After clamp (CW13.1 / 1.23): all-digit → 1..600; else 60. */
 export function clampClientRetryAfter(raw: string | null): number {
   if (raw == null || raw === "") return 60;
   if (!/^[0-9]+$/.test(raw)) return 60;
   if (raw.length > 3) return 600;
   const n = Number(raw);
-  if (!Number.isFinite(n) || n < 1) return 60;
-  return Math.min(n, 600);
+  if (!Number.isFinite(n)) return 600;
+  if (n < 1) return 1;
+  if (n > 600) return 600;
+  return n;
 }
