@@ -3,12 +3,8 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": [
-      "ES2022"
-    ],
-    "types": [
-      "@cloudflare/workers-types"
-    ],
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -17,21 +13,10 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "paths": {
-      "@shared/*": [
-        "../shared/*"
-      ]
+      "@shared/*": ["../shared/*"]
     },
     "baseUrl": "."
   },
-  "include": [
-    "./**/*.ts",
-    "../shared/daily-fix/**/*.ts"
-  ],
-  "exclude": [
-    "./**/*.test.ts",
-    "./**/*.workers.test.ts",
-    "./test/**",
-    "../shared/**/*.test.ts",
-    "./__fixtures__/**"
-  ]
+  "include": ["./**/*.ts", "../shared/daily-fix/**/*.ts"],
+  "exclude": ["./**/*.test.ts", "./**/*.workers.test.ts", "./test/**", "../shared/**/*.test.ts"]
 }

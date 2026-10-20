@@ -3,7 +3,7 @@
  * Covered by `npm run check:worker` (included by worker/tsconfig).
  */
 import { expectTypeOf } from "vitest";
-import { parseRetryAfter, type RetryAfterSeconds } from "./upstream";
+import { parseRetryAfter, type RetryAfterSeconds } from "../upstream";
 
 expectTypeOf(parseRetryAfter("1")).not.toEqualTypeOf<number>();
 expectTypeOf(parseRetryAfter("1")).toEqualTypeOf<RetryAfterSeconds>();

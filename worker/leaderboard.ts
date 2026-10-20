@@ -2,7 +2,7 @@ import { isIsoDate } from "../shared/daily-fix";
 import { bsiFetchLeaderboard, type Env, type FetchImpl } from "./upstream";
 import { parseCookies, SID_COOKIE, sidCookieClear } from "./auth/cookies";
 import { jsonNoStore, unavailable } from "./auth/http";
-import { loadSession } from "./auth/session";
+import { resolveActingSession } from "./auth/acting";
 
 /** GET /api/daily-fix/leaderboard — signed-in only, no-store. */
 export async function handleLeaderboard(
@@ -19,15 +19,8 @@ export async function handleLeaderboard(
   if (!sid) {
     return jsonNoStore({ error: "signed_out" }, 401, { "Set-Cookie": sidCookieClear() });
   }
-  let loaded: Awaited<ReturnType<typeof loadSession>>;
-  try {
-    loaded = await loadSession(env, sid);
-  } catch {
-    return unavailable();
-  }
-  if (!loaded) {
-    return jsonNoStore({ error: "signed_out" }, 401, { "Set-Cookie": sidCookieClear() });
-  }
+  const ctx = await resolveActingSession(request, env, fetchImpl, opts);
+  if (ctx instanceof Response) return ctx;
 
   const url = new URL(request.url);
   const date = url.searchParams.get("date");
@@ -37,7 +30,7 @@ export async function handleLeaderboard(
   if (!type) return jsonNoStore({ error: "invalid_type" }, 400);
   if (!workoutId) return jsonNoStore({ error: "invalid_request" }, 400);
 
-  const upstream = await bsiFetchLeaderboard(workoutId, loaded.record.bsi_access, env, fetchImpl, {
+  const upstream = await bsiFetchLeaderboard(workoutId, ctx.access, env, fetchImpl, {
     baseUrl: opts?.baseUrl,
     query: { date, type },
   });

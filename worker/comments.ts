@@ -2,7 +2,7 @@
  * Daily Fix comments Worker handlers — GET shaping + write/like routes.
  */
 import { isIsoDate } from "../shared/daily-fix";
-import { publicDisplayName } from "./public-name";
+import { publicDisplayName } from "./auth/public-name";
 import {
   bsiDeleteComment,
   bsiLikeComment,
@@ -16,7 +16,7 @@ import {
 } from "./upstream";
 import { parseCookies, SID_COOKIE, sidCookieClear } from "./auth/cookies";
 import { jsonNoStore, unavailable } from "./auth/http";
-import { loadSession } from "./auth/session";
+import { resolveActingSession, runUserBsiCall } from "./auth/acting";
 import { csrfForSid, timingSafeEqualStr } from "./auth/crypto";
 
 const COMMENT_TYPES = new Set(["belly", "body", "brain", "all"]);
@@ -258,22 +258,12 @@ async function handleCommentsGet(
 async function requireSession(
   request: Request,
   env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
 ): Promise<{ sid: string; access: string; userId: string } | Response> {
-  const cookies = parseCookies(request.headers.get("Cookie"));
-  const sid = cookies[SID_COOKIE];
-  if (!sid) {
-    return jsonNoStore({ error: "signed_out" }, 401, { "Set-Cookie": sidCookieClear() });
-  }
-  let loaded: Awaited<ReturnType<typeof loadSession>>;
-  try {
-    loaded = await loadSession(env, sid);
-  } catch {
-    return unavailable();
-  }
-  if (!loaded) {
-    return jsonNoStore({ error: "signed_out" }, 401, { "Set-Cookie": sidCookieClear() });
-  }
-  return { sid, access: loaded.record.bsi_access, userId: loaded.record.bsi_user_id };
+  const ctx = await resolveActingSession(request, env, fetchImpl, opts);
+  if (ctx instanceof Response) return ctx;
+  return { sid: ctx.sid, access: ctx.access, userId: ctx.record.bsi_user_id };
 }
 
 async function requireCsrf(request: Request, env: Env, sid: string): Promise<Response | null> {
@@ -296,9 +286,9 @@ async function handleCommentPost(
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<Response> {
-  const session = await requireSession(request, env);
-  if (session instanceof Response) return session;
-  const csrf = await requireCsrf(request, env, session.sid);
+  const ctx = await resolveActingSession(request, env, fetchImpl, opts);
+  if (ctx instanceof Response) return ctx;
+  const csrf = await requireCsrf(request, env, ctx.sid);
   if (csrf) return csrf;
 
   let body: { date?: unknown; type?: unknown; content?: unknown; parent_comment_id?: unknown };
@@ -314,20 +304,23 @@ async function handleCommentPost(
     return jsonNoStore({ error: "invalid_request" }, 400);
   }
 
-  const upstream = await bsiPostComment(
-    {
-      date,
-      type,
-      content,
-      parent_comment_id:
-        typeof body.parent_comment_id === "number" ? body.parent_comment_id : undefined,
-    },
-    session.access,
-    env,
-    fetchImpl,
-    opts,
+  const ran = await runUserBsiCall(ctx, env, fetchImpl, opts, (access) =>
+    bsiPostComment(
+      {
+        date,
+        type,
+        content,
+        parent_comment_id:
+          typeof body.parent_comment_id === "number" ? body.parent_comment_id : undefined,
+      },
+      access,
+      env,
+      fetchImpl,
+      opts,
+    ),
   );
-  return mapWriteResponse(upstream, 201);
+  if (ran instanceof Response) return ran;
+  return mapWriteResponse(ran.result, 201);
 }
 
 async function handleCommentPatch(
@@ -337,7 +330,7 @@ async function handleCommentPatch(
   opts: { baseUrl?: string } | undefined,
   id: string,
 ): Promise<Response> {
-  const session = await requireSession(request, env);
+  const session = await requireSession(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
   const csrf = await requireCsrf(request, env, session.sid);
   if (csrf) return csrf;
@@ -360,7 +353,7 @@ async function handleCommentDelete(
   opts: { baseUrl?: string } | undefined,
   id: string,
 ): Promise<Response> {
-  const session = await requireSession(request, env);
+  const session = await requireSession(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
   const csrf = await requireCsrf(request, env, session.sid);
   if (csrf) return csrf;
@@ -378,7 +371,7 @@ async function handleCommentLike(
   opts: { baseUrl?: string } | undefined,
   id: string,
 ): Promise<Response> {
-  const session = await requireSession(request, env);
+  const session = await requireSession(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
   const csrf = await requireCsrf(request, env, session.sid);
   if (csrf) return csrf;
