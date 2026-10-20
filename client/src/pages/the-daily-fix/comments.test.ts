@@ -22,7 +22,7 @@ describe("Daily Fix comments request", () => {
     expect(url).toBe("/api/daily-fix/comments?date=2025-02-10&type=all");
     expect(url).not.toContain("250210");
     expect(url).not.toContain("X-API-Key");
-    expect(url).not.toContain("metfix-bff");
+    expect(url).not.toContain("workers.dev");
   });
 });
 

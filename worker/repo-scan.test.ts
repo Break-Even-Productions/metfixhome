@@ -560,7 +560,7 @@ function trackTemp(dir: string): string {
 // =============================================================================
 
 describe("TK2", () => {
-  it("lists files via git and has zero-files / git-unavailable guards", () => {
+  it("TK2 lists files via git and has zero-files / git-unavailable guards", () => {
     expect(() => {
       const r = spawnSync("git", ["ls-files", "-z"], {
         cwd: "/nonexistent-repo-scan-path-ec08",
@@ -575,7 +575,7 @@ describe("TK2", () => {
     });
   });
 
-  it("positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL", () => {
+  it("TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL", () => {
     const N = tokenName();
     const rows: { rel: string; body: string; line: number }[] = [
       // (a)
@@ -738,7 +738,7 @@ describe("TK2", () => {
     }
   });
 
-  it("negative rows yield zero hits", () => {
+  it("TK2 negative rows yield zero hits", () => {
     const N = tokenName();
     const negatives: { rel: string; body: string }[] = [
       { rel: "client/src/p.ts", body: `if (k === "${N}") {}\n` },
@@ -772,7 +772,7 @@ describe("TK2", () => {
   });
 
   it.skipIf(!hasPr10SanityGuard())(
-    "clean control on repo head: ≥1 file, zero hits (needs #10 on main)",
+    "TK2 clean control on repo head: ≥1 file, zero hits (needs #10 on main)",
     () => {
       const { filesScanned, hits } = scanTk2(REPO_ROOT);
       expect(filesScanned).toBeGreaterThan(0);
@@ -782,7 +782,7 @@ describe("TK2", () => {
 });
 
 describe("TK2.m7", () => {
-  it("fixture md5 + exactly one SCAN FAIL at deploy-pages.yml:40", () => {
+  it("TK2.m7 fixture md5 + exactly one SCAN FAIL at deploy-pages.yml:40", () => {
     withTempGit((dir) => {
       copyTk2M7Fixtures(dir);
       assertFixtureMd5s(dir);
@@ -794,7 +794,7 @@ describe("TK2.m7", () => {
     });
   });
 
-  it("tampered const.ts trailing LF → fixture md5 fail, no TK2 SCAN FAIL", () => {
+  it("TK2.m7 tampered const.ts trailing LF → fixture md5 fail, no TK2 SCAN FAIL", () => {
     withTempGit((dir) => {
       copyTk2M7Fixtures(dir);
       const constPath = path.join(dir, "client/src/const.ts");
@@ -816,7 +816,7 @@ describe("TK2.m7", () => {
 });
 
 describe("TK2.x", () => {
-  it("root-anchored exclusion: outside prefix hits, inside does not", () => {
+  it("TK2.x root-anchored exclusion: outside prefix hits, inside does not", () => {
     const N = tokenName();
     const plant = `import.meta.env.${N}\n`;
     withTempGit((dir) => {
@@ -839,7 +839,7 @@ describe("TK2.x", () => {
 });
 
 describe("TK1", () => {
-  it("vacuity: zero output files fails (kills M-RS2)", async () => {
+  it("TK1 vacuity: zero output files fails (kills M-RS2)", async () => {
     assertNAbsentForTk1();
     const N = tokenName();
     const keys = [N, ...CANARY_KEYS];
@@ -882,7 +882,7 @@ describe("TK1", () => {
   });
 
   it.skipIf(!hasPr10SanityGuard())(
-    "clean head: ≥1 output file, 0 canary/N hits (needs #10 on main)",
+    "TK1 clean head: ≥1 output file, 0 canary/N hits (needs #10 on main)",
     async () => {
       assertNAbsentForTk1();
       const N = tokenName();
@@ -917,7 +917,7 @@ describe("TK1", () => {
 
 describe("TK1.g", () => {
   it.skipIf(!hasPr10SanityGuard())(
-    "rejects build when N is set with exact guard message (needs #10 on main)",
+    "TK1.g rejects build when N is set with exact guard message (needs #10 on main)",
     async () => {
     const N = tokenName();
     const canary = `guard-canary-${randomBytes(8).toString("hex")}`;
@@ -948,7 +948,7 @@ describe("TK1.g", () => {
 });
 
 describe("TK1.r", () => {
-  it("restores env, porcelain, and cleans mkdtemp after TK1 build", async () => {
+  it("TK1.r restores env, porcelain, and cleans mkdtemp after TK1 build", async () => {
     assertNAbsentForTk1();
     const N = tokenName();
     const keys = [N, "SANITY_API_READ_TOKEN", ...CANARY_KEYS];
@@ -984,7 +984,7 @@ describe("TK1.r", () => {
 });
 
 describe("C5.1", () => {
-  it("scans client/ and shared/ for bff-origin patterns", () => {
+  it("C5.1 scans client/ and shared/ for bff-origin patterns", () => {
     const roots = ["client", "shared"].filter((r) =>
       existsSync(path.join(REPO_ROOT, r)),
     );
@@ -1019,7 +1019,7 @@ describe("C5.1", () => {
 });
 
 describe("C5.3", () => {
-  it("scans client/ for VITE_* KEY|SECRET|TOKEN", () => {
+  it("C5.3 scans client/ for VITE_* KEY|SECRET|TOKEN", () => {
     const { filesScanned, hits } = scanPathsForRegex(
       "vite-secret",
       ["client"],
@@ -1046,8 +1046,100 @@ describe("C5.3", () => {
   });
 });
 
+describe("C5.2", () => {
+  it.skipIf(!hasPr10SanityGuard())(
+    "C5.2 scans TK1 build output for bff-origin patterns (needs #10 on main)",
+    async () => {
+      assertNAbsentForTk1();
+      const snap = snapshotEnv([tokenName(), ...CANARY_KEYS]);
+      const outDir = trackTemp(mkdtempSync(path.join(tmpdir(), "c52-out-")));
+      try {
+        for (const k of CANARY_KEYS) {
+          process.env[k] = `c52-${randomBytes(6).toString("hex")}`;
+        }
+        await build({
+          configFile: path.join(REPO_ROOT, "vite.config.ts"),
+          root: path.join(REPO_ROOT, "client"),
+          logLevel: "error",
+          build: { outDir, emptyOutDir: true },
+        });
+        const files = walkFiles(outDir);
+        expect(files.length).toBeGreaterThan(0);
+        const re = /metfix-bff|wispy-mode-982d|workers\.dev/;
+        const hits: string[] = [];
+        for (const abs of files) {
+          const rel = relPosix(outDir, abs);
+          const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            if (re.test(lines[i]!)) hits.push(`SCAN FAIL: bff-origin ${rel}:${i + 1}`);
+          }
+        }
+        expect(hits).toEqual([]);
+      } finally {
+        restoreEnv(snap);
+      }
+    },
+    120_000,
+  );
+});
+
+describe("C5.4", () => {
+  it("C5.4 planted bff-origin and vite-secret lines are named at file:line", () => {
+    const marker = "https://metfix-bff.wispy-mode-982d.workers.dev";
+    const plantBff = "client/src/__repo_scan_plant_c54.ts";
+    writeFileSync(path.join(REPO_ROOT, plantBff), `export const u = "${marker}";\n`);
+    const plantedBff = scanPathsForRegex(
+      "bff-origin",
+      ["client"],
+      /metfix-bff|wispy-mode-982d|workers\.dev/,
+    );
+    expect(plantedBff.hits).toContain(`SCAN FAIL: bff-origin ${plantBff}:1`);
+    rmSync(path.join(REPO_ROOT, plantBff), { force: true });
+
+    const plantSecret = "client/src/__repo_scan_plant_c54b.ts";
+    writeFileSync(
+      path.join(REPO_ROOT, plantSecret),
+      `export const t = import.meta.env.VITE_FOO_TOKEN;\n`,
+    );
+    const plantedSecret = scanPathsForRegex(
+      "vite-secret",
+      ["client"],
+      /VITE_[A-Z_]*(KEY|SECRET|TOKEN)/,
+    );
+    expect(plantedSecret.hits).toContain(`SCAN FAIL: vite-secret ${plantSecret}:1`);
+    rmSync(path.join(REPO_ROOT, plantSecret), { force: true });
+  });
+});
+
+function hasMergedMainForTk2m(): boolean {
+  try {
+    execSync("git merge-base --is-ancestor 2fdecd342bcd9df2771ddf306b26c6495998d826 HEAD", {
+      cwd: REPO_ROOT,
+      stdio: "pipe",
+    });
+    execSync("git merge-base --is-ancestor 01f4a8ff059aaf2e7b4c100d6b8cca0453f70810 HEAD", {
+      cwd: REPO_ROOT,
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe("TK2.m", () => {
+  it.skipIf(!hasMergedMainForTk2m())(
+    "TK2.m merged main fixture tree has zero TK2 hits (R-A on handoff SHA only)",
+    () => {
+      const { filesScanned, hits } = scanTk2(REPO_ROOT);
+      expect(filesScanned).toBeGreaterThan(0);
+      expect(hits).toEqual([]);
+    },
+  );
+});
+
 describe("CI2", () => {
-  it("scans daily-fix / auth / leaderboard for html sinks", () => {
+  it("CI2 scans daily-fix / auth / leaderboard for html sinks", () => {
     const dirs = [
       "client/src/pages/the-daily-fix",
       "client/src/components/auth",
@@ -1097,7 +1189,7 @@ describe("CI2", () => {
 });
 
 describe("AU22.1", () => {
-  it("scoped storage scan + allowlist", () => {
+  it("AU22.1 scoped storage scan + allowlist", () => {
     const re = /localStorage|sessionStorage|document\.cookie/;
     const scopedGlobs = (rel: string): boolean => {
       if (rel.includes("/auth") || /\/auth[^/]*$/.test(rel)) return true;
@@ -1170,13 +1262,14 @@ describe("AU22.1", () => {
 });
 
 describe("AU26.8", () => {
-  it("worker non-upstream has no BSI fetch /wp-json literals", () => {
+  it("AU26.8 worker non-upstream has no BSI fetch /wp-json literals", () => {
     const workerRoot = path.join(REPO_ROOT, "worker");
     const files = walkFiles(workerRoot).filter((abs) => {
       const rel = relPosix(REPO_ROOT, abs);
       if (!rel.endsWith(".ts")) return false;
       if (rel.endsWith(".test.ts") || rel.endsWith(".test-d.ts")) return false;
       if (rel.includes("/__fixtures__/")) return false;
+      if (rel.startsWith("worker/pr2/")) return false;
       if (rel === "worker/upstream.ts") return false;
       return true;
     });

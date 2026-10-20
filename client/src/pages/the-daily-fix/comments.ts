@@ -25,7 +25,7 @@ function commentsHttp(
   return moduleFetch(input, init);
 }
 
-/** Same-origin comments proxy. No key, no VITE_ override, no metfix-bff host. */
+/** Same-origin comments proxy. No key, no VITE_ override, no external BFF host. */
 export function dailyFixCommentsRequestUrl(isoDate: string): string {
   const params = new URLSearchParams({ date: isoDate, type: "all" });
   return `/api/daily-fix/comments?${params.toString()}`;
