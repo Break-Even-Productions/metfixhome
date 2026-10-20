@@ -7,9 +7,9 @@ import type { Env, FetchImpl } from "../upstream";
 import { LoginThrottleDO } from "../do/login-throttle";
 import { OauthStateDO } from "../do/oauth-state";
 import { SessionDO } from "../do/session";
-import { bytesToBase64Url, csrfForSid, randomBytes } from "../auth/crypto";
-import { SID_COOKIE, PRE_COOKIE } from "../auth/cookies";
-import { sessKvKey, sessionAad, sessionKeyHex } from "../auth/session";
+import { bytesToBase64Url, csrfForSid, randomBytes } from "./crypto";
+import { SID_COOKIE, PRE_COOKIE } from "./cookies";
+import { sessKvKey, sessionAad, sessionKeyHex } from "./session";
 
 export { sessKvKey };
 

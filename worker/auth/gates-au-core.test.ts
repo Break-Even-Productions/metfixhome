@@ -13,9 +13,9 @@ import {
   sessionBlob,
   setupAuthHooks,
   sidHex,
-} from "./auth-harness";
-import { encryptSessionPayload } from "../auth/crypto";
-import { sessionAad } from "../auth/session";
+} from "./realauth-harness";
+import { encryptSessionPayload } from "./crypto";
+import { sessionAad } from "./session";
 
 setupAuthHooks();
 
