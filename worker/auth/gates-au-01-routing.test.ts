@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ORIGIN, createHarness, leakFree, setupAuthHooks } from "./realauth-harness";
+import { ORIGIN, createHarness, leakFree, setupAuthHooks } from "./realauth-harness.test";
 
 setupAuthHooks();
 

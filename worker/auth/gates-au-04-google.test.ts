@@ -7,7 +7,7 @@ import {
   ORIGIN,
   createHarness,
   setupAuthHooks,
-} from "./realauth-harness";
+} from "./realauth-harness.test";
 import { sha256Hex, bytesToBase64Url, randomBytes } from "./crypto";
 
 setupAuthHooks();

@@ -15,7 +15,7 @@ import {
   seedSession,
   useGateHooks,
   type GateCtx,
-} from "./auth/comment-write-harness";
+} from "./auth/comment-write-harness.test";
 import { resetLeaderboardLimiters } from "./leaderboard";
 import { publicDisplayName } from "./auth/public-name";
 

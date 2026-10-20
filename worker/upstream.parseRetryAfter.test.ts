@@ -3,6 +3,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseRetryAfter } from "./upstream";
 
+const REPO = process.cwd().endsWith("/client") ? join(process.cwd(), "..") : process.cwd();
+
 describe("AU26.11 parseRetryAfter", () => {
   it("AU26.11 clamps all-digit values to 1..600", () => {
     expect(parseRetryAfter("0")).toBe(1);
@@ -35,7 +37,7 @@ describe("AU26.11 parseRetryAfter", () => {
   });
 
   it("AU26.11 single parseRetryAfter definition in worker/**", () => {
-    const root = join(process.cwd(), "worker");
+    const root = join(REPO, "worker");
     const defs: string[] = [];
     const walk = (dir: string) => {
       for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -49,11 +51,22 @@ describe("AU26.11 parseRetryAfter", () => {
         if (ent.name.endsWith(".test.ts") || ent.name.endsWith(".test-d.ts")) continue;
         const text = readFileSync(p, "utf8");
         if (/export\s+function\s+parseRetryAfter\b/.test(text) || /function\s+parseRetryAfter\b/.test(text)) {
-          defs.push(p.replace(process.cwd() + "/", ""));
+          defs.push(p.replace(REPO + "/", ""));
         }
       }
     };
     walk(root);
     expect(defs).toEqual(["worker/upstream.ts"]);
+  });
+
+  it("AU26.11 shared parser wired through bsiFetch, login, and comment writes", () => {
+    const upstream = readFileSync(join(REPO, "worker/upstream.ts"), "utf8");
+    const login = readFileSync(join(REPO, "worker/auth/login.ts"), "utf8");
+    const comments = readFileSync(join(REPO, "worker/comments.ts"), "utf8");
+    expect(upstream).toMatch(
+      /const retryAfter = raRaw != null \? parseRetryAfter\(raRaw\) : null;/,
+    );
+    expect(login).toMatch(/parseRetryAfter\(/);
+    expect(comments).toMatch(/parseRetryAfter\(/);
   });
 });

@@ -502,7 +502,7 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": String(ra) });
   }`,
         `  if (status === 429 || code === "rate_limited") {
-    // MUTANT M-WL6: replace BSI Retry-After with 60
+    // MUTANT M-WL6: replace BSI Retry-After with 60 (skip parseRetryAfter)
     return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": "60" });
   }`,
         "M-WL6",
@@ -640,9 +640,18 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
   "M-WL16": {
     files: ["worker/auth/login.ts"],
     apply() {
+      // Map-by-status before code-specific 401 handling (catalog: every 401 → 503).
       replaceOnce(
         "worker/auth/login.ts",
-        `  if (status === 401 && code === "forbidden") {
+        `  if (code === "invalid_credentials" || code === "login_disabled") {
+    await failR8a(env, identifier);
+    return authJson(BODY_INVALID_LOGIN, 401);
+  }
+  if (code === "client_not_allowed") {
+    console.log("bsi_client_not_allowed", await sha256Prefix12(identifier));
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
+  }
+  if (status === 401 && code === "forbidden") {
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   }
   if (status === 401 && code === "invalid_credentials") {
@@ -651,8 +660,16 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
   }
   return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
 }`,
-        `  // MUTANT M-WL16: every 401 → 503 unavailable
+        `  // MUTANT M-WL16: every 401 → 503 unavailable (by status, not code)
   if (status === 401) {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
+  }
+  if (code === "invalid_credentials" || code === "login_disabled") {
+    await failR8a(env, identifier);
+    return authJson(BODY_INVALID_LOGIN, 401);
+  }
+  if (code === "client_not_allowed") {
+    console.log("bsi_client_not_allowed", await sha256Prefix12(identifier));
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   }
   return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
@@ -680,8 +697,11 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     upstream.kind === "throw" ||
     upstream.kind === "bad_json"
   ) {
-    // MUTANT M-WL17
-    console.error("web-login failed", "upstream-body", { identifier, password: "x" });
+    // MUTANT M-WL17: log upstream/request material on BSI failure
+    console.error("web-login failed", upstream.kind === "bad_json" ? upstream.bodyText : "upstream-body", {
+      identifier,
+      password: identifier,
+    });
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   }`,
         "M-WL17",
@@ -689,8 +709,15 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     },
   },
   "M-RA1": {
-    files: ["worker/auth/login.ts"],
+    files: ["worker/upstream.ts", "worker/auth/login.ts"],
     apply() {
+      // Pass raw Retry-After through bsiFetch (unclamped) so login echoes BSI bytes.
+      replaceOnce(
+        "worker/upstream.ts",
+        "    const retryAfter = raRaw != null ? parseRetryAfter(raRaw) : null;",
+        "    // MUTANT M-RA1: unclamped pass-through (login path uses String(retryAfter))\n    const retryAfter = raRaw != null ? (Number(raRaw) as RetryAfterSeconds) : null;",
+        "M-RA1-fetch",
+      );
       replaceOnce(
         "worker/auth/login.ts",
         `  if (status === 429 || code === "rate_limited") {
@@ -698,17 +725,30 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": String(ra) });
   }`,
         `  if (status === 429 || code === "rate_limited") {
-    // MUTANT M-RA1: pass BSI Retry-After through unclamped
-    const raw = retryAfter != null ? String(retryAfter) : "60";
-    return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": raw });
+    // MUTANT M-RA1: echo upstream value (no parseRetryAfter clamp)
+    const ra = retryAfter != null ? retryAfter : 60;
+    return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": String(ra) });
   }`,
-        "M-RA1",
+        "M-RA1-login",
       );
     },
   },
   "M-RA2": {
-    files: ["worker/comments.ts"],
+    files: ["worker/upstream.ts", "worker/comments.ts"],
     apply() {
+      // Comment URLs only: skip shared parser (login untouched).
+      replaceOnce(
+        "worker/upstream.ts",
+        "    const retryAfter = raRaw != null ? parseRetryAfter(raRaw) : null;",
+        `    // MUTANT M-RA2: unclamped on comment write/like URLs only
+    const retryAfter =
+      raRaw != null
+        ? url.includes("/comments")
+          ? (Number(raRaw) as RetryAfterSeconds)
+          : parseRetryAfter(raRaw)
+        : null;`,
+        "M-RA2-fetch",
+      );
       replaceOnce(
         "worker/comments.ts",
         `  if (upstream.kind === "rate_limited") {
@@ -717,17 +757,29 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": String(ra) });
   }`,
         `  if (upstream.kind === "rate_limited") {
-    // MUTANT M-RA2: unclamped RA on comment writes
+    // MUTANT M-RA2: no shared parseRetryAfter on comment writes
     const ra = upstream.retryAfter ?? 60;
     return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": String(ra) });
   }`,
-        "M-RA2",
+        "M-RA2-comments",
       );
     },
   },
   "M-RA3": {
-    files: ["worker/comments.ts"],
+    files: ["worker/upstream.ts", "worker/comments.ts"],
     apply() {
+      replaceOnce(
+        "worker/upstream.ts",
+        "    const retryAfter = raRaw != null ? parseRetryAfter(raRaw) : null;",
+        `    // MUTANT M-RA3: stash raw header for comment-local parseInt
+    const retryAfter =
+      raRaw != null
+        ? url.includes("/comments")
+          ? (raRaw as unknown as RetryAfterSeconds)
+          : parseRetryAfter(raRaw)
+        : null;`,
+        "M-RA3-fetch",
+      );
       replaceOnce(
         "worker/comments.ts",
         `  if (upstream.kind === "rate_limited") {
@@ -736,11 +788,11 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": String(ra) });
   }`,
         `  if (upstream.kind === "rate_limited") {
-    // MUTANT M-RA3: local parseInt, no clamp
+    // MUTANT M-RA3: local parseInt, no clamp/grammar
     const ra = Number.parseInt(String(upstream.retryAfter ?? "60"), 10) || 60;
     return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": String(ra) });
   }`,
-        "M-RA3",
+        "M-RA3-comments",
       );
     },
   },
@@ -799,14 +851,13 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
   const body = parsed.json as Record<string, unknown>;
   const content = validateContent(body.content);`,
         `  if (!COMMENT_ID_RE.test(id)) return jsonNoStore({ error: "not_found" }, 404);
-  // MUTANT M-CW1: skip session check
+  // MUTANT M-CW1: skip session (+ CSRF, which requires a real sid)
   const session = {
     access: "mutant",
     sid: "mutant",
     record: { bsi_user_id: "0" },
   } as ActingContext;
-  const csrf = await requireCsrf(request, env, session.sid);
-  if (csrf) return csrf;
+  void requireCsrf;
 
   const parsed = await readJsonBodyLimited(request);
   if (parsed instanceof Response) return parsed;
@@ -1038,34 +1089,21 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     bsiDeleteComment(id, access, env, fetchImpl, opts),
   );`,
         `  const date = dateFromRequest(request);
-  // MUTANT M-CW12: upstream id from body over URL
-  const bodyId = (() => {
-    try {
-      return id;
-    } catch {
-      return id;
+  // MUTANT M-CW12: upstream id from JSON body over URL
+  let bodyId = id;
+  try {
+    const j = (await request.clone().json()) as { comment_id?: unknown; id?: unknown };
+    if (j && typeof j === "object") {
+      const cand = j.comment_id ?? j.id;
+      if (cand != null && String(cand) !== "") bodyId = String(cand);
     }
-  })();
+  } catch {
+    /* keep URL id */
+  }
   const ran = await runUserBsiCall(session, env, fetchImpl, opts, (access) =>
     bsiDeleteComment(bodyId, access, env, fetchImpl, opts),
   );`,
         "M-CW12",
-      );
-      // Stronger: read id from a synthetic body field if present via query
-      replaceOnce(
-        "worker/comments.ts",
-        `  // MUTANT M-CW12: upstream id from body over URL
-  const bodyId = (() => {
-    try {
-      return id;
-    } catch {
-      return id;
-    }
-  })();`,
-        `  // MUTANT M-CW12: upstream id from body over URL
-  const urlObj = new URL(request.url);
-  const bodyId = urlObj.searchParams.get("id") || id;`,
-        "M-CW12b",
       );
     },
   },
@@ -1199,17 +1237,14 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     },
   },
   "M-CW22": {
-    files: ["worker/comments.ts"],
+    files: ["worker/upstream.ts"],
     apply() {
+      // Catalog: omit `liked` when true on like upstream body (CW15.1).
       replaceOnce(
-        "worker/comments.ts",
-        `  if (opts?.includeLiked === true && typeof t.liked === "boolean") {
-    row.liked = t.liked;
-  }`,
-        `  // MUTANT M-CW22: omit liked when true
-  if (opts?.includeLiked === true && typeof t.liked === "boolean" && t.liked !== true) {
-    row.liked = t.liked;
-  }`,
+        "worker/upstream.ts",
+        "      body: JSON.stringify({ liked }),",
+        `      // MUTANT M-CW22: omit liked when true
+      body: JSON.stringify(liked === true ? {} : { liked }),`,
         "M-CW22",
       );
     },
@@ -1427,6 +1462,10 @@ function buildGateIndex() {
       "worker/upstream.parseRetryAfter.test.ts",
       "worker/auth/gates-au-06-weblogin.test.ts",
     ],
+    "CW12.2": [
+      "worker/upstream.normalizeCanModerate.test.ts",
+      "worker/auth/gates-au-core.test.ts",
+    ],
     "CT-P1": ["client/src/pages/the-daily-fix/CommentThread.test.tsx"],
   };
   for (const [id, files] of Object.entries(extras)) {
@@ -1438,6 +1477,17 @@ function buildGateIndex() {
 
 function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** True when `title` contains gate `id` not as a prefix of a longer id (AU17.1 vs AU17.11). */
+function titleHasGateId(title, id) {
+  const re = new RegExp(`(^|[^A-Za-z0-9.])${escapeRe(id)}([^A-Za-z0-9.]|$)`);
+  return re.test(title);
+}
+
+/** Vitest `-t` pattern: match gate ids without prefixing longer siblings. */
+function redSetNamePattern(red) {
+  return red.map((id) => `(^|[^A-Za-z0-9.])${escapeRe(id)}([^A-Za-z0-9.]|$)`).join("|");
 }
 
 function runCmd(cmd, cmdArgs, opts = {}) {
@@ -1468,37 +1518,24 @@ function parseFailedGateIds(output, expected) {
   const failed = new Set();
   const lines = output.split(/\r?\n/);
   for (const line of lines) {
-    // vitest FAIL lines / assertion failures often include the test name
-    if (!/FAIL|×|x |AssertionError|FAIL\s/i.test(line) && !/✓|PASS/.test(line)) {
-      // still scan for expected ids near failure context
-    }
+    if (!/FAIL|×|x |AssertionError|FAIL\s/i.test(line)) continue;
     for (const id of expected) {
-      if (line.includes(id) && /FAIL|×|AssertionError|expected|toBe|toThrow|toMatch/i.test(line)) {
-        failed.add(id);
-      }
+      if (titleHasGateId(line, id)) failed.add(id);
     }
   }
   // Vitest summary: "FAIL  path > title"
   for (const m of output.matchAll(/FAIL\s+\S+\s+>\s+([^\n]+)/g)) {
     const title = m[1];
     for (const id of expected) {
-      if (title.includes(id)) failed.add(id);
+      if (titleHasGateId(title, id)) failed.add(id);
     }
   }
   // Also: "× title" or "x title"
   for (const m of output.matchAll(/[×x]\s+([^\n]+)/g)) {
     const title = m[1];
     for (const id of expected) {
-      if (title.includes(id)) failed.add(id);
+      if (titleHasGateId(title, id)) failed.add(id);
     }
-  }
-  // JSON reporter fallback: look for "failed" near test names
-  for (const id of expected) {
-    const re = new RegExp(
-      `(?:FAIL|failed|×).{0,120}${escapeRe(id)}|${escapeRe(id)}.{0,120}(?:FAIL|failed|×|AssertionError)`,
-      "i",
-    );
-    if (re.test(output)) failed.add(id);
   }
   return [...failed].sort();
 }
@@ -1512,7 +1549,7 @@ function runRedSet(red, gateIndex, { typeCheck = false } = {}) {
     else for (const f of set) files.add(f);
   }
 
-  const pattern = red.map(escapeRe).join("|");
+  const pattern = redSetNamePattern(red);
   const fileArgs = [...files];
   let vitest;
   if (fileArgs.length === 0) {

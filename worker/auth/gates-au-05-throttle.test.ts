@@ -12,7 +12,7 @@ import {
   TOK,
   createHarness,
   setupAuthHooks,
-} from "./realauth-harness";
+} from "./realauth-harness.test";
 import { r8aName, r8bName, R8C_NAME } from "./throttle";
 
 setupAuthHooks();
@@ -253,8 +253,10 @@ describe("AU17", () => {
     expect(ok).toBe(25);
     expect(limited).toBe(15);
     expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(25);
-    const loginSrc = readFileSync(join(process.cwd(), "worker/auth/login.ts"), "utf8");
-    expect(loginSrc).not.toMatch(/RATE_LIMIT|\.limit\(/);
+    const repo = process.cwd().endsWith("/client") ? join(process.cwd(), "..") : process.cwd();
+    const loginSrc = readFileSync(join(repo, "worker/auth/login.ts"), "utf8");
+    // Word-bounded: BODY_RATE_LIMITED is allowed; bare RATE_LIMIT / .limit( are not.
+    expect(loginSrc).not.toMatch(/\bRATE_LIMIT\b|\.limit\(/);
   });
 
   it("AU17.12 wrangler + Env LOGIN_THROTTLE", async () => {

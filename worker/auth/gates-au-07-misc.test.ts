@@ -23,7 +23,7 @@ import {
   hOk,
   leakFree,
   setupAuthHooks,
-} from "./realauth-harness";
+} from "./realauth-harness.test";
 import { csrfForPre, csrfForSid, timingSafeEqualStr } from "./crypto";
 
 setupAuthHooks();
@@ -682,6 +682,7 @@ describe("AU20", () => {
       }
       const banned = [PW, ACCESS1, REFRESH1, CODE, BRIDGE, EMAIL, KEY, RSECRET, TOK];
       for (const line of lines) {
+        expect(line).not.toMatch(/web-login failed/i);
         for (const b of banned) {
           expect(line).not.toContain(b);
         }

@@ -11,7 +11,7 @@ import {
   sessionBlob,
   setupAuthHooks,
   sidHex,
-} from "./realauth-harness";
+} from "./realauth-harness.test";
 import {
   bytesToBase64Url,
   decryptSessionPayload,

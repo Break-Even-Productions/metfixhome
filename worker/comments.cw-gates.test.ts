@@ -18,7 +18,7 @@ import {
   seedSession,
   setupGate,
   useGateHooks,
-} from "./auth/comment-write-harness";
+} from "./auth/comment-write-harness.test";
 
 useGateHooks();
 
@@ -121,6 +121,18 @@ describe("PR2 gates CW — comment write/like", () => {
       expect(res?.status).toBe(404);
       expect(g.fetchMock).toHaveBeenCalledTimes(0);
     }
+    // Valid id must still send session Bearer (kills key-only like / M-CW13).
+    let auth = "";
+    g.fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      auth = new Headers(init?.headers).get("Authorization") ?? "";
+      return Response.json({ liked: true, like_count: 1 });
+    });
+    await callComments(g, `/api/daily-fix/comments/101/like${DATE_Q}`, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify({ liked: true }),
+    });
+    expect(auth).toBe(`Bearer ${ACCESS1}`);
   });
 
   it("CW4.1 body/query owner fields and Authorization EVIL never reach BSI", async () => {
@@ -157,6 +169,18 @@ describe("PR2 gates CW — comment write/like", () => {
     expect(parsed.user_id).toBeUndefined();
     expect(parsed.author).toBeUndefined();
     expect(parsed.owner).toBeUndefined();
+    expect(auth).toBe(`Bearer ${ACCESS1}`);
+
+    // DELETE must also use session Bearer (never key-only / client EVIL).
+    auth = "";
+    g.fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      auth = new Headers(init?.headers).get("Authorization") ?? "";
+      return Response.json({ deleted: true }, { status: 200 });
+    });
+    await callComments(g, `/api/daily-fix/comments/101${DATE_Q}`, {
+      method: "DELETE",
+      headers: { ...H_OK(s), Authorization: "Bearer EVIL" },
+    });
     expect(auth).toBe(`Bearer ${ACCESS1}`);
   });
 

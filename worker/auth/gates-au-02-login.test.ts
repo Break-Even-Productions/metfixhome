@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CID, IP, KEY, PW, TOK, createHarness, leakFree, sessKvKey, setupAuthHooks, sidHex } from "./realauth-harness";
+import { CID, IP, KEY, PW, TOK, createHarness, leakFree, sessKvKey, setupAuthHooks, sidHex } from "./realauth-harness.test";
 
 setupAuthHooks();
 

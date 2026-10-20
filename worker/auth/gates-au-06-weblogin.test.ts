@@ -17,7 +17,7 @@ import {
   createHarness,
   leakFree,
   setupAuthHooks,
-} from "./realauth-harness";
+} from "./realauth-harness.test";
 import { r8aName, r8bName, R8C_NAME } from "./throttle";
 
 setupAuthHooks();
@@ -346,21 +346,21 @@ describe("AU26.6", () => {
 
 describe("AU26.7", () => {
   it("AU26.7 key-ceiling vs per-username 429 byte-identical", async () => {
-    const cases: Array<string | null> = [
-      "17",
-      "600",
-      "99999",
-      "999999",
-      "1000000",
-      "123456789012345678901234567890",
-      "1".repeat(400),
-      "1.5",
-      "1e30",
-      "Wed, 21 Oct 2026 07:28:00 GMT",
-      "abc",
-      null,
+    const cases: Array<[string | null, string]> = [
+      ["17", "17"],
+      ["600", "600"],
+      ["99999", "600"],
+      ["999999", "600"],
+      ["1000000", "600"],
+      ["123456789012345678901234567890", "600"],
+      ["1".repeat(400), "600"],
+      ["1.5", "60"],
+      ["1e30", "60"],
+      ["Wed, 21 Oct 2026 07:28:00 GMT", "60"],
+      ["abc", "60"],
+      [null, "60"],
     ];
-    for (const ra of cases) {
+    for (const [ra, expectRa] of cases) {
       const mk = (label: string) => () =>
         new Response(JSON.stringify({ code: "rate_limited", message: `BSI_${label}_MSG` }), {
           status: 429,
@@ -377,6 +377,7 @@ describe("AU26.7", () => {
       expect(t1).toBe(t2);
       expect(t1).toBe(JSON.stringify({ error: "rate_limited" }));
       expect(r1.headers.get("Retry-After")).toBe(r2.headers.get("Retry-After"));
+      expect(r1.headers.get("Retry-After")).toBe(expectRa);
       expect(t1).not.toContain("BSI_");
     }
   });

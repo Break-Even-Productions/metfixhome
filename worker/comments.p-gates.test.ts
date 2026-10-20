@@ -18,7 +18,7 @@ import {
   seedSession,
   setupGate,
   useGateHooks,
-} from "./auth/comment-write-harness";
+} from "./auth/comment-write-harness.test";
 
 useGateHooks();
 

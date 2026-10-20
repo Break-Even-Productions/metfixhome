@@ -13,7 +13,7 @@ import {
   sessionBlob,
   setupAuthHooks,
   sidHex,
-} from "./realauth-harness";
+} from "./realauth-harness.test";
 import { encryptSessionPayload } from "./crypto";
 import { sessionAad } from "./session";
 
@@ -132,16 +132,21 @@ describe("ENC", () => {
 
 describe("AU16", () => {
   it("AU16.1 invalid_login", async () => {
-    const h = createHarness({
-      webLogin: () => Response.json({ code: "invalid_credentials" }, { status: 401 }),
-    });
-    const { csrf: token, setCookie } = await h.csrf();
-    const res = await h.call("/api/auth/login", {
-      method: "POST",
-      headers: { Origin: ORIGIN, "X-CSRF-Token": token, Cookie: setCookie?.split(";")[0] ?? "" },
-      body: JSON.stringify({ identifier: "j", password: "p", recaptcha: "t" }),
-    });
-    expect(await res.json()).toStrictEqual({ error: "invalid_login" });
+    const cases: Array<() => Response> = [
+      () => Response.json({ code: "invalid_credentials" }, { status: 401 }),
+      () => Response.json({ code: "login_disabled" }, { status: 403 }),
+    ];
+    for (const webLogin of cases) {
+      const h = createHarness({ webLogin });
+      const { csrf: token, setCookie } = await h.csrf();
+      const res = await h.call("/api/auth/login", {
+        method: "POST",
+        headers: { Origin: ORIGIN, "X-CSRF-Token": token, Cookie: setCookie?.split(";")[0] ?? "" },
+        body: JSON.stringify({ identifier: "j", password: "p", recaptcha: "t" }),
+      });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toStrictEqual({ error: "invalid_login" });
+    }
   });
 });
 
