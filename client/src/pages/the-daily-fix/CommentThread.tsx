@@ -17,8 +17,8 @@ import {
 import { JoinModal } from "./JoinModal";
 import { PILLARS, pillarLabel, type Pillar } from "./model";
 
-/** Bound at module load — day-data spies ignore write traffic (CC1). */
-const commentsHttp: typeof fetch = globalThis.fetch.bind(globalThis);
+/** Indirect binding so tests can stub `globalThis.fetch` (P7.2). */
+const commentsHttp: typeof fetch = (...args) => globalThis.fetch(...args);
 
 type CommentThreadProps = {
   load: CommentsLoadState;
@@ -218,7 +218,7 @@ export function CommentThread({
                 <span className="df-comment-pillar">{pillarLabel(comment.pillar)}</span>
               </div>
               <p className="df-comment-body">{comment.content}</p>
-              {loggedIn && canModerate(comment) ? (
+              {loggedIn && comment.deleted === 0 && canModerate(comment) ? (
                 <div className="df-comment-controls">
                   <button type="button" className="df-comment-control" disabled={locked}>
                     Edit
@@ -228,7 +228,7 @@ export function CommentThread({
                   </button>
                 </div>
               ) : null}
-              {loggedIn ? (
+              {loggedIn && comment.deleted === 0 ? (
                 <button type="button" className="df-comment-control" disabled={locked}>
                   Like{typeof comment.like_count === "number" ? ` (${comment.like_count})` : ""}
                 </button>

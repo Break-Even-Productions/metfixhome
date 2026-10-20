@@ -38,6 +38,7 @@ export default defineConfig({
       "src/**/*.test.tsx",
       "../shared/**/*.test.ts",
       "../worker/**/*.test.ts",
+      "../worker/**/*.test.tsx",
     ],
     exclude: ["../worker/**/*.workers.test.ts", "**/node_modules/**"],
   },

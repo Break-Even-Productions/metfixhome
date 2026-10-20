@@ -327,7 +327,7 @@ export async function fetchDailyFixComments(
   type: CommentType,
   env: Env,
   fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string },
+  opts?: { baseUrl?: string; accessToken?: string },
 ): Promise<CommentsUpstream> {
   if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
 
@@ -340,9 +340,13 @@ export async function fetchDailyFixComments(
   }
 
   try {
+    const headers =
+      opts?.accessToken
+        ? bsiBearerHeaders(env.DAILY_FIX_API_KEY, opts.accessToken)
+        : bsiGetHeaders(env.DAILY_FIX_API_KEY);
     const response = await fetchImpl(url, {
       method: "GET",
-      headers: bsiGetHeaders(env.DAILY_FIX_API_KEY),
+      headers,
       signal: AbortSignal.timeout(3000),
     });
     if (response.status === 400) return { kind: "bad_request" };

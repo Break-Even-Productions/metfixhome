@@ -116,6 +116,7 @@ export async function resolveActingSession(
   }
 
   let record = loaded.record;
+  if (!record.bsi_access) return unavailable();
   try {
     const refreshed = await refreshIfNeeded(env, sid, record, fetchImpl, opts);
     if (!refreshed) return sessionExpired(env, sid);
