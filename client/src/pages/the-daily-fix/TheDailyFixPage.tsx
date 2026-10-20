@@ -146,39 +146,23 @@ export default function TheDailyFixPage({
     loadJakartaSans();
   }, []);
 
-  // R5 / C6.1: one `/me` per app load. Skip setState when still signed_out (CC1 C5).
-  useEffect(() => {
-    let active = true;
-    void loadMe().then((next) => {
-      if (!active) return;
-      setMe((prev) => {
-        if (prev.status === "signed_out" && next.status === "signed_out") return prev;
-        if (
-          prev.status === "signed_in" &&
-          next.status === "signed_in" &&
-          prev.public_name === next.public_name &&
-          prev.moderator === next.moderator
-        ) {
-          return prev;
-        }
-        return next;
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   // Normalize path/query (date forms, path pillars, bad tabs) via shared normalizer.
+  // Canonicalize from the address bar (not `route` params) so in-app Link navigations
+  // are not reverted when comments/`/me` re-renders briefly with stale params (CC1/C5).
   useEffect(() => {
     if (route.kind === "invalid") return;
-    const normalized = normalizeDailyFixPath(window.location.pathname, window.location.search);
+    const pathname = window.location.pathname;
+    const searchNow = window.location.search;
+    const normalized = normalizeDailyFixPath(pathname, searchNow);
     if (normalized.kind === "redirect") {
       setLocation(normalized.location, { replace: true });
       return;
     }
-    const next = dailyFixCanonicalUrl(route, window.location.search);
-    const current = `${window.location.pathname}${window.location.search}`;
+    const fromBar = parseDailyFixLocation(`${pathname}${searchNow}`);
+    if (fromBar.kind === "invalid") return;
+    const next = dailyFixCanonicalUrl(fromBar, searchNow);
+    const current = `${pathname}${searchNow}`;
     if (next !== current) {
       setLocation(next, { replace: true });
     }
