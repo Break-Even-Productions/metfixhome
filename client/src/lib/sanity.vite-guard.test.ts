@@ -297,15 +297,18 @@ function mutateConfig(
     );
   }
   if (kind === "or-fallback") {
+    if (/from\s+["']node:fs["']/.test(source)) {
+      throw new Error("or-fallback: config already imports fs");
+    }
     const fallback = [
       `let fileValue = "";`,
       `  try {`,
-      `    const match = fs.readFileSync(path.join(envDir, ".env"), "utf8").match(/^${NAME}=(.*)$/m);`,
+      `    const match = readFileSync(path.join(envDir, ".env"), "utf8").match(/^${NAME}=(.*)$/m);`,
       `    if (match) fileValue = match[1];`,
-      `  } catch {}`,
+      `  } catch (e) { if (e.code !== "ENOENT") throw e; }`,
       `  const sanityReadToken = String(process.env.${NAME} || fileValue || "").trim();`,
     ].join("\n");
-    return source.replace(guardBlock, fallback);
+    return `import { readFileSync } from "node:fs";\n${source.replace(guardBlock, fallback)}`;
   }
   if (kind === "console-error-before-throw") {
     return source.replace(

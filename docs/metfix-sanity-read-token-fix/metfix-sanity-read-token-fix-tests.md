@@ -1,4 +1,6 @@
-# metfix.org: Sanity read-token removal — QA test list (rev 1.6.2, final test scope + Web Lead round-6 ruling)
+# metfix.org: Sanity read-token removal — QA test list (rev 1.6.5, K8(a) exact-line exclusion, spec 1.1.7)
+- Rev 1.6.5, 2026-10-20 ~10:40 AM PT. Spec pointer moves to **rev 1.1.7, md5 `dbc8681d1fc53bb07cc7649882a29529`** (23,479 bytes; copy `metfix-sanity-read-token-fix-acceptance.rev1.1.7.md` identical). Diff vs 1.1.6 (`0255561f`): rev note + K8(a) only. Rev 1.6.4 (`812fd59d64f350b28865f15f9a08fc7e`) kept at `metfix-sanity-read-token-fix-tests.r1.6.4.md`. Change: K8.1 re-cut to the exact full-line exclusion (no file excluded) with mutations M-K8a…M-K8e, each red set {K8.1}. Stronger than 1.6.4 (the whole-file hole is closed). Nothing else changed.
+- Rev 1.6.4, 2026-10-20 ~10:45 AM PT. Spec pointer moves to **rev 1.1.6, md5 `0255561fc2419bc89d5b725bf988426e`** (verified; diff vs 1.1.5: K1 by content anchors, K8(a) exact-path exclusion of `client/src/lib/sanity.vite-guard.test.ts` printed, K9 = 9 tests; nothing else). Pre-edit copy (`b902ea7c…`) kept at `metfix-sanity-read-token-fix-tests.r1.6.3-pre-1.1.6.md`. Rows re-cut: K1.1, K1.5, K1.6, K1.7 (content anchors; `ci.yml:47` was this list's own pin, not the doc's), K8.1 (exclusion + production 0-hit check), K9 added as an item, D1 retargeted. Strength: K1 is stricter (exact full-line anchors, exactly one line each, total 5). K9 is stricter (≥9, was 8). K8.1 keeps the spec's exclusion and adds a production check (no `*.test.ts[x]`); **flag:** the whole-file exclusion is weaker than a line-content exclusion — a plant elsewhere in `sanity.vite-guard.test.ts` is hidden (verified at 7cbe5a5b, §R8). No other assertion changed.
 - Rev 1.6.2, 2026-10-19 ~6:10 PM PT. **Ruling-only rev, no new items** (Web Lead round-6 ruling, 10-19). Rev 1.6.1 + §R5 (`cccd0a31d8d2b91f135e0362418c3603`) kept at `metfix-sanity-read-token-fix-tests.r1.6.1-R5.md`. Summary: V12(a) is no longer a gate. The in-suite static scan, the `V12_HARNESS` markers, the in-suite V12(b) canary and the in-suite V12(c) kill test are deleted. The single behavioral gate is the CI porcelain step (V12(b)). V12(c) stays QA evidence. See V12 below.
 - (Rev 1.6.1 history) Rev 1.6.1, 2026-10-19 ~5:50 PM PT. **Ruling-only rev, no new items** (Web Lead ruling, 10-19). Rev 1.6 (`3e9c659947bfa913eb5cc357638eba8e`) kept at `metfix-sanity-read-token-fix-tests.r1.6.md`. V12 is re-homed as follows; nothing is weakened:
   - V12(a) stays in vitest. Its scope is clarified (CQ #6) to also cover `rmSync`, `cpSync`, `renameSync`, `appendFile` and `symlinkSync`, with bite proofs for `cpSync` and `symlinkSync`.
@@ -26,11 +28,11 @@
 Shorthand: `NAME=VITE_SANITY_API_READ_TOKEN`, `PAT='\bsk[A-Za-z0-9]{40,}\b'`, `DUMMY=skTEST$(printf 'A%.0s' {1..60})` (66 chars, matches PAT).
 
 ## K1 — name gone from source (R2, R3)
-- K1.1 `git grep -n VITE_SANITY_API_READ_TOKEN -- . ':!docs/'` returns only the R4 grep line(s) in `.github/workflows/ci.yml` (see Gap G1), and nothing else. Exact expected output recorded in the round-1 notes. M: re-add `import.meta.env.VITE_SANITY_API_READ_TOKEN` to `client/src/lib/sanity.ts` → extra hit → FAIL.
+- K1.1 `git grep -n VITE_SANITY_API_READ_TOKEN -- . ':!docs/'` returns exactly the 5 K1 anchor lines (A1–A5, below; spec 1.1.6 content anchors, not line numbers), and nothing else. Anchors (exact full-line content, spec 1.1.6 K1; each must match exactly one line; total hits = 5): A1 `vite.config.ts` = `  const sanityReadToken = String(env.VITE_SANITY_API_READ_TOKEN ?? "").trim();`; A2 `vite.config.ts` = the guard message line `      "VITE_SANITY_API_READ_TOKEN must not be set; the browser client reads Sanity over the public CDN without a token.",`; A3 `.github/workflows/ci.yml` = the R4 step line `          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'VITE_SANITY_API_READ_TOKEN' dist/public; then`; A4 `client/src/lib/sanity.vite-guard.test.ts` = `const NAME = "VITE_SANITY_API_READ_TOKEN";`; A5 `client/src/lib/sanity.config.test.ts` = `    vi.stubEnv("VITE_SANITY_API_READ_TOKEN", dummy);` (config-test category). Checker: `python3 /workspace/tk10/k1anchors.py <repo> <gitgrep|k15|rg>`. Any non-anchor hit, any anchor matching 0 or >1 lines, or any anchor content change = FAIL. M: re-add `import.meta.env.VITE_SANITY_API_READ_TOKEN` to `client/src/lib/sanity.ts` → extra hit → FAIL.
 - K1.2 `git grep -n VITE_SANITY_API_READ_TOKEN client/src/vite-env.d.ts` empty. M: restore line 7 → FAIL.
 - K1.3 ci.yml "Build static site" (`build:cf`) step `env:` has no key containing `SANITY_API_READ_TOKEN` and no `secrets.VITE_SANITY_API_READ_TOKEN`: `yq '.jobs[].steps[] | select(.name=="Build static site") | .env | keys' .github/workflows/ci.yml` excludes it (yq parse also proves the YAML is valid — #9 lesson). M: restore ci.yml:39 → FAIL.
 - K1.4 No env example / wrangler var: `git ls-files | rg -n '(^|/)\.env' ` lists nothing containing the name, and `git ls-files 'wrangler*' 'worker/wrangler*' | xargs -r rg -n 'SANITY_API_READ_TOKEN|\bsk[A-Za-z0-9]{40,}'` is empty. M: add `.env.example` with `VITE_SANITY_API_READ_TOKEN=` → FAIL; add `[vars] VITE_SANITY_API_READ_TOKEN="x"` to wrangler.jsonc/toml → FAIL.
-- K1.5 Write token never gets a VITE_ prefix (§1 note, T6): `git grep -nE 'VITE_[A-Z_]*SANITY[A-Z_]*TOKEN'` returns only the R4 grep line. M: rename seed var to `VITE_SANITY_API_WRITE_TOKEN` → FAIL.
+- K1.5 Write token never gets a VITE_ prefix (§1 note, T6): `git grep -nE 'VITE_[A-Z_]*SANITY[A-Z_]*TOKEN'` returns exactly the same 5 anchor lines A1–A5 (K1.1) and nothing else. M: rename seed var to `VITE_SANITY_API_WRITE_TOKEN` → FAIL.
 
 ## K2 — client config (R2, T2)
 - K2.1 Unit test `client/src/lib/sanity.config.test.ts` (matches K6 glob) imports the exported client and asserts on `sanityClient.config()`:
@@ -136,21 +138,24 @@ Shell line in ci.yml stays as the second check.
   - (c) **QA evidence, not a gate in the suite (1.6.1, confirmed 1.6.2).** The in-suite kill test must be **deleted**. QA runs `/workspace/pr-token/kill-v12c.sh` against the head. For each of V2, V2b, V3(b), V3(c) and V7: own process group, killed after a risky step has started. After each kill: `porcelain --ignored --untracked-files=all` unchanged, dev `.env` md5 unchanged, `const.ts` = HEAD, no orphaned processes, and nothing under the repo's `node_modules/.vite-temp`. Plus a **10× serial loop** of the guard file with the dev `.env` md5 and porcelain checked after each run. `/tmp` leftovers exempt.
   - D1 (unchanged item, ruling restated): the PR's `docs/` tests copy is updated to this list's current md5.
 
-- K1.6 (CQ round 2) K1 greps must include dotfiles: `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .` (plain rg skips `.github`). Exact expected hits after #7: `vite.config.ts:212,215`, `.github/workflows/ci.yml:47`, `client/src/lib/sanity.vite-guard.test.ts:7`, `client/src/lib/sanity.config.test.ts:32`. Spec gap: the K1 exception list in 1.1.2 does not yet name `vite.config.ts` (R4b) or `sanity.vite-guard.test.ts`. Spec must add them by name. M: re-add the token read to `sanity.ts` → extra hit → FAIL.
-- K8.1 R7: `rg -nP 'import\.meta\.env(?!\.[A-Za-z_])' client/src` returns 0 hits. Scratch proof: remove R4b, build with the dummy set → 0 dummy files in `dist/public`. With R4b removed and `const.ts` reverted to main → 1 dummy file and R4a exits 1, which proves the check catches a regression.
+- K1.6 (CQ round 2) K1 greps must include dotfiles: `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .` (plain rg skips `.github`). Expected hits (rev 1.6.4, spec 1.1.6): exactly the 5 anchor lines A1–A5 of K1.1, matched by content (at 7cbe5a5b: vite.config.ts:21, :24; ci.yml:46; sanity.vite-guard.test.ts:7; sanity.config.test.ts:32 — line numbers informational only). Spec gap closed by 1.1.3/1.1.6. M: re-add the token read to `sanity.ts` → extra hit → FAIL.
+- K8.1 R7 (spec 1.1.7 K8(a)): `rg -nP 'import\.meta\.env(?!\.[A-Za-z_])' client/src` over all of `client/src`, no file excluded. Exactly one hit is dropped: the line in `client/src/lib/sanity.vite-guard.test.ts` whose full content equals the V3(b) mutation string line `        'const env = import.meta.env;\n  const base = (env && env.BASE_URL) || "/";',` (exact whole-line string compare, not substring or regex). The dropped line is printed. It must match exactly once (0 or ≥2 = FAIL), and 0 other hits may remain, including elsewhere in that test file. Checker: `python3 /workspace/tk10/k81.py <repo>` (mode `full`; modes `file`/`substr` exist only to run M-K8b/M-K8e). Run mutations on a temp copy of `client/src`.
+  | ID | Mutation | Red set |
+  |---|---|---|
+  | M-K8a | plant `const qaPlant = import.meta.env;` at `sanity.vite-guard.test.ts:585` (blank :584) → exactly 1 hit (`:585`) | {K8.1} |
+  | M-K8b | exclusion widened to the whole file, with the M-K8a plant → `:585` also dropped; exactly-once count = 2 | {K8.1} |
+  | M-K8c | second copy of the V3(b) line (at :450) → exclusion matches 2 | {K8.1} |
+  | M-K8d | V3(b) line removed → exclusion matches 0 | {K8.1} |
+  | M-K8e | exclusion matched as substring, with a plant = V3(b) line + ` // qa extra` → plant dropped, count = 2; under the full-line rule the same plant is 1 hit | {K8.1} |
+  Scratch proof unchanged: remove R4b, build with the dummy set → 0 dummy files in `dist/public`. With R4b removed and `const.ts` reverted to main → 1 dummy file and R4a exits 1.
 
-- K1.7 Spec 1.1.3 K1 names `vite.config.ts:212`, `vite.config.ts:215` and `client/src/lib/sanity.vite-guard.test.ts:7` (md5 `aefcc701…` verified). Confirmed at `0d362f6f` with `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .`. Exactly 6 hits, no drift:
-  - `vite.config.ts:212` and `:215` (named);
-  - `client/src/lib/sanity.vite-guard.test.ts:7` (named);
-  - `client/src/lib/sanity.config.test.ts:32` (category: config test);
-  - `.github/workflows/ci.yml:47` (category: R4 step);
-  - `.github/workflows/deploy-pages.yml:40` (not allowed; BLOCKED on #7, must be 0 after the rebase).
-  Any line shift or extra hit on a later head = FAIL until Spec re-pins it. Status: PASS for the named exceptions; the K1 overall stays BLOCKED on #7.
+- K1.7 (rev 1.6.4, spec 1.1.6) The named exceptions are re-anchored by content: `rg -n --hidden VITE_SANITY_API_READ_TOKEN -g '!docs/**' -g '!node_modules/**' -g '!dist/**' -g '!.git/**' .` gives exactly A1–A5 (K1.1), each exactly once, total 5. `deploy-pages.yml` must have 0 hits (deleted by #7). Line drift alone is no longer a FAIL; any content change to an anchor line, a 6th hit, or an anchor matching ≠1 line is a FAIL. (Rev ≤1.6.3 line-number pins kept in the backup.)
 
-- D1 (target: **this list's rev 1.6 md5**, as reported with the rev and recorded in the round-5 notes, and spec 1.1.3 `aefcc701…`) The PR's `docs/metfix-sanity-read-token-fix/metfix-sanity-read-token-fix-tests.md` md5 equals this list's current rev md5. The acceptance copy equals the current spec rev md5. M: any byte difference → FAIL.
+- D1 (target: **this list's current rev md5** as reported with the rev, and spec **1.1.7 `dbc8681d…`**) The PR's `docs/metfix-sanity-read-token-fix/metfix-sanity-read-token-fix-tests.md` md5 equals this list's current rev md5. The acceptance copy equals the current spec rev md5. M: any byte difference → FAIL.
 
 ## K7
 - K7.1 `worker/build.config.test.ts` (reads ci.yml) passes unchanged on the PR head. Present at base and head; re-run after the #7 rebase too.
+- K9 (spec 1.1.6) After `npm run build:cf`, `npm run test:workers` inside the V12(b) porcelain gate (unchanged) passes **≥9** tests with 0 skipped, and the gate shows no diff. Fewer than 9, any skip, or a gate diff = FAIL (optimizer keys then not allowed).
 
 ## Threats
 - T1 → K5.1–K5.3 (+ K3.3 shows new builds are clean; old copies only fixed by revoke).
@@ -359,3 +364,25 @@ Verdict: NOT signed off. Test sign-off only; merge needs Ethan's go.
 | K5 | pending Ethan | relayed confirmation doesn't count |
 Non-blocking notes: duplicated gate line at ci.yml:32/:63 (use one script with `shell: bash`); empty .vite-temp from build:cf; spawnSync maxBuffer; NAME position; stray md5 on the §R4 heading.
 Verdict: NOT signed off while D1 fails (the docs spec copy is behind). Otherwise every item passes. Test sign-off only; merge needs Ethan's go and K5.
+
+## §R8 — round 8, head 7cbe5a5bfd057c4a4270611ba136619eed094deb (list rev 1.6.4 / spec 1.1.6 `0255561f`)
+Base main, merge-base = main 0bb1ca75; main..head = #10's 9 commits + merge bcf8b42 + 7cbe5a5 (a merge, not a rebase). Tree of head merged into main = head tree (`e655b03b`), so every result covers both. CI 39462893406: pull_request, head 7cbe5a5b, success; 318/318 unit, 9/9 workers, 0 skipped.
+| Item | Result | Evidence |
+|---|---|---|
+| K1.1 / K1.5 / K1.6 / K1.7 (anchors) | PASS | k1anchors.py gitgrep/k15/rg: 5 hits = A1–A5, each once; deploy-pages.yml gone. Bites: token read in sanity.ts, a `VITE_SANITY_API_WRITE_TOKEN` seed, a 2nd NAME line, an edited A1 line → each FAIL |
+| K8.1 (exclusion) | PASS | k81.sh: exclusion printed; 0 hits as ruled; production 0. Line-449-only exclusion: 0 hits. Plant elsewhere in vite-guard.test.ts: hidden by the ruled exclusion (0 hits), caught by the line-content one. Plant in a prod file: caught. Same-name file at another path: caught |
+| K9 | PASS | build:cf then test:workers in the gate: 9 passed (9), 0 skipped, gate same; CI step 12 9/9 |
+| K6 (key level) | FAIL (Web Lead: until removed) | 7cbe5a5 adds unused `import fs from "node:fs";` at vite.config.ts:4 |
+| D1 | FAIL (must-fix) | PR docs copies = `b902ea7c` (list 1.6.3) / `9937adb3` (spec 1.1.5); need this list's rev 1.6.4 md5 and `0255561f` |
+| K5 | PENDING Ethan | |
+
+## §R9 — K8.1 under spec 1.1.7, head 7cbe5a5bfd057c4a4270611ba136619eed094deb (list rev 1.6.5)
+| Item | Result | Evidence |
+|---|---|---|
+| K8.1 | PASS | Dropped exactly `sanity.vite-guard.test.ts:449` (printed); 0 other hits |
+| M-K8a | killed {K8.1} | 1 hit: `sanity.vite-guard.test.ts:585:const qaPlant = import.meta.env;` |
+| M-K8b | killed {K8.1} | whole-file mode dropped :449 and :585 → `exclusion matched 2 lines (need exactly 1)` |
+| M-K8c | killed {K8.1} | dropped :449 and :450 → matched 2 |
+| M-K8d | killed {K8.1} | `exclusion matched 0 lines (need exactly 1)` |
+| M-K8e | killed {K8.1} | substring mode dropped :449 and the plant at :584 → matched 2; full-line rule on the same plant → `HIT …:584:… // qa extra` |
+| D1 | FAIL (must-fix) | PR docs copies must become this list's rev 1.6.5 md5 and spec `dbc8681d` |
