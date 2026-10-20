@@ -12,6 +12,7 @@
  *   node worker/auth/run-mutations.mjs --baseline-only
  */
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -22,6 +23,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { EXTRA_SABOTAGES } from "./mutation-sabotages.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -67,7 +69,7 @@ function replaceAllExact(rel, search, replace, label) {
   write(rel, t.split(search).join(replace));
 }
 
-/** @typedef {{ apply: () => void, typeCheck?: boolean, files?: string[] }} Sabotage */
+/** @typedef {{ apply?: () => void, typeCheck?: boolean, files?: string[], ethanBlocker?: string }} Sabotage */
 
 /** @type {Record<string, Sabotage>} */
 const SABOTAGES = {
@@ -1384,7 +1386,31 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
       );
     },
   },
+
 };
+
+// Merge EXTRA catalog sabotages; in-file entries win on id clash.
+for (const [id, sab] of Object.entries(EXTRA_SABOTAGES)) {
+  if (!Object.prototype.hasOwnProperty.call(SABOTAGES, id)) {
+    SABOTAGES[id] = sab;
+  }
+}
+
+const RUNNER_KEEP = new Set([
+  "worker/auth/run-mutations.mjs",
+  "worker/auth/mutation-sabotages.mjs",
+]);
+
+function patchMd5FromGit() {
+  const res = spawnSync("git", ["diff", "--", "."], {
+    cwd: REPO,
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const diff = res.stdout || "";
+  if (!diff) return null;
+  return createHash("md5").update(diff).digest("hex");
+}
 
 // ── Gate → file index ────────────────────────────────────────────────────────
 
@@ -1508,10 +1534,18 @@ function runCmd(cmd, cmdArgs, opts = {}) {
 }
 
 function restoreTree() {
-  runCmd("git", ["checkout", "--", "."]);
-  // Drop untracked mutant leftovers in allowed paths if any were created — do not
-  // delete comments*.test.ts; only clean known mutant helper pollution.
-  // (M-WL14d only edits tracked files.)
+  const res = spawnSync("git", ["diff", "--name-only", "--", "."], {
+    cwd: REPO,
+    encoding: "utf8",
+  });
+  const files = (res.stdout || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((f) => !RUNNER_KEEP.has(f));
+  if (files.length) {
+    runCmd("git", ["checkout", "--", ...files]);
+  }
 }
 
 function parseFailedGateIds(output, expected) {
@@ -1669,6 +1703,7 @@ function main() {
     nSurvived = 0,
     nMismatch = 0,
     nCant = 0,
+    nEthan = 0,
     nNotRun = 0;
 
   for (let i = 0; i < mutations.length; i++) {
@@ -1683,6 +1718,7 @@ function main() {
         reason: "can't-auto: no sabotage mapping for this natural-language patch",
         expectedRed: m.red,
         observedRed: [],
+        patchMd5: null,
         target: m.target,
         sabotage: m.sabotage,
       };
@@ -1692,7 +1728,42 @@ function main() {
       continue;
     }
 
-    // Skip if red gates have no tests at all
+    if (sab.ethanBlocker) {
+      const row = {
+        id: m.id,
+        verdict: "ethan-blocker",
+        reason: sab.ethanBlocker,
+        expectedRed: m.red,
+        observedRed: [],
+        patchMd5: null,
+        vitestStatus: null,
+        typeCheckStatus: null,
+        target: m.target,
+        sabotage: m.sabotage,
+      };
+      results.push(row);
+      nEthan++;
+      console.log("ethan-blocker");
+      continue;
+    }
+
+    if (typeof sab.apply !== "function") {
+      const row = {
+        id: m.id,
+        verdict: "cant-run",
+        reason: "can't-auto: sabotage entry has no apply()",
+        expectedRed: m.red,
+        observedRed: [],
+        patchMd5: null,
+        target: m.target,
+        sabotage: m.sabotage,
+      };
+      results.push(row);
+      nCant++;
+      console.log("cant-run (no apply)");
+      continue;
+    }
+
     const missingGates = m.red.filter((g) => !gateIndex.get(g)?.size);
     if (missingGates.length === m.red.length) {
       const row = {
@@ -1701,6 +1772,7 @@ function main() {
         reason: `can't-run: no test files for red gates ${missingGates.join(",")}`,
         expectedRed: m.red,
         observedRed: [],
+        patchMd5: null,
         target: m.target,
         sabotage: m.sabotage,
       };
@@ -1711,8 +1783,10 @@ function main() {
     }
 
     let applyErr = null;
+    let patchMd5 = null;
     try {
       sab.apply();
+      patchMd5 = patchMd5FromGit();
     } catch (e) {
       applyErr = String(e?.message || e);
     }
@@ -1725,6 +1799,7 @@ function main() {
         reason: `can't-auto apply failed: ${applyErr}`,
         expectedRed: m.red,
         observedRed: [],
+        patchMd5: null,
         target: m.target,
         sabotage: m.sabotage,
       };
@@ -1745,6 +1820,7 @@ function main() {
         reason: `run error: ${e?.message || e}`,
         expectedRed: m.red,
         observedRed: [],
+        patchMd5,
       };
       results.push(row);
       nCant++;
@@ -1754,19 +1830,10 @@ function main() {
 
     restoreTree();
 
-    // Filter out gates that were already red at baseline (pre-existing fails),
-    // except when the mutant is specifically about those IDs and status flipped
-    // — for kill scoring we use raw observed ∩ expected; baseline-red still
-    // counts if the mutant run shows them failing (they must stay red).
     const observed = run.observedRed.filter((id) => m.red.includes(id));
     let verdict = classify(m.red, observed);
 
-    // If vitest errored before tests (e.g. compile) and we saw nothing, cant-run
-    if (
-      verdict === "survived" &&
-      run.vitestStatus !== 0 &&
-      run.error
-    ) {
+    if (verdict === "survived" && run.vitestStatus !== 0 && run.error) {
       verdict = "cant-run";
     }
 
@@ -1779,6 +1846,7 @@ function main() {
           : undefined,
       expectedRed: m.red,
       observedRed: observed,
+      patchMd5,
       vitestStatus: run.vitestStatus,
       typeCheckStatus: run.typeCheckStatus,
       files: run.files,
@@ -1791,20 +1859,26 @@ function main() {
     else if (verdict === "survived") nSurvived++;
     else if (verdict === "mismatch") nMismatch++;
     else nCant++;
-    console.log(`${verdict} observed=[${observed.join(",")}]`);
+    console.log(
+      `${verdict} observed=[${observed.join(",")}] md5=${patchMd5?.slice(0, 8) || "-"}`,
+    );
   }
 
-  // Anything in catalog not selected counts as not-run
   nNotRun = catalog.mutations.length - mutations.length;
 
   const summary = {
     catalogTotal: catalog.mutations.length,
     selected: mutations.length,
-    mappedSabotages: Object.keys(SABOTAGES).length,
+    mappedSabotages: Object.keys(SABOTAGES).filter(
+      (k) => typeof SABOTAGES[k].apply === "function",
+    ).length,
+    ethanBlockers: Object.keys(SABOTAGES).filter((k) => SABOTAGES[k].ethanBlocker)
+      .length,
     counts: {
       killed: nKilled,
       survived: nSurvived,
       mismatch: nMismatch,
+      "ethan-blocker": nEthan,
       "cant-run": nCant,
       "not-run": nNotRun,
     },
