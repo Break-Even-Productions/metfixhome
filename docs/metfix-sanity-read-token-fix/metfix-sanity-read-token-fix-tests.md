@@ -174,7 +174,7 @@ Legend: PASS / FAIL / BLOCKED / PENDING. Owner: QA = this list, CQ = Code Qualit
 | K6.5 / V9 | CQ | BLOCKER | Spec rev for vite.config.ts |
 | K7.1 | QA | PASS | `worker/build.config.test.ts` passed in the local 305/305 run at head; file unchanged by #10 |
 
-## §R2 Round-2 results at 0d362f6f (QA ran every item on a local clone; scratch worktree for the R4b removal, never committed)
+## §R2 Round-2 results at 0d362f6f — SUPERSEDED by §R3 (kept as the record; V3 'CONFLICT' was resolved by the Web Lead ruling of 10-19) (QA ran every item on a local clone; scratch worktree for the R4b removal, never committed)
 | Item | Owner | Status | Evidence |
 |---|---|---|---|
 | CI | QA | PASS | Run 39339532106, head_sha 0d362f6f…, success. Log: `Tests 312 passed (312)`, `sanity.vite-guard.test.ts (7 tests)`, workers `Tests 8 passed (8)`, "No Sanity token in dist" step success. Local run: 312/312, 16 files |
@@ -198,3 +198,32 @@ Legend: PASS / FAIL / BLOCKED / PENDING. Owner: QA = this list, CQ = Code Qualit
 | K4.4 | QA | PASS | Set-cookie 0 in the HARs |
 | K4.5 | QA | PENDING (post-deploy only, not a merge gate) | — |
 | K5 | Ethan | PENDING | Merge blocked until Ethan confirms |
+
+## §R3 Round-3 results at be43c485 (results only; no assertion changed. Rev 1.4 assertions as of f940a449; spec 1.1.3 aefcc701)
+CI 39342499472: head_sha be43c4850d65…, 16 steps success, log `Tests 315 passed (315)`, `sanity.vite-guard.test.ts (10 tests)`, workers `Tests 8 passed (8)`. Local: 315/315.
+312→315: vite-guard went from 7 to 10 tests. V1–V7 were reworked; new tests are V2b, the V2b mutation meta-test, and the V11 kill case (V7 and V10 are merged into one).
+Scope: since 0d362f6f only `client/src/lib/sanity.vite-guard.test.ts` and the two `docs/` copies changed. The full diff vs 9f7129d has 10 paths, all on the K6 list (1.1.3). Rule 6 OK: no new path beyond the round-3 batch.
+CQ = Code Quality round-3 notes as relayed (CQ signed off and called them non-blocking; this list governs).
+| Item | QA status | CQ note | Evidence |
+|---|---|---|---|
+| D1 | PASS | — | PR docs/ tests copy = f940a449…, acceptance = aefcc701…, byte-equal by md5 |
+| K1.7 | PASS | — | `rg --hidden`: exactly vite.config.ts:212, :215; sanity.vite-guard.test.ts:7; sanity.config.test.ts:32; ci.yml:47; deploy-pages.yml:40. No shift |
+| K1.1/K1.5 | BLOCKED on #7 | — | deploy-pages.yml:40 |
+| K3.3 / K8.1 | PASS | — | Scratch, R4b removed + dummy → build 0, 0 dummy files. Also with const.ts reverted → 1 file (the check catches the regression) |
+| K4.6 | PASS | — | fetch/config/sanity.ts unchanged since r2. No XHR stub (0 matches). withCredentials mutation fails at fetch:80. token:"x" mutation fails at the auth/token block |
+| V1, V2, V5, V6 | PASS | — | remove-throw and M1 mutations fail them |
+| V2b (K8(d)) | PASS | — | (a) blank shell + temp .env dummy → build 0, 0 dummy, no inline. (b) M1 process.env only → V2 FAILS. M2 raw-file `\|\|` fallback → in-suite M2 meta-test FAILS (it throws). Note: my own M2 via `loadEnv` result `\|\|` cannot fall through, because loadEnv already gives the shell value precedence. (c) = V2 |
+| V3(a) | **FAIL** | CQ4 agrees | The test resolves config for ' ', '\t', '\n' but builds only ' '. The list requires `build:cf` exit 0 for each value. (QA manual run: all three build 0, regex 0, but the test must assert it.) Mutation no-trim → V3 fails ✓ |
+| V3(b) | PASS for ' ', gap for '\n' | — | Test asserts no `NAME:"[^"]` in the temp outDir. Scratch M(b), R4b removed + const.ts reverted: ' ' → 1 hit, '\t' → 1 hit, **'\n' → 0 hits**, so the regex can't fail for '\n'. The (b) check for '\n' must match the escaped form as the list says |
+| V3(c) | **FAIL** | CQ1 agrees | Padded dummy throws from env and .env; message has no value. Mutation `console.error(value)` before the throw → **10/10 pass**. stdout/stderr are not asserted (the list requires all output). Mutation "treat padded as unset" → V3 fails ✓ |
+| V4 | **FAIL** | CQ1 agrees | Round 2 asserted stdout/stderr; round 3 removed it (a weakening). Same console.error mutation passes. Value-in-message mutation → V4 fails ✓ |
+| V7 / V10 | PASS | CQ6 note | Temp outDir, dist/public snapshot equal. Mutation dropping --outDir → V7/V10 + V3 FAIL. CQ6: the three builds take about 31s total against 60s per-test timeouts (local suite 16.8s for the file; CI 20.3s). Note, not a fail |
+| V11 sentinel | **FAIL** | CQ2 agrees | No sentinel `.env` is created. Mutation "write the repo .env, then delete it" → 10/10 pass (absent→absent fingerprint). A direct repo-.env write is caught (6 tests fail) |
+| V11 kill case | **FAIL** | CQ2 agrees | The child only runs a script that writes a temp .env itself. It never runs the real config or the V2 path, so SIGKILL proves nothing about the config/test cleanup. Mutation "config writes the repo .env": the kill test failed only because earlier tests left the file; its own child would never trigger it |
+| V11 temp-project rewrite | PASS (partial) | CQ3 | `replaceAll` calls aren't asserted. No-op mutations on `root` and on the `@` alias are caught by V2b's build. The `@shared`/`@assets` replaces are unverified (unused in the build), so no failure is expected; recommend asserting each replace matched |
+| K3.9 | PASS (reasoning) | — | unchanged |
+| K3.10 | PENDING on R1 | — | |
+| K4.3 / K4.4 | PASS (round 2, code unchanged) | — | |
+| K4.5 | PENDING post-deploy | — | |
+| K5 | PENDING on Ethan | — | merge blocked |
+| §R2 doc rows | FIXED here | CQ5 | §R2 marked superseded; §R3 added |
