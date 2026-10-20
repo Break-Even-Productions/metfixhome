@@ -1,20 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  __setCommentsFetchForTests,
   dailyFixCommentsRequestUrl,
   fetchDailyFixComments,
+  invalidateCommentsCache,
   mapDailyFixComments,
-  resetCommentsCacheForTests,
 } from "./comments";
 
 beforeEach(() => {
-  resetCommentsCacheForTests();
-  __setCommentsFetchForTests(true);
+  invalidateCommentsCache();
 });
 
 afterEach(() => {
-  __setCommentsFetchForTests(false);
-  resetCommentsCacheForTests();
+  invalidateCommentsCache();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -78,33 +75,40 @@ describe("mapDailyFixComments", () => {
 
 describe("fetchDailyFixComments", () => {
   it("marks 404 as unavailable, not an empty list", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ error: "not_found" }), { status: 404 })),
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ error: "not_found" }), { status: 404 }),
     );
-    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({ status: "unavailable" });
+    await expect(fetchDailyFixComments("2025-02-10", undefined, { fetchImpl })).resolves.toEqual({
+      status: "unavailable",
+    });
   });
 
   it("marks 503, bad JSON, and thrown fetch as unavailable", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
-    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({ status: "unavailable" });
-
-    resetCommentsCacheForTests();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("not-json", { status: 200 })));
-    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({ status: "unavailable" });
-
-    resetCommentsCacheForTests();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("network");
+    await expect(
+      fetchDailyFixComments("2025-02-10", undefined, {
+        fetchImpl: vi.fn(async () => new Response("{}", { status: 503 })),
       }),
-    );
-    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({ status: "unavailable" });
+    ).resolves.toEqual({ status: "unavailable" });
+
+    invalidateCommentsCache();
+    await expect(
+      fetchDailyFixComments("2025-02-10", undefined, {
+        fetchImpl: vi.fn(async () => new Response("not-json", { status: 200 })),
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    invalidateCommentsCache();
+    await expect(
+      fetchDailyFixComments("2025-02-10", undefined, {
+        fetchImpl: vi.fn(async () => {
+          throw new TypeError("network");
+        }),
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
   });
 
   it("returns loaded empty only after a real empty list", async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
       expect(init?.headers).toEqual({ Accept: "application/json" });
       expect(init).not.toHaveProperty("Authorization");
       return new Response(
@@ -112,12 +116,11 @@ describe("fetchDailyFixComments", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     });
-    vi.stubGlobal("fetch", fetchMock);
-    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({
+    await expect(fetchDailyFixComments("2025-02-10", undefined, { fetchImpl })).resolves.toEqual({
       status: "loaded",
       comments: [],
     });
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchImpl).toHaveBeenCalledWith(
       dailyFixCommentsRequestUrl("2025-02-10"),
       expect.objectContaining({ method: "GET", headers: { Accept: "application/json" } }),
     );
@@ -133,27 +136,26 @@ describe("fetchDailyFixComments", () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    const fetchMock = vi.fn(async () => {
-      if (fetchMock.mock.calls.length <= 1) return pending;
+    const fetchImpl = vi.fn(async () => {
+      if (fetchImpl.mock.calls.length <= 1) return pending;
       return empty();
     });
-    vi.stubGlobal("fetch", fetchMock);
 
-    const a = fetchDailyFixComments("2025-02-10");
-    const b = fetchDailyFixComments("2025-02-10");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const a = fetchDailyFixComments("2025-02-10", undefined, { fetchImpl });
+    const b = fetchDailyFixComments("2025-02-10", undefined, { fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     resolveFetch(empty());
     await expect(a).resolves.toEqual({ status: "loaded", comments: [] });
     await expect(b).resolves.toEqual({ status: "loaded", comments: [] });
-    await expect(fetchDailyFixComments("2025-02-10")).resolves.toEqual({
+    await expect(fetchDailyFixComments("2025-02-10", undefined, { fetchImpl })).resolves.toEqual({
       status: "loaded",
       comments: [],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    await expect(fetchDailyFixComments("2025-02-11")).resolves.toEqual({
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await expect(fetchDailyFixComments("2025-02-11", undefined, { fetchImpl })).resolves.toEqual({
       status: "loaded",
       comments: [],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

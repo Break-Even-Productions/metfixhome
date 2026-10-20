@@ -8,23 +8,22 @@ type JoinModalProps = {
   /** When true, render Continue with Google (R9 gate; default off). */
   googleEnabled?: boolean;
   onSignedIn?: () => void;
+  /** Optional fetch (inject for tests); defaults to module-bound CC1-safe fetch. */
+  fetchImpl?: typeof fetch;
 };
 
-/** Bound at module load so day-data fetch spies ignore auth traffic (CC1). */
-const authHttpBound: typeof fetch = globalThis.fetch.bind(globalThis);
-let useGlobalAuthFetch = false;
+/**
+ * Module-bound fetch so day-data spies ignore auth traffic (CC1).
+ * Replaced global fetch → fail closed without I/O (no test-only hooks).
+ */
+const moduleFetchRef: typeof fetch = globalThis.fetch;
+const moduleFetch: typeof fetch = moduleFetchRef.bind(globalThis);
 
-function authHttp(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  if (useGlobalAuthFetch) return globalThis.fetch(input, init);
-  if (import.meta.env.MODE === "test") {
+function defaultAuthHttp(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (globalThis.fetch !== moduleFetchRef) {
     return Promise.resolve(new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }));
   }
-  return authHttpBound(input, init);
-}
-
-/** Test-only: when true, login/csrf use live `globalThis.fetch`. */
-export function __setJoinModalFetchForTests(useGlobal: boolean): void {
-  useGlobalAuthFetch = useGlobal;
+  return moduleFetch(input, init);
 }
 
 function playShake(element: HTMLElement | null) {
@@ -34,9 +33,9 @@ function playShake(element: HTMLElement | null) {
   element.classList.add("df-join-shake");
 }
 
-async function fetchCsrf(): Promise<string | null> {
+async function fetchCsrf(http: typeof fetch): Promise<string | null> {
   try {
-    const res = await authHttp("/api/auth/csrf", {
+    const res = await http("/api/auth/csrf", {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
@@ -48,7 +47,6 @@ async function fetchCsrf(): Promise<string | null> {
     return null;
   }
 }
-
 async function getRecaptchaToken(action: string): Promise<string> {
   const g = (
     window as unknown as {
@@ -100,7 +98,9 @@ export function JoinModal({
   onClose,
   googleEnabled = false,
   onSignedIn,
+  fetchImpl,
 }: JoinModalProps) {
+  const authHttp = fetchImpl ?? defaultAuthHttp;
   const errorId = useId();
   const submitRef = useRef<HTMLButtonElement>(null);
   const [identifier, setIdentifier] = useState("");
@@ -169,7 +169,7 @@ export function JoinModal({
             setBusy(true);
             void (async () => {
               try {
-                const csrf = await fetchCsrf();
+                const csrf = await fetchCsrf(authHttp);
                 if (!csrf) {
                   setError("Sign-in is unavailable right now.");
                   return;

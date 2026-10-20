@@ -10,8 +10,9 @@ import { Route, Router, Switch } from "wouter";
 import NotFound from "@/pages/NotFound";
 import TheDailyFixPage from "./TheDailyFixPage";
 import { MealPhoto } from "./MealPhoto";
-import { __setSessionFetchForTests, resetMeCacheForTests } from "@/lib/session";
-import { __setCommentsFetchForTests, resetCommentsCacheForTests } from "./comments";
+import { resetMeCacheForTests } from "@/lib/session";
+import * as commentsApi from "./comments";
+import { invalidateCommentsCache } from "./comments";
 import { DAILY_FIX_BFF_URL, peekLoadedDailyFixDay, resetDailyFixDayCache } from "./data";
 import { formatDayLabel } from "./model";
 
@@ -180,11 +181,8 @@ beforeEach(() => {
   stubBrowserApis();
   openAddressBar("/");
   resetDailyFixDayCache();
-  resetCommentsCacheForTests();
+  invalidateCommentsCache();
   resetMeCacheForTests();
-  // Route comments/`/me` through whatever `globalThis.fetch` the test stubs (CC1 opt-in).
-  __setCommentsFetchForTests(true);
-  __setSessionFetchForTests(true);
   liquidInit.mockClear();
   liquidDestroy.mockClear();
   liquidInit.mockImplementation(async () => ({ destroy: liquidDestroy }));
@@ -195,10 +193,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetDailyFixDayCache();
-  resetCommentsCacheForTests();
+  invalidateCommentsCache();
   resetMeCacheForTests();
-  __setCommentsFetchForTests(false);
-  __setSessionFetchForTests(false);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -460,6 +456,9 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
   });
 
   it("6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date", async () => {
+    invalidateCommentsCache(TODAY);
+    invalidateCommentsCache(MINUS2);
+    const commentsSpy = vi.spyOn(commentsApi, "fetchDailyFixComments");
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const requested = new URL(String(input), "https://metfix.org").searchParams.get("date")!;
       const date = requested === TODAY ? MINUS2 : requested;
@@ -481,11 +480,12 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     const active = within(strip).getByRole("link", { current: "date" });
     expect(active.textContent).toContain("9");
     await waitFor(() => {
-      const comments = fetchMock.mock.calls.filter((call) => isCommentsRequest(call[0]));
-      expect(comments).toHaveLength(1);
-      expect(String(comments[0][0])).toContain(`date=${MINUS2}`);
-      expect(String(comments[0][0])).not.toContain(`date=${TODAY}`);
+      expect(commentsSpy).toHaveBeenCalled();
+      const isos = commentsSpy.mock.calls.map((c) => c[0]);
+      expect(isos).toContain(MINUS2);
+      expect(isos).not.toContain(TODAY);
     });
+    commentsSpy.mockRestore();
   });
 
   it.each([
@@ -1643,9 +1643,16 @@ describe("Daily Fix comments", () => {
     "metfix-join-demo",
   ] as const;
 
-  function commentsCalls(fetchMock: ReturnType<typeof vi.fn>) {
-    return fetchMock.mock.calls.filter((call) => isCommentsRequest(call[0]));
-  }
+  let commentsSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    invalidateCommentsCache("2025-02-10");
+    commentsSpy = vi.spyOn(commentsApi, "fetchDailyFixComments");
+  });
+
+  afterEach(() => {
+    commentsSpy.mockRestore();
+  });
 
   function mockDayAndComments(options?: { commentsStatus?: number; commentsBody?: unknown }) {
     const commentsStatus = options?.commentsStatus ?? 200;
@@ -1653,24 +1660,19 @@ describe("Daily Fix comments", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       expect(url).not.toContain("brokenscience.org");
-      if (url.includes("/api/auth/me")) {
-        return new Response(JSON.stringify({ signed_in: false }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (isCommentsRequest(url)) {
-        return new Response(JSON.stringify(commentsBody), {
-          status: commentsStatus,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+      expect(isCommentsRequest(url)).toBe(false);
       return new Response(JSON.stringify(dayPayload("2025-02-10")), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     });
     vi.stubGlobal("fetch", fetchMock);
+    commentsSpy.mockImplementation(async (iso) => {
+      if (commentsStatus !== 200) return { status: "unavailable" };
+      const mapped = commentsApi.mapDailyFixComments(commentsBody);
+      if (!mapped) return { status: "unavailable" };
+      return { status: "loaded", comments: mapped };
+    });
     return fetchMock;
   }
 
@@ -1686,30 +1688,28 @@ describe("Daily Fix comments", () => {
     expect(screen.queryByRole("heading", { name: "Not available" })).toBeNull();
     expect(screen.queryByText(/No comments yet/i)).toBeNull();
     expect(dayCalls(fetchMock)).toHaveLength(1);
-    expect(commentsCalls(fetchMock)).toHaveLength(1);
-    expect(String(commentsCalls(fetchMock)[0][0])).toBe(
-      "/api/daily-fix/comments?date=2025-02-10&type=all",
-    );
+    expect(commentsSpy).toHaveBeenCalledTimes(1);
+    expect(commentsSpy.mock.calls[0]?.[0]).toBe("2025-02-10");
   });
 
   it("thrown comments fetch keeps the day; loading never shows No comments yet", async () => {
     let rejectComments!: (reason?: unknown) => void;
-    const pendingComments = new Promise<Response>((_resolve, reject) => {
-      rejectComments = reject;
-    });
+    const pendingComments = new Promise<Exclude<commentsApi.CommentsLoadState, { status: "loading" }>>(
+      (_resolve, reject) => {
+        rejectComments = reject;
+      },
+    );
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       expect(url).not.toContain("brokenscience.org");
-      if (url.includes("/api/auth/me")) {
-        return new Response(JSON.stringify({ signed_in: false }), { status: 200 });
-      }
-      if (isCommentsRequest(url)) return pendingComments;
+      expect(isCommentsRequest(url)).toBe(false);
       return new Response(JSON.stringify(dayPayload("2025-02-10")), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     });
     vi.stubGlobal("fetch", fetchMock);
+    commentsSpy.mockImplementation(async () => pendingComments);
     cleanup();
     renderAt("/the-daily-fix/250210");
 
@@ -1743,7 +1743,7 @@ describe("Daily Fix comments", () => {
     cleanup();
     renderAt("/the-daily-fix/250210?tab=body");
     expect(await screen.findByRole("heading", { name: "Body 2025-02-10" })).toBeTruthy();
-    await waitFor(() => expect(commentsCalls(fetchMock)).toHaveLength(1));
+    await waitFor(() => expect(commentsSpy).toHaveBeenCalledTimes(1));
     const postsBefore = fetchMock.mock.calls.filter(
       (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
     ).length;
@@ -1767,6 +1767,7 @@ describe("Daily Fix comments", () => {
     expect(postsAfterOpen).toBe(postsBefore);
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).not.toContain("brokenscience.org");
+      expect((call[1] as RequestInit | undefined)?.method ?? "GET").not.toBe("POST");
     }
     for (const key of forbiddenStorageKeys) {
       expect(setItemSpy).not.toHaveBeenCalledWith(key, expect.anything());

@@ -7,17 +7,18 @@
  * see `/me` traffic (CC1).
  */
 
-/** Bound at module load — before test `stubGlobal("fetch")` (CC1). */
-const sessionHttpBound: typeof fetch = globalThis.fetch.bind(globalThis);
-let useGlobalSessionFetch = false;
+/**
+ * Captured at module load so day-load fetch spies (C2/C5/C6) do not see `/me`
+ * (CC1). If global fetch was replaced after load, return signed-out without I/O.
+ */
+const moduleFetchRef: typeof fetch = globalThis.fetch;
+const moduleFetch: typeof fetch = moduleFetchRef.bind(globalThis);
 
 function sessionHttp(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  if (useGlobalSessionFetch) return globalThis.fetch(input, init);
-  // Vitest + fake timers: avoid hanging real `/me` fetches (CC1 with day spies).
-  if (import.meta.env.MODE === "test") {
+  if (globalThis.fetch !== moduleFetchRef) {
     return Promise.resolve(
       new Response(JSON.stringify({ signed_in: false }), {
         status: 200,
@@ -25,12 +26,7 @@ function sessionHttp(
       }),
     );
   }
-  return sessionHttpBound(input, init);
-}
-
-/** Test-only: when true, `/me` uses live `globalThis.fetch` (the vitest stub). */
-export function __setSessionFetchForTests(useGlobal: boolean): void {
-  useGlobalSessionFetch = useGlobal;
+  return moduleFetch(input, init);
 }
 
 export type MeState =

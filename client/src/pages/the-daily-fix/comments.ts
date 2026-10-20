@@ -1,21 +1,20 @@
 import { PILLARS, type Pillar } from "./model";
 
 /**
- * Bound at module load — before test `stubGlobal("fetch")`.
- * Day-data spies in cloudflare-client.test.tsx (C2/C5/C6) must not count
- * comments GETs (CC1). Mount tests flip `__useGlobalCommentsFetchForTests`.
+ * Captured at module load so day-load fetch spies (cloudflare-client C2/C5/C6)
+ * do not attribute comment traffic (CC1). No test-only hooks.
+ *
+ * If `globalThis.fetch` was replaced after load, do not start I/O on the stale
+ * bind — under fake timers that hang and are never the live client.
  */
-const commentsHttpBound: typeof fetch = globalThis.fetch.bind(globalThis);
-let useGlobalCommentsFetch = false;
+const moduleFetchRef: typeof fetch = globalThis.fetch;
+const moduleFetch: typeof fetch = moduleFetchRef.bind(globalThis);
 
 function commentsHttp(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  if (useGlobalCommentsFetch) return globalThis.fetch(input, init);
-  // Vitest + fake timers: a real network fetch hangs and stalls day-nav tests (CC1).
-  // Production builds use the bound fetch; mount tests opt into the global mock.
-  if (import.meta.env.MODE === "test") {
+  if (globalThis.fetch !== moduleFetchRef) {
     return Promise.resolve(
       new Response(JSON.stringify({ error: "unavailable" }), {
         status: 503,
@@ -23,12 +22,7 @@ function commentsHttp(
       }),
     );
   }
-  return commentsHttpBound(input, init);
-}
-
-/** Test-only: when true, comments use live `globalThis.fetch` (the vitest stub). */
-export function __setCommentsFetchForTests(useGlobal: boolean): void {
-  useGlobalCommentsFetch = useGlobal;
+  return moduleFetch(input, init);
 }
 
 /** Same-origin comments proxy. No key, no VITE_ override, no metfix-bff host. */
@@ -127,10 +121,11 @@ export function mapDailyFixComments(payload: unknown): DailyFixComment[] | null 
 
 async function fetchCommentsNetwork(
   isoDate: string,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  fetchImpl: typeof fetch,
 ): Promise<Exclude<CommentsLoadState, { status: "loading" }>> {
   try {
-    const response = await commentsHttp(dailyFixCommentsRequestUrl(isoDate), {
+    const response = await fetchImpl(dailyFixCommentsRequestUrl(isoDate), {
       method: "GET",
       signal,
       headers: { Accept: "application/json" },
@@ -155,12 +150,14 @@ async function fetchCommentsNetwork(
  * Load Daily Fix comments from the same-origin Worker for one ISO date.
  * R23: concurrent callers share one in-flight promise; later calls hit the Map.
  * Pass `bypassCache` after a failed POST confirmation refetch (CT-P1).
+ * Callers that need a mock pass `fetchImpl` (no production test hooks).
  */
 export async function fetchDailyFixComments(
   isoDate: string,
   signal?: AbortSignal,
-  options?: { bypassCache?: boolean },
+  options?: { bypassCache?: boolean; fetchImpl?: typeof fetch },
 ): Promise<Exclude<CommentsLoadState, { status: "loading" }>> {
+  const fetchImpl = options?.fetchImpl ?? commentsHttp;
   if (!options?.bypassCache) {
     const hit = commentsCache.get(isoDate);
     if (hit?.kind === "loaded") return { status: "loaded", comments: hit.comments };
@@ -170,7 +167,7 @@ export async function fetchDailyFixComments(
     commentsCache.delete(isoDate);
   }
 
-  const promise = fetchCommentsNetwork(isoDate, signal).then((result) => {
+  const promise = fetchCommentsNetwork(isoDate, signal, fetchImpl).then((result) => {
     if (result.status === "loaded") {
       commentsCache.set(isoDate, { kind: "loaded", comments: result.comments });
     } else {
@@ -186,11 +183,6 @@ export async function fetchDailyFixComments(
 export function invalidateCommentsCache(isoDate?: string): void {
   if (isoDate) commentsCache.delete(isoDate);
   else commentsCache.clear();
-}
-
-/** Test helper. */
-export function resetCommentsCacheForTests(): void {
-  commentsCache.clear();
 }
 
 /** Client Retry-After clamp (CW13.1 / 1.23): all-digit → 1..600; else 60. */
