@@ -42,6 +42,9 @@ const SID_MAX_AGE = 2_592_000;
 const OAUTH_DO_TIMEOUT_MS = 1000;
 const CLOCK_SKEW_SEC = 60;
 
+/** Google JWKS entry — DOM JsonWebKey omits `kid`. */
+type GoogleJwk = JsonWebKey & { kid?: string };
+
 function authRedirect(location: string, setCookies: string[] = []): Response {
   const headers = new Headers({
     Location: location,
@@ -157,13 +160,13 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-async function fetchJwksNetwork(fetchImpl: FetchImpl): Promise<{ keys: JsonWebKey[] } | null> {
+async function fetchJwksNetwork(fetchImpl: FetchImpl): Promise<{ keys: GoogleJwk[] } | null> {
   try {
     // No AbortSignal.timeout: vitest fake timers can abort it spuriously.
     const res = await fetchImpl(GOOGLE_JWKS_URL, { method: "GET" });
     if (!res.ok) return null;
     const text = await res.text();
-    const json = JSON.parse(text) as { keys?: JsonWebKey[] };
+    const json = JSON.parse(text) as { keys?: GoogleJwk[] };
     if (!Array.isArray(json.keys)) return null;
     return { keys: json.keys };
   } catch {
@@ -208,9 +211,9 @@ async function loadJwks(
   fetchImpl: FetchImpl,
   cache: Cache | undefined,
   forceNetwork: boolean,
-): Promise<{ keys: JsonWebKey[] } | null> {
+): Promise<{ keys: GoogleJwk[] } | null> {
   if (!forceNetwork) {
-    const cached = await readCachedJson<{ keys: JsonWebKey[] }>(cache, JWKS_CACHE_URL);
+    const cached = await readCachedJson<{ keys: GoogleJwk[] }>(cache, JWKS_CACHE_URL);
     if (cached?.keys) return cached;
   }
   const fresh = await fetchJwksNetwork(fetchImpl);
@@ -222,7 +225,7 @@ async function resolveJwkForKid(
   kid: string,
   fetchImpl: FetchImpl,
   cache: Cache | undefined,
-): Promise<JsonWebKey | null> {
+): Promise<GoogleJwk | null> {
   let jwks = await loadJwks(fetchImpl, cache, false);
   let key = jwks?.keys.find((k) => k.kid === kid) ?? null;
   if (key) return key;
