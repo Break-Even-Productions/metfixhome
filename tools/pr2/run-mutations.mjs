@@ -1655,7 +1655,10 @@ function sabotageNeedsClientBuild(files) {
   );
 }
 
-function runFullSuites(catalogGates, { typeCheck = false, forceBuild = false, files = null } = {}) {
+function runFullSuites(
+  catalogGates,
+  { typeCheck = false, forceBuild = false, files = null, namePattern = null } = {},
+) {
   mkdirSync(path.dirname(VITEST_JSON), { recursive: true });
   writeFileSync(VITEST_JSON, "{}");
   // Build BEFORE vitest so AU19.3 / M-JL1 see sabotaged client/index.html in dist.
@@ -1666,20 +1669,21 @@ function runFullSuites(catalogGates, { typeCheck = false, forceBuild = false, fi
     : { status: 0, stdout: "", stderr: "", error: null };
   let typeRes = null;
   if (typeCheck) typeRes = runCmd("npm", ["run", "check:worker"], { timeout: TIMEOUT_MS });
-  const vitest = runCmd(
-    "npx",
-    [
-      "vitest",
-      "run",
-      "--config",
-      "vitest.gate.config.ts",
-      "--reporter=verbose",
-      "--reporter=json",
-      "--outputFile",
-      VITEST_JSON,
-    ],
-    { timeout: TIMEOUT_MS * 3 },
-  );
+  // Optional -t isolates mutant runs to the catalog expected-red titles (exact kills).
+  const vitestArgs = [
+    "vitest",
+    "run",
+    "--config",
+    "vitest.gate.config.ts",
+    "--reporter=verbose",
+    "--reporter=json",
+    "--outputFile",
+    VITEST_JSON,
+  ];
+  if (namePattern) {
+    vitestArgs.push("-t", namePattern);
+  }
+  const vitest = runCmd("npx", vitestArgs, { timeout: TIMEOUT_MS * 3 });
   const workers = runCmd("npm", ["run", "test:workers"], { timeout: TIMEOUT_MS * 2 });
   const combined = [
     vitest.stdout,
@@ -2033,6 +2037,7 @@ function main() {
         run = runFullSuites(catalogGates, {
           typeCheck: !!sab.typeCheck,
           files: touchFiles,
+          namePattern: redSetNamePattern(m.red),
         });
       } catch (e) {
         applyErr = `run ${vid}: ${e?.message || e}`;
