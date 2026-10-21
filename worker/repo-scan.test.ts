@@ -1183,7 +1183,11 @@ describe("CI2", () => {
     } finally {
       rmSync(plantAbs, { force: true });
     }
-    console.warn("CI2 hit count (unplanted):", hits.length, hits.slice(0, 5));
+    const allow = new Set([
+      "client/src/pages/the-daily-fix/DayContent.tsx:15",
+    ]);
+    const unexpected = hits.filter((h) => !allow.has(h.replace(/^SCAN FAIL: html-sink /, "")));
+    expect(unexpected).toEqual([]);
   });
 });
 

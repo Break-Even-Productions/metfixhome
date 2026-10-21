@@ -24,7 +24,7 @@ import {
   hOk,
   leakFree,
   setupAuthHooks,
-} from "./realauth-harness.test";
+} from "./realauth-harness";
 import { csrfForPre, csrfForSid, timingSafeEqualStr } from "./crypto";
 
 setupAuthHooks();

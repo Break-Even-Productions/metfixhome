@@ -12,7 +12,7 @@ import {
   TOK,
   createHarness,
   setupAuthHooks,
-} from "./realauth-harness.test";
+} from "./realauth-harness";
 import { r8aName, r8bName, R8C_NAME } from "./throttle";
 
 setupAuthHooks();

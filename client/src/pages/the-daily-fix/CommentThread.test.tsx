@@ -2,8 +2,16 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CommentThread } from "./CommentThread";
+
+beforeEach(() => {
+  Object.defineProperty(window, "location", {
+    value: { ...window.location, hostname: "metfix.org" },
+    writable: true,
+    configurable: true,
+  });
+});
 
 afterEach(() => {
   cleanup();

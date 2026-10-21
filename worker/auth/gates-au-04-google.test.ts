@@ -16,7 +16,7 @@ import {
   setupAuthHooks,
   signGoogleIdToken,
   validIdTokenClaims,
-} from "./realauth-harness.test";
+} from "./realauth-harness";
 import { sha256Hex, bytesToBase64Url, base64UrlToBytes, randomBytes } from "./crypto";
 
 setupAuthHooks();

@@ -15,7 +15,7 @@ import {
   seedSession,
   useGateHooks,
   type GateCtx,
-} from "./auth/comment-write-harness.test";
+} from "./auth/comment-write-harness";
 import { publicDisplayName } from "./auth/public-name";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

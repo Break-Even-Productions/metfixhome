@@ -16,6 +16,7 @@ build/
 
 # Logs
 *.log
+tools/pr2/.mutation-vitest-last.json
 
 # OS / editor
 .DS_Store

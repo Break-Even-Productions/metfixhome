@@ -181,8 +181,12 @@ export const EXTRA_SABOTAGES = {
     apply() {
         replaceOnce(
           "client/src/pages/the-daily-fix/CommentThread.tsx",
-          "  moderator = false,",
-          `  moderator = (typeof localStorage !== "undefined" && localStorage.getItem("mfx_mod")) || false, // MUTANT M-CW16`,
+          `  viewerDisplayName = null,
+  moderator = false,
+  onCommentsChanged,`,
+          `  viewerDisplayName = null,
+  moderator = (typeof localStorage !== "undefined" && localStorage.getItem("mfx_mod")) || false, // MUTANT M-CW16
+  onCommentsChanged,`,
           "M-CW16",
         );
     },
@@ -349,8 +353,42 @@ export const EXTRA_SABOTAGES = {
     apply() {
         replaceOnce(
           "worker/auth/session.ts",
-          "    if (!res.ok) return null;\n    const data = (await res.json()) as { record: SessionRecord };\n    await putMeCache(env, hex, data.record);\n    return data.record;",
-          "    if (!res.ok) return null;\n    const data = (await res.json()) as { record: SessionRecord };\n    // MUTANT M-CW33: skip KV /me write\n    return data.record;",
+          `export async function applyRefreshResult(
+  env: Env,
+  rawId: string,
+  tokens: TokenInput & { refresh_token?: string },
+): Promise<SessionRecord | null> {
+  const hex = await sessionKeyHex(rawId);
+  const stub = sessionStub(env, hex);
+  try {
+    const res = await doFetch(stub, "/refresh", {
+      method: "POST",
+      aad: sessionAad(hex),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tokens),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { record: SessionRecord };
+    await putMeCache(env, hex, data.record);
+    return data.record;`,
+          `export async function applyRefreshResult(
+  env: Env,
+  rawId: string,
+  tokens: TokenInput & { refresh_token?: string },
+): Promise<SessionRecord | null> {
+  const hex = await sessionKeyHex(rawId);
+  const stub = sessionStub(env, hex);
+  try {
+    const res = await doFetch(stub, "/refresh", {
+      method: "POST",
+      aad: sessionAad(hex),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tokens),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { record: SessionRecord };
+    // MUTANT M-CW33: skip KV /me write on refresh
+    return data.record;`,
           "M-CW33",
         );
     },
@@ -847,9 +885,15 @@ export const EXTRA_SABOTAGES = {
     apply() {
         replaceAllExact(
           "worker/comments.ts",
-          "  await purgeCommentsDate(cache, date);",
-          "  // MUTANT M27: skip cache purge after write\n  void date;",
-          "M27",
+          "await purgeCommentsDate(cache, date);",
+          "// MUTANT M27: skip cache purge after write\n    void date; void cache;",
+          "M27-cache",
+        );
+        replaceAllExact(
+          "worker/comments.ts",
+          "await purgeCommentsDate(opts?.cache, date);",
+          "// MUTANT M27: skip cache purge after write\n    void date; void opts;",
+          "M27-opts",
         );
     },
   },

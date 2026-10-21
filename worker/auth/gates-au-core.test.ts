@@ -13,7 +13,7 @@ import {
   sessionBlob,
   setupAuthHooks,
   sidHex,
-} from "./realauth-harness.test";
+} from "./realauth-harness";
 import { encryptSessionPayload } from "./crypto";
 import { sessionAad } from "./session";
 

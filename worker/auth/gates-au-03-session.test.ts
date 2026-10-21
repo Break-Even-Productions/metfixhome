@@ -23,7 +23,7 @@ import {
   sidHex,
   signGoogleIdToken,
   validIdTokenClaims,
-} from "./realauth-harness.test";
+} from "./realauth-harness";
 import { decryptSessionPayload, encryptSessionPayload } from "./crypto";
 import { sessionAad } from "./session";
 
@@ -382,6 +382,79 @@ describe("AU6", () => {
 
     const newBlob = await sessionBlob(h, newSid);
     expect(newBlob?.blob).toBeTruthy();
+  });
+});
+
+describe("CW12", () => {
+  it("CW12.3 refresh true→false rewrites SESSION DO and KV /me; purge rebuild stays false", async () => {
+    const h = createHarness({
+      webLogin: async () =>
+        Response.json({
+          access_token: ACCESS1,
+          refresh_token: REFRESH1,
+          expires_in: 3600,
+          public_name: "Jane",
+          user_id: 42,
+          can_moderate: true,
+        }),
+      refresh: async (req) => {
+        const parsed = JSON.parse(await req.text()) as { refresh_token?: string };
+        if (parsed.refresh_token === REFRESH1) {
+          return Response.json({
+            access_token: ACCESS2,
+            refresh_token: REFRESH2,
+            expires_in: 3600,
+            public_name: "Jane",
+            user_id: 42,
+            can_moderate: false,
+          });
+        }
+        return Response.json({ code: "invalid_grant" }, { status: 400 });
+      },
+    });
+    const { sid } = await h.login();
+    const hex = await sidHex(sid);
+    const meWarm = await h.call("/api/auth/me", {
+      headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+    });
+    expect(await meWarm.json()).toMatchObject({ signed_in: true, moderator: true });
+
+    await patchSession(h, sid, (r) => {
+      r.access_exp = Date.now() + 59_000;
+      r.can_moderate = true;
+      r.bsi_refresh = REFRESH1;
+    });
+
+    const post = await commentPost(h, sid);
+    expect(post.status).toBe(201);
+
+    const aad = sessionAad(hex);
+    const stor = h.sessionNs.getStorage(aad)!;
+    const blob = (stor.get("rec") as { blob: string }).blob;
+    const rec = JSON.parse((await decryptSessionPayload(blob, aad, ENCKEY))!) as {
+      can_moderate: boolean;
+    };
+    expect(rec.can_moderate).toBe(false);
+
+    const bsiBeforeMe = h.fetches.filter((f) => f.url.includes("brokenscience.org")).length;
+    const meHit = await h.call("/api/auth/me", {
+      headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+    });
+    const meHitBody = (await meHit.json()) as { signed_in: boolean; moderator?: boolean };
+    expect(meHitBody.signed_in).toBe(true);
+    expect(meHitBody.moderator).not.toBe(true);
+    const bsiAfterMe = h.fetches.filter((f) => f.url.includes("brokenscience.org")).length;
+    expect(bsiAfterMe).toBe(bsiBeforeMe);
+
+    h.setNow(Date.now() + 61_000);
+    expect(await h.kv.get(sessKvKey(hex))).toBeNull();
+    const meRebuild = await h.call("/api/auth/me", {
+      headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+    });
+    const meRebuildBody = (await meRebuild.json()) as { signed_in: boolean; moderator?: boolean };
+    expect(meRebuildBody.signed_in).toBe(true);
+    expect(meRebuildBody.moderator).not.toBe(true);
+    expect(h.fetches.filter((f) => f.url.includes("brokenscience.org")).length).toBe(bsiAfterMe);
   });
 });
 
