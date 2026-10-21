@@ -35,7 +35,7 @@ import { R14_OVERRIDES } from "./mutation-sabotages-r14.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
-const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.25-catalog.json");
+const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.29-catalog.json");
 const VITEST_JSON = path.join(REPO, "tools/pr2/.mutation-vitest-last.json");
 
 const args = process.argv.slice(2);
@@ -48,6 +48,8 @@ const ONLY = flag("--only");
 const OUT = flag("--out") || path.join(REPO, "tools/pr2/mutation-results.json");
 const BASELINE_ONLY = args.includes("--baseline-only");
 const RESUME = args.includes("--resume");
+/** Workers suite does not feed observedRed; skip for full-catalog throughput. */
+const SKIP_WORKERS = args.includes("--skip-workers");
 const TIMEOUT_MS = Number(flag("--timeout-ms", "120000"));
 const WPJ = "/" + "wp-json"; // assembled; avoid contiguous scan needle
 const STORE_LOG =
@@ -1694,7 +1696,9 @@ function runFullSuites(
     vitestArgs.push("-t", namePattern);
   }
   const vitest = runCmd("npx", vitestArgs, { timeout: TIMEOUT_MS * 3 });
-  const workers = runCmd("npm", ["run", "test:workers"], { timeout: TIMEOUT_MS * 2 });
+  const workers = SKIP_WORKERS
+    ? { status: null, stdout: "", stderr: "", error: null }
+    : runCmd("npm", ["run", "test:workers"], { timeout: TIMEOUT_MS * 2 });
   const combined = [
     vitest.stdout,
     vitest.stderr,
