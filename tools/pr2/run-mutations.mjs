@@ -43,8 +43,11 @@ function flag(name, fallback = null) {
 const ONLY = flag("--only");
 const OUT = flag("--out") || path.join(REPO, "tools/pr2/mutation-results.json");
 const BASELINE_ONLY = args.includes("--baseline-only");
+const RESUME = args.includes("--resume");
 const TIMEOUT_MS = Number(flag("--timeout-ms", "120000"));
 const WPJ = "/" + "wp-json"; // assembled; avoid contiguous scan needle
+const STORE_LOG =
+  "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal/pr2-mutation-r1.24.json";
 
 function read(rel) {
   return readFileSync(path.join(REPO, rel), "utf8");
@@ -1825,15 +1828,69 @@ function main() {
   }
 
   const results = [];
+  const doneIds = new Set();
+  if (RESUME && existsSync(OUT)) {
+    try {
+      const prev = JSON.parse(readFileSync(OUT, "utf8"));
+      for (const r of prev.results || []) {
+        if (r && r.id && r.verdict && r.verdict !== "not-run") {
+          results.push(r);
+          doneIds.add(r.id);
+        }
+      }
+      console.log(`Resume: loaded ${doneIds.size} prior results from ${OUT}`);
+    } catch (e) {
+      console.warn("Resume: could not load prior results:", e?.message || e);
+    }
+  }
+
   let nExact = 0,
     nWider = 0,
     nSurvived = 0,
     nCant = 0,
     nEthan = 0;
+  for (const r of results) {
+    if (r.verdict === "exact") nExact++;
+    else if (r.verdict === "wider") nWider++;
+    else if (r.verdict === "survived") nSurvived++;
+    else if (r.verdict === "cant-run") nCant++;
+    else if (r.verdict === "ethan-blocker") nEthan++;
+  }
   const nNotRun = catalog.mutations.length - mutations.length;
+
+  function writeCheckpoint() {
+    const summary = {
+      catalogRev: "r1.24",
+      catalogTotal: catalog.mutations.length,
+      selected: mutations.length,
+      counts: {
+        exact: nExact,
+        wider: nWider,
+        survived: nSurvived,
+        "ethan-blocker": nEthan,
+        "cant-run": nCant,
+        "not-run": nNotRun + (mutations.length - results.length),
+      },
+      baselineFailedAmongSelected: [...baselineFailed],
+      results,
+      partial: results.length < mutations.length,
+    };
+    mkdirSync(path.dirname(OUT), { recursive: true });
+    writeFileSync(OUT, JSON.stringify(summary, null, 2));
+    try {
+      mkdirSync(path.dirname(STORE_LOG), { recursive: true });
+      writeFileSync(STORE_LOG, JSON.stringify(summary, null, 2));
+    } catch {
+      /* store optional */
+    }
+  }
 
   for (let i = 0; i < mutations.length; i++) {
     const m = mutations[i];
+    if (doneIds.has(m.id)) {
+      console.log(`[${i + 1}/${mutations.length}] ${m.id}… skip (resume)`);
+      continue;
+    }
     const sab = SABOTAGES[m.id];
     process.stdout.write(`[${i + 1}/${mutations.length}] ${m.id}… `);
 
@@ -1849,6 +1906,7 @@ function main() {
       });
       nCant++;
       console.log("cant-run");
+      writeCheckpoint();
       continue;
     }
     if (sab.ethanBlocker) {
@@ -1863,6 +1921,7 @@ function main() {
       });
       nEthan++;
       console.log("ethan-blocker");
+      writeCheckpoint();
       continue;
     }
 
@@ -1937,6 +1996,7 @@ function main() {
       });
       nCant++;
       console.log("cant-run");
+      writeCheckpoint();
       continue;
     }
 
@@ -1959,8 +2019,10 @@ function main() {
     else if (verdict === "wider") nWider++;
     else if (verdict === "survived") nSurvived++;
     console.log(`${verdict} observed=[${mergedObserved.join(",")}]`);
+    writeCheckpoint();
   }
 
+  // Final write (clears partial).
   const summary = {
     catalogRev: "r1.24",
     catalogTotal: catalog.mutations.length,
@@ -1975,14 +2037,14 @@ function main() {
     },
     baselineFailedAmongSelected: [...baselineFailed],
     results,
+    partial: false,
   };
 
   mkdirSync(path.dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(summary, null, 2));
-  const storeLog = "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal/pr2-mutation-r1.24.json";
   try {
-    mkdirSync(path.dirname(storeLog), { recursive: true });
-    writeFileSync(storeLog, JSON.stringify(summary, null, 2));
+    mkdirSync(path.dirname(STORE_LOG), { recursive: true });
+    writeFileSync(STORE_LOG, JSON.stringify(summary, null, 2));
   } catch {
     /* store optional */
   }
