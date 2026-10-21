@@ -35,4 +35,22 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(sm).toContain("https://metfix.org/sitemap-daily-fix.xml");
     expect((sm.match(/<url>/g) || []).length).toBe(6);
   });
+
+  it("R19 workers_dev is false", () => {
+    const wrangler = readFileSync(
+      fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),
+      "utf8",
+    );
+    expect(wrangler).toMatch(/"workers_dev"\s*:\s*false/);
+  });
+
+  it("LOCAL_AUTH is never enabled in wrangler.jsonc (dev-only via .dev.vars)", () => {
+    const wrangler = readFileSync(
+      fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),
+      "utf8",
+    );
+    expect(wrangler).not.toMatch(/LOCAL_AUTH/);
+    expect(wrangler).not.toMatch(/BSI_ORIGIN/);
+  });
 });
+

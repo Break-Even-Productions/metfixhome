@@ -18,16 +18,30 @@ import {
   type UpstreamOutcome,
 } from "../shared/daily-fix";
 import { buildFullHead, rewriteHtml, type HeadMode } from "./head";
+import { handleAuth } from "./auth";
+import { handleCommentsRoutes } from "./comments";
+import { handleLeaderboard } from "./leaderboard";
+import { LoginThrottleDO } from "./do/login-throttle";
+import { OauthStateDO } from "./do/oauth-state";
+import { SessionDO } from "./do/session";
+import { DAILY_FIX_CSP } from "./csp";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
   isPublicListItem,
   LIST_PAGE_SIZE,
   SITEMAP_MAX_SUBREQUESTS,
+  type CommentType,
   type Env,
 } from "./upstream";
 
 export type { Env };
+export { LoginThrottleDO, OauthStateDO, SessionDO };
+
+function withDailyFixCsp(headers: Headers): Headers {
+  headers.set("Content-Security-Policy", DAILY_FIX_CSP);
+  return headers;
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -52,12 +66,30 @@ export async function handleRequest(
   const url = new URL(request.url);
   const path = url.pathname;
 
+  // /api/auth/* — exact paths before the /api/ 404 catch-all (§5.1)
+  if (path.startsWith("/api/auth/")) {
+    const authRes = await handleAuth(request, env, { fetchImpl, bsiBaseUrl });
+    if (authRes) return authRes;
+  }
+
   // /api/* — worker-owned
   if (path === "/api/daily-fix" || path === "/api/daily-fix/") {
     return handleApi(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
   }
   if (path === "/api/daily-fix/archive") {
     return handleArchive(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
+  }
+  if (path === "/api/daily-fix/leaderboard") {
+    return handleLeaderboard(request, env, fetchImpl, { baseUrl: bsiBaseUrl });
+  }
+  // Comments collection + :id + :id/like (W1: trailing slash → 404 inside handler).
+  if (path === "/api/daily-fix/comments" || path.startsWith("/api/daily-fix/comments/")) {
+    const commentsRes = await handleCommentsRoutes(request, env, {
+      fetchImpl,
+      cachesDefault: cache,
+      bsiBaseUrl,
+    });
+    if (commentsRes) return commentsRes;
   }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
@@ -236,7 +268,7 @@ async function handleDailyFixHtml(
     return htmlServiceUnavailable(request, env, isHead, /* assetsFailed */ true);
   }
   const bodyRes = rewriteHtml(assetRes, plan);
-  const headers = new Headers(bodyRes.headers);
+  const headers = withDailyFixCsp(new Headers(bodyRes.headers));
   const cc = headers.get("Cache-Control");
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
@@ -255,11 +287,11 @@ async function htmlNotFound(request: Request, env: Env): Promise<Response> {
   } catch {
     return new Response(isHead ? null : "Service Unavailable", {
       status: 503,
-      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic_noindex" });
-  const headers = new Headers(rewritten.headers);
+  const headers = withDailyFixCsp(new Headers(rewritten.headers));
   if (isHead) return new Response(null, { status: 404, headers });
   return new Response(rewritten.body, { status: 404, headers });
 }
@@ -273,7 +305,7 @@ async function htmlServiceUnavailable(
   if (assetsFailed) {
     return new Response(isHead ? null : "Service Unavailable", {
       status: 503,
-      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
     });
   }
   let assetRes: Response;
@@ -282,11 +314,11 @@ async function htmlServiceUnavailable(
   } catch {
     return new Response(isHead ? null : "Service Unavailable", {
       status: 503,
-      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic" });
-  const headers = new Headers(rewritten.headers);
+  const headers = withDailyFixCsp(new Headers(rewritten.headers));
   headers.set("Retry-After", "300");
   headers.set("Cache-Control", "no-store");
   if (isHead) return new Response(null, { status: 503, headers });
@@ -586,4 +618,8 @@ function sitemapUnavailable(method: string): Response {
       "Content-Type": "text/plain; charset=utf-8",
     },
   });
+}
+
+function isCommentType(type: string): type is CommentType {
+  return type === "belly" || type === "body" || type === "brain" || type === "all";
 }

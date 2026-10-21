@@ -18,7 +18,7 @@
     "sanity": "sanity dev",
     "sanity:deploy": "sanity deploy -y --url metfix",
     "sanity:seed": "tsx --tsconfig tsconfig.json scripts/seed-sanity.ts",
-    "test:workers": "vitest run --config vitest.workers.config.ts"
+    "test:workers": "vitest run --config vitest.workers.config.ts && vitest run --config vitest.workers.session.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -64,9 +64,9 @@
     "nanoid": "^5.1.5",
     "next-themes": "^0.4.6",
     "patch-package": "^8.0.1",
-    "react": "^19.2.1",
+    "react": "19.2.1",
     "react-day-picker": "^9.11.1",
-    "react-dom": "^19.2.1",
+    "react-dom": "19.2.1",
     "react-hook-form": "^7.64.0",
     "react-resizable-panels": "^3.0.6",
     "recharts": "^2.15.2",
@@ -111,6 +111,13 @@
     "@cloudflare/vitest-pool-workers": "0.10.0"
   },
   "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",
+  "overrides": {
+    "@builder.io/vite-plugin-jsx-loc": {
+      "vite": "$vite"
+    },
+    "react": "19.2.1",
+    "react-dom": "19.2.1"
+  },
   "pnpm": {
     "overrides": {
       "tailwindcss>nanoid": "3.3.7"

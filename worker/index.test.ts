@@ -97,10 +97,25 @@ function makeCache(): Cache & { store: CacheStore; puts: Array<{ key: string; re
   } as unknown as Cache & { store: CacheStore; puts: Array<{ key: string; res: Response }> };
 }
 
+function stubNamespace(): DurableObjectNamespace {
+  return {
+    idFromName: () => ({ toString: () => "stub" }),
+    get: () => ({ fetch: async () => new Response(null, { status: 503 }) }),
+  } as unknown as DurableObjectNamespace;
+}
+
 function makeEnv(assetsFetch: ReturnType<typeof vi.fn>, key = "test-secret-key"): Env {
   return {
     ASSETS: { fetch: assetsFetch } as unknown as Fetcher,
     DAILY_FIX_API_KEY: key || undefined,
+    AUTH_SESSIONS: {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => {},
+    } as unknown as KVNamespace,
+    SESSION: stubNamespace(),
+    LOGIN_THROTTLE: stubNamespace(),
+    OAUTH_STATE: stubNamespace(),
   };
 }
 
@@ -238,7 +253,15 @@ describe("Worker HTML / API / sitemap", () => {
     key = "test-secret-key",
     extra: { bsiBaseUrl?: string } = {},
   ) {
-    const req = new Request(`https://metfix.org${path}`, init);
+    // undici forbids TRACE; synthesize method for W2.1.
+    let req: Request;
+    try {
+      req = new Request(`https://metfix.org${path}`, init);
+    } catch {
+      const method = String(init.method ?? "GET").toUpperCase();
+      req = new Request(`https://metfix.org${path}`, { ...init, method: "GET" });
+      Object.defineProperty(req, "method", { get: () => method });
+    }
     return handleRequest(req, makeEnv(assetsFetch, key), ctx, {
       fetchImpl: fetchMock as unknown as typeof fetch,
       cachesDefault: cache,
@@ -947,6 +970,135 @@ describe("Worker HTML / API / sitemap", () => {
     expect(res.status).toBe(200);
     await flush(ctx);
     expect(cache.puts.length).toBe(0);
+  });
+
+  it("comments proxy returns W7-shaped body and caches type=all", async () => {
+    const raw = JSON.stringify({
+      comments: {
+        belly: [
+          {
+            id: 1,
+            user: { id: 9, display_name: "Jane", email: "a@b.co" },
+            content: "hi",
+            timestamp: "2026-10-04T12:00:00Z",
+            like_count: 0,
+            parent_id: null,
+            deleted: 0,
+            edited: 0,
+            liked: true,
+            replies: [],
+          },
+        ],
+        body: [],
+        brain: [],
+      },
+      meta: { date: "2026-10-04", type: "all" },
+    });
+    fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));
+    const res = await call("/api/daily-fix/comments?date=2026-10-04&type=all");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=0, s-maxage=60");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    const body = await res.json();
+    expect(body).toEqual({
+      comments: {
+        belly: [
+          {
+            id: 1,
+            user: { display_name: "Member" },
+            content: "hi",
+            timestamp: "2026-10-04T12:00:00Z",
+            like_count: 0,
+            parent_id: null,
+            deleted: 0,
+            edited: 0,
+            replies: [],
+          },
+        ],
+        body: [],
+        brain: [],
+      },
+      meta: { date: "2026-10-04", type: "all" },
+    });
+    expect(JSON.stringify(body)).not.toContain("test-secret-key");
+    expect(JSON.stringify(body)).not.toContain('"liked"');
+    expect(JSON.stringify(body)).not.toContain('"id":9');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstream, init] = fetchMock.mock.calls[0];
+    expect(String(upstream)).toBe(
+      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2026-10-04&type=all",
+    );
+    expect((init?.headers as Record<string, string>)["X-API-Key"]).toBe("test-secret-key");
+    expect(cache.puts.length).toBe(1);
+    expect(cache.puts[0]?.key).toBe(
+      "https://cache.metfix.internal/daily-fix/comments?date=2026-10-04",
+    );
+
+    fetchMock.mockClear();
+    const head = await call("/api/daily-fix/comments?date=2026-10-04&type=all", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it("comments proxy rejects bad input; Allow includes POST; trailing slash 404", async () => {
+    for (const method of ["PUT", "DELETE", "OPTIONS", "PATCH", "TRACE"]) {
+      fetchMock.mockClear();
+      const res = await call("/api/daily-fix/comments?date=2026-10-04&type=all", { method });
+      expect(res.status).toBe(405);
+      expect(res.headers.get("Allow")).toBe("GET, HEAD, POST");
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+    }
+    for (const q of ["", "?date=2026-02-31", "?date=261004", "?type=all", "?date=2026-10-04"]) {
+      fetchMock.mockClear();
+      const res = await call(`/api/daily-fix/comments${q}`);
+      expect(res.status).toBe(400);
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+    }
+    const missingType = await call("/api/daily-fix/comments?date=2026-10-04");
+    expect(await missingType.json()).toEqual({ error: "invalid_type" });
+    const badDate = await call("/api/daily-fix/comments?date=261004&type=all");
+    expect(await badDate.json()).toEqual({ error: "invalid_date" });
+    const slash = await call("/api/daily-fix/comments/?date=2026-10-04&type=all");
+    expect(slash.status).toBe(404);
+    expect(await slash.json()).toEqual({ error: "not_found" });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  it("comments proxy maps upstream failures and refuses a non-BSI host", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 404 }));
+    const notFound = await call("/api/daily-fix/comments?date=2026-08-01&type=all");
+    expect(notFound.status).toBe(404);
+    expect(await notFound.json()).toEqual({ error: "not_found" });
+    expect(notFound.headers.get("Cache-Control")).toBe("no-store");
+
+    fetchMock.mockResolvedValue(new Response("x", { status: 500 }));
+    const down = await call("/api/daily-fix/comments?date=2026-08-02&type=all");
+    expect(down.status).toBe(503);
+    expect(await down.json()).toEqual({ error: "unavailable" });
+    expect(down.headers.get("Retry-After")).toBe("300");
+    expect(down.headers.get("Cache-Control")).toBe("no-store");
+
+    fetchMock.mockResolvedValue(new Response("{}", { status: 429 }));
+    const limited = await call("/api/daily-fix/comments?date=2026-08-05&type=all");
+    expect(limited.status).toBe(503);
+    expect(limited.headers.get("Retry-After")).toBe("60");
+
+    fetchMock.mockReset();
+    const nokey = await call("/api/daily-fix/comments?date=2026-08-03&type=all", {}, "");
+    expect(nokey.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    const evil = await call(
+      "/api/daily-fix/comments?date=2026-08-04&type=all",
+      {},
+      "test-secret-key",
+      { bsiBaseUrl: "https://evil.example/wp-json/metfix/v1/daily-fix" },
+    );
+    expect(evil.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
   it("W45 sitemap paging total 250/200/0 + X-API-Key each page + Content-Type", async () => {
