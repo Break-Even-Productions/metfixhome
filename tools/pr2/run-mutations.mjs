@@ -1664,6 +1664,8 @@ function runFullSuites(catalogGates, { typeCheck = false, forceBuild = false, fi
   const build = doBuild
     ? runCmd("npm", ["run", "build:cf"], { timeout: TIMEOUT_MS * 3 })
     : { status: 0, stdout: "", stderr: "", error: null };
+  let typeRes = null;
+  if (typeCheck) typeRes = runCmd("npm", ["run", "check:worker"], { timeout: TIMEOUT_MS });
   const vitest = runCmd(
     "npx",
     [
@@ -1679,8 +1681,6 @@ function runFullSuites(catalogGates, { typeCheck = false, forceBuild = false, fi
     { timeout: TIMEOUT_MS * 3 },
   );
   const workers = runCmd("npm", ["run", "test:workers"], { timeout: TIMEOUT_MS * 2 });
-  let typeRes = null;
-  if (typeCheck) typeRes = runCmd("npm", ["run", "check:worker"], { timeout: TIMEOUT_MS });
   const combined = [
     vitest.stdout,
     vitest.stderr,

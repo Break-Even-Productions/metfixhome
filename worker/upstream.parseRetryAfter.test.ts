@@ -83,4 +83,14 @@ describe("AU26.11 parseRetryAfter", () => {
     expect(login).toMatch(/parseRetryAfter\(/);
     expect(comments).toMatch(/parseRetryAfter\(/);
   });
+
+  it("AU26.11 return type is branded RetryAfterSeconds not bare number", () => {
+    const upstream = readFileSync(join(REPO, "worker/upstream.ts"), "utf8");
+    expect(upstream).toMatch(
+      /export type RetryAfterSeconds = number & \{ readonly __brand: "RetryAfterSeconds" \};/,
+    );
+    expect(upstream).toMatch(
+      /export function parseRetryAfter\(header: string \| null \| undefined\): RetryAfterSeconds \{/,
+    );
+  });
 });
