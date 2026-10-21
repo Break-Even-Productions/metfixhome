@@ -181,12 +181,17 @@ export const EXTRA_SABOTAGES = {
     apply() {
         replaceOnce(
           "client/src/pages/the-daily-fix/CommentThread.tsx",
-          `  viewerDisplayName = null,
-  moderator = false,
-  onCommentsChanged,`,
-          `  viewerDisplayName = null,
-  moderator = (typeof localStorage !== "undefined" && localStorage.getItem("mfx_mod")) || false, // MUTANT M-CW16
-  onCommentsChanged,`,
+          `  function canModerate(comment: DailyFixComment): boolean {
+    if (comment.own === true) return true;
+    return moderator === true;
+  }`,
+          `  function canModerate(comment: DailyFixComment): boolean {
+    if (comment.own === true) return true;
+    // MUTANT M-CW16: moderator from localStorage
+    const mod =
+      (typeof localStorage !== "undefined" && localStorage.getItem("mfx_mod")) || moderator;
+    return mod === true || mod === "1";
+  }`,
           "M-CW16",
         );
     },
@@ -342,8 +347,8 @@ export const EXTRA_SABOTAGES = {
     apply() {
         replaceOnce(
           "worker/do/session.ts",
-          "    if (tokens.can_moderate !== undefined) {\n      body.record.can_moderate = tokens.can_moderate === true;\n    }",
-          "    // MUTANT M-CW32: keep old can_moderate on refresh\n    void tokens.can_moderate;",
+          "      if (tok.can_moderate !== undefined) {\n        record.can_moderate = tok.can_moderate === true;\n      }",
+          "      // MUTANT M-CW32: keep old can_moderate on proactive refresh\n      void tok.can_moderate;",
           "M-CW32",
         );
     },
