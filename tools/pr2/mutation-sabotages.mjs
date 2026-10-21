@@ -1967,6 +1967,10 @@ export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Pro
           return;`,
         `          // MUTANT M136: refetch after POST instead of optimistic append
           invalidateCommentsCache(dateIso);
+          await commentsHttp(
+            \`/api/daily-fix/comments?date=\${encodeURIComponent(dateIso)}&type=all\`,
+            { method: "GET", headers: { Accept: "application/json" } },
+          );
           const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
           onCommentsChanged?.(refetched);
           setBody("");
