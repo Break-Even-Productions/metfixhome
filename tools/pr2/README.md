@@ -1,6 +1,6 @@
 # PR2 QA tooling
 
-## Mutation runner (r1.24)
+## Mutation runner (r1.25)
 
 ```bash
 node tools/pr2/run-mutations.mjs

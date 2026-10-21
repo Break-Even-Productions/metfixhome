@@ -35,12 +35,41 @@ function pickQaList(dir) {
   return path.join(dir, files[0]);
 }
 
+function pickLatestByRev(files, re) {
+  const scored = files
+    .map((f) => {
+      const m = f.match(re);
+      if (!m) return null;
+      return { f, major: Number(m[1]), minor: Number(m[2]), patch: m[3] != null ? Number(m[3]) : 0 };
+    })
+    .filter(Boolean);
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.major - a.major || b.minor - a.minor || b.patch - a.patch);
+  return scored[0].f;
+}
+
 function pickSpecCopy(dir) {
-  const direct = path.join(dir, "metfix-pr2-comments-login-acceptance.rev1.6.4.md");
-  if (existsSync(direct)) return direct;
-  const specs = path.join(REPO, "docs/specs/metfix-pr2-comments-login-acceptance.rev1.6.4.md");
-  if (existsSync(specs)) return specs;
+  const acceptRe = /^metfix-pr2-comments-login-acceptance\.rev(\d+)\.(\d+)(?:\.(\d+))?\.md$/;
+  const local = pickLatestByRev(readdirSync(dir), acceptRe);
+  if (local) return path.join(dir, local);
+  const specsDir = path.join(REPO, "docs/specs");
+  if (existsSync(specsDir)) {
+    const fromSpecs = pickLatestByRev(readdirSync(specsDir), acceptRe);
+    if (fromSpecs) return path.join(specsDir, fromSpecs);
+  }
   fail(`${dir}: spec copy missing`);
+}
+
+/** Prefer catalog matching the QA list rev (r1.25 ↔ …tests.r1.25.md); else latest r*-catalog.json. */
+function pickCatalog(dir, qaPath) {
+  const qaRev = path.basename(qaPath).match(/\.r(\d+)\.(\d+)\.md$/);
+  if (qaRev) {
+    const match = path.join(dir, `r${qaRev[1]}.${qaRev[2]}-catalog.json`);
+    if (existsSync(match)) return match;
+  }
+  const catalogs = readdirSync(dir).filter((f) => /^r\d+\.\d+-catalog\.json$/.test(f));
+  const latest = pickLatestByRev(catalogs, /^r(\d+)\.(\d+)-catalog\.json$/);
+  return latest ? path.join(dir, latest) : null;
 }
 
 function parseFence(md, fenceName) {
@@ -76,8 +105,8 @@ if (specMd5 !== pin) fail(specPath);
 const gateIds = parseFence(qaMd, "gate-ids");
 if (gateIds.length !== headerCount) fail(qaPath);
 
-const catalogPath = path.join(docsDir, "r1.24-catalog.json");
-if (existsSync(catalogPath)) {
+const catalogPath = pickCatalog(docsDir, qaPath);
+if (catalogPath) {
   const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
   if (catalog.gates?.length !== gateIds.length) {
     fail(`${catalogPath} gates.length ${catalog.gates.length} != ${gateIds.length}`);
@@ -93,7 +122,7 @@ console.log(
       qaPath: path.relative(REPO, qaPath),
       specMd5,
       gateCount: gateIds.length,
-      catalog: existsSync(catalogPath) ? path.relative(REPO, catalogPath) : null,
+      catalog: catalogPath ? path.relative(REPO, catalogPath) : null,
     },
     null,
     2,

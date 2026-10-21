@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PR2 r1.24 §M mutation runner — full gate suites per mutant.
+ * PR2 r1.25 §M mutation runner — full gate suites per mutant.
  *
  * Usage:
  *   node tools/pr2/run-mutations.mjs
@@ -34,7 +34,7 @@ import { R13_OVERRIDES } from "./mutation-sabotages-r13.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
-const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.24-catalog.json");
+const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.25-catalog.json");
 const VITEST_JSON = path.join(REPO, "tools/pr2/.mutation-vitest-last.json");
 
 const args = process.argv.slice(2);
@@ -50,7 +50,7 @@ const RESUME = args.includes("--resume");
 const TIMEOUT_MS = Number(flag("--timeout-ms", "120000"));
 const WPJ = "/" + "wp-json"; // assembled; avoid contiguous scan needle
 const STORE_LOG =
-  "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal/pr2-mutation-r1.24.json";
+  "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal/pr2-mutation-r1.25.json";
 
 function read(rel) {
   return readFileSync(path.join(REPO, rel), "utf8");
@@ -1927,7 +1927,7 @@ function main() {
 
   function writeCheckpoint() {
     const summary = {
-      catalogRev: "r1.24",
+      catalogRev: "r1.25",
       catalogTotal: catalog.mutations.length,
       selected: mutations.length,
       counts: {
@@ -2085,7 +2085,7 @@ function main() {
 
   // Final write (clears partial).
   const summary = {
-    catalogRev: "r1.24",
+    catalogRev: "r1.25",
     catalogTotal: catalog.mutations.length,
     selected: mutations.length,
     counts: {
