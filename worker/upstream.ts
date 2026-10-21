@@ -25,15 +25,14 @@ export type RetryAfterSeconds = number & { readonly __brand: "RetryAfterSeconds"
 
 /**
  * Shared Retry-After parser for login and comment write/like 429 paths (AU26.11).
- * All-digit → clamp 1..600 (cheap guard: length > 3 → 600 before parse).
- * Missing / non-numeric / HTTP-date / decimal / exponent → 60.
+ * Ethan ruling: all-digit value is the integer, clamp 1..600.
+ * "0017"→17, "0000"→1, 7+ digits→600. Missing / non-numeric / HTTP-date / decimal → 60.
  */
 export function parseRetryAfter(header: string | null | undefined): RetryAfterSeconds {
   if (header == null || header === "") return 60 as RetryAfterSeconds;
   if (!/^[0-9]+$/.test(header)) return 60 as RetryAfterSeconds;
-  // Cheap guard: 4+ digits cannot be < 1000, so clamp to 600 without Number()
-  // (avoids Infinity for 400-digit strings; M-RA4).
-  if (header.length > 3) return 600 as RetryAfterSeconds;
+  // 7+ digits cannot be in 1..600; avoid Number() on huge strings (M-RA4).
+  if (header.length >= 7) return 600 as RetryAfterSeconds;
   const n = Number(header);
   if (!Number.isFinite(n)) return 600 as RetryAfterSeconds;
   if (n < 1) return 1 as RetryAfterSeconds;
@@ -72,6 +71,10 @@ export type Env = {
   SIGNUP_LIMITER?: RateLimitBinding;
   USERNAME_CHECK_LIMITER?: RateLimitBinding;
   GOOGLE_AUTH_LIMITER?: RateLimitBinding;
+  COMMENT_WRITE_LIMITER?: RateLimitBinding;
+  COMMENT_LIKE_LIMITER?: RateLimitBinding;
+  COMMENT_LIKE_TOGGLE_LIMITER?: RateLimitBinding;
+  LEADERBOARD_LIMITER?: RateLimitBinding;
 };
 
 export type FetchImpl = typeof fetch;

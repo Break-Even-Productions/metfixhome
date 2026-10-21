@@ -4,30 +4,10 @@
  *
  * Uses a module-bound fetch captured at import time so vitest stubs of
  * `globalThis.fetch` in day-data tests (cloudflare-client C2/C5/C6) do not
- * see `/me` traffic (CC1).
+ * see `/me` traffic (CC1). Never treat a later global fetch swap as signed-out.
  */
 
-/**
- * Captured at module load so day-load fetch spies (C2/C5/C6) do not see `/me`
- * (CC1). If global fetch was replaced after load, return signed-out without I/O.
- */
-const moduleFetchRef: typeof fetch = globalThis.fetch;
-const moduleFetch: typeof fetch = moduleFetchRef.bind(globalThis);
-
-function sessionHttp(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  if (globalThis.fetch !== moduleFetchRef) {
-    return Promise.resolve(
-      new Response(JSON.stringify({ signed_in: false }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-  }
-  return moduleFetch(input, init);
-}
+const moduleFetch: typeof fetch = globalThis.fetch.bind(globalThis);
 
 export type MeState =
   | { status: "loading" }
@@ -61,13 +41,13 @@ function mapMe(payload: MeResponse): MeState {
   };
 }
 
-async function fetchMeOnce(signal?: AbortSignal): Promise<MeState> {
+/** Shared network fetch — never takes a caller AbortSignal (one cancel must not kill /me for others). */
+async function fetchMeOnce(): Promise<MeState> {
   try {
-    const response = await sessionHttp("/api/auth/me", {
+    const response = await moduleFetch("/api/auth/me", {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
-      signal,
     });
     if (!response.ok) return { status: "signed_out" };
     let payload: MeResponse;
@@ -77,24 +57,50 @@ async function fetchMeOnce(signal?: AbortSignal): Promise<MeState> {
       return { status: "signed_out" };
     }
     return mapMe(payload);
-  } catch (error) {
-    if (signal?.aborted) throw error;
+  } catch {
     return { status: "signed_out" };
   }
+}
+
+function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort);
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
 }
 
 /** Single-flight `/me` for the app load. Shared by header + CommentThread. */
 export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Promise<MeState> {
   if (!options?.force && cached && cached.status !== "loading") {
-    return Promise.resolve(cached);
+    return withCallerAbort(Promise.resolve(cached), options?.signal);
   }
-  if (!options?.force && inflight) return inflight;
-  inflight = fetchMeOnce(options?.signal).then((next) => {
+  if (!options?.force && inflight) {
+    return withCallerAbort(inflight, options?.signal);
+  }
+  const shared = fetchMeOnce().then((next) => {
     cached = next;
     inflight = null;
     return next;
   });
-  return inflight;
+  inflight = shared;
+  return withCallerAbort(shared, options?.signal);
 }
 
 /** After login or logout — drops cache and fetches once more. */
@@ -106,10 +112,4 @@ export function refreshMeAfterAuthChange(signal?: AbortSignal): Promise<MeState>
 
 export function peekMe(): MeState | null {
   return cached;
-}
-
-/** Test helper — clears module cache between mounts. */
-export function resetMeCacheForTests(): void {
-  cached = null;
-  inflight = null;
 }

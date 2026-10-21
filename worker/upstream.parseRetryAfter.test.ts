@@ -9,8 +9,10 @@ describe("AU26.11 parseRetryAfter", () => {
   it("AU26.11 clamps all-digit values to 1..600", () => {
     expect(parseRetryAfter("0")).toBe(1);
     expect(parseRetryAfter("000")).toBe(1);
+    expect(parseRetryAfter("0000")).toBe(1);
     expect(parseRetryAfter("1")).toBe(1);
     expect(parseRetryAfter("017")).toBe(17);
+    expect(parseRetryAfter("0017")).toBe(17);
     expect(parseRetryAfter("17")).toBe(17);
     expect(parseRetryAfter("600")).toBe(600);
     expect(parseRetryAfter("601")).toBe(600);
@@ -20,6 +22,18 @@ describe("AU26.11 parseRetryAfter", () => {
     expect(parseRetryAfter("123456789012345678901234567890")).toBe(600);
     expect(parseRetryAfter("1".repeat(30))).toBe(600);
     expect(parseRetryAfter("1".repeat(400))).toBe(600);
+  });
+
+  it("AU26.11 property: all-digit string equals integer clamp 1..600", () => {
+    for (let n = 0; n <= 1200; n++) {
+      const raw = String(n);
+      const padded = n.toString().padStart(4, "0");
+      const expectN = n < 1 ? 1 : n > 600 ? 600 : n;
+      expect(parseRetryAfter(raw)).toBe(expectN);
+      // Leading zeros: value is the integer (0017→17), unless 7+ digit form.
+      if (padded.length < 7) expect(parseRetryAfter(padded)).toBe(expectN);
+    }
+    expect(parseRetryAfter("0000000")).toBe(600); // 7 digits → 600
   });
 
   it("AU26.11 defaults missing / non-numeric / HTTP-date / decimal to 60", () => {
