@@ -1,28 +1,8 @@
 import { PILLARS, type Pillar } from "./model";
 
-/**
- * Captured at module load so day-load fetch spies (cloudflare-client C2/C5/C6)
- * do not attribute comment traffic (CC1). No test-only hooks.
- *
- * If `globalThis.fetch` was replaced after load, do not start I/O on the stale
- * bind — under fake timers that hang and are never the live client.
- */
-const moduleFetchRef: typeof fetch = globalThis.fetch;
-const moduleFetch: typeof fetch = moduleFetchRef.bind(globalThis);
-
-function commentsHttp(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  if (globalThis.fetch !== moduleFetchRef) {
-    return Promise.resolve(
-      new Response(JSON.stringify({ error: "unavailable" }), {
-        status: 503,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-  }
-  return moduleFetch(input, init);
+/** Default GET uses live `globalThis.fetch` (CommentThread passes `fetchImpl` when needed). */
+function commentsHttp(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return globalThis.fetch(input, init);
 }
 
 /** Same-origin comments proxy. No key, no VITE_ override, no external BFF host. */
@@ -39,6 +19,7 @@ export type DailyFixComment = {
   timestamp: string | null;
   own?: boolean;
   like_count?: number;
+  liked?: boolean;
   parent_id?: number | null;
   deleted?: number;
   edited?: number;
@@ -88,6 +69,7 @@ function mapThread(value: unknown, pillar: Pillar): DailyFixComment | null {
     timestamp,
     own: value.own === true,
     like_count: typeof value.like_count === "number" ? value.like_count : 0,
+    liked: value.liked === true ? true : value.liked === false ? false : undefined,
     parent_id: value.parent_id == null ? null : Number(value.parent_id),
     deleted: typeof value.deleted === "number" ? value.deleted : 0,
     edited: typeof value.edited === "number" ? value.edited : 0,
@@ -185,11 +167,11 @@ export function invalidateCommentsCache(isoDate?: string): void {
   else commentsCache.clear();
 }
 
-/** Client Retry-After clamp (CW13.1 / 1.23): all-digit → 1..600; else 60. */
+/** Client Retry-After clamp (CW13.1 / 1.23): same rules as worker `parseRetryAfter`. */
 export function clampClientRetryAfter(raw: string | null): number {
   if (raw == null || raw === "") return 60;
   if (!/^[0-9]+$/.test(raw)) return 60;
-  if (raw.length > 3) return 600;
+  if (raw.length >= 7) return 600;
   const n = Number(raw);
   if (!Number.isFinite(n)) return 600;
   if (n < 1) return 1;

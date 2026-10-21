@@ -2,6 +2,7 @@
  * AU3 / AU9 / AU14–15 / AU18–20 / AU22.2 / AU24–25 misc gates.
  */
 import { describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -40,6 +41,56 @@ function walk(dir: string, out: string[] = []): string[] {
     } else out.push(p);
   }
   return out;
+}
+
+export type BuiltHtmlViolation = { file: string; line: number; message: string };
+
+function lineAt(html: string, index: number): number {
+  return html.slice(0, index).split("\n").length;
+}
+
+/** AU19.3: parser-based inline script / handler audit (JSON-LD exception on index.html only). */
+export function auditBuiltHtmlDocument(
+  html: string,
+  basename: string,
+  fileLabel = basename,
+): BuiltHtmlViolation[] {
+  const violations: BuiltHtmlViolation[] = [];
+  const dom = new JSDOM(html);
+  const doc = dom.window.document;
+  const all = doc.querySelectorAll("*");
+  for (const el of all) {
+    for (const attr of Array.from(el.attributes)) {
+      if (attr.name.length >= 2 && attr.name.toLowerCase().startsWith("on")) {
+        const idx = html.toLowerCase().indexOf(attr.name.toLowerCase());
+        violations.push({
+          file: fileLabel,
+          line: lineAt(html, idx >= 0 ? idx : 0),
+          message: `disallowed handler attribute ${attr.name}`,
+        });
+      }
+    }
+  }
+  const scripts = doc.querySelectorAll("script");
+  for (const script of scripts) {
+    const src = script.getAttribute("src");
+    if (src != null && src.trim() !== "") continue;
+    const type = script.getAttribute("type");
+    const allowedJsonLd =
+      basename === "index.html" && type === "application/ld+json";
+    if (allowedJsonLd) continue;
+    const snippet = script.outerHTML.slice(0, 80);
+    const idx = html.indexOf(snippet.slice(0, Math.min(40, snippet.length)));
+    violations.push({
+      file: fileLabel,
+      line: lineAt(html, idx >= 0 ? idx : 0),
+      message:
+        type == null
+          ? "inline script without src and without allowed JSON-LD type"
+          : `inline script without src (type=${JSON.stringify(type)})`,
+    });
+  }
+  return violations;
 }
 
 async function loginPost(h: ReturnType<typeof createHarness>) {
@@ -701,10 +752,71 @@ describe("AU19", () => {
       expect(false, "AU19.3 needs dist/public").toBe(true);
       return;
     }
-    for (const abs of walk(dist).filter((f) => f.endsWith(".html"))) {
+    const htmlFiles = walk(dist).filter((f) => f.endsWith(".html"));
+    expect(htmlFiles.length).toBeGreaterThan(0);
+    for (const abs of htmlFiles) {
       const html = readFileSync(abs, "utf8");
-      expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/i);
-      expect(html).not.toMatch(/\son\w+=/i);
+      const base = abs.split("/").pop() ?? abs;
+      const violations = auditBuiltHtmlDocument(html, base, abs);
+      expect(violations).toEqual([]);
+    }
+    const indexHtml = join(dist, "index.html");
+    expect(existsSync(indexHtml), "built dist/public/index.html required").toBe(true);
+    const indexContents = readFileSync(indexHtml, "utf8");
+    expect(indexContents).toContain('type="application/ld+json"');
+    expect(auditBuiltHtmlDocument(indexContents, "index.html", indexHtml)).toEqual([]);
+
+    const jsonLdBody = '{"@context":"https://schema.org","@type":"Thing","name":"x"}';
+    const variants: { name: string; basename: string; html: string }[] = [
+      {
+        name: "plain inline script",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script>alert(1)</script></body></html>`,
+      },
+      {
+        name: "no type",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script>${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "text/javascript",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script type="text/javascript">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "module without src",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script type="module">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "empty type",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script type="">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "case variant Application/LD+JSON",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script type="Application/LD+JSON">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "trailing space on type",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script type="application/ld+json ">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "leading space on type",
+        basename: "index.html",
+        html: `<!doctype html><html><body><script type=" application/ld+json">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "ld+json on non-index",
+        basename: "other.html",
+        html: `<!doctype html><html><body><script type="application/ld+json">${jsonLdBody}</script></body></html>`,
+      },
+    ];
+    for (const v of variants) {
+      const violations = auditBuiltHtmlDocument(v.html, v.basename, v.name);
+      expect(violations.length, `${v.name} should fail AU19.3`).toBeGreaterThan(0);
     }
   });
 

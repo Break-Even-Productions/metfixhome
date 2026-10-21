@@ -1013,8 +1013,7 @@ describe("C5.1", () => {
     } finally {
       rmSync(plantAbs, { force: true });
     }
-    // Clean (may still have comment hits on current head)
-    console.warn("C5.1 hit count (unplanted):", hits.length, hits.slice(0, 5));
+    expect(hits).toEqual([]);
   });
 });
 
@@ -1117,7 +1116,7 @@ function hasMergedMainForTk2m(): boolean {
       cwd: REPO_ROOT,
       stdio: "pipe",
     });
-    execSync("git merge-base --is-ancestor 01f4a8ff059aaf2e7b4c100d6b8cca0453f70810 HEAD", {
+    execSync("git merge-base --is-ancestor 0bb1ca752c739c30e593103bd184f1184bb54fe4 HEAD", {
       cwd: REPO_ROOT,
       stdio: "pipe",
     });

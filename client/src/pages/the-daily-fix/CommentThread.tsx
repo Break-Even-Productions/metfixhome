@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
@@ -49,6 +49,35 @@ async function fetchCsrf(): Promise<string | null> {
   }
 }
 
+function commentUrl(id: number, dateIso: string): string {
+  return `/api/daily-fix/comments/${id}?date=${encodeURIComponent(dateIso)}`;
+}
+
+function likeUrl(id: number, dateIso: string): string {
+  return `/api/daily-fix/comments/${id}/like?date=${encodeURIComponent(dateIso)}`;
+}
+
+function patchComments(
+  load: CommentsLoadState,
+  id: number,
+  pillar: Pillar,
+  patch: Partial<DailyFixComment> | null,
+): CommentsLoadState {
+  if (load.status !== "loaded") return load;
+  if (patch === null) {
+    return {
+      status: "loaded",
+      comments: load.comments.filter((c) => c.id !== id || c.pillar !== pillar),
+    };
+  }
+  return {
+    status: "loaded",
+    comments: load.comments.map((c) =>
+      c.id === id && c.pillar === pillar ? { ...c, ...patch } : c,
+    ),
+  };
+}
+
 export function CommentThread({
   load,
   pillar,
@@ -64,37 +93,57 @@ export function CommentThread({
   const [joinOpen, setJoinOpen] = useState(false);
   const [posting, setPosting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [retryUntil, setRetryUntil] = useState<number | null>(null);
-  const [retryLeft, setRetryLeft] = useState(0);
+  const [retryUntilByKey, setRetryUntilByKey] = useState<Record<string, number>>({});
+  const [, setRetryTick] = useState(0);
+  const inFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setCommentType(pillar);
   }, [pillar]);
 
   useEffect(() => {
-    if (retryUntil == null) {
-      setRetryLeft(0);
-      return;
-    }
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((retryUntil - Date.now()) / 1000));
-      setRetryLeft(left);
-      if (left <= 0) setRetryUntil(null);
-    };
-    tick();
-    const id = window.setInterval(tick, 250);
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      setRetryUntilByKey((prev) => {
+        let changed = false;
+        const next: Record<string, number> = {};
+        for (const [key, until] of Object.entries(prev)) {
+          if (until > now) next[key] = until;
+          else changed = true;
+        }
+        if (!changed && Object.keys(next).length === Object.keys(prev).length) return prev;
+        return next;
+      });
+      setRetryTick((n) => n + 1);
+    }, 250);
     return () => window.clearInterval(id);
-  }, [retryUntil]);
+  }, []);
 
-  const locked = retryLeft > 0;
+  function retryLeft(key: string): number {
+    const until = retryUntilByKey[key];
+    if (!until) return 0;
+    return Math.max(0, Math.ceil((until - Date.now()) / 1000));
+  }
+
+  function isLocked(key: string): boolean {
+    return retryLeft(key) > 0;
+  }
+
+  function applyRateLimit(key: string, res: Response): void {
+    const wait = clampClientRetryAfter(res.headers.get("Retry-After"));
+    setRetryUntilByKey((prev) => ({ ...prev, [key]: Date.now() + wait * 1000 }));
+  }
+
+  const postLocked = isLocked("post");
 
   async function postComment() {
-    if (!dateIso || posting || locked) return;
+    if (!dateIso || posting || postLocked) return;
     const content = body.trim();
     if (!content) return;
     setPosting(true);
     setStatusMsg(null);
     const previous = body;
+    const lockKey = "post";
     try {
       const csrf = await fetchCsrf();
       if (!csrf) {
@@ -112,8 +161,7 @@ export function CommentThread({
         body: JSON.stringify({ date: dateIso, type: commentType, content }),
       });
       if (res.status === 429) {
-        const wait = clampClientRetryAfter(res.headers.get("Retry-After"));
-        setRetryUntil(Date.now() + wait * 1000);
+        applyRateLimit(lockKey, res);
         setBody(previous);
         return;
       }
@@ -175,9 +223,163 @@ export function CommentThread({
     }
   }
 
+  async function editComment(comment: DailyFixComment) {
+    if (!dateIso || load.status !== "loaded") return;
+    const lockKey = `edit:${comment.id}`;
+    if (isLocked(lockKey) || inFlightRef.current.has(lockKey)) return;
+    const next = window.prompt("Edit comment", comment.content);
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === comment.content) return;
+    inFlightRef.current.add(lockKey);
+    try {
+      const csrf = await fetchCsrf();
+      if (!csrf) return;
+      const res = await commentsHttp(commentUrl(comment.id, dateIso), {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf,
+        },
+        body: JSON.stringify({ content: trimmed }),
+      });
+      if (res.status === 429) {
+        applyRateLimit(lockKey, res);
+        return;
+      }
+      if (res.ok) {
+        invalidateCommentsCache(dateIso);
+        onCommentsChanged?.(
+          patchComments(load, comment.id, comment.pillar, { content: trimmed, edited: 1 }),
+        );
+        return;
+      }
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+    } finally {
+      inFlightRef.current.delete(lockKey);
+    }
+  }
+
+  async function deleteComment(comment: DailyFixComment) {
+    if (!dateIso || load.status !== "loaded") return;
+    const lockKey = `delete:${comment.id}`;
+    if (isLocked(lockKey) || inFlightRef.current.has(lockKey)) return;
+    if (!window.confirm("Delete this comment?")) return;
+    inFlightRef.current.add(lockKey);
+    try {
+      const csrf = await fetchCsrf();
+      if (!csrf) return;
+      const res = await commentsHttp(commentUrl(comment.id, dateIso), {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-Token": csrf,
+        },
+      });
+      if (res.status === 429) {
+        applyRateLimit(lockKey, res);
+        return;
+      }
+      if (res.status === 200 || res.status === 204) {
+        invalidateCommentsCache(dateIso);
+        onCommentsChanged?.(patchComments(load, comment.id, comment.pillar, null));
+        return;
+      }
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+    } finally {
+      inFlightRef.current.delete(lockKey);
+    }
+  }
+
+  async function toggleLike(comment: DailyFixComment) {
+    if (!dateIso || load.status !== "loaded") return;
+    const lockKey = `like:${comment.id}`;
+    if (isLocked(lockKey) || inFlightRef.current.has(lockKey)) return;
+    const wasLiked = comment.liked === true;
+    const prevCount = typeof comment.like_count === "number" ? comment.like_count : 0;
+    const nextLiked = !wasLiked;
+    const optimisticCount = Math.max(0, prevCount + (nextLiked ? 1 : -1));
+    inFlightRef.current.add(lockKey);
+    onCommentsChanged?.(
+      patchComments(load, comment.id, comment.pillar, {
+        liked: nextLiked,
+        like_count: optimisticCount,
+      }),
+    );
+    try {
+      const csrf = await fetchCsrf();
+      if (!csrf) {
+        onCommentsChanged?.(
+          patchComments(load, comment.id, comment.pillar, {
+            liked: wasLiked,
+            like_count: prevCount,
+          }),
+        );
+        return;
+      }
+      const res = await commentsHttp(likeUrl(comment.id, dateIso), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf,
+        },
+        body: JSON.stringify({ liked: nextLiked, date: dateIso }),
+      });
+      if (res.status === 429) {
+        onCommentsChanged?.(
+          patchComments(load, comment.id, comment.pillar, {
+            liked: wasLiked,
+            like_count: prevCount,
+          }),
+        );
+        applyRateLimit(lockKey, res);
+        return;
+      }
+      if (res.status === 403 || res.status === 503) {
+        onCommentsChanged?.(
+          patchComments(load, comment.id, comment.pillar, {
+            liked: wasLiked,
+            like_count: prevCount,
+          }),
+        );
+        return;
+      }
+      if (!res.ok) {
+        onCommentsChanged?.(
+          patchComments(load, comment.id, comment.pillar, {
+            liked: wasLiked,
+            like_count: prevCount,
+          }),
+        );
+        invalidateCommentsCache(dateIso);
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+        return;
+      }
+      invalidateCommentsCache(dateIso);
+    } finally {
+      inFlightRef.current.delete(lockKey);
+    }
+  }
+
   function canModerate(comment: DailyFixComment): boolean {
     if (comment.own === true) return true;
     return moderator === true;
+  }
+
+  function likeLabel(comment: DailyFixComment): string {
+    const count = typeof comment.like_count === "number" ? comment.like_count : 0;
+    const base = comment.liked === true ? "Unlike" : "Like";
+    return `${base} (${count})`;
   }
 
   return (
@@ -223,17 +425,32 @@ export function CommentThread({
               <p className="df-comment-body">{comment.content}</p>
               {loggedIn && comment.deleted === 0 && canModerate(comment) ? (
                 <div className="df-comment-controls">
-                  <button type="button" className="df-comment-control" disabled={locked}>
+                  <button
+                    type="button"
+                    className="df-comment-control"
+                    disabled={isLocked(`edit:${comment.id}`)}
+                    onClick={() => void editComment(comment)}
+                  >
                     Edit
                   </button>
-                  <button type="button" className="df-comment-control" disabled={locked}>
+                  <button
+                    type="button"
+                    className="df-comment-control"
+                    disabled={isLocked(`delete:${comment.id}`)}
+                    onClick={() => void deleteComment(comment)}
+                  >
                     Delete
                   </button>
                 </div>
               ) : null}
               {loggedIn && comment.deleted === 0 ? (
-                <button type="button" className="df-comment-control" disabled={locked}>
-                  Like{typeof comment.like_count === "number" ? ` (${comment.like_count})` : ""}
+                <button
+                  type="button"
+                  className="df-comment-control"
+                  disabled={isLocked(`like:${comment.id}`)}
+                  onClick={() => void toggleLike(comment)}
+                >
+                  {likeLabel(comment)}
                 </button>
               ) : null}
             </li>
@@ -301,8 +518,12 @@ export function CommentThread({
                 }}
               />
             </label>
-            <button type="submit" className="df-btn df-btn-ink" disabled={posting || locked}>
-              {locked ? `Try again in ${retryLeft}s` : posting ? "Posting…" : "Post comment"}
+            <button type="submit" className="df-btn df-btn-ink" disabled={posting || postLocked}>
+              {postLocked
+                ? `Try again in ${retryLeft("post")}s`
+                : posting
+                  ? "Posting…"
+                  : "Post comment"}
             </button>
           </form>
 
