@@ -1314,15 +1314,48 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M97": {
-    files: ["worker/comments.ts"],
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
-        replaceOnce("worker/comments.ts", "export async function handleCommentsRequest", "/* MUTANT M97 */\nexport async function handleCommentsRequest", "M97");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        `      {load.status === "unavailable" ? (
+        <p className="df-muted" role="status">
+          Comments are unavailable right now.
+        </p>
+      ) : null}`,
+        `      {load.status === "unavailable" ? (
+        <p className="df-muted" role="status">
+          No comments yet.
+        </p>
+      ) : null}`,
+        "M97",
+      );
     },
   },
   "M98": {
     files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
-        replaceOnce("client/src/pages/the-daily-fix/CommentThread.tsx", "export function CommentThread(", "/* MUTANT M98 */\nexport function CommentThread(", "M98");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        `            onSubmit={(event) => {
+              event.preventDefault();
+              if (!loggedIn) {
+                setJoinOpen(true);
+                return;
+              }
+              void postComment();
+            }}`,
+        `            onSubmit={(event) => {
+              event.preventDefault();
+              if (!loggedIn) {
+                setJoinOpen(true);
+                void postComment(); // MUTANT M98: logged-out submit still POSTs
+                return;
+              }
+              void postComment();
+            }}`,
+        "M98",
+      );
     },
   },
   "M99": {
@@ -1474,37 +1507,252 @@ export const EXTRA_SABOTAGES = {
   "M-KV1": {
     files: ["worker/auth/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M-KV1 */\nexport async function putMeCache", "M-KV1");
+      replaceOnce(
+        "worker/auth/session.ts",
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  // MUTANT M-KV1: also write plain token pair into KV sess:* value
+  const value = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+    bsi_access: record.bsi_access,
+    bsi_refresh: record.bsi_refresh,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        "M-KV1",
+      );
     },
   },
   "M-KV1b": {
     files: ["worker/auth/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M-KV1b */\nexport async function putMeCache", "M-KV1b");
+      replaceOnce(
+        "worker/auth/session.ts",
+        'import { randomId32, sha256Hex } from "./crypto";',
+        'import { encryptSessionPayload, randomId32, sha256Hex } from "./crypto";',
+        "M-KV1b-import",
+      );
+      replaceOnce(
+        "worker/auth/session.ts",
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  // MUTANT M-KV1b: R7-encrypted token pair in KV value
+  const sealed = env.SESSION_ENC_KEY
+    ? await encryptSessionPayload(
+        JSON.stringify({ bsi_access: record.bsi_access, bsi_refresh: record.bsi_refresh }),
+        sessionAad(hex),
+        env.SESSION_ENC_KEY,
+      )
+    : "v1.mutant.aa.bb";
+  const value = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+    sealed,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        "M-KV1b",
+      );
     },
   },
   "M-KV1c": {
     files: ["worker/auth/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M-KV1c */\nexport async function putMeCache", "M-KV1c");
+      replaceOnce(
+        "worker/auth/session.ts",
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  // MUTANT M-KV1c: write only refresh_token plain
+  const value = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+    refresh_token: record.bsi_refresh,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        "M-KV1c",
+      );
     },
   },
   "M-KV1d": {
     files: ["worker/auth/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M-KV1d */\nexport async function putMeCache", "M-KV1d");
+      replaceOnce(
+        "worker/auth/session.ts",
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  // MUTANT M-KV1d: base64url access token under neutral key "c"
+  const c = btoa(record.bsi_access).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
+  const value = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+    c,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        "M-KV1d",
+      );
     },
   },
   "M-KV1e": {
     files: ["worker/auth/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M-KV1e */\nexport async function putMeCache", "M-KV1e");
+      replaceOnce(
+        "worker/auth/session.ts",
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  // MUTANT M-KV1e: access token in metadata only
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+    metadata: { t: record.bsi_access },
+  });
+}`,
+        "M-KV1e",
+      );
     },
   },
   "M-KV1f": {
     files: ["worker/auth/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M-KV1f */\nexport async function putMeCache", "M-KV1f");
+      replaceOnce(
+        "worker/auth/session.ts",
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+}`,
+        `export async function putMeCache(env: Env, hex: string, record: SessionRecord): Promise<void> {
+  // MUTANT M-KV1f: URL-encoded refresh in separate rt:<hex> key
+  const value: MeCache = {
+    public_name: record.user_public_name,
+    moderator: record.can_moderate === true,
+    user_public_name: record.user_public_name,
+    created: record.created,
+    last_seen: record.last_seen,
+    can_moderate: record.can_moderate === true,
+    bsi_user_id: record.bsi_user_id,
+  };
+  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+    expirationTtl: 60,
+  });
+  await env.AUTH_SESSIONS.put(\`rt:\${hex}\`, encodeURIComponent(record.bsi_refresh), {
+    expirationTtl: 60,
+  });
+}`,
+        "M-KV1f",
+      );
     },
   },
   "M124": {
@@ -1538,27 +1786,154 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M130": {
-    files: ["worker/auth/session.ts"],
+    files: ["client/src/lib/session.ts"],
     apply() {
-        replaceOnce("worker/auth/session.ts", "export async function putMeCache", "/* MUTANT M130 */\nexport async function putMeCache", "M130");
+      replaceOnce(
+        "client/src/lib/session.ts",
+        `/** Single-flight \`/me\` for the app load. Shared by header + CommentThread. */
+export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Promise<MeState> {
+  if (!options?.force && cached && cached.status !== "loading") {
+    return withCallerAbort(Promise.resolve(cached), options?.signal);
+  }
+  if (!options?.force && inflight) {
+    return withCallerAbort(inflight, options?.signal);
+  }
+  const shared = fetchMeOnce().then((next) => {
+    cached = next;
+    inflight = null;
+    return next;
+  });
+  inflight = shared;
+  return withCallerAbort(shared, options?.signal);
+}`,
+        `/** MUTANT M130: /me fetched per caller (no module single-flight). */
+export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Promise<MeState> {
+  const shared = fetchMeOnce().then((next) => {
+    cached = next;
+    inflight = null;
+    return next;
+  });
+  return withCallerAbort(shared, options?.signal);
+}`,
+        "M130",
+      );
     },
   },
   "M131": {
-    files: ["worker/comments.ts"],
+    files: ["client/src/pages/the-daily-fix/TheDailyFixPage.tsx"],
     apply() {
-        replaceOnce("worker/comments.ts", "export async function handleCommentsRequest", "/* MUTANT M131 */\nexport async function handleCommentsRequest", "M131");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/TheDailyFixPage.tsx",
+        `  // R23 / C6.2: start comments in parallel with the day fetch (known fetchIso).
+  // When closer-day resolves to a different date, re-key (Map cache keeps same-date free).
+  // Failures stay in the comment panel and never replace the day load state.
+  const loadedCommentIso = load.status === "loaded" ? load.day.date : null;
+  const commentIso =
+    route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable"
+      ? null
+      : (loadedCommentIso ?? fetchIso);
+  useEffect(() => {
+    if (!commentIso) {
+      setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    const controller = new AbortController();
+    setCommentsLoad({ status: "loading" });
+    void fetchDailyFixComments(commentIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCommentsLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [commentIso]);`,
+        `  // MUTANT M131: comments fetch awaits day load
+  const commentIso = load.status === "loaded" ? load.day.date : null;
+  useEffect(() => {
+    if (route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable") {
+      setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    if (!commentIso) {
+      setCommentsLoad({ status: "loading" });
+      return;
+    }
+    const controller = new AbortController();
+    setCommentsLoad({ status: "loading" });
+    void fetchDailyFixComments(commentIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCommentsLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [commentIso, load.status, route.kind]);`,
+        "M131",
+      );
     },
   },
   "M132": {
-    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
+    files: ["client/src/pages/the-daily-fix/comments.ts"],
     apply() {
-        replaceOnce("client/src/pages/the-daily-fix/CommentThread.tsx", "export function CommentThread(", "/* MUTANT M132 */\nexport function CommentThread(", "M132");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/comments.ts",
+        "/** R23: Map cache + in-flight share keyed by ISO date. */\nconst commentsCache = new Map<string, CacheEntry>();",
+        "/** MUTANT M132: remove the Map cache */\nconst commentsCache = { get() { return undefined; }, set() {}, delete() {}, clear() {} } as unknown as Map<string, CacheEntry>;",
+        "M132",
+      );
     },
   },
   "M133": {
     files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
-        replaceOnce("client/src/pages/the-daily-fix/CommentThread.tsx", "export function CommentThread(", "/* MUTANT M133 */\nexport function CommentThread(", "M133");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        "  const [body, setBody] = useState(\"\");",
+        `  const [name, setName] = useState(""); // MUTANT M133: restore name input
+  const [body, setBody] = useState("");`,
+        "M133-state",
+      );
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        `            <label>
+              <span className="sr-only">Comment</span>
+              <textarea
+                name="comment"
+                rows={3}
+                placeholder="Share a thought on today’s fix"
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                onFocus={() => {
+                  if (loggedIn) ensureRecaptchaScript();
+                }}
+              />
+            </label>`,
+        `            <label>
+              <span className="sr-only">Your name</span>
+              <input
+                name="name"
+                placeholder="Your name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="sr-only">Comment</span>
+              <textarea
+                name="comment"
+                rows={3}
+                placeholder="Share a thought on today’s fix"
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                onFocus={() => {
+                  if (loggedIn) ensureRecaptchaScript();
+                }}
+              />
+            </label>`,
+        "M133",
+      );
     },
   },
   "M134": {
@@ -1568,9 +1943,23 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M136": {
-    files: ["worker/comments.ts"],
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
-        replaceOnce("worker/comments.ts", "export async function handleCommentsRequest", "/* MUTANT M136 */\nexport async function handleCommentsRequest", "M136");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        `          if (load.status === "loaded") {
+            onCommentsChanged?.({ status: "loaded", comments: [...load.comments, mapped] });
+          }
+          setBody("");
+          return;`,
+        `          // MUTANT M136: refetch after POST instead of optimistic append
+          invalidateCommentsCache(dateIso);
+          const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+          setBody("");
+          return;`,
+        "M136",
+      );
     },
   },
   "M139": {
@@ -1700,7 +2089,12 @@ export const EXTRA_SABOTAGES = {
   "M160": {
     files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
-        replaceOnce("client/src/pages/the-daily-fix/CommentThread.tsx", "export function CommentThread(", "/* MUTANT M160 */\nexport function CommentThread(", "M160");
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        '<button type="submit" className="df-btn df-btn-ink" disabled={posting || postLocked}>',
+        '<button type="submit" className="df-btn df-btn-ink" disabled={postLocked}>',
+        "M160",
+      );
     },
   },
   "M161": {

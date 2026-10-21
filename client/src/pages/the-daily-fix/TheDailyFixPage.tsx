@@ -229,16 +229,17 @@ export default function TheDailyFixPage({
     };
   }, [fetchIso, route.kind, allowCloser]);
 
-  // Comments key on the loaded response date (closer-day), not the requested today ISO.
+  // R23 / C6.2: start comments in parallel with the day fetch (known fetchIso).
+  // When closer-day resolves to a different date, re-key (Map cache keeps same-date free).
   // Failures stay in the comment panel and never replace the day load state.
-  const commentIso = load.status === "loaded" ? load.day.date : null;
+  const loadedCommentIso = load.status === "loaded" ? load.day.date : null;
+  const commentIso =
+    route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable"
+      ? null
+      : (loadedCommentIso ?? fetchIso);
   useEffect(() => {
-    if (route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable") {
-      setCommentsLoad({ status: "unavailable" });
-      return;
-    }
     if (!commentIso) {
-      setCommentsLoad({ status: "loading" });
+      setCommentsLoad({ status: "unavailable" });
       return;
     }
     const controller = new AbortController();
@@ -251,7 +252,7 @@ export default function TheDailyFixPage({
         if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
       });
     return () => controller.abort();
-  }, [commentIso, load.status, route.kind]);
+  }, [commentIso]);
 
   // Prefetch −1/−2 only on bare today route (Q1), after today's load is kicked off.
   useEffect(() => {

@@ -1336,14 +1336,41 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
       if (!t.includes("CT-P1")) throw new Error("M-P1a: CT-P1 marker missing");
       replaceOnce(
         "client/src/pages/the-daily-fix/CommentThread.tsx",
-        "// CT-P1: one refetch, no auto-retry of POST.",
-        `// MUTANT M-P1a: immediately re-POST once on error
+        `      // CT-P1: one refetch, no auto-retry of POST.
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } catch {
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } finally {
+      setPosting(false);
+    }`,
+        `      // MUTANT M-P1a: immediately re-POST once on 503/malformed 201/network error
       if (!(globalThis as unknown as { __mP1a?: boolean }).__mP1a) {
         (globalThis as unknown as { __mP1a?: boolean }).__mP1a = true;
         await postComment();
         return;
       }
-      // CT-P1: one refetch, no auto-retry of POST.`,
+      // CT-P1: one refetch, no auto-retry of POST.
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } catch {
+      if (!(globalThis as unknown as { __mP1aCatch?: boolean }).__mP1aCatch) {
+        (globalThis as unknown as { __mP1aCatch?: boolean }).__mP1aCatch = true;
+        await postComment();
+        return;
+      }
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } finally {
+      setPosting(false);
+    }`,
         "M-P1a",
       );
     },
@@ -1355,7 +1382,7 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
         "client/src/pages/the-daily-fix/CommentThread.tsx",
         "// CT-P1: one refetch, no auto-retry of POST.",
         `// MUTANT M-P1b
-      setTimeout(() => { void postComment(); }, 2000);
+      setTimeout(() => postComment(), 2000);
       // CT-P1: one refetch, no auto-retry of POST.`,
         "M-P1b",
       );
@@ -1366,15 +1393,22 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
     apply() {
       replaceOnce(
         "client/src/pages/the-daily-fix/CommentThread.tsx",
-        "// CT-P1: one refetch, no auto-retry of POST.",
-        `// MUTANT M-P1c: if refetch GET fails, re-POST
-      try {
-        /* refetch happens below */
-      } catch {
+        `      // CT-P1: one refetch, no auto-retry of POST.
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);`,
+        `      // MUTANT M-P1c: if refetch GET fails, re-POST
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      if (refetched.status === "unavailable") {
         await postComment();
         return;
       }
-      // CT-P1: one refetch, no auto-retry of POST.`,
+      onCommentsChanged?.(refetched);
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);`,
         "M-P1c",
       );
     },

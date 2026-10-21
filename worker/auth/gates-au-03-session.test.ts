@@ -185,13 +185,13 @@ describe("AU5", () => {
       encodeURIComponent(t),
       JSON.stringify(t).slice(1, -1),
     ]);
-    for (const p of h.kv.puts) {
+    const scanBlob = (blob: string) => {
       for (const form of tokenForms) {
-        expect(p.value).not.toContain(form);
+        expect(blob).not.toContain(form);
       }
-      expect(p.value).not.toMatch(/(^|[^A-Za-z0-9])v1\./);
+      expect(blob).not.toMatch(/(^|[^A-Za-z0-9])v1\./);
       try {
-        const j = JSON.parse(p.value) as Record<string, unknown>;
+        const j = JSON.parse(blob) as Record<string, unknown>;
         const walk = (o: unknown): void => {
           if (!o || typeof o !== "object") return;
           for (const [k, v] of Object.entries(o as object)) {
@@ -202,6 +202,12 @@ describe("AU5", () => {
         walk(j);
       } catch {
         /* non-json ok */
+      }
+    };
+    for (const p of h.kv.puts) {
+      scanBlob(p.value);
+      if (p.options?.metadata != null) {
+        scanBlob(JSON.stringify(p.options.metadata));
       }
     }
   });
