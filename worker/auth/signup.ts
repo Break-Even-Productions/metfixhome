@@ -3,9 +3,8 @@ import {
   METFIX_CALLBACK_URI,
   bsiCheckUsername,
   bsiRegisterDirect,
-  oauthClientId,
   parseRetryAfter,
-  recaptchaSecret,
+  requireAuthConfig,
 } from "../upstream";
 import { checkSignupLimit, checkUsernameLimit } from "./auth-rate-limit";
 import { requireCsrf } from "./csrf";
@@ -83,21 +82,22 @@ export async function handleSignup(
       "Retry-After": String(parseRetryAfter(null)),
     });
   }
-  const clientId = oauthClientId(env);
-  const rSecret = recaptchaSecret(env);
-  if (!rSecret || !clientId) {
-    if (!clientId) console.log("auth_config_missing", "BSI_OAUTH_CLIENT_ID");
-    else console.log("auth_config_missing", "RECAPTCHA_SECRET");
+  const cfg = requireAuthConfig(env, {
+    needRecaptcha: true,
+    needApiKey: false,
+    baseUrl: opts?.bsiBaseUrl,
+  });
+  if (!cfg) {
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
   }
-  const sv = await siteverify(recaptcha, rSecret, fetchImpl);
+  const sv = await siteverify(recaptcha, cfg.recaptchaSecret, fetchImpl);
   if (sv === "fail") return authJson(BODY_TRY_AGAIN, 403);
   if (sv === "outage") return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   const upstream = await bsiRegisterDirect(
     {
       username,
       email,
-      client_id: clientId,
+      client_id: cfg.clientId,
       redirect_uri: METFIX_CALLBACK_URI,
     },
     env,

@@ -7,6 +7,29 @@ import { isAuthHost } from "./host";
 import { BODY_NOT_FOUND, authEmpty, methodNotAllowed } from "./responses";
 import { destroySession, sessionKeyHex } from "./session";
 
+async function revokeBestEffort(
+  token: string,
+  hint: "refresh_token" | "access_token",
+  env: Env,
+  fetchImpl: FetchImpl,
+  baseUrl?: string,
+): Promise<void> {
+  try {
+    const res = await oauthRevokeToken(
+      { token, token_type_hint: hint },
+      env,
+      fetchImpl,
+      { baseUrl },
+    );
+    if (res.kind !== "ok") {
+      console.log("bsi_revoke_failed", hint);
+    }
+  } catch {
+    // oauthRevokeToken does not throw; keep for fetchImpl edges.
+    console.log("bsi_revoke_failed", hint);
+  }
+}
+
 export async function handleLogout(
   request: Request,
   env: Env,
@@ -54,29 +77,12 @@ export async function handleLogout(
 
   const baseUrl = opts?.bsiBaseUrl ?? opts?.baseUrl;
   // §0v.1 Q6: two /oauth/revoke calls — refresh first, then access; no secret.
+  // Always attempt both when tokens exist; failures log hint only (AU8.2).
   if (refresh) {
-    try {
-      await oauthRevokeToken(
-        { token: refresh, token_type_hint: "refresh_token" },
-        env,
-        fetchImpl,
-        { baseUrl },
-      );
-    } catch {
-      console.log("bsi_revoke_failed");
-    }
+    await revokeBestEffort(refresh, "refresh_token", env, fetchImpl, baseUrl);
   }
   if (access) {
-    try {
-      await oauthRevokeToken(
-        { token: access, token_type_hint: "access_token" },
-        env,
-        fetchImpl,
-        { baseUrl },
-      );
-    } catch {
-      console.log("bsi_revoke_failed");
-    }
+    await revokeBestEffort(access, "access_token", env, fetchImpl, baseUrl);
   }
 
   return authEmpty(204, {}, [clear]);

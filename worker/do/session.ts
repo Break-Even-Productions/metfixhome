@@ -40,8 +40,8 @@ export type SessionDoEnv = Pick<
   | "METFIX_ORG_OAUTH_CLIENT_SECRET"
   | "RECAPTCHA_SECRET"
 > & {
-  /** Direct FetchImpl, or a mutable `{ current }` box filled after harness build. */
-  fetchImpl?: FetchImpl | { current: FetchImpl };
+  /** Test harness may assign a FetchImpl on the shared env object; prod uses platform `fetch`. */
+  fetchImpl?: FetchImpl;
 };
 
 export class SessionDO {
@@ -80,19 +80,6 @@ export class SessionDO {
         };
         return this.withRefreshLock(() => this.ensureAccess(aad, body));
       }
-      if (path === "/refresh" && request.method === "POST") {
-        return this.withRefreshLock(async () => {
-          const body = (await request.json()) as {
-            access_token: string;
-            refresh_token?: string;
-            expires_in?: number;
-            public_name?: string;
-            user_id?: string | number;
-            can_moderate?: unknown;
-          };
-          return this.applyRefresh(aad, body);
-        });
-      }
       if (path === "/get" || path === "/get/") return this.get(aad);
       if ((path === "/put" || path === "/put/") && request.method === "POST") {
         const body = (await request.json()) as SessionRecord;
@@ -111,30 +98,32 @@ export class SessionDO {
   private resolveFetch(): FetchImpl {
     const fromEnv = this.env.fetchImpl;
     if (typeof fromEnv === "function") return fromEnv;
-    if (
-      fromEnv &&
-      typeof fromEnv === "object" &&
-      typeof (fromEnv as { current?: unknown }).current === "function"
-    ) {
-      return (fromEnv as { current: FetchImpl }).current;
-    }
     // Platform fetch (not globalThis.fetch) — AU26.8 / CQ r2 injected-fetch rule.
     return fetch;
   }
 
   /**
-   * Single-flight refresh: concurrent callers share one ensureAccess/applyRefresh.
-   * blockConcurrencyWhile alone would re-run after a 503 (pair unchanged); coalescing
-   * keeps exactly one /oauth/token POST for success, invalid_grant, and 5xx (AU27.8).
+   * Single-flight refresh: concurrent callers share one ensureAccess.
+   * Leader alone keeps refreshed:true so only one KV /me write (AU7.6 / CQ B1).
    */
   private async withRefreshLock(fn: () => Promise<Response>): Promise<Response> {
+    const leader = !this.refreshInflight;
     if (!this.refreshInflight) {
       this.refreshInflight = this.state.blockConcurrencyWhile(fn).finally(() => {
         this.refreshInflight = null;
       });
     }
     const shared = await this.refreshInflight;
-    return shared.clone();
+    if (leader) return shared.clone();
+    // Leader-only KV /me write: joiners see refreshed:false (AU7.6).
+    const clone = shared.clone();
+    try {
+      const body = (await clone.json()) as { refreshed?: boolean; [k: string]: unknown };
+      if (body?.refreshed === true) body.refreshed = false;
+      return json(body, shared.status);
+    } catch {
+      return shared.clone();
+    }
   }
 
   private async get(aad: string): Promise<Response> {
@@ -228,11 +217,15 @@ export class SessionDO {
       return json({ status: "expired" }, 401);
     }
     if (upstream.kind !== "ok") {
-      const ra =
-        upstream.kind === "http" || upstream.kind === "bad_json"
-          ? (upstream.retryAfter ?? parseRetryAfter(null))
-          : parseRetryAfter(null);
-      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+      // §0v.3: only 429/5xx use parseRetryAfter; non-grant 4xx → fixed 60.
+      if (
+        upstream.kind === "http" &&
+        (upstream.status === 429 || upstream.status >= 500)
+      ) {
+        const ra = upstream.retryAfter ?? parseRetryAfter(null);
+        return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+      }
+      return json({ status: "unavailable" }, 503, { "Retry-After": "60" });
     }
     const tok = upstream.json as {
       access_token?: string;
@@ -282,39 +275,6 @@ export class SessionDO {
     record.can_moderate = profile.can_moderate;
     await this.put(aad, record);
     return json({ status: "ok", record, refreshed: true });
-  }
-
-  private async applyRefresh(
-    aad: string,
-    tokens: {
-      access_token: string;
-      refresh_token?: string;
-      expires_in?: number;
-      public_name?: string;
-      user_id?: string | number;
-      can_moderate?: unknown;
-    },
-  ): Promise<Response> {
-    const got = await this.get(aad);
-    const body = (await got.json()) as { present?: boolean; record?: SessionRecord };
-    if (!body.present || !body.record) return json({ record: null }, 404);
-    const now = Date.now();
-    body.record.bsi_access = tokens.access_token;
-    if (typeof tokens.refresh_token === "string" && tokens.refresh_token) {
-      body.record.bsi_refresh = tokens.refresh_token;
-    }
-    body.record.access_exp =
-      now + (typeof tokens.expires_in === "number" ? tokens.expires_in * 1000 : 3600_000);
-    body.record.last_seen = now;
-    if (typeof tokens.public_name === "string" && tokens.public_name.trim()) {
-      body.record.user_public_name = tokens.public_name.trim();
-    }
-    if (tokens.user_id != null) body.record.bsi_user_id = String(tokens.user_id);
-    if (tokens.can_moderate !== undefined) {
-      body.record.can_moderate = tokens.can_moderate === true;
-    }
-    await this.put(aad, body.record);
-    return json({ record: body.record });
   }
 
   async alarm(): Promise<void> {

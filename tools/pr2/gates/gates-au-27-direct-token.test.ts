@@ -37,7 +37,11 @@ import {
   signGoogleIdToken,
   validIdTokenClaims,
 } from "../harness/realauth-harness";
-import { decryptSessionPayload, encryptSessionPayload } from "../../../worker/auth/crypto";
+import {
+  decryptSessionPayload,
+  encryptSessionPayload,
+  sha256Hex,
+} from "../../../worker/auth/crypto";
 
 setupAuthHooks();
 
@@ -265,7 +269,7 @@ describe("AU27.2", () => {
 });
 
 describe("AU27.3", () => {
-  it("AU27.3 invalid_grant → 401; invalid_client → 503; 429 clamp sample", async () => {
+  it("AU27.3 invalid_grant → 401; non-grant Retry-After 17/600 → 60 on all grants", async () => {
     for (const status of [400, 401]) {
       const h = createHarness({
         oauthToken: () =>
@@ -280,24 +284,106 @@ describe("AU27.3", () => {
       expect(meFetches(h).length).toBe(0);
     }
 
-    const h2 = createHarness({
-      oauthToken: () => Response.json({ error: "invalid_client" }, { status: 401 }),
-    });
-    const r2 = await loginPost(h2);
-    expect(r2.status).toBe(503);
-    expect(await r2.json()).toStrictEqual({ error: "unavailable" });
-    expect(r2.headers.get("Retry-After")).toBe("60");
-
-    const h3 = createHarness({
+    const h429 = createHarness({
       oauthToken: () =>
         new Response(JSON.stringify({ error: "temporarily_unavailable" }), {
           status: 429,
           headers: { "Retry-After": "99999" },
         }),
     });
-    const r3 = await loginPost(h3);
-    expect(r3.status).toBe(503);
-    expect(r3.headers.get("Retry-After")).toBe("600");
+    const r429 = await loginPost(h429);
+    expect(r429.status).toBe(503);
+    expect(r429.headers.get("Retry-After")).toBe("600");
+
+    type NonGrant =
+      | { error: string; status: number }
+      | { error?: undefined; status: number };
+    const nonGrants: NonGrant[] = [
+      { error: "invalid_client", status: 400 },
+      { error: "invalid_client", status: 401 },
+      { error: "unauthorized_client", status: 400 },
+      { error: "unsupported_grant_type", status: 400 },
+      { error: "invalid_request", status: 400 },
+      { error: "nope", status: 400 },
+      { status: 400 },
+    ];
+    const upstreamRAs = ["17", "600"] as const;
+
+    function nonGrantResponse(row: NonGrant, ura: string): Response {
+      const body =
+        row.error === undefined
+          ? { error_description: "x" }
+          : { error: row.error, error_description: "x" };
+      return new Response(JSON.stringify(body), {
+        status: row.status,
+        headers: { "Content-Type": "application/json", "Retry-After": ura },
+      });
+    }
+
+    async function expectFixed60(label: string, res: Response) {
+      expect(res.status, label).toBe(503);
+      expect(await res.json()).toStrictEqual({ error: "unavailable" });
+      expect(res.headers.get("Retry-After"), label).toBe("60");
+    }
+
+    // Password grant
+    for (const row of nonGrants) {
+      for (const ura of upstreamRAs) {
+        const h = createHarness({
+          oauthToken: async () => nonGrantResponse(row, ura),
+        });
+        await expectFixed60(
+          `password ${JSON.stringify(row)} ra=${ura}`,
+          await loginPost(h, { identifier: `pw-${row.error ?? "miss"}-${ura}` }),
+        );
+      }
+    }
+
+    // Refresh grant
+    for (const row of nonGrants) {
+      for (const ura of upstreamRAs) {
+        const h = createHarness({
+          oauthToken: async (req) => {
+            const form = new URLSearchParams(await req.text());
+            if (form.get("grant_type") === "password") {
+              return Response.json({
+                access_token: ACCESS1,
+                refresh_token: REFRESH1,
+                expires_in: 3600,
+              });
+            }
+            return nonGrantResponse(row, ura);
+          },
+        });
+        const { sid } = await h.login();
+        await expireForRefresh(h, sid);
+        await expectFixed60(
+          `refresh ${JSON.stringify(row)} ra=${ura}`,
+          await commentPost(h, sid),
+        );
+      }
+    }
+
+    // authorization_code (Google)
+    for (const row of nonGrants) {
+      for (const ura of upstreamRAs) {
+        const h = createHarness({
+          googleEnabled: true,
+          oauthToken: async (req) => {
+            const form = new URLSearchParams(await req.text());
+            if (form.get("grant_type") === "authorization_code") {
+              return nonGrantResponse(row, ura);
+            }
+            return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
+          },
+        });
+        const { res } = await signedGoogleCallback(h);
+        await expectFixed60(
+          `authorization_code ${JSON.stringify(row)} ra=${ura}`,
+          res,
+        );
+      }
+    }
   });
 });
 
@@ -676,123 +762,215 @@ function expireForRefresh(
   });
 }
 
+async function sidFromGoogleCallback(h: ReturnType<typeof createHarness>) {
+  const { res } = await signedGoogleCallback(h);
+  expect(res.status).toBe(302);
+  const sidM = (res.headers.get("Set-Cookie") ?? "").match(/__Host-mfx_sid=([^;]+)/);
+  const sid = sidM ? decodeURIComponent(sidM[1]!) : "";
+  expect(sid.length).toBeGreaterThan(10);
+  return sid;
+}
+
 describe("AU27.7", () => {
-  it("AU27.7 (a) rotating mock stores ACCESS2/R1; next refresh sends R1; R0 once", async () => {
-    const h = createHarness({ rotatingRefresh: true });
-    const { sid } = await h.login();
-    await expireForRefresh(h, sid);
-
-    const meBefore = meFetches(h).length;
-    const tokBefore = refreshTokenValues(h).length;
-    const res = await commentPost(h, sid);
-    expect(res.status).toBe(201);
-    expect(meFetches(h).length - meBefore).toBe(1);
-    expect(refreshTokenValues(h).length - tokBefore).toBe(1);
-
-    const after = await patchSession(h, sid, () => {});
-    expect(after.bsi_access).toBe(ACCESS2);
-    expect(after.bsi_refresh).toBe(REFRESH2);
-
-    await expireForRefresh(h, sid, REFRESH2);
-    const res2 = await commentPost(h, sid);
-    expect(res2.status).toBe(201);
-    const rts = refreshTokenValues(h);
-    expect(rts.filter((t) => t === REFRESH1).length).toBe(1);
-    expect(rts[rts.length - 1]).toBe(REFRESH2);
-    expect(proxyFetches(h).length).toBe(0);
-  });
-
-  it("AU27.7 (b) refresh invalid_grant 400/401 → signed_out; DO/KV cleared", async () => {
-    for (const status of [400, 401]) {
-      const h = createHarness({
-        oauthToken: async (req) => {
-          const form = new URLSearchParams(await req.text());
-          if (form.get("grant_type") === "password") {
-            return Response.json({
-              access_token: ACCESS1,
-              refresh_token: REFRESH1,
-              expires_in: 3600,
-            });
-          }
-          return Response.json({ error: "invalid_grant" }, { status });
-        },
-      });
+  for (const origin of ["password", "google"] as const) {
+    async function sessionFor(h: ReturnType<typeof createHarness>) {
+      if (origin === "google") return sidFromGoogleCallback(h);
       const { sid } = await h.login();
-      const hex = await sidHex(sid);
-      const aad = sessionAad(hex);
-      await expireForRefresh(h, sid);
-      const tokBefore = refreshTokenValues(h).length;
+      return sid;
+    }
+    function harnessOpts(
+      extra: Parameters<typeof createHarness>[0] = {},
+    ): Parameters<typeof createHarness>[0] {
+      return origin === "google" ? { googleEnabled: true, ...extra } : extra;
+    }
 
-      const acting = await commentPost(h, sid);
-      expect(acting.status).toBe(401);
-      expect(await acting.json()).toStrictEqual({ error: "signed_out" });
+    it(`AU27.7 (a) [${origin}] rotating mock stores ACCESS2/R1; next refresh sends R1; R0 once`, async () => {
+      const h = createHarness(harnessOpts({ rotatingRefresh: true }));
+      const sid = await sessionFor(h);
+      await expireForRefresh(h, sid);
+
+      const meBefore = meFetches(h).length;
+      const tokBefore = refreshTokenValues(h).length;
+      const res = await commentPost(h, sid);
+      expect(res.status).toBe(201);
+      expect(meFetches(h).length - meBefore).toBe(1);
       expect(refreshTokenValues(h).length - tokBefore).toBe(1);
 
-      const me = await h.call("/api/auth/me", {
-        headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
-      });
-      // Cookie present but session gone → 401 signed_out (AU7.7 / AU8.4 contract).
-      expect(me.status).toBe(401);
-      expect(await me.json()).toStrictEqual({ error: "signed_out" });
+      const after = await patchSession(h, sid, () => {});
+      expect(after.bsi_access).toBe(ACCESS2);
+      expect(after.bsi_refresh).toBe(REFRESH2);
+
+      await expireForRefresh(h, sid, REFRESH2);
+      const res2 = await commentPost(h, sid);
+      expect(res2.status).toBe(201);
+      const rts = refreshTokenValues(h);
+      expect(rts.filter((t) => t === REFRESH1).length).toBe(1);
+      expect(rts[rts.length - 1]).toBe(REFRESH2);
+      expect(proxyFetches(h).length).toBe(0);
+    });
+
+    it(`AU27.7 (b) [${origin}] refresh invalid_grant 400/401 → signed_out; DO/KV cleared`, async () => {
+      for (const status of [400, 401]) {
+        const h = createHarness(
+          harnessOpts({
+            oauthToken: async (req) => {
+              const form = new URLSearchParams(await req.text());
+              const grant = form.get("grant_type");
+              if (grant === "password" || grant === "authorization_code") {
+                return Response.json({
+                  access_token: ACCESS1,
+                  refresh_token: REFRESH1,
+                  expires_in: 3600,
+                });
+              }
+              return Response.json({ error: "invalid_grant" }, { status });
+            },
+          }),
+        );
+        const sid = await sessionFor(h);
+        const hex = await sidHex(sid);
+        const aad = sessionAad(hex);
+        await expireForRefresh(h, sid);
+        const tokBefore = refreshTokenValues(h).length;
+
+        const acting = await commentPost(h, sid);
+        expect(acting.status).toBe(401);
+        expect(await acting.json()).toStrictEqual({ error: "signed_out" });
+        expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+
+        const me = await h.call("/api/auth/me", {
+          headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+        });
+        expect(me.status).toBe(401);
+        expect(await me.json()).toStrictEqual({ error: "signed_out" });
+        expect(h.sessionNs.getStorage(aad)?.size ?? 0).toBe(0);
+        expect(h.sessionNs.getAlarm(aad)).toBeNull();
+        expect(await h.kv.get(sessKvKey(hex))).toBeNull();
+      }
+    });
+
+    it(`AU27.7 (c) [${origin}] refresh 5xx → 503; DO pair unchanged`, async () => {
+      const h = createHarness(
+        harnessOpts({
+          oauthToken: async (req) => {
+            const form = new URLSearchParams(await req.text());
+            const grant = form.get("grant_type");
+            if (grant === "password" || grant === "authorization_code") {
+              return Response.json({
+                access_token: ACCESS1,
+                refresh_token: REFRESH1,
+                expires_in: 3600,
+              });
+            }
+            return new Response("boom", { status: 503 });
+          },
+        }),
+      );
+      const sid = await sessionFor(h);
+      await expireForRefresh(h, sid);
+      const before = await patchSession(h, sid, () => {});
+      const res = await commentPost(h, sid);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toStrictEqual({ error: "unavailable" });
+      const after = await patchSession(h, sid, () => {});
+      expect(after.bsi_access).toBe(before.bsi_access);
+      expect(after.bsi_refresh).toBe(before.bsi_refresh);
+      expect(after.bsi_access).toBe(ACCESS1);
+      expect(after.bsi_refresh).toBe(REFRESH1);
+    });
+
+    it(`AU27.7 (d) [${origin}] 200 without refresh_token → 503; DO unchanged`, async () => {
+      const h = createHarness(
+        harnessOpts({
+          oauthToken: async (req) => {
+            const form = new URLSearchParams(await req.text());
+            const grant = form.get("grant_type");
+            if (grant === "password" || grant === "authorization_code") {
+              return Response.json({
+                access_token: ACCESS1,
+                refresh_token: REFRESH1,
+                expires_in: 3600,
+              });
+            }
+            return Response.json({ access_token: ACCESS2, expires_in: 3600 });
+          },
+        }),
+      );
+      const sid = await sessionFor(h);
+      await expireForRefresh(h, sid);
+      const before = await patchSession(h, sid, () => {});
+      const res = await commentPost(h, sid);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toStrictEqual({ error: "unavailable" });
+      const after = await patchSession(h, sid, () => {});
+      expect(after.bsi_access).toBe(before.bsi_access);
+      expect(after.bsi_refresh).toBe(before.bsi_refresh);
+      expect(after.bsi_refresh).toBe(REFRESH1);
+      expect(after.bsi_access).toBe(ACCESS1);
+    });
+
+    it(`AU27.7 (e) [${origin}] token 200 then /me 500 → 503; DO holds R1; next sends R1`, async () => {
+      let mePhase: "login" | "fail" | "ok" = "login";
+      const h = createHarness(
+        harnessOpts({
+          rotatingRefresh: true,
+          bsiMe: async () => {
+            if (mePhase === "fail") return new Response("{}", { status: 500 });
+            return Response.json({ id: 42, display_name: "Jane" });
+          },
+        }),
+      );
+      const sid = await sessionFor(h);
+      mePhase = "fail";
+      await expireForRefresh(h, sid);
+      const res = await commentPost(h, sid);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toStrictEqual({ error: "unavailable" });
+      const kept = await patchSession(h, sid, () => {});
+      expect(kept.bsi_refresh).toBe(REFRESH2);
+      expect(kept.bsi_access).toBe(ACCESS2);
+      expect(refreshTokenValues(h).filter((t) => t === REFRESH1).length).toBe(1);
+
+      await expireForRefresh(h, sid, REFRESH2);
+      mePhase = "ok";
+      expect((await commentPost(h, sid)).status).toBe(201);
+      const rts = refreshTokenValues(h);
+      expect(rts.filter((t) => t === REFRESH1).length).toBe(1);
+      expect(rts[rts.length - 1]).toBe(REFRESH2);
+    });
+
+    it(`AU27.7 (f) [${origin}] token 200 then /me 401 → signed_out; DO/KV cleared`, async () => {
+      let mePhase: "login" | "fail" = "login";
+      const h = createHarness(
+        harnessOpts({
+          rotatingRefresh: true,
+          bsiMe: async () => {
+            if (mePhase === "fail") return new Response("{}", { status: 401 });
+            return Response.json({ id: 42, display_name: "Jane" });
+          },
+        }),
+      );
+      const sid = await sessionFor(h);
+      const hex = await sidHex(sid);
+      const aad = sessionAad(hex);
+      mePhase = "fail";
+      await expireForRefresh(h, sid);
+      const tokBefore = refreshTokenValues(h).length;
+      const res = await commentPost(h, sid);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toStrictEqual({ error: "signed_out" });
       expect(h.sessionNs.getStorage(aad)?.size ?? 0).toBe(0);
-      expect(h.sessionNs.getAlarm(aad)).toBeNull();
       expect(await h.kv.get(sessKvKey(hex))).toBeNull();
-    }
-  });
-
-  it("AU27.7 (c) refresh 5xx → 503; DO pair unchanged", async () => {
-    const h = createHarness({
-      oauthToken: async (req) => {
-        const form = new URLSearchParams(await req.text());
-        if (form.get("grant_type") === "password") {
-          return Response.json({
-            access_token: ACCESS1,
-            refresh_token: REFRESH1,
-            expires_in: 3600,
-          });
-        }
-        return new Response("boom", { status: 503 });
-      },
+      expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+      expect(
+        await (
+          await h.call("/api/auth/me", {
+            headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+          })
+        ).json(),
+      ).toStrictEqual({ error: "signed_out" });
     });
-    const { sid } = await h.login();
-    await expireForRefresh(h, sid);
-    const before = await patchSession(h, sid, () => {});
-    const res = await commentPost(h, sid);
-    expect(res.status).toBe(503);
-    expect(await res.json()).toStrictEqual({ error: "unavailable" });
-    const after = await patchSession(h, sid, () => {});
-    expect(after.bsi_access).toBe(before.bsi_access);
-    expect(after.bsi_refresh).toBe(before.bsi_refresh);
-    expect(after.bsi_access).toBe(ACCESS1);
-    expect(after.bsi_refresh).toBe(REFRESH1);
-  });
-
-  it("AU27.7 (d) 200 without refresh_token → 503; DO unchanged", async () => {
-    const h = createHarness({
-      oauthToken: async (req) => {
-        const form = new URLSearchParams(await req.text());
-        if (form.get("grant_type") === "password") {
-          return Response.json({
-            access_token: ACCESS1,
-            refresh_token: REFRESH1,
-            expires_in: 3600,
-          });
-        }
-        return Response.json({ access_token: ACCESS2, expires_in: 3600 });
-      },
-    });
-    const { sid } = await h.login();
-    await expireForRefresh(h, sid);
-    const before = await patchSession(h, sid, () => {});
-    const res = await commentPost(h, sid);
-    expect(res.status).toBe(503);
-    expect(await res.json()).toStrictEqual({ error: "unavailable" });
-    const after = await patchSession(h, sid, () => {});
-    expect(after.bsi_access).toBe(before.bsi_access);
-    expect(after.bsi_refresh).toBe(before.bsi_refresh);
-    expect(after.bsi_refresh).toBe(REFRESH1);
-    expect(after.bsi_access).toBe(ACCESS1);
-  });
+  }
 });
 
 describe("AU27.8", () => {
@@ -1103,6 +1281,141 @@ describe("AU27.10", () => {
       expect(tokenFetches(h).length).toBe(1);
       expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
     }
+  });
+
+  it("AU27.10 (c) Google session refresh: rotating R0→ACCESS2/R1; in-handler DO has R1; 0 proxy", async () => {
+    let mePhase: "login" | "refresh" = "login";
+    let sid = "";
+    const h = createHarness({
+      googleEnabled: true,
+      rotatingRefresh: true,
+      bsiMe: async () => {
+        if (mePhase === "refresh") {
+          const hex = await sidHex(sid);
+          const aad = sessionAad(hex);
+          const blob = (h.sessionNs.getStorage(aad)?.get("rec") as { blob: string })?.blob;
+          const pt = await decryptSessionPayload(blob!, aad, ENCKEY);
+          const rec = JSON.parse(pt!) as { bsi_refresh?: string; bsi_access?: string };
+          expect(rec.bsi_refresh).toBe(REFRESH2);
+          expect(rec.bsi_refresh).not.toBe(REFRESH1);
+          expect(rec.bsi_access).toBe(ACCESS2);
+        }
+        return Response.json({ id: 42, display_name: "Jane" });
+      },
+    });
+    sid = await sidFromGoogleCallback(h);
+    mePhase = "refresh";
+    await expireForRefresh(h, sid);
+    const tokBefore = refreshTokenValues(h).length;
+    expect((await commentPost(h, sid)).status).toBe(201);
+    expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+    expect(refreshTokenValues(h).filter((t) => t === REFRESH1).length).toBe(1);
+
+    const form = Object.fromEntries(
+      new URLSearchParams(
+        tokenFetches(h).filter((f) => {
+          const g = Object.fromEntries(new URLSearchParams(f.bodyText));
+          return g.grant_type === "refresh_token";
+        })[0]!.bodyText,
+      ),
+    );
+    expect(form).toStrictEqual({
+      grant_type: "refresh_token",
+      refresh_token: REFRESH1,
+      client_id: CID,
+      client_secret: SECRET_CANARY,
+    });
+    expect(proxyFetches(h).length).toBe(0);
+
+    await expireForRefresh(h, sid, REFRESH2);
+    expect((await commentPost(h, sid)).status).toBe(201);
+    expect(refreshTokenValues(h).filter((t) => t === REFRESH1).length).toBe(1);
+    expect(refreshTokenValues(h).at(-1)).toBe(REFRESH2);
+  });
+
+  it("AU27.10 (d) bridge state wrong/missing → 0 token; matching once; replay fails", async () => {
+    async function bridgeStateFromSocial(h: ReturnType<typeof createHarness>) {
+      const social = h.fetches.find((f) => f.url.includes("/auth/social"));
+      expect(social).toBeTruthy();
+      const body = JSON.parse(social!.bodyText) as { state?: string };
+      expect(typeof body.state).toBe("string");
+      return body.state!;
+    }
+
+    // Wrong Location state
+    {
+      const h = createHarness({ googleEnabled: true });
+      h.edges.bridge = async () =>
+        new Response(null, {
+          status: 302,
+          headers: {
+            Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=wrong_bridge_state`,
+          },
+        });
+      const tokBefore = tokenFetches(h).length;
+      const meBefore = meFetches(h).length;
+      const { res, state, preCookie } = await signedGoogleCallback(h);
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toBe("/?auth_error=state");
+      expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+      expect(tokenFetches(h).length - tokBefore).toBe(0);
+      expect(meFetches(h).length - meBefore).toBe(0);
+      // Bridge state was consumed (take before compare).
+      const bridgeSt = await bridgeStateFromSocial(h);
+      const name = `oauth:${await sha256Hex(bridgeSt)}`;
+      expect(h.oauthNs.getStorage(name)?.get("rec")).toBeUndefined();
+      void state;
+      void preCookie;
+    }
+
+    // Missing Location state
+    {
+      const h = createHarness({ googleEnabled: true });
+      h.edges.bridge = async () =>
+        new Response(null, {
+          status: 302,
+          headers: {
+            Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}`,
+          },
+        });
+      const tokBefore = tokenFetches(h).length;
+      const meBefore = meFetches(h).length;
+      const { res } = await signedGoogleCallback(h);
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toBe("/?auth_error=state");
+      expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+      expect(tokenFetches(h).length - tokBefore).toBe(0);
+      expect(meFetches(h).length - meBefore).toBe(0);
+    }
+
+    // Matching state succeeds once; replay of Google state fails with 0 new token calls
+    {
+      const h = createHarness({ googleEnabled: true });
+      const first = await signedGoogleCallback(h);
+      expect(first.res.status).toBe(302);
+      expect(first.res.headers.get("Location")).toBe("/the-daily-fix");
+      expect(first.res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+      expect(
+        tokenFetches(h).filter((f) => {
+          const form = Object.fromEntries(new URLSearchParams(f.bodyText));
+          return form.grant_type === "authorization_code";
+        }).length,
+      ).toBe(1);
+      expect(meFetches(h).length).toBe(1);
+
+      const tokN = tokenFetches(h).length;
+      const meN = meFetches(h).length;
+      const replay = await h.call(
+        `/api/auth/google/callback?code=${CODE}&state=${first.state}`,
+        { headers: { Cookie: first.preCookie } },
+      );
+      expect(replay.status).toBe(302);
+      expect(replay.headers.get("Location")).toBe("/?auth_error=state");
+      expect(replay.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+      expect(tokenFetches(h).length).toBe(tokN);
+      expect(meFetches(h).length).toBe(meN);
+    }
+
   });
 });
 

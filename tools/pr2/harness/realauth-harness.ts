@@ -326,7 +326,10 @@ export function createHarness(opts?: {
    * @deprecated Prefer `oauthToken`. Mapped to the `/oauth/token` mock during transition.
    */
   webLogin?: (req: Request) => Response | Promise<Response>;
-  revoke?: "throw" | ((req: Request) => Response | Promise<Response>);
+  revoke?:
+    | "throw"
+    | "timeout"
+    | ((req: Request) => Response | Promise<Response>);
   refresh?: (req: Request) => Response | Promise<Response>;
   siteverify?: (req: Request) => Response | Promise<Response>;
   /**
@@ -338,23 +341,28 @@ export function createHarness(opts?: {
   let now = Date.now();
   /** When rotatingRefresh: REFRESH1 accepted once. */
   let r0Used = false;
+  /** Last `state` from BSI social body — bridge Location must echo it (AU27.10 d). */
+  let lastSocialBridgeState: string | null = null;
   const kv = makeRecordingKv(() => now);
-  /** Filled after fetchImpl is built — SessionDO must not use globalThis.fetch (AU26.8 / CQ r2). */
-  const sessionFetch = { current: fetch as FetchImpl };
-  const sessionNs = makeNamespace(
-    SessionDO,
-    {
-      SESSION_ENC_KEY: ENCKEY,
-      SESSION_ENC_KEY_PREV: opts?.sessionEncKeyPrev,
-      DAILY_FIX_API_KEY: KEY,
-      BSI_OAUTH_CLIENT_ID: CID,
-      METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
-      fetchImpl: sessionFetch,
-    },
-    {
-      throwAll: opts?.sessionOutage === "throw",
-    },
-  );
+  /** Shared env object — assign fetchImpl after the mock is built (no `{current}` box). */
+  const sessionEnv: {
+    SESSION_ENC_KEY: string;
+    SESSION_ENC_KEY_PREV?: string;
+    DAILY_FIX_API_KEY: string;
+    BSI_OAUTH_CLIENT_ID: string;
+    METFIX_ORG_OAUTH_CLIENT_SECRET: string;
+    fetchImpl: FetchImpl;
+  } = {
+    SESSION_ENC_KEY: ENCKEY,
+    SESSION_ENC_KEY_PREV: opts?.sessionEncKeyPrev,
+    DAILY_FIX_API_KEY: KEY,
+    BSI_OAUTH_CLIENT_ID: CID,
+    METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
+    fetchImpl: fetch as FetchImpl,
+  };
+  const sessionNs = makeNamespace(SessionDO, sessionEnv, {
+    throwAll: opts?.sessionOutage === "throw",
+  });
   const throttleNs = makeNamespace(LoginThrottleDO, {});
   const oauthNs = makeNamespace(OauthStateDO, {}, {
     throwAll: opts?.oauthOutage === "throw",
@@ -508,7 +516,11 @@ export function createHarness(opts?: {
     }
     // §0v.1 Q6: POST {origin}/oauth/revoke (not the WP proxy path).
     if (url.includes("/oauth/revoke") && !url.includes("/proxy/oauth/revoke")) {
-      if (opts?.revoke === "throw") throw new Error("revoke_timeout");
+      if (opts?.revoke === "throw") throw new Error("revoke_boom");
+      // Distinct from throw: AbortSignal.timeout-shaped TimeoutError (AU8.2).
+      if (opts?.revoke === "timeout") {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      }
       if (typeof opts?.revoke === "function") {
         return opts.revoke(new Request(url, { method, headers, body: bodyText }));
       }
@@ -532,15 +544,25 @@ export function createHarness(opts?: {
       });
     }
     if (url.includes("/auth/social")) {
+      try {
+        const parsed = JSON.parse(bodyText || "{}") as { state?: unknown };
+        if (typeof parsed.state === "string" && parsed.state.length > 0) {
+          lastSocialBridgeState = parsed.state;
+        }
+      } catch {
+        /* ignore */
+      }
       if (edges.social) return edges.social(new Request(url, { method, headers, body: bodyText }));
       return Response.json({ bridge_url: BRIDGE });
     }
     if (url.includes("app-oauth-bridge")) {
       if (edges.bridge) return edges.bridge(new Request(url, { method, headers }));
+      // Echo stored bridge state from social (AU27.10 d compare+consume).
+      const st = lastSocialBridgeState ?? "bridge";
       return new Response(null, {
         status: 302,
         headers: {
-          Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=bridge`,
+          Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=${encodeURIComponent(st)}`,
         },
       });
     }
@@ -577,7 +599,10 @@ export function createHarness(opts?: {
       return Response.json({ error: "invalid_grant" }, { status: 400 });
     }
     if (url.includes("/proxy/oauth/revoke")) {
-      if (opts?.revoke === "throw") throw new Error("revoke_timeout");
+      if (opts?.revoke === "throw") throw new Error("revoke_boom");
+      if (opts?.revoke === "timeout") {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      }
       if (typeof opts?.revoke === "function") {
         return opts.revoke(new Request(url, { method, headers, body: bodyText }));
       }
@@ -617,7 +642,7 @@ export function createHarness(opts?: {
     return new Response("{}", { status: 404 });
   };
 
-  sessionFetch.current = fetchImpl;
+  sessionEnv.fetchImpl = fetchImpl;
   vi.stubGlobal("fetch", vi.fn(fetchImpl));
   vi.stubGlobal("caches", { default: cache });
 

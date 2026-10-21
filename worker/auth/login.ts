@@ -37,8 +37,6 @@ type LoginBody = {
   identifier?: unknown;
   password?: unknown;
   recaptcha?: unknown;
-  client_id?: unknown;
-  client_secret?: unknown;
 };
 
 async function siteverifyLogin(
@@ -207,15 +205,7 @@ async function mapDirectTokenOutcome(
       const ra = retryAfter ?? parseRetryAfter(null);
       return unavailable503(ra);
     }
-    if (
-      code === "invalid_client" ||
-      code === "unauthorized_client" ||
-      code === "unsupported_grant_type" ||
-      code === "invalid_request"
-    ) {
-      return unavailable503(retryAfter ?? parseRetryAfter(null));
-    }
-    return unavailable503(retryAfter ?? parseRetryAfter(null));
+    return unavailable503(60);
   }
 
   const tok = upstream.json as TokenPairBody;

@@ -577,14 +577,7 @@ export async function fetchDailyFixComments(
   }
 }
 
-// ── Auth upstream (BSI-C10 / C2 / C2a / C3 / C4 / C5) ───────────────────────
-
-export type WebLoginBody = {
-  username: string;
-  password: string;
-  client_id: string;
-  recaptcha_token: string;
-};
+// ── Auth upstream (Pro OAuth + BSI-C2 / C2a / C5) ───────────────────────────
 
 export type TokenPairBody = {
   access_token: string;
@@ -696,28 +689,6 @@ export async function oauthRevokeToken(
   return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000);
 }
 
-/** @deprecated BSI-C10 web-login — use oauthPasswordGrant + bsiFetchMe */
-export async function bsiWebLogin(
-  body: WebLoginBody,
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(opts);
-  const url = `${origin}/wp-json/bsi/v1/auth/web-login`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
-    },
-    fetchImpl,
-  );
-}
-
 /** BSI-C2: POST /wp-json/bsi/v1/auth/register-direct */
 export async function bsiRegisterDirect(
   body: {
@@ -762,77 +733,6 @@ export async function bsiCheckUsername(
       method: "GET",
       headers: bsiGetHeaders(env.DAILY_FIX_API_KEY),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 3000),
-    },
-    fetchImpl,
-  );
-}
-
-/** BSI-C3 refresh: POST /wp-json/metfix/v1/proxy/oauth/token */
-export async function bsiRefreshToken(
-  body: { grant_type: "refresh_token"; client_id: string; refresh_token: string },
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(opts);
-  const url = `${origin}/wp-json/metfix/v1/proxy/oauth/token`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
-    },
-    fetchImpl,
-  );
-}
-
-/** BSI-C3 code exchange: exactly 4 keys (1.6.3). */
-export async function bsiExchangeCode(
-  body: {
-    grant_type: "authorization_code";
-    code: string;
-    client_id: string;
-    redirect_uri: string;
-  },
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(opts);
-  const url = `${origin}/wp-json/metfix/v1/proxy/oauth/token`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
-    },
-    fetchImpl,
-  );
-}
-
-/** BSI-C4: POST /wp-json/metfix/v1/proxy/oauth/revoke — no Authorization. */
-export async function bsiRevokeToken(
-  body: { client_id: string; refresh_token: string },
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(opts);
-  const url = `${origin}/wp-json/metfix/v1/proxy/oauth/revoke`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
     fetchImpl,
   );

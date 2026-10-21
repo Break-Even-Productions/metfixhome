@@ -1,7 +1,7 @@
 /**
- * AU7.6 / CQ r2 — concurrent refresh on the REAL SessionDO under
+ * AU7.6 / CQ r1.35 — concurrent refresh on the REAL SessionDO under
  * @cloudflare/vitest-pool-workers (real blockConcurrencyWhile).
- * Rotating refresh token: exactly 1 /oauth/token call; session stays signed in.
+ * 50 callers → exactly 1 /oauth/token; only the leader sees refreshed:true.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { env, fetchMock } from "cloudflare:test";
@@ -21,8 +21,6 @@ const ACCESS1 = "at_QA_SENT_1_abcdefghijklmnopqrstuvwxyz";
 const ACCESS2 = "at_QA_SENT_2_abcdefghijklmnopqrstuvwxyz";
 const REFRESH1 = "rt_QA_SENT_1_abcdefghijklmnopqrstuvwxyz";
 const REFRESH2 = "rt_QA_SENT_2_abcdefghijklmnopqrstuvwxyz";
-const CID = "cid_QA_SENT_CLIENT";
-const KEY = "k_QA_SENT_KEY";
 
 describe("SessionDO real workerd refresh serialisation", () => {
   beforeAll(() => {
@@ -40,7 +38,7 @@ describe("SessionDO real workerd refresh serialisation", () => {
     }
   });
 
-  it("AU7.6 two concurrent ensure-access with rotating token → 1 token POST, nobody logged out", async () => {
+  it("AU7.6 50 concurrent ensure-access → 1 token POST; exactly 1 refreshed:true", async () => {
     const encKey = env.SESSION_ENC_KEY || bytesToBase64Url(randomBytes(32));
     if (!env.SESSION) {
       expect(env.SESSION, "SESSION DO binding required for workers refresh test").toBeTruthy();
@@ -117,32 +115,33 @@ describe("SessionDO real workerd refresh serialisation", () => {
     }
 
     const body = JSON.stringify({});
-    const [a, b] = await Promise.all([
-      stub.fetch(
-        new Request("https://do/ensure-access", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Session-AAD": aad },
-          body,
-        }),
+    const results = await Promise.all(
+      Array.from({ length: 50 }, () =>
+        stub.fetch(
+          new Request("https://do/ensure-access", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Session-AAD": aad },
+            body,
+          }),
+        ),
       ),
-      stub.fetch(
-        new Request("https://do/ensure-access", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Session-AAD": aad },
-          body,
-        }),
+    );
+    expect(results.every((r) => r.status === 200)).toBe(true);
+    const bodies = await Promise.all(
+      results.map(
+        (r) =>
+          r.json() as Promise<{
+            status?: string;
+            refreshed?: boolean;
+            record?: { bsi_access?: string; bsi_refresh?: string };
+          }>,
       ),
-    ]);
-    expect(a.status).toBe(200);
-    expect(b.status).toBe(200);
-    const ja = (await a.json()) as { status?: string; record?: { bsi_access?: string; bsi_refresh?: string } };
-    const jb = (await b.json()) as { status?: string; record?: { bsi_access?: string; bsi_refresh?: string } };
-    expect(ja.status).toBe("ok");
-    expect(jb.status).toBe("ok");
-    expect(ja.record?.bsi_access).toBe(ACCESS2);
-    expect(jb.record?.bsi_access).toBe(ACCESS2);
-    expect(ja.record?.bsi_refresh).toBe(REFRESH2);
-    expect(jb.record?.bsi_refresh).toBe(REFRESH2);
+    );
+    expect(bodies.every((b) => b.status === "ok")).toBe(true);
+    expect(bodies.every((b) => b.record?.bsi_access === ACCESS2)).toBe(true);
+    expect(bodies.every((b) => b.record?.bsi_refresh === REFRESH2)).toBe(true);
+    expect(bodies.filter((b) => b.refreshed === true).length).toBe(1);
+    expect(bodies.filter((b) => b.refreshed === false).length).toBe(49);
     expect(tokenCalls).toBe(1);
   });
 });

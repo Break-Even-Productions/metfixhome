@@ -4,9 +4,11 @@ import { randomId32, sha256Hex } from "./crypto";
 import type { SessionRecord } from "../do/session";
 
 export class SessionUnavailableError extends Error {
-  constructor() {
+  readonly retryAfter: number | undefined;
+  constructor(retryAfter?: number) {
     super("session_unavailable");
     this.name = "SessionUnavailableError";
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -116,9 +118,14 @@ export async function putMeCache(env: Env, hex: string, record: SessionRecord): 
     can_moderate: record.can_moderate === true,
     bsi_user_id: record.bsi_user_id,
   };
-  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
-    expirationTtl: 60,
-  });
+  // Best-effort: DO is source of truth; a throttled KV put must not fail the caller (AU7.6).
+  try {
+    await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {
+      expirationTtl: 60,
+    });
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function deleteMeCache(env: Env, hex: string): Promise<void> {
@@ -162,7 +169,11 @@ export async function ensureActingAccess(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ force: opts?.force === true, baseUrl: opts?.baseUrl }),
   });
-  if (res.status === 503) throw new SessionUnavailableError();
+  if (res.status === 503) {
+    const raRaw = res.headers.get("Retry-After");
+    const ra = raRaw != null && /^[1-9][0-9]*$/.test(raRaw) ? Number(raRaw) : undefined;
+    throw new SessionUnavailableError(ra);
+  }
   if (res.status === 401 || res.status === 404) {
     try {
       await deleteMeCache(env, hex);
@@ -228,29 +239,6 @@ export async function touchSession(
   } catch (e) {
     if (e instanceof SessionUnavailableError) throw e;
     throw new SessionUnavailableError();
-  }
-}
-
-export async function applyRefreshResult(
-  env: Env,
-  rawId: string,
-  tokens: TokenInput & { refresh_token?: string },
-): Promise<SessionRecord | null> {
-  const hex = await sessionKeyHex(rawId);
-  const stub = sessionStub(env, hex);
-  try {
-    const res = await doFetch(stub, "/refresh", {
-      method: "POST",
-      aad: sessionAad(hex),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tokens),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { record: SessionRecord };
-    await putMeCache(env, hex, data.record);
-    return data.record;
-  } catch {
-    return null;
   }
 }
 

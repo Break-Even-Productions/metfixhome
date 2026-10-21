@@ -463,11 +463,24 @@ export async function handleGoogleCallback(
   if (followed.kind !== "redirect") return authErrorRedirect("google");
 
   let wpCode: string | null = null;
+  let bridgeLocState: string | null = null;
   try {
     const loc = new URL(followed.location);
     wpCode = loc.searchParams.get("code");
+    bridgeLocState = loc.searchParams.get("state");
   } catch {
     wpCode = null;
+  }
+  // AU27.10 (d): compare and consume bridge state before any token exchange.
+  const takenBridge = await takeOauthState(env, bridgeState);
+  if (takenBridge === "unavailable") return authErrorRedirect("unavailable");
+  if (
+    !takenBridge ||
+    takenBridge.flow !== "bridge" ||
+    !bridgeLocState ||
+    bridgeLocState !== bridgeState
+  ) {
+    return authErrorRedirect("state");
   }
   if (!wpCode) return authErrorRedirect("google");
 
@@ -492,11 +505,14 @@ export async function handleGoogleCallback(
     return authJson(BODY_INVALID_LOGIN, 401);
   }
   if (exchanged.kind !== "ok") {
-    const ra =
-      exchanged.kind === "http" || exchanged.kind === "bad_json"
-        ? (exchanged.retryAfter ?? parseRetryAfter(null))
-        : parseRetryAfter(null);
-    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": String(ra) });
+    if (
+      exchanged.kind === "http" &&
+      (exchanged.status === 429 || exchanged.status >= 500)
+    ) {
+      const ra = exchanged.retryAfter ?? parseRetryAfter(null);
+      return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": String(ra) });
+    }
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
   }
 
   const tok = exchanged.json as {
