@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Per-ID gate pass/fail/skip report against r1.25 catalog.
+ * Per-ID gate pass/fail/skip report against r1.31 catalog.
  *
  * Usage: node tools/pr2/run-gate-ids.mjs [--json out.json]
  */
@@ -11,10 +11,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.25-catalog.json");
+const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.31-catalog.json");
 const DEFAULT_OUT = path.join(
   "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal",
-  "pr2-r1.25-gate-ids.json",
+  "pr2-r1.31-gate-ids.json",
 );
 
 const args = process.argv.slice(2);
@@ -71,7 +71,7 @@ for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
 
 const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" });
 const payload = {
-  catalogRev: "r1.25",
+  catalogRev: "r1.31",
   catalogMd5: createHash("md5").update(readFileSync(CATALOG)).digest("hex"),
   headSha: (head.stdout || "").trim(),
   vitestStatus: vitest.status,
