@@ -47,6 +47,124 @@ function breakAu78LogoutOutage(label) {
 
 /** @type {Record<string, { apply?: () => void, files?: string[], typeCheck?: boolean, ethanBlocker?: string }>} */
 export const R10_OVERRIDES = {
+  // --- Google JWT claim / sig skips (was ethan while fakeJwt was voided) ---
+  M58: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        `  if (header.alg !== "RS256") return null;
+  if (typeof header.kid !== "string" || !header.kid) return null;
+
+  const jwk = await resolveJwkForKid(header.kid, fetchImpl, cachesDefault());
+  if (!jwk) return null;
+
+  try {
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      toArrayBuffer(base64UrlToBytes(sB64)),
+      new TextEncoder().encode(\`\${hB64}.\${pB64}\`),
+    );
+    if (!ok) return null;
+  } catch {
+    return null;
+  }
+
+  const clientId = env.GOOGLE_WEB_CLIENT_ID!;`,
+        `  // MUTANT M58: skip signature verification incl. alg/kid handling
+  void header;
+  void sB64;
+  void resolveJwkForKid;
+  void toArrayBuffer;
+  void fetchImpl;
+  void cachesDefault;
+
+  const clientId = env.GOOGLE_WEB_CLIENT_ID!;`,
+        "M58",
+      );
+    },
+  },
+
+  M59: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  if (!issOk(payload.iss)) return null;",
+        "  // MUTANT M59: skip iss\n  if (false && !issOk(payload.iss)) return null;",
+        "M59",
+      );
+    },
+  },
+
+  M61: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  if (payload.exp + CLOCK_SKEW_SEC < nowSec) return null;",
+        "  // MUTANT M61: skip exp\n  void (payload as { exp?: number }).exp;",
+        "M61",
+      );
+    },
+  },
+
+  M62: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  if (payload.iat > nowSec + CLOCK_SKEW_SEC) return null;",
+        "  // MUTANT M62: skip iat\n  void (payload as { iat?: number }).iat;",
+        "M62",
+      );
+    },
+  },
+
+  M63: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  if (payload.nonce !== expectedNonce) return null;",
+        "  // MUTANT M63: skip nonce\n  if (false && payload.nonce !== expectedNonce) return null;",
+        "M63",
+      );
+    },
+  },
+
+  M64: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  const verified = payload.email_verified === true;",
+        "  const verified = true; // MUTANT M64 skip email_verified",
+        "M64",
+      );
+    },
+  },
+
+  M120: {
+    files: ["worker/auth/google.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  if (payload.azp !== undefined && payload.azp !== clientId) return null;",
+        "  // MUTANT M120: skip azp\n  void (payload as { azp?: unknown }).azp;",
+        "M120",
+      );
+    },
+  },
+
   // --- Google ---
   "M-GL2": {
     files: ["worker/auth/google.ts"],

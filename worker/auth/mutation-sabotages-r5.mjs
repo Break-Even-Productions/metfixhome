@@ -1,6 +1,6 @@
 /**
  * Round-5 overrides: remaining survivors / mismatches / cant-runs after R2–R4.
- * Merged last. Ethan-blockers only for vacuous Google JWT harness gaps.
+ * Google JWT claim ethan-blockers (M58/M59/M61–M64/M120) moved to R10 apply().
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -34,32 +34,6 @@ function replaceAllExact(rel, search, replace, label) {
 
 /** @type {Record<string, Sabotage>} */
 export const R5_OVERRIDES = {
-  // ── Vacuous Google JWT (assertGoogleReject voids fakeJwt) ─────────────────
-  M58: {
-    ethanBlocker:
-      "AU12.1–12.3 harness voids fakeJwt(payload) and never injects forged JWT; JWKS/alg verify not landed — external until Ethan wires verify",
-  },
-  M59: {
-    ethanBlocker:
-      "AU12.4 harness voids fakeJwt(payload); iss check not runnable until JWKS verify lands",
-  },
-  M62: {
-    ethanBlocker:
-      "AU12.7 harness voids fakeJwt(payload); iat check not implemented/injectable — external until JWKS verify lands",
-  },
-  M63: {
-    ethanBlocker:
-      "AU12.8 harness voids fakeJwt(payload); nonce injection path not wired in assertGoogleReject — external until JWKS verify lands",
-  },
-  M64: {
-    ethanBlocker:
-      "AU12.9 harness voids fakeJwt(payload); email_verified inject not wired — external until JWKS verify lands",
-  },
-  M120: {
-    ethanBlocker:
-      "AU12.12 harness voids fakeJwt(payload); azp check not injectable — external until JWKS verify lands",
-  },
-
   // ── Comments / client ─────────────────────────────────────────────────────
   M1: {
     files: ["worker/comments.ts"],

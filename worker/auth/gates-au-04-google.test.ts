@@ -17,7 +17,7 @@ import {
   signGoogleIdToken,
   validIdTokenClaims,
 } from "./realauth-harness.test";
-import { sha256Hex, bytesToBase64Url, randomBytes } from "./crypto";
+import { sha256Hex, bytesToBase64Url, base64UrlToBytes, randomBytes } from "./crypto";
 
 setupAuthHooks();
 
@@ -25,8 +25,8 @@ function b64urlJson(obj: object): string {
   return bytesToBase64Url(new TextEncoder().encode(JSON.stringify(obj)));
 }
 
-function fakeJwt(payload: object): string {
-  return `${b64urlJson({ alg: "none", kid: "k1" })}.${b64urlJson(payload)}.sig`;
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 async function signedCallback(
@@ -276,128 +276,132 @@ describe("AU11", () => {
 });
 
 describe("AU12", () => {
-  async function assertGoogleReject(payload: object) {
+  type RejectMode = "claims" | "wrong-key" | "alg-none" | "alg-hs256" | "unknown-kid";
+
+  async function assertGoogleReject(
+    claimOverrides: Record<string, unknown>,
+    opts?: { mode?: RejectMode; intent?: "login" | "register"; omitNonce?: boolean },
+  ) {
     const h = createHarness({ googleEnabled: true });
-    // Without JWKS verification wired, unsigned JWT may be accepted or rejected — assert reject Location
-    void fakeJwt(payload);
-    const start = await h.call("/api/auth/google/start");
-    const state = new URL(start.headers.get("Location")!).searchParams.get("state")!;
-    const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`);
+    const keys = await mintGoogleOidcKeys();
+    const intent = opts?.intent ?? "login";
+    const { state, preCookie, rec } = await googleStart(
+      h,
+      `intent=${intent}&return=/the-daily-fix`,
+    );
+    expect(rec?.nonce).toBeTruthy();
+    const claims = await validIdTokenClaims(h, rec!.nonce, claimOverrides);
+    if (opts?.omitNonce) delete claims.nonce;
+
+    const mode = opts?.mode ?? "claims";
+    if (mode === "wrong-key") {
+      const evil = await mintGoogleOidcKeys(keys.kid);
+      const idToken = await signGoogleIdToken(evil.privateKey, keys.kid, claims);
+      h.setJwks(keys);
+      h.setGoogleIdToken(idToken);
+    } else if (mode === "alg-none") {
+      const idToken = `${b64urlJson({ alg: "none", kid: keys.kid })}.${b64urlJson(claims)}.`;
+      h.setJwks(keys);
+      h.setGoogleIdToken(idToken);
+    } else if (mode === "alg-hs256") {
+      const header = b64urlJson({ alg: "HS256", kid: keys.kid });
+      const body = b64urlJson(claims);
+      const n = keys.publicJwk.n;
+      expect(typeof n).toBe("string");
+      const raw = base64UrlToBytes(n!);
+      const hk = await crypto.subtle.importKey(
+        "raw",
+        toArrayBuffer(raw),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      );
+      const sig = bytesToBase64Url(
+        new Uint8Array(
+          await crypto.subtle.sign("HMAC", hk, new TextEncoder().encode(`${header}.${body}`)),
+        ),
+      );
+      h.setJwks(keys);
+      h.setGoogleIdToken(`${header}.${body}.${sig}`);
+    } else if (mode === "unknown-kid") {
+      const idToken = await signGoogleIdToken(keys.privateKey, "unknown-kid-nope", claims);
+      h.installGoogleOidc(keys, idToken);
+    } else {
+      const idToken = await signGoogleIdToken(keys.privateKey, keys.kid, claims);
+      h.installGoogleOidc(keys, idToken);
+    }
+
+    const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+      headers: { Cookie: preCookie },
+    });
     expect(res.status).toBe(302);
-    const loc = res.headers.get("Location") ?? "";
-    expect(loc === "/?auth_error=google" || loc === "/?auth_error=state").toBe(true);
+    expect(res.headers.get("Location")).toBe("/?auth_error=google");
     expect(h.fetches.filter((f) => f.url.includes("/auth/social")).length).toBe(0);
     expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
   }
 
   it("AU12.1 wrong RSA key same kid → auth_error=google, 0 BSI, no sid", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: true,
-    });
+    await assertGoogleReject({}, { mode: "wrong-key" });
   });
 
   it("AU12.2 alg none and HS256 → auth_error=google, 0 BSI, no sid", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: true,
-    });
+    await assertGoogleReject({}, { mode: "alg-none" });
+    await assertGoogleReject({}, { mode: "alg-hs256" });
   });
 
   it("AU12.3 unknown kid → auth_error=google, 0 BSI, no sid", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: true,
-    });
+    await assertGoogleReject({}, { mode: "unknown-kid" });
   });
 
   it("AU12.4 evil iss → auth_error=google, 0 BSI, no sid", async () => {
-    await assertGoogleReject({
-      iss: "https://evil.example",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: true,
-    });
+    await assertGoogleReject({ iss: "https://evil.example" });
+    await assertGoogleReject({ iss: "https://accounts.google.com.evil" });
   });
 
   it("AU12.5 aud matrix reject wrong client id", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "other-client",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: true,
-    });
+    await assertGoogleReject({ aud: "other-client" });
   });
 
   it("AU12.6 exp now-61s rejected", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) - 61,
-      iat: Math.floor(Date.now() / 1000) - 120,
-      nonce: "n",
-      email_verified: true,
-    });
+    const now = Math.floor(Date.now() / 1000);
+    await assertGoogleReject({ exp: now - 61, iat: now - 120 });
   });
 
   it("AU12.7 iat now+61s rejected", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000) + 61,
-      nonce: "n",
-      email_verified: true,
-    });
+    const now = Math.floor(Date.now() / 1000);
+    await assertGoogleReject({ iat: now + 61 });
   });
 
   it("AU12.8 nonce missing or different rejected", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      email_verified: true,
-    });
+    await assertGoogleReject({}, { omitNonce: true });
+    await assertGoogleReject({ nonce: "different_nonce_value________" });
   });
 
   it("AU12.9 email_verified false or string true rejected on link path", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: false,
-    });
+    for (const ev of [false, "true"] as const) {
+      const h = createHarness({ googleEnabled: true });
+      const keys = await mintGoogleOidcKeys();
+      const { state, preCookie, rec } = await googleStart(
+        h,
+        "intent=register&return=/the-daily-fix",
+      );
+      const claims = await validIdTokenClaims(h, rec!.nonce, { email_verified: ev });
+      const idToken = await signGoogleIdToken(keys.privateKey, keys.kid, claims);
+      h.installGoogleOidc(keys, idToken);
+      await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+        headers: { Cookie: preCookie },
+      });
+      const social = h.fetches.filter((f) => f.url.includes("/auth/social"));
+      expect(social.filter((f) => JSON.parse(f.bodyText).intent === "register").length).toBe(0);
+      expect(social.length).toBeLessThanOrEqual(1);
+      if (social.length === 1) {
+        expect(JSON.parse(social[0]!.bodyText).intent).toBe("login");
+      }
+    }
   });
 
   it("AU12.12 azp present and not web client id rejected", async () => {
-    await assertGoogleReject({
-      iss: "https://accounts.google.com",
-      aud: "google-web-client-QA",
-      azp: "other",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000),
-      nonce: "n",
-      email_verified: true,
-    });
+    await assertGoogleReject({ azp: "other" });
   });
 
   it("AU12.10 valid token → 1 BSI-C5 social call", async () => {
@@ -666,4 +670,3 @@ describe("AU13", () => {
 void ORIGIN;
 void randomBytes;
 void BRIDGE;
-void fakeJwt;
