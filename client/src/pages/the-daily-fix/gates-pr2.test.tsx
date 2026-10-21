@@ -120,10 +120,13 @@ describe("PR2 client gates C / CT / CC1", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Post comment/i }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    const posts = fetchImpl.mock.calls.filter(
-      (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
-    );
-    expect(posts).toHaveLength(0);
+    // Settle microtasks so a mutant logged-out POST would have fired.
+    await waitFor(() => {
+      const posts = fetchImpl.mock.calls.filter(
+        (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
+      );
+      expect(posts).toHaveLength(0);
+    });
   });
 
   it("C4.3 CommentThread POST uses CSRF header and JSON body keys", () => {

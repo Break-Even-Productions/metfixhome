@@ -1349,7 +1349,20 @@ export const EXTRA_SABOTAGES = {
               event.preventDefault();
               if (!loggedIn) {
                 setJoinOpen(true);
-                void postComment(); // MUTANT M98: logged-out submit still POSTs
+                // MUTANT M98: logged-out submit POSTs (bypass CSRF gate)
+                void commentsHttp("/api/daily-fix/comments", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: {
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    date: dateIso,
+                    type: commentType,
+                    content: body,
+                  }),
+                });
                 return;
               }
               void postComment();
