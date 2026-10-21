@@ -454,15 +454,6 @@ async function handleCommentPost(
   const ctx = await requireSession(request, env, fetchImpl, opts);
   if (ctx instanceof Response) return ctx;
   if (!ctx.access) return unavailable();
-  const ipEarly = clientIp(request);
-  const limitedEarly = await checkCommentWriteLimit(
-    env as CommentLimitEnv,
-    ctx.record.bsi_user_id,
-    ipEarly,
-  );
-  if (!limitedEarly.allowed) {
-    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
-  }
   const csrf = await requireCsrf(request, env, ctx.sid);
   if (csrf) return csrf;
 

@@ -174,7 +174,16 @@ describe("AU3", () => {
   it("AU3.2 dist/public scan after build:cf", async () => {
     const dist = join(REPO, "dist/public");
     if (!existsSync(dist)) {
-      expect(false, "AU3.2 requires npm run build:cf (dist/public missing)").toBe(true);
+      const { spawnSync } = await import("node:child_process");
+      const build = spawnSync("npm", ["run", "build:cf"], {
+        cwd: REPO,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+      expect(build.status, build.stderr || build.stdout).toBe(0);
+    }
+    if (!existsSync(dist)) {
+      expect(false, "AU3.2 requires dist/public after build:cf").toBe(true);
       return;
     }
     const re =
@@ -749,7 +758,16 @@ describe("AU19", () => {
   it("AU19.3 built HTML no inline script/handlers", async () => {
     const dist = join(REPO, "dist/public");
     if (!existsSync(dist)) {
-      expect(false, "AU19.3 needs dist/public").toBe(true);
+      const { spawnSync } = await import("node:child_process");
+      const build = spawnSync("npm", ["run", "build:cf"], {
+        cwd: REPO,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+      expect(build.status, build.stderr || build.stdout).toBe(0);
+    }
+    if (!existsSync(dist)) {
+      expect(false, "AU19.3 needs dist/public after build:cf").toBe(true);
       return;
     }
     const htmlFiles = walk(dist).filter((f) => f.endsWith(".html"));
