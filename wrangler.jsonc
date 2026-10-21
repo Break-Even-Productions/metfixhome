@@ -68,5 +68,10 @@
       "tag": "v1-auth-dos",
       "new_classes": ["SessionDO", "LoginThrottleDO", "OauthStateDO"]
     }
-  ]
+  ],
+  // Non-secret: dedicated metfix.org WP OAuth client_id for BSI-C10 web-login (§0s.2).
+  // Never from the browser; Worker never holds/sends METFIX_ORG_OAUTH_CLIENT_SECRET.
+  "vars": {
+    "BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J"
+  }
 }

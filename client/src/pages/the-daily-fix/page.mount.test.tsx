@@ -468,7 +468,7 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     expect(dayCalls(fetchMock)).toHaveLength(3);
   });
 
-  it("6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date", async () => {
+  it("C6.2 today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date", async () => {
     invalidateCommentsCache(TODAY);
     invalidateCommentsCache(MINUS2);
     const commentsSpy = vi.spyOn(commentsApi, "fetchDailyFixComments");

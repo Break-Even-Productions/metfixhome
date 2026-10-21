@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  * PR2 client write/moderation gates (P7.2, CW10, CW12, CW13, CW16.3).
  */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentThread } from "./CommentThread";
@@ -212,6 +212,27 @@ describe("PR2 client P7 / CW10 / CW12 / CW13 / CW16", () => {
     render(<Harness moderator={false} />);
     expect(screen.getByText("theirs")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
+  });
+
+  it("CW14.1 no reply control on reply rows; top-level rows have one", () => {
+    const reply: DailyFixComment = {
+      id: 3,
+      pillar: "belly",
+      author: "Member",
+      content: "nested",
+      timestamp: "2025-02-10T12:02:00Z",
+      own: true,
+      deleted: 0,
+      like_count: 0,
+      parent_id: 1,
+    };
+    render(<Harness initial={[OWN, reply]} />);
+    const replyBtns = screen.getAllByRole("button", { name: "Reply" });
+    // Top-level OWN only — reply row must not offer Reply (M-CW20).
+    expect(replyBtns).toHaveLength(1);
+    const replyRow = screen.getByText("nested").closest("li");
+    expect(replyRow).toBeTruthy();
+    expect(within(replyRow as HTMLElement).queryByRole("button", { name: "Reply" })).toBeNull();
   });
 
   it("CW13.2 429 Retry-After 17 disables post, reply, edit, delete, like then re-enables", async () => {
