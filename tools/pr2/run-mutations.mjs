@@ -33,10 +33,11 @@ import { R12_OVERRIDES } from "./mutation-sabotages-r12.mjs";
 import { R13_OVERRIDES } from "./mutation-sabotages-r13.mjs";
 import { R14_OVERRIDES } from "./mutation-sabotages-r14.mjs";
 import { R15_OVERRIDES } from "./mutation-sabotages-r15.mjs";
+import { R16_OVERRIDES } from "./mutation-sabotages-r16.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
-const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.31-catalog.json");
+const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.34-catalog.json");
 const VITEST_JSON = path.join(REPO, "tools/pr2/.mutation-vitest-last.json");
 
 const args = process.argv.slice(2);
@@ -1477,6 +1478,9 @@ for (const [id, sab] of Object.entries(R14_OVERRIDES)) {
 for (const [id, sab] of Object.entries(R15_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
+for (const [id, sab] of Object.entries(R16_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 function patchMd5FromGit() {
   const res = spawnSync("git", ["diff", "--", "."], {
@@ -1970,7 +1974,7 @@ function main() {
 
   function writeCheckpoint() {
     const summary = {
-      catalogRev: "r1.31",
+      catalogRev: "r1.34",
       catalogTotal: catalog.mutations.length,
       selected: mutations.length,
       counts: {
@@ -2133,7 +2137,7 @@ function main() {
 
   // Final write (clears partial).
   const summary = {
-    catalogRev: "r1.31",
+    catalogRev: "r1.34",
     catalogTotal: catalog.mutations.length,
     selected: mutations.length,
     counts: {
