@@ -3,11 +3,11 @@
   "catalogTotal": 276,
   "selected": 276,
   "counts": {
-    "exact": 142,
-    "wider": 88,
-    "survived": 37,
+    "exact": 180,
+    "wider": 92,
+    "survived": 0,
     "ethan-blocker": 4,
-    "cant-run": 5,
+    "cant-run": 0,
     "not-run": 0
   },
   "baselineFailedAmongSelected": [],
@@ -4686,23 +4686,33 @@
     },
     {
       "id": "M60",
-      "verdict": "survived",
+      "verdict": "wider",
       "expectedRed": [
         "AU12.5"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU12.5",
+        "AU12.c"
+      ],
       "variants": [
         {
           "variant": "M60",
-          "verdict": "survived",
+          "verdict": "wider",
           "expectedRed": [
             "AU12.5"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "ff7d781dd252dc68bec295eb2f662c39",
+          "observedRed": [
+            "AU12.5",
+            "AU12.c"
+          ],
+          "failedTestTitles": [
+            "AU12.5 aud matrix reject wrong client id",
+            "AU12.c aud must be web client id",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "a723997c878fcdc81ec974025e5de129",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -4843,12 +4853,34 @@
     },
     {
       "id": "M65",
-      "verdict": "cant-run",
-      "reason": "M65: M65: search not found in worker/auth/google.ts",
+      "verdict": "exact",
       "expectedRed": [
         "AU12.11"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU12.11"
+      ],
+      "variants": [
+        {
+          "variant": "M65",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU12.11"
+          ],
+          "observedRed": [
+            "AU12.11"
+          ],
+          "failedTestTitles": [
+            "AU12.11 JWKS cache TTL 3600 / kid-miss 300",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "13d803650b8c503175f466eef7b7bc63",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
       "target": "JWKS",
       "sabotage": "no cache"
     },
@@ -5031,12 +5063,34 @@
     },
     {
       "id": "M71",
-      "verdict": "cant-run",
-      "reason": "M71: M71: search not found in worker/auth/auth-rate-limit.ts",
+      "verdict": "exact",
       "expectedRed": [
         "AU15.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU15.2"
+      ],
+      "variants": [
+        {
+          "variant": "M71",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU15.2"
+          ],
+          "observedRed": [
+            "AU15.2"
+          ],
+          "failedTestTitles": [
+            "AU15.2 username-check 21st → 429; buckets separate",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "903d906737eff9343716955c209e8c40",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
       "target": "username-check",
       "sabotage": "no rate limit"
     },
@@ -5446,23 +5500,30 @@
     },
     {
       "id": "M83",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU18.5"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU18.5"
+      ],
       "variants": [
         {
           "variant": "M83",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU18.5"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "b0393ace2c053b4e66f41454dadeeb5c",
+          "observedRed": [
+            "AU18.5"
+          ],
+          "failedTestTitles": [
+            "AU18.5 siteverify fail/outage mapping",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "2edc7cb7b110e0ab331703820e851795",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -5510,23 +5571,30 @@
     },
     {
       "id": "M85",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU19.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU19.2"
+      ],
       "variants": [
         {
           "variant": "M85",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU19.2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "7cc2f1cb86089a9018e232f6a4b90962",
+          "observedRed": [
+            "AU19.2"
+          ],
+          "failedTestTitles": [
+            "AU19.2 CSP on /the-daily-fix HTML",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "dc69205c1996e8fd77cc3091185aab08",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -5641,23 +5709,30 @@
     },
     {
       "id": "M89",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU22.1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU22.1"
+      ],
       "variants": [
         {
           "variant": "M89",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU22.1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "2b2b0cd501a3d49a430ed47b37ec9ca1",
+          "observedRed": [
+            "AU22.1"
+          ],
+          "failedTestTitles": [
+            "AU22.1 scoped storage scan + allowlist",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "67a176ab8229ff448f061fc6c7eb0e9f",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -6164,23 +6239,32 @@
     },
     {
       "id": "M97",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C4.1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C4.1"
+      ],
       "variants": [
         {
           "variant": "M97",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C4.1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "92f45441286b22888ca6eafe1d9f9d3c",
+          "observedRed": [
+            "C4.1"
+          ],
+          "failedTestTitles": [
+            "C4.1 comment UI status strings are exact",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date",
+            "keeps the day loaded when comments return 404",
+            "thrown comments fetch keeps the day; loading never shows No comments yet"
+          ],
+          "patchMd5": "32b8a6424a68c4329f04a41e589ab63b",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -6190,23 +6274,31 @@
     },
     {
       "id": "M98",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C4.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C4.2"
+      ],
       "variants": [
         {
           "variant": "M98",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C4.2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "87ccb802e02e2d9a10b0e2f21dc31b48",
+          "observedRed": [
+            "C4.2"
+          ],
+          "failedTestTitles": [
+            "C4.2 logged-out submit opens join modal with zero POSTs",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date",
+            "logged-out submit opens the join modal and does not POST a comment or store a session"
+          ],
+          "patchMd5": "2d474c61d0113a42ff896742acd435cd",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7304,23 +7396,30 @@
     },
     {
       "id": "M-KV1",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU5.x"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU5.x"
+      ],
       "variants": [
         {
           "variant": "M-KV1",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU5.x"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "2ac4c7e102022013ab6701fcd1a43205",
+          "observedRed": [
+            "AU5.x"
+          ],
+          "failedTestTitles": [
+            "AU5.x KV never holds token material",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "969dd56100e717ffe86f76faa4064d82",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7330,23 +7429,30 @@
     },
     {
       "id": "M-KV1b",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU5.x"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU5.x"
+      ],
       "variants": [
         {
           "variant": "M-KV1b",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU5.x"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "79fa373f0b00094e3cebc618acd33b71",
+          "observedRed": [
+            "AU5.x"
+          ],
+          "failedTestTitles": [
+            "AU5.x KV never holds token material",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "8d23f540acc005205f1af1cf75b1395c",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7356,23 +7462,30 @@
     },
     {
       "id": "M-KV1c",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU5.x"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU5.x"
+      ],
       "variants": [
         {
           "variant": "M-KV1c",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU5.x"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "c280684268b82e770b50c4a287d4f16b",
+          "observedRed": [
+            "AU5.x"
+          ],
+          "failedTestTitles": [
+            "AU5.x KV never holds token material",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "ebb3dea66f17c29e77249ab3b55fb316",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7382,23 +7495,30 @@
     },
     {
       "id": "M-KV1d",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU5.x"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU5.x"
+      ],
       "variants": [
         {
           "variant": "M-KV1d",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU5.x"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "4a3cef6a910d428757dad61b5913df20",
+          "observedRed": [
+            "AU5.x"
+          ],
+          "failedTestTitles": [
+            "AU5.x KV never holds token material",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "6d591b5380c9cfdd66e97dead7f22606",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7408,23 +7528,30 @@
     },
     {
       "id": "M-KV1e",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU5.x"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU5.x"
+      ],
       "variants": [
         {
           "variant": "M-KV1e",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU5.x"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "b1960216839fe9b46ad2e258195c76d0",
+          "observedRed": [
+            "AU5.x"
+          ],
+          "failedTestTitles": [
+            "AU5.x KV never holds token material",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "b2be1b3b3675a235f67f5bbd1c4c182d",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7434,23 +7561,30 @@
     },
     {
       "id": "M-KV1f",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU5.x"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU5.x"
+      ],
       "variants": [
         {
           "variant": "M-KV1f",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU5.x"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "31c1f2d66e0a97468fe20321011aeb8c",
+          "observedRed": [
+            "AU5.x"
+          ],
+          "failedTestTitles": [
+            "AU5.x KV never holds token material",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "74a9df57c4835fb07a84ea222ca29576",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7460,12 +7594,34 @@
     },
     {
       "id": "M124",
-      "verdict": "cant-run",
-      "reason": "M124: M124: search not found in worker/auth/auth-rate-limit.ts",
+      "verdict": "exact",
       "expectedRed": [
         "AU15.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU15.2"
+      ],
+      "variants": [
+        {
+          "variant": "M124",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU15.2"
+          ],
+          "observedRed": [
+            "AU15.2"
+          ],
+          "failedTestTitles": [
+            "AU15.2 username-check 21st → 429; buckets separate",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "d01c5a93094db076b0cc44685d0328cf",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
       "target": "R16",
       "sabotage": "username check shares the 5/60 write bucket"
     },
@@ -7608,23 +7764,30 @@
     },
     {
       "id": "M129",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU19.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU19.2"
+      ],
       "variants": [
         {
           "variant": "M129",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU19.2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "aad3e439a319380e7e5acc5b3b634e60",
+          "observedRed": [
+            "AU19.2"
+          ],
+          "failedTestTitles": [
+            "AU19.2 CSP on /the-daily-fix HTML",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "07b3041b3d8460d6511cd9e7840d9de2",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7634,23 +7797,30 @@
     },
     {
       "id": "M130",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C6.1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C6.1"
+      ],
       "variants": [
         {
           "variant": "M130",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C6.1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "4543663a1e2ba2fc884b988a611168a5",
+          "observedRed": [
+            "C6.1"
+          ],
+          "failedTestTitles": [
+            "C6.1 loadMe single-flights one /api/auth/me per app load",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "0514d98ef5074fd8ab484c3cf5fcfe16",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7660,23 +7830,29 @@
     },
     {
       "id": "M131",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C6.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C6.2"
+      ],
       "variants": [
         {
           "variant": "M131",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C6.2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "75de7db2133f44ac03243330e79bd16e",
+          "observedRed": [
+            "C6.2"
+          ],
+          "failedTestTitles": [
+            "C6.2 comments fetch starts before day load and Map-caches by date"
+          ],
+          "patchMd5": "6532f6cdbfc2ef8a46abfe9b74868e95",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7686,25 +7862,36 @@
     },
     {
       "id": "M132",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C6.2",
         "C6.3"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C6.2",
+        "C6.3"
+      ],
       "variants": [
         {
           "variant": "M132",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C6.2",
             "C6.3"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "1ede1da80aab45cbfc54b0edcf2a94d7",
+          "observedRed": [
+            "C6.2",
+            "C6.3"
+          ],
+          "failedTestTitles": [
+            "C6.3 shares one in-flight fetch and caches by date",
+            "C6.3 concurrent fetchDailyFixComments shares one GET",
+            "C6.2 comments fetch starts before day load and Map-caches by date",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "526b11091585d545acee0595510257f0",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7714,23 +7901,32 @@
     },
     {
       "id": "M133",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C7.1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C7.1"
+      ],
       "variants": [
         {
           "variant": "M133",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C7.1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "6daedac877456f793a545e63e2aa3d9d",
+          "observedRed": [
+            "C7.1"
+          ],
+          "failedTestTitles": [
+            "never shows a name field (R22 / C7.1)",
+            "C7.1 CommentThread has no name field or name state",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date",
+            "logged-out submit opens the join modal and does not POST a comment or store a session"
+          ],
+          "patchMd5": "c507ed6580b4cf2ad4dcb8a2ee5e5f07",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7805,23 +8001,30 @@
     },
     {
       "id": "M136",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "P7.2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "P7.2"
+      ],
       "variants": [
         {
           "variant": "M136",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "P7.2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "4be47a744aeb87d4056c3fc9690e3873",
+          "observedRed": [
+            "P7.2"
+          ],
+          "failedTestTitles": [
+            "P7.2 201 POST appends mapped comment with zero extra comments GETs",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "36a5edd3002efa4a831993ff36e74662",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7831,25 +8034,38 @@
     },
     {
       "id": "M139",
-      "verdict": "survived",
+      "verdict": "wider",
       "expectedRed": [
         "AU17.13",
         "AU26.5"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU17.13",
+        "AU26.5",
+        "AU26.6"
+      ],
       "variants": [
         {
           "variant": "M139",
-          "verdict": "survived",
+          "verdict": "wider",
           "expectedRed": [
             "AU17.13",
             "AU26.5"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "c9f1154420050358cb65afd179bca9b3",
+          "observedRed": [
+            "AU17.13",
+            "AU26.5",
+            "AU26.6"
+          ],
+          "failedTestTitles": [
+            "AU17.13 BSI recaptcha_failed accounting",
+            "AU26.5 R8b counts recaptcha_failed; R8a untouched",
+            "AU26.6 R8b then R8c across IPs",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "58f5e8dd9f86008e68561ee1f64da1a9",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -7859,25 +8075,35 @@
     },
     {
       "id": "M140",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU17.13",
         "AU26.5"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU17.13",
+        "AU26.5"
+      ],
       "variants": [
         {
           "variant": "M140",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU17.13",
             "AU26.5"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "5c5defb0128cb6eb40d4f34d02fb2ac2",
+          "observedRed": [
+            "AU17.13",
+            "AU26.5"
+          ],
+          "failedTestTitles": [
+            "AU17.13 BSI recaptcha_failed accounting",
+            "AU26.5 R8b counts recaptcha_failed; R8a untouched",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "b469d9f262597d34c0f5e3eb08ab35f5",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -8260,23 +8486,30 @@
     },
     {
       "id": "M148",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU18.5"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU18.5"
+      ],
       "variants": [
         {
           "variant": "M148",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU18.5"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "c6a4dd7b6059b8f1ee765a5bd28e3167",
+          "observedRed": [
+            "AU18.5"
+          ],
+          "failedTestTitles": [
+            "AU18.5 siteverify fail/outage mapping",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "9aa789013d60c16957ba868cd0bce1bf",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -8286,12 +8519,34 @@
     },
     {
       "id": "M149",
-      "verdict": "cant-run",
-      "reason": "M149: M149: search not found in worker/leaderboard.ts",
+      "verdict": "exact",
       "expectedRed": [
         "L6.3"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "L6.3"
+      ],
+      "variants": [
+        {
+          "variant": "M149",
+          "verdict": "exact",
+          "expectedRed": [
+            "L6.3"
+          ],
+          "observedRed": [
+            "L6.3"
+          ],
+          "failedTestTitles": [
+            "L6.3 per-bsi_user_id rate limit 11th 429",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "ecc888995364cd5ebf5c4e631d8a5568",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
       "target": "S-G5",
       "sabotage": "remove the 10/60 s per-user leaderboard limit"
     },
@@ -8562,23 +8817,33 @@
     },
     {
       "id": "M158",
-      "verdict": "survived",
+      "verdict": "wider",
       "expectedRed": [
         "AU12.5"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU12.5",
+        "AU12.c"
+      ],
       "variants": [
         {
           "variant": "M158",
-          "verdict": "survived",
+          "verdict": "wider",
           "expectedRed": [
             "AU12.5"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "68f355dcb28785d1ab4e7707f525161d",
+          "observedRed": [
+            "AU12.5",
+            "AU12.c"
+          ],
+          "failedTestTitles": [
+            "AU12.5 aud matrix reject wrong client id",
+            "AU12.c aud must be web client id",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "1d2f3c510d84e0c20f70a428e3bff38b",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -8620,23 +8885,30 @@
     },
     {
       "id": "M160",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "C4.4"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "C4.4"
+      ],
       "variants": [
         {
           "variant": "M160",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "C4.4"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "974b9a0d1b816c625a1c02e09ea041d6",
+          "observedRed": [
+            "C4.4"
+          ],
+          "failedTestTitles": [
+            "C4.4 CommentThread disables submit while posting",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "213be16f0c70098e4d05ad178ebdcd00",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9109,25 +9381,35 @@
     },
     {
       "id": "M-TOK1",
-      "verdict": "survived",
+      "verdict": "wider",
       "expectedRed": [
         "TK1",
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK1",
+        "TK1.r"
+      ],
       "variants": [
         {
           "variant": "M-TOK1",
-          "verdict": "survived",
+          "verdict": "wider",
           "expectedRed": [
             "TK1",
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "d2e0c4c03827ea57152cd41ed04d0e53",
+          "observedRed": [
+            "TK1",
+            "TK1.r"
+          ],
+          "failedTestTitles": [
+            "TK1 vacuity: zero output files fails (kills M-RS2)",
+            "TK1.r restores env, porcelain, and cleans mkdtemp after TK1 build",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "6b598ceb693dc1cd32f8f9796eaba3b9",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9137,23 +9419,30 @@
     },
     {
       "id": "M-TOK2",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK2",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "ba8bfab0ae8677388e9e2e7e200dc2e2",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 env example / local env files must not name N",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "afd805aab808c3847ba713289ba30de2",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9206,23 +9495,30 @@
     },
     {
       "id": "M-TOK5",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK5",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "d94f034bcb3fb2dcd2048e71bb4bb140",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "ca1a0bad3287e49e0c1549f1ecbf939a",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9232,23 +9528,30 @@
     },
     {
       "id": "M-TOK6",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK6",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "c8873b6424fba6809ba0a0ffcdb31195",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "8d5898d8498896737672fd0d1a1d2382",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9258,23 +9561,30 @@
     },
     {
       "id": "M-TOK7",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK7",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "bfa06c7fefe525d325ea990d46fdbdbb",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "7c397fc656a10e1ccf4a694db5236e6d",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9284,23 +9594,30 @@
     },
     {
       "id": "M-TOK8",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK8",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "ccd63b0cbe43d7fb9eb87cbfa5b9f7e3",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "eeae95012b60e554a4d22be79de47a61",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9310,23 +9627,30 @@
     },
     {
       "id": "M-TOK9",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK9",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "5f59562b3f6798eeafaaace793f69db1",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "363d3bf25d0c8773b4c72730895b376a",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9336,23 +9660,30 @@
     },
     {
       "id": "M-TOK10",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "TK2"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "TK2"
+      ],
       "variants": [
         {
           "variant": "M-TOK10",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "TK2"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "aa781e445781c79d194835da2da7bca0",
+          "observedRed": [
+            "TK2"
+          ],
+          "failedTestTitles": [
+            "TK2 positive form rows (a)(a2)(a3)(b)(c)(d)(e) each yield exactly one SCAN FAIL",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "0088920df62bd1c78a22fcf743bc6e80",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -9544,23 +9875,30 @@
     },
     {
       "id": "M162",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU22.1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU22.1"
+      ],
       "variants": [
         {
           "variant": "M162",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU22.1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "a2c07302368522c1907f0e964a82e66c",
+          "observedRed": [
+            "AU22.1"
+          ],
+          "failedTestTitles": [
+            "AU22.1 scoped storage scan + allowlist",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "c71e7cf7570f429bd920cc020b030121",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -10310,8 +10648,7 @@
     },
     {
       "id": "M-RA4",
-      "verdict": "cant-run",
-      "reason": "M-RA4: M-RA4: search not found in worker/upstream.ts",
+      "verdict": "exact",
       "expectedRed": [
         "AU26.3",
         "AU26.7",
@@ -10319,29 +10656,77 @@
         "AU26.11",
         "CW13.1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU26.10",
+        "AU26.11",
+        "AU26.3",
+        "AU26.7",
+        "CW13.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-RA4",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU26.3",
+            "AU26.7",
+            "AU26.10",
+            "AU26.11",
+            "CW13.1"
+          ],
+          "observedRed": [
+            "AU26.10",
+            "AU26.11",
+            "AU26.3",
+            "AU26.7",
+            "CW13.1"
+          ],
+          "failedTestTitles": [
+            "CW13.1 BSI 429 Retry-After clamp on POST/PATCH/DELETE/like",
+            "AU26.11 clamps all-digit values to 1..600",
+            "AU26.11 property: all-digit string equals integer clamp 1..600",
+            "AU26.3 §0s.4 outcome table",
+            "AU26.7 key-ceiling vs per-username 429 byte-identical",
+            "AU26.10 Worker clamp of BSI-C10 Retry-After",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "4c3352a84755c8ce2e9aca8175f4d4b4",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
       "target": "`parseRetryAfter` (QA, 1.23)",
       "sabotage": "all-digit value above `Number.MAX_SAFE_INTEGER` (or non-finite) → 60 instead of 600"
     },
     {
       "id": "M-RA5",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU26.11"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU26.11"
+      ],
       "variants": [
         {
           "variant": "M-RA5",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU26.11"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "fdb186c14fae7a877fb0d2fa6ead4a4a",
+          "observedRed": [
+            "AU26.11"
+          ],
+          "failedTestTitles": [
+            "AU26.11 return type is branded RetryAfterSeconds not bare number",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date",
+            "AU26.11 parseRetryAfter branded return type (tsc --noEmit)"
+          ],
+          "patchMd5": "087d627573c24420d32fd00749ceb43a",
           "typeCheckStatus": 2,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -10399,23 +10784,30 @@
     },
     {
       "id": "M-SU1",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "AU17.14"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "AU17.14"
+      ],
       "variants": [
         {
           "variant": "M-SU1",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "AU17.14"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "65b18e20ca459a1071e2d21987b8bfc3",
+          "observedRed": [
+            "AU17.14"
+          ],
+          "failedTestTitles": [
+            "AU17.14 signup reCAPTCHA fail takes 0 R8c",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "e67dd9f215fb7d0bb3eb722bbee2472e",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -10497,23 +10889,30 @@
     },
     {
       "id": "M-P1a",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "CT-P1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "CT-P1"
+      ],
       "variants": [
         {
           "variant": "M-P1a",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "CT-P1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "3823f70944f5ab81ab5a6543db56c288",
+          "observedRed": [
+            "CT-P1"
+          ],
+          "failedTestTitles": [
+            "CT-P1 CommentThread refetches once with cache bypass after failed POST",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "e984df4dfea0118ad8266b5999c0259f",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -10523,23 +10922,30 @@
     },
     {
       "id": "M-P1b",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "CT-P1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "CT-P1"
+      ],
       "variants": [
         {
           "variant": "M-P1b",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "CT-P1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "5b7ea05baac8b140865fc375ed249957",
+          "observedRed": [
+            "CT-P1"
+          ],
+          "failedTestTitles": [
+            "CT-P1 CommentThread refetches once with cache bypass after failed POST",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "82905fefa331663c58026db455120808",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -10549,23 +10955,30 @@
     },
     {
       "id": "M-P1c",
-      "verdict": "survived",
+      "verdict": "exact",
       "expectedRed": [
         "CT-P1"
       ],
-      "observedRed": [],
+      "observedRed": [
+        "CT-P1"
+      ],
       "variants": [
         {
           "variant": "M-P1c",
-          "verdict": "survived",
+          "verdict": "exact",
           "expectedRed": [
             "CT-P1"
           ],
-          "observedRed": [],
-          "failedTestTitles": [],
-          "patchMd5": "5d5f446e844f13fe0cb4fe5fb580b1e4",
+          "observedRed": [
+            "CT-P1"
+          ],
+          "failedTestTitles": [
+            "CT-P1 CommentThread refetches once with cache bypass after failed POST",
+            "6. today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date"
+          ],
+          "patchMd5": "f60da0b827e03cbecdfdfc7a229b9d53",
           "typeCheckStatus": null,
-          "vitestStatus": 0,
+          "vitestStatus": 1,
           "buildStatus": 0,
           "workersStatus": 0
         }
@@ -10642,5 +11055,18 @@
       "sabotage": "inject executable inline script variants (a/b/c) into built index.html"
     }
   ],
-  "partial": false
+  "partial": false,
+  "notes": {
+    "M-CW33": "wider +AU6.2 — Ethan-accept: AU6.2 catalog requires sess:* rewrite on silent refresh; same put M-CW33 skips",
+    "M60": "wider +AU12.c — Ethan-accept: skip-aud also breaks AU12.c web-client aud matrix",
+    "M158": "wider +AU12.c — Ethan-accept: accept-any-array-containing-ours also breaks AU12.c two-element reject",
+    "M139": "wider +AU26.6 — Ethan-accept: undoing R8b on recaptcha_failed also breaks AU26.6 20/60 threshold",
+    "M-TOK1": "wider {TK1,TK1.r} missing TK2 — Ethan-accept until #10: TK2 clean-control is skipIf(!hasPr10SanityGuard()); TK1.r couples with TK1 build",
+    "ethan-blockers": [
+      "M96",
+      "M-TOK3",
+      "M-TOK11",
+      "M-CK1"
+    ]
+  }
 }

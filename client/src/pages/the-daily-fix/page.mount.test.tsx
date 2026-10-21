@@ -495,8 +495,10 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     await waitFor(() => {
       expect(commentsSpy).toHaveBeenCalled();
       const isos = commentsSpy.mock.calls.map((c) => c[0]);
+      // C6.2: comments may start on fetchIso (TODAY) in parallel with the day
+      // load; closer-day resolution must still fetch/re-key to MINUS2.
       expect(isos).toContain(MINUS2);
-      expect(isos).not.toContain(TODAY);
+      expect(isos.at(-1)).toBe(MINUS2);
     });
     commentsSpy.mockRestore();
   });
