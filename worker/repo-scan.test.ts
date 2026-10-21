@@ -779,6 +779,28 @@ describe("TK2", () => {
       expect(hits).toEqual([]);
     },
   );
+
+  // Always-on (does not need #10): env example / local env files must not name N.
+  // Kills M-TOK2 (`VITE_SANITY_API_READ_TOKEN=` in `.env.example`) before #10 merges.
+  it("TK2 env example / local env files must not name N", () => {
+    const N = tokenName();
+    const candidates = [
+      ".env",
+      ".env.example",
+      ".env.local",
+      ".env.development",
+      ".env.production",
+      ".dev.vars",
+      ".dev.vars.example",
+    ];
+    const hits: string[] = [];
+    for (const rel of candidates) {
+      const abs = path.join(REPO_ROOT, rel);
+      if (!existsSync(abs)) continue;
+      hits.push(...scanTk2Content(rel, readFileSync(abs, "utf8"), N));
+    }
+    expect(hits).toEqual([]);
+  });
 });
 
 describe("TK2.m7", () => {

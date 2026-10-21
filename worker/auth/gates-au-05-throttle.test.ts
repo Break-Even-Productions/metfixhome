@@ -74,6 +74,30 @@ describe("AU15", () => {
     expect(r21.status).toBe(429);
     expect(await r21.json()).toStrictEqual({ error: "rate_limited" });
     expect(r21.headers.get("Retry-After")).toBe("60");
+
+    // Bucket separation (kills M124 sharing signup 5/60): 5 signups must not
+    // block a username-check on the same IP.
+    const h2 = createHarness({
+      siteverify: () =>
+        Response.json({ success: true, score: 0.9, action: "signup", hostname: "metfix.org" }),
+    });
+    for (let i = 0; i < 5; i++) {
+      const { csrf: token, setCookie } = await h2.csrf();
+      const res = await h2.call("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "X-CSRF-Token": token,
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": IP,
+          Cookie: setCookie?.split(";")[0] ?? "",
+        },
+        body: JSON.stringify({ username: `sep${i}`, email: `sep${i}@ex.test`, recaptcha: TOK }),
+      });
+      expect([202, 429]).toContain(res.status);
+    }
+    const afterSignup = await usernameCheck(h2, "after_five_signups");
+    expect(afterSignup.status).not.toBe(429);
   });
 });
 

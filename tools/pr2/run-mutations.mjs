@@ -16,6 +16,7 @@ import {
   writeFileSync,
   readdirSync,
   statSync,
+  unlinkSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +29,7 @@ import { R8_OVERRIDES } from "./mutation-sabotages-r8.mjs";
 import { R9_OVERRIDES } from "./mutation-sabotages-r9.mjs";
 import { R10_OVERRIDES } from "./mutation-sabotages-r10.mjs";
 import { R11_OVERRIDES } from "./mutation-sabotages-r11.mjs";
+import { R12_OVERRIDES } from "./mutation-sabotages-r12.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -171,16 +173,15 @@ const SABOTAGES = {
   "M-RA4": {
     files: ["worker/upstream.ts"],
     apply() {
-      // Overflow / non-finite → 60 instead of 600
+      // Overflow / non-finite → 60 instead of 600 (current: 7+ digits / !finite → 600)
       replaceOnce(
         "worker/upstream.ts",
-        `  // Cheap guard: 4+ digits cannot be < 1000, so clamp to 600 without Number()
-  // (avoids Infinity for 400-digit strings; M-RA4).
-  if (header.length > 3) return 600 as RetryAfterSeconds;
+        `  // 7+ digits cannot be in 1..600; avoid Number() on huge strings (M-RA4).
+  if (header.length >= 7) return 600 as RetryAfterSeconds;
   const n = Number(header);
   if (!Number.isFinite(n)) return 600 as RetryAfterSeconds;`,
         `  // MUTANT M-RA4: overflow / non-finite → 60
-  if (header.length > 3) return 60 as RetryAfterSeconds;
+  if (header.length >= 7) return 60 as RetryAfterSeconds;
   const n = Number(header);
   if (!Number.isFinite(n)) return 60 as RetryAfterSeconds;`,
         "M-RA4",
@@ -1459,6 +1460,9 @@ for (const [id, sab] of Object.entries(R10_OVERRIDES)) {
 for (const [id, sab] of Object.entries(R11_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
+for (const [id, sab] of Object.entries(R12_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 function patchMd5FromGit() {
   const res = spawnSync("git", ["diff", "--", "."], {
@@ -1607,6 +1611,21 @@ function restoreTree() {
   const files = [...new Set(RESTORE_FILES)].filter(Boolean);
   RESTORE_FILES = [];
   if (files.length) {
+    // Newly created untracked sabotage files (e.g. M-TOK2 `.env.example`) are
+    // not restored by checkout — remove them when git does not track the path.
+    for (const f of files) {
+      const tracked = spawnSync("git", ["ls-files", "--", f], {
+        cwd: REPO,
+        encoding: "utf8",
+      });
+      if (!(tracked.stdout || "").trim() && existsSync(path.join(REPO, f))) {
+        try {
+          unlinkSync(path.join(REPO, f));
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     runCmd("git", ["checkout", "--", ...files]);
   }
 }
@@ -1688,6 +1707,12 @@ function runFullSuites(catalogGates, { typeCheck = false, forceBuild = false, fi
     } catch {
       /* ignore */
     }
+  }
+  // AU26.11 type gate: branded RetryAfterSeconds asserted via *.test-d.ts under
+  // `npm run check:worker`. When typeCheck is requested and tsc fails, count AU26.11.
+  if (typeCheck && typeRes && typeRes.status !== 0) {
+    observed = [...new Set([...observed, "AU26.11"])].sort();
+    failedTitles.push("AU26.11 parseRetryAfter branded return type (tsc --noEmit)");
   }
   return {
     vitestStatus: vitest.status,
@@ -1975,13 +2000,23 @@ function main() {
       try {
         RESTORE_FILES = [...touchFiles];
         vsab.apply();
-        // Capture any extra paths the apply touched.
+        // Capture any extra paths the apply touched (incl. untracked creates).
         const dirty = spawnSync("git", ["diff", "--name-only", "--", "."], {
           cwd: REPO,
           encoding: "utf8",
         });
         for (const f of (dirty.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean)) {
           if (!f.startsWith("tools/pr2/")) RESTORE_FILES.push(f);
+        }
+        const untracked = spawnSync(
+          "git",
+          ["ls-files", "--others", "--exclude-standard", "--", "."],
+          { cwd: REPO, encoding: "utf8" },
+        );
+        for (const f of (untracked.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean)) {
+          if (!f.startsWith("tools/pr2/") && !f.startsWith("node_modules/")) {
+            RESTORE_FILES.push(f);
+          }
         }
         patchMd5 = patchMd5FromGit();
       } catch (e) {
