@@ -1223,65 +1223,90 @@ describe("AU22.1", () => {
         return true;
       if (rel.endsWith("client/src/pages/the-daily-fix/JoinModal.tsx"))
         return true;
-      // approximate **/auth*
       if (/client\/src\/.*\/auth[^/]*$/.test(rel)) return true;
       if (/client\/src\/components\/auth/.test(rel)) return true;
       return false;
     };
+    // Catalog pin (HOME_SCROLL_KEY) + content-pinned pre-existing non-auth UI storage.
     const allow = new Set([
       "client/src/const.ts\0sessionStorage.setItem(HOME_SCROLL_KEY, sectionId);",
       "client/src/pages/Home.tsx\0const pending = sessionStorage.getItem(HOME_SCROLL_KEY);",
       "client/src/pages/Home.tsx\0sessionStorage.removeItem(HOME_SCROLL_KEY);",
+      'client/src/contexts/ThemeContext.tsx\0const stored = localStorage.getItem("theme");',
+      'client/src/contexts/ThemeContext.tsx\0localStorage.setItem("theme", theme);',
+      "client/src/components/ui/sidebar.tsx\0document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;",
     ]);
     const clientSrc = path.join(REPO_ROOT, "client/src");
     if (!existsSync(clientSrc)) {
       throw new Error("SCAN FAIL: storage zero files scanned");
     }
-    let filesScanned = 0;
-    const scopedHits: string[] = [];
-    const repoHits: { rel: string; text: string; line: number }[] = [];
-    for (const abs of walkFiles(clientSrc)) {
-      if (abs.endsWith(".test.ts") || abs.endsWith(".test.tsx")) continue;
-      filesScanned++;
-      const rel = relPosix(REPO_ROOT, abs);
-      const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i]!.trim();
-        if (!re.test(lines[i]!)) continue;
-        repoHits.push({ rel, text: trimmed, line: i + 1 });
-        if (scopedGlobs(rel)) {
-          scopedHits.push(`SCAN FAIL: storage ${rel}:${i + 1}`);
+
+    const collect = () => {
+      let filesScanned = 0;
+      const scopedHits: string[] = [];
+      const repoHits: { rel: string; text: string; line: number }[] = [];
+      for (const abs of walkFiles(clientSrc)) {
+        if (abs.endsWith(".test.ts") || abs.endsWith(".test.tsx")) continue;
+        filesScanned++;
+        const rel = relPosix(REPO_ROOT, abs);
+        const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i]!.trim();
+          if (!re.test(lines[i]!)) continue;
+          repoHits.push({ rel, text: trimmed, line: i + 1 });
+          if (scopedGlobs(rel)) {
+            scopedHits.push(`SCAN FAIL: storage ${rel}:${i + 1}`);
+          }
         }
       }
-    }
-    if (filesScanned === 0) throw new Error("SCAN FAIL: storage zero files scanned");
-    for (const h of repoHits) {
-      const key = `${h.rel}\0${h.text}`;
-      if (!allow.has(key)) {
-        // extra hit — fail shape
-        scopedHits.push(`SCAN FAIL: storage ${h.rel}:${h.line}`);
+      if (filesScanned === 0) throw new Error("SCAN FAIL: storage zero files scanned");
+      return { scopedHits, repoHits };
+    };
+
+    const assertClean = (scopedHits: string[], repoHits: { rel: string; text: string; line: number }[]) => {
+      if (scopedHits.length > 0) throw new Error(scopedHits[0]!);
+      for (const h of repoHits) {
+        const key = `${h.rel}\0${h.text}`;
+        if (!allow.has(key)) {
+          throw new Error(`SCAN FAIL: storage ${h.rel}:${h.line}`);
+        }
       }
-    }
-    console.warn("AU22.1 findings:", scopedHits.slice(0, 10));
-    // Plant in JoinModal path if present, else skip plant
-    const join = path.join(
-      REPO_ROOT,
-      "client/src/pages/the-daily-fix/JoinModal.tsx",
+    };
+
+    const clean = collect();
+    assertClean(clean.scopedHits, clean.repoHits);
+
+    // Content-pin proof (S-G19 / M162): altered text at an allowlisted Home.tsx line must FAIL.
+    const home = path.join(REPO_ROOT, "client/src/pages/Home.tsx");
+    const homeBefore = readFileSync(home, "utf8");
+    const homePlanted = homeBefore.replace(
+      "sessionStorage.removeItem(HOME_SCROLL_KEY);",
+      'sessionStorage.removeItem("auth");',
     );
-    if (existsSync(join)) {
-      const before = readFileSync(join, "utf8");
-      const plantLine = `void sessionStorage.setItem("x","y");`;
-      writeFileSync(join, before.replace(/\s*$/, "") + `\n${plantLine}\n`);
-      try {
-        const lines = normalizeLf(readFileSync(join, "utf8")).split("\n");
-        const lineNo = lines.findIndex((l) => l.includes('sessionStorage.setItem("x","y")')) + 1;
-        expect(lineNo).toBeGreaterThan(0);
-        expect(`SCAN FAIL: storage client/src/pages/the-daily-fix/JoinModal.tsx:${lineNo}`).toBe(
-          `SCAN FAIL: storage client/src/pages/the-daily-fix/JoinModal.tsx:${lineNo}`,
-        );
-      } finally {
-        writeFileSync(join, before);
-      }
+    expect(homePlanted).not.toBe(homeBefore);
+    writeFileSync(home, homePlanted);
+    try {
+      const planted = collect();
+      expect(() => assertClean(planted.scopedHits, planted.repoHits)).toThrow(
+        /SCAN FAIL: storage client\/src\/pages\/Home\.tsx:\d+/,
+      );
+    } finally {
+      writeFileSync(home, homeBefore);
+    }
+
+    // Scoped JoinModal plant proof.
+    const join = path.join(REPO_ROOT, "client/src/pages/the-daily-fix/JoinModal.tsx");
+    expect(existsSync(join)).toBe(true);
+    const joinBefore = readFileSync(join, "utf8");
+    const plantLine = `void sessionStorage.setItem("x","y");`;
+    writeFileSync(join, joinBefore.replace(/\s*$/, "") + `\n${plantLine}\n`);
+    try {
+      const planted = collect();
+      expect(() => assertClean(planted.scopedHits, planted.repoHits)).toThrow(
+        /SCAN FAIL: storage client\/src\/pages\/the-daily-fix\/JoinModal\.tsx:\d+/,
+      );
+    } finally {
+      writeFileSync(join, joinBefore);
     }
   });
 });

@@ -28,7 +28,7 @@ type CommentThreadProps = {
   pillar: Pillar;
   /** ISO date for POST body + cache invalidation. */
   dateIso?: string | null;
-  /** From `/me` cache (R5); never from localStorage (CW12.1). */
+  /** From `/me` cache (R5); never from browser storage (CW12.1). */
   viewerDisplayName?: string | null;
   moderator?: boolean;
   onCommentsChanged?: (next: CommentsLoadState) => void;

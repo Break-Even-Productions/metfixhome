@@ -371,7 +371,7 @@ export const R10_OVERRIDES = {
     apply() {
       replaceOnce(
         "worker/auth/google.ts",
-        "  if (!forceNetwork) {\n    const cached = await readCachedJson<{ keys: JsonWebKey[] }>(cache, JWKS_CACHE_URL);\n    if (cached?.keys) return cached;\n  }",
+        "  if (!forceNetwork) {\n    const cached = await readCachedJson<{ keys: GoogleJwk[] }>(cache, JWKS_CACHE_URL);\n    if (cached?.keys) return cached;\n  }",
         "  // MUTANT M65: no JWKS cache\n  void forceNetwork; void readCachedJson; void JWKS_CACHE_URL;",
         "M65",
       );

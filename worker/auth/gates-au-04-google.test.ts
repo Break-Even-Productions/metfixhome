@@ -360,6 +360,14 @@ describe("AU12", () => {
 
   it("AU12.5 aud matrix reject wrong client id", async () => {
     await assertGoogleReject({ aud: "other-client" });
+    await assertGoogleReject({ aud: [GOOGLE_WEB_CLIENT_ID, "other"] });
+    await assertGoogleReject({ aud: ["other", GOOGLE_WEB_CLIENT_ID] });
+    await assertGoogleReject({ aud: [] });
+    // Single-element [ours] is accepted (Q16 / catalog AU12.5).
+    const hOk = createHarness({ googleEnabled: true });
+    const ok = await signedCallback(hOk, { claims: { aud: [GOOGLE_WEB_CLIENT_ID] } });
+    expect(ok.res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(hOk.fetches.filter((f) => f.url.includes("/auth/social")).length).toBe(1);
   });
 
   it("AU12.6 exp now-61s rejected", async () => {

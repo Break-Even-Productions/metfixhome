@@ -30,6 +30,7 @@ import { R9_OVERRIDES } from "./mutation-sabotages-r9.mjs";
 import { R10_OVERRIDES } from "./mutation-sabotages-r10.mjs";
 import { R11_OVERRIDES } from "./mutation-sabotages-r11.mjs";
 import { R12_OVERRIDES } from "./mutation-sabotages-r12.mjs";
+import { R13_OVERRIDES } from "./mutation-sabotages-r13.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -1461,6 +1462,9 @@ for (const [id, sab] of Object.entries(R11_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
 for (const [id, sab] of Object.entries(R12_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
+for (const [id, sab] of Object.entries(R13_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
 

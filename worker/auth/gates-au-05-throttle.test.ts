@@ -325,6 +325,11 @@ describe("AU17", () => {
     expect(r21.status).toBe(429);
     expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(20);
     expect(h.siteverifyCalls.length).toBe(0);
+    // R8a counters for those identifiers stay 0 (catalog AU17.13 / N5).
+    for (let i = 0; i < 20; i++) {
+      const name = await r8aName(`r${i}`);
+      expect(h.throttleNs.getStorage(name)?.get("id")).toBeUndefined();
+    }
   });
 
   it("AU17.14 signup reCAPTCHA fail takes 0 R8c", async () => {
