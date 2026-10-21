@@ -176,14 +176,20 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
   let accessToken = ACCESS1;
   let canModerate: unknown = undefined;
   const kv = makeRecordingKv(() => now);
-  const sessionFetch = { current: fetch as FetchImpl };
-  const sessionNs = makeNamespace(SessionDO, {
+  const sessionEnv: {
+    SESSION_ENC_KEY: string;
+    DAILY_FIX_API_KEY: string;
+    BSI_OAUTH_CLIENT_ID: string;
+    METFIX_ORG_OAUTH_CLIENT_SECRET: string;
+    fetchImpl: FetchImpl;
+  } = {
     SESSION_ENC_KEY: ENCKEY,
     DAILY_FIX_API_KEY: KEY,
     BSI_OAUTH_CLIENT_ID: CID,
     METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
-    fetchImpl: sessionFetch,
-  });
+    fetchImpl: fetch as FetchImpl,
+  };
+  const sessionNs = makeNamespace(SessionDO, sessionEnv);
   const throttleNs = makeNamespace(LoginThrottleDO, {});
   const oauthNs = makeNamespace(OauthStateDO, {});
   const cache = makeCache();
@@ -302,7 +308,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
   };
 
   const fetchMock = vi.fn(defaultFetch);
-  sessionFetch.current = fetchMock as unknown as FetchImpl;
+  sessionEnv.fetchImpl = fetchMock as unknown as FetchImpl;
 
   vi.stubGlobal("fetch", vi.fn(async () => {
     throw new Error("global fetch");

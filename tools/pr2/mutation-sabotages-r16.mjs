@@ -51,21 +51,6 @@ export const R16_OVERRIDES = {
     await this.put(aad, record);`,
         "M-DT7-refresh",
       );
-      replaceOnce(
-        "worker/do/session.ts",
-        `    body.record.bsi_access = tokens.access_token;
-    if (typeof tokens.refresh_token === "string" && tokens.refresh_token) {
-      body.record.bsi_refresh = tokens.refresh_token;
-    }
-    body.record.access_exp =
-      now + (typeof tokens.expires_in === "number" ? tokens.expires_in * 1000 : 3600_000);`,
-        `    body.record.bsi_access = tokens.access_token;
-    // MUTANT M-DT7: write only access; keep old refresh token
-    void tokens.refresh_token;
-    body.record.access_exp =
-      now + (typeof tokens.expires_in === "number" ? tokens.expires_in * 1000 : 3600_000);`,
-        "M-DT7-applyRefresh",
-      );
     },
   },
 };

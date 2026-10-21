@@ -496,19 +496,7 @@ function gitPorcelain(): string {
   );
   if (r.error) throw new Error(`git status failed: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`git status failed: ${r.stderr}`);
-  // TK1.r flake (Node 22 / parallel runs): vite + npm touch node_modules/.vite and
-  // ignored caches under the tree; those are not repo dirt from the TK1 build.
-  return (r.stdout || "")
-    .split("\n")
-    .filter((line) => {
-      if (!line.trim()) return false;
-      const p = line.slice(3).trim().replace(/^"/, "").replace(/"$/, "");
-      if (p.startsWith("node_modules/") || p.includes("/node_modules/")) return false;
-      if (p.startsWith("dist/") || p.startsWith(".vite/") || p.includes("/.vite/")) return false;
-      if (p.startsWith(".turbo/") || p.startsWith("coverage/")) return false;
-      return true;
-    })
-    .join("\n");
+  return r.stdout || "";
 }
 
 function assertNAbsentForTk1(): void {
@@ -992,15 +980,18 @@ describe("TK1.r", () => {
     const beforePorcelain = gitPorcelain();
     const outDir = mkdtempSync(path.join(tmpdir(), "tk1r-out-"));
     const otherDir = mkdtempSync(path.join(tmpdir(), "tk1r-other-"));
+    const cacheDir = path.join(otherDir, "vite-cache");
     try {
       for (const k of CANARY_KEYS) {
         process.env[k] = `r-${randomBytes(6).toString("hex")}`;
       }
       delete process.env[N];
+      // Isolated outDir + cacheDir so the build never dirties the repo tree (TK1.r).
       await build({
         configFile: path.join(REPO_ROOT, "vite.config.ts"),
         root: path.join(REPO_ROOT, "client"),
         logLevel: "error",
+        cacheDir,
         build: { outDir, emptyOutDir: true },
       });
     } finally {
