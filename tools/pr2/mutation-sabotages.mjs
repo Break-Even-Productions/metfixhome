@@ -41,10 +41,10 @@ function appendLine(rel, line, label) {
 export const EXTRA_SABOTAGES = {
 
   "M-TOK3": {
-    ethanBlocker: "TK2.m is skipIf(!hasPr10SanityGuard()); requires #10 Vite guard on main \u2014 external to this branch",
+    ethanBlocker: "waiting on #10 merge: TK2.m skipIf(!hasPr10SanityGuard())",
   },
   "M-TOK11": {
-    ethanBlocker: "#10 not merged: vite.config.ts lacks the Sanity token guard that M-TOK11 would remove",
+    ethanBlocker: "waiting on #10 merge: vite.config.ts Sanity guard not on main yet (M-TOK11)",
   },
   "M-GL1": {
     files: ["worker/auth/google.ts"],

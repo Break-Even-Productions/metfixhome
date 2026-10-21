@@ -147,10 +147,7 @@ export const R9_OVERRIDES = {
   },
 
   // C5.2 requires #10 Sanity vite guard (skipped); C5.1 has no zero-hit assert
-  M96: {
-    ethanBlocker:
-      "C5.2 is skipIf(!hasPr10SanityGuard()) — #10 vite Sanity guard not on this branch; C5.1 test never asserts unplanted hit count is zero, so full red set [C1.1,C5.1,C5.2] cannot be observed",
-  },
+  M96: { /* overridden in r14 */ },
 
   // W5.1 uses bsiGetHeaders; P4.4 must prefer client Authorization
   M101: {

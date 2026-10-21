@@ -1877,7 +1877,13 @@ function main() {
   }
 
   console.log(`Catalog mutations: ${catalog.mutations.length}; selected: ${mutations.length}`);
-  const catalogGates = catalog.gates;
+  const gateCount = catalog.gates.length;
+  // Observable IDs include box/post-deploy (e.g. CK-P1) so M-CK1 can score exact.
+  const catalogGates = [
+    ...catalog.gates,
+    ...(catalog.boxes || []),
+    ...(catalog.post_deploy || []),
+  ];
   // Start from a clean product tree (do not revert tools/pr2 or untracked logs).
   {
     const dirty = spawnSync("git", ["diff", "--name-only", "--", "worker", "client"], {
@@ -1898,7 +1904,7 @@ function main() {
   );
 
   if (BASELINE_ONLY) {
-    const payload = { baseline, gateCount: catalogGates.length };
+    const payload = { baseline, gateCount };
     mkdirSync(path.dirname(OUT), { recursive: true });
     writeFileSync(OUT, JSON.stringify(payload, null, 2));
     console.log("Wrote", OUT);

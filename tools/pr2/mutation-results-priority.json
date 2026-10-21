@@ -1,0 +1,350 @@
+{
+  "catalogRev": "r1.25",
+  "catalogTotal": 279,
+  "selected": 6,
+  "counts": {
+    "exact": 4,
+    "wider": 1,
+    "missing-red": 0,
+    "survived": 1,
+    "ethan-blocker": 0,
+    "cant-run": 0,
+    "not-run": 273
+  },
+  "baselineFailedAmongSelected": [],
+  "results": [
+    {
+      "id": "M-CW34",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW16.3"
+      ],
+      "observedRed": [
+        "CW16.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW34",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW16.3"
+          ],
+          "observedRed": [
+            "CW16.3"
+          ],
+          "failedTestTitles": [
+            "CW16.3 204 delete \u2192 one cache-bypassing list GET; deleted absent; 0 invalidate",
+            "CW16.3 repeat-delete 204 \u2192 one cache-bypassing list GET; deleted absent; 0 invalidate"
+          ],
+          "patchMd5": "3292befe5f22575cfc791498cb611732",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "client comments (QA, 1.25)",
+      "sabotage": "after a 204 delete, skip the list refetch (remove the row locally only)"
+    },
+    {
+      "id": "M-CW35",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW16.3"
+      ],
+      "observedRed": [
+        "CW16.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW35",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW16.3"
+          ],
+          "observedRed": [
+            "CW16.3"
+          ],
+          "failedTestTitles": [
+            "CW16.3 204 delete \u2192 one cache-bypassing list GET; deleted absent; 0 invalidate",
+            "CW16.3 repeat-delete 204 \u2192 one cache-bypassing list GET; deleted absent; 0 invalidate"
+          ],
+          "patchMd5": "32bb584bf364c75fb110080fa0b3bc35",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "client comments (QA, 1.25)",
+      "sabotage": "after a 204 delete, refetch without cache bypass (default `cache` mode; recording fake serves the stale cached list)"
+    },
+    {
+      "id": "M96",
+      "verdict": "wider",
+      "expectedRed": [
+        "C1.1",
+        "C5.1",
+        "C5.2"
+      ],
+      "observedRed": [
+        "A1.3",
+        "C1.1",
+        "C5.1",
+        "C5.2"
+      ],
+      "variants": [
+        {
+          "variant": "M96",
+          "verdict": "wider",
+          "expectedRed": [
+            "C1.1",
+            "C5.1",
+            "C5.2"
+          ],
+          "observedRed": [
+            "A1.3",
+            "C1.1",
+            "C5.1",
+            "C5.2"
+          ],
+          "failedTestTitles": [
+            "C5.1 scans client/ and shared/ for bff-origin patterns",
+            "C5.2 scans TK1 build output for bff-origin patterns",
+            "asks the same-origin Worker for ISO date + type=all, never YYMMDD",
+            "A1.3 no BFF host in client/src and data.test uses Worker ISO URL",
+            "C1.1 comments URL is same-origin Worker path without BFF env"
+          ],
+          "patchMd5": "1665b31a6b2bcf446b67e6196024da2b",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "client",
+      "sabotage": "absolute BFF URL in comments.ts"
+    },
+    {
+      "id": "M-CK1",
+      "verdict": "exact",
+      "expectedRed": [
+        "CK-P1"
+      ],
+      "observedRed": [
+        "CK-P1"
+      ],
+      "variants": [
+        {
+          "variant": "M-CK1",
+          "verdict": "exact",
+          "expectedRed": [
+            "CK-P1"
+          ],
+          "observedRed": [
+            "CK-P1"
+          ],
+          "failedTestTitles": [
+            "CK-P1 docs pin md5 and gate-ids count match catalog"
+          ],
+          "patchMd5": "d09b7375b9427f32d0cffeefbf95fb08",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "CK-P1",
+      "sabotage": "skip the header gate-count compare (pin compare only)"
+    },
+    {
+      "id": "M-RA7",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU26.3",
+        "AU26.7",
+        "AU26.10",
+        "AU26.11",
+        "CW13.1"
+      ],
+      "observedRed": [
+        "AU26.10",
+        "AU26.11",
+        "AU26.3",
+        "AU26.7",
+        "CW13.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-RA7a",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU26.3",
+            "AU26.7",
+            "AU26.10",
+            "AU26.11",
+            "CW13.1"
+          ],
+          "observedRed": [
+            "AU26.10",
+            "AU26.11",
+            "AU26.3",
+            "AU26.7",
+            "CW13.1"
+          ],
+          "failedTestTitles": [
+            "AU26.11 clamps all-digit values to 1..600",
+            "AU26.11 property: all-digit string equals integer clamp 1..600",
+            "CW13.1 BSI 429 Retry-After clamp on POST/PATCH/DELETE/like",
+            "AU26.3 \u00a70s.4 outcome table",
+            "AU26.7 key-ceiling vs per-username 429 byte-identical",
+            "AU26.10 Worker clamp of BSI-C10 Retry-After"
+          ],
+          "patchMd5": "1df15e1c44c34fd2fc9bb0e32b1887ca",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        },
+        {
+          "variant": "M-RA7b",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU26.3",
+            "AU26.7",
+            "AU26.10",
+            "AU26.11",
+            "CW13.1"
+          ],
+          "observedRed": [
+            "AU26.10",
+            "AU26.11",
+            "AU26.3",
+            "AU26.7",
+            "CW13.1"
+          ],
+          "failedTestTitles": [
+            "AU26.11 clamps all-digit values to 1..600",
+            "AU26.11 property: all-digit string equals integer clamp 1..600",
+            "CW13.1 BSI 429 Retry-After clamp on POST/PATCH/DELETE/like",
+            "AU26.3 \u00a70s.4 outcome table",
+            "AU26.7 key-ceiling vs per-username 429 byte-identical",
+            "AU26.10 Worker clamp of BSI-C10 Retry-After"
+          ],
+          "patchMd5": "d61e583ae0af79e29778ca0f816b2d8e",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "`parseRetryAfter` (QA, 1.25)",
+      "sabotage": "an all-digit value with a leading zero and length > 1 is treated as non-numeric \u2192 60 (`0` alone still \u2192 1); variant b: parse as octal (`0000017` \u2192 15). Each variant alone"
+    },
+    {
+      "id": "M-JL1",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU19.3"
+      ],
+      "observedRed": [
+        "AU19.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-JL1a",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "9309346c4cf16960fdcb231d8ad3e4d7",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        },
+        {
+          "variant": "M-JL1b",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "897e8b15a4b16feff8fc3c2649d16028",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        },
+        {
+          "variant": "M-JL1c",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "be7de8764e5b6f0f703f53af6d638c65",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        },
+        {
+          "variant": "M-JL1d",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "2734ba04783688ccf674d9efd464e25e",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "built HTML / AU19.3 check (QA, 1.24)",
+      "sabotage": "inject an executable inline script into built `index.html` (`<script>alert(1)</script>`); variant b: the same body as `<script type=\"application/ld+json \">` (trailing space); variant c: `type=\"Application/LD+JSON\"`; variant d (1.25): a valid `<script type=\"application/ld+json\">` placed in `dist/public/x/index.html`. Each variant is applied alone, and each must turn AU19.3 red. The unmutated JSON-LD-only build must stay green"
+    }
+  ],
+  "partial": false,
+  "summary": {
+    "exact": 5,
+    "wider": 1,
+    "missing-red": 0,
+    "survived": 0,
+    "ethan-blocker": 0,
+    "cant-run": 0,
+    "not-run": 273,
+    "selected": [
+      "M-CW34",
+      "M-CW35",
+      "M96",
+      "M-CK1",
+      "M-RA7",
+      "M-JL1"
+    ],
+    "note": "M-CK1 exact after observableIds includes catalog.boxes"
+  }
+}

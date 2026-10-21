@@ -30,3 +30,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# PR2 mutation runner artifacts
+tools/pr2/.gate-ids-vitest.json
+tools/pr2/.mutation-vitest-last.json

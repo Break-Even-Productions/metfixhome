@@ -1373,11 +1373,7 @@ import { mutantWl14dWebLoginUrl } from "./http";`,
   },
 };
 
-// Ethan-blocker for CK-P1 until gate exists
-R2_OVERRIDES["M-CK1"] = {
-  ethanBlocker:
-    "CK-P1 gate test not present in repo (gates-ck.test.ts has no CK-P1); pin-count compare not runnable until Ethan/QA lands the gate",
-};
+// M-CK1 real sabotage lives in mutation-sabotages-r14.mjs
 
 // Fix M86 properly
 R2_OVERRIDES.M86 = {
@@ -1679,10 +1675,7 @@ export default R2_OVERRIDES;
 
 // ── Round-3: missing survivors + apply fixes (wins via Object.assign) ────────
 Object.assign(R2_OVERRIDES, {
-  "M-CK1": {
-    ethanBlocker:
-      "CK-P1 gate test not present in repo (gates-ck.test.ts has no CK-P1); pin-count compare not runnable until Ethan/QA lands the gate",
-  },
+  
   "M61": {
     ethanBlocker:
       "Google JWT exp check not implemented in worker/auth/google.ts; AU12.6 harness voids fakeJwt(payload) and never injects the forged token — external until JWKS/exp verify lands",

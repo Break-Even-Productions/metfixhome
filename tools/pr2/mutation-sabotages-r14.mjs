@@ -136,6 +136,30 @@ export const R14_OVERRIDES = {
       throw new Error("M-JL1: use variants M-JL1a/b/c/d via runner");
     },
   },
+  /** Absolute BFF URL in comments.ts — red {C1.1, C5.1, C5.2}. */
+  M96: {
+    files: ["client/src/pages/the-daily-fix/comments.ts"],
+    apply() {
+      replaceOnce(
+        "client/src/pages/the-daily-fix/comments.ts",
+        "  return `/api/daily-fix/comments?${params.toString()}`;",
+        "  return `https://metfix-bff.wispy-mode-982d.workers.dev/api/daily-fix/comments?${params.toString()}`; // MUTANT M96",
+        "M96",
+      );
+    },
+  },
+  /** Skip header gate-count compare in ck-p1.mjs (pin only) — red {CK-P1}. */
+  "M-CK1": {
+    files: ["tools/pr2/ck-p1.mjs"],
+    apply() {
+      replaceOnce(
+        "tools/pr2/ck-p1.mjs",
+        "if (gateIds.length !== headerCount) fail(qaPath);",
+        "// MUTANT M-CK1: skip header gate-count compare (pin compare only)",
+        "M-CK1",
+      );
+    },
+  },
 };
 
 export default R14_OVERRIDES;

@@ -1080,7 +1080,8 @@ describe("C5.3", () => {
 });
 
 describe("C5.2", () => {
-  it.skipIf(!hasPr10SanityGuard())(
+  // BFF-origin scan of a TK1-style Vite build — does not require #10 Sanity guard.
+  it(
     "C5.2 scans TK1 build output for bff-origin patterns",
     async () => {
       assertNAbsentForTk1();

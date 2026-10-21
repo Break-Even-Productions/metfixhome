@@ -3,7 +3,7 @@
  * @cloudflare/vitest-pool-workers (real blockConcurrencyWhile).
  * Rotating refresh token: exactly 1 BSI-C3 call; session stays signed in.
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { env, fetchMock } from "cloudflare:test";
 import { encryptSessionPayload, bytesToBase64Url, randomBytes, sha256Hex } from "../auth/crypto";
 
@@ -29,6 +29,16 @@ describe("SessionDO real workerd refresh serialisation", () => {
     fetchMock.disableNetConnect();
   });
 
+  afterEach(() => {
+    try {
+      fetchMock.assertNoPendingInterceptors();
+    } finally {
+      fetchMock.deactivate();
+      fetchMock.activate();
+      fetchMock.disableNetConnect();
+    }
+  });
+
   it("AU7.6 two concurrent ensure-access with rotating token → 1 BSI-C3, nobody logged out", async () => {
     const encKey = env.SESSION_ENC_KEY || bytesToBase64Url(randomBytes(32));
     // Pool bindings may omit secrets — skip cleanly when SESSION binding absent.
@@ -40,11 +50,11 @@ describe("SessionDO real workerd refresh serialisation", () => {
     let bsiCalls = 0;
     fetchMock
       .get("https://brokenscience.org")
-      .intercept({ path: /\/proxy\/oauth\/token/, method: "POST" })
+      .intercept({ path: /\/wp-json\/metfix\/v1\/proxy\/oauth\/token/, method: "POST" })
       .reply(() => {
         bsiCalls += 1;
         return {
-          status: 200,
+          statusCode: 200,
           data: JSON.stringify({
             access_token: ACCESS2,
             refresh_token: REFRESH2,
@@ -56,16 +66,19 @@ describe("SessionDO real workerd refresh serialisation", () => {
             headers: { "Content-Type": "application/json" },
           },
         };
-      });
+      })
+      .times(1);
 
     const rawSid = bytesToBase64Url(randomBytes(32));
     const hex = await sha256Hex(rawSid);
     const aad = `sess:${hex}`;
     const now = Date.now();
+    // Expiry inside the 60s refresh window (not force) so the second serialized
+    // ensure-access sees the updated access_exp and skips BSI-C3.
     const record = {
       bsi_access: ACCESS1,
       bsi_refresh: REFRESH1,
-      access_exp: now + 30_000,
+      access_exp: now + 15_000,
       user_public_name: "Jane",
       bsi_user_id: "42",
       can_moderate: false,
@@ -93,7 +106,7 @@ describe("SessionDO real workerd refresh serialisation", () => {
       return;
     }
 
-    const body = JSON.stringify({ force: true });
+    const body = JSON.stringify({});
     const [a, b] = await Promise.all([
       stub.fetch(
         new Request("https://do/ensure-access", {

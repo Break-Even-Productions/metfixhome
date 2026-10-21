@@ -18,7 +18,7 @@
     "sanity": "sanity dev",
     "sanity:deploy": "sanity deploy -y --url metfix",
     "sanity:seed": "tsx --tsconfig tsconfig.json scripts/seed-sanity.ts",
-    "test:workers": "vitest run --config vitest.workers.config.ts"
+    "test:workers": "vitest run --config vitest.workers.config.ts && vitest run --config vitest.workers.session.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
