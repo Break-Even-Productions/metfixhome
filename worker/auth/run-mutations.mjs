@@ -24,6 +24,10 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXTRA_SABOTAGES } from "./mutation-sabotages.mjs";
+import { R2_OVERRIDES } from "./mutation-sabotages-r2.mjs";
+import { R5_OVERRIDES } from "./mutation-sabotages-r5.mjs";
+import { R6_OVERRIDES } from "./mutation-sabotages-r6.mjs";
+import { R7_OVERRIDES } from "./mutation-sabotages-r7.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -1395,10 +1399,26 @@ for (const [id, sab] of Object.entries(EXTRA_SABOTAGES)) {
     SABOTAGES[id] = sab;
   }
 }
+for (const [id, sab] of Object.entries(R2_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
+for (const [id, sab] of Object.entries(R5_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
+for (const [id, sab] of Object.entries(R6_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
+for (const [id, sab] of Object.entries(R7_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 const RUNNER_KEEP = new Set([
   "worker/auth/run-mutations.mjs",
   "worker/auth/mutation-sabotages.mjs",
+  "worker/auth/mutation-sabotages-r2.mjs",
+  "worker/auth/mutation-sabotages-r5.mjs",
+  "worker/auth/mutation-sabotages-r6.mjs",
+  "worker/auth/mutation-sabotages-r7.mjs",
 ]);
 
 function patchMd5FromGit() {
@@ -1534,6 +1554,11 @@ function runCmd(cmd, cmdArgs, opts = {}) {
 }
 
 function restoreTree() {
+  spawnSync(
+    "bash",
+    ["-c", "find worker client -type f 2>/dev/null | head -5000 | while read -r f; do lsattr \"$f\" 2>/dev/null | grep -q -- '-i-' && chattr -i \"$f\" 2>/dev/null; done; true"],
+    { cwd: REPO, encoding: "utf8" },
+  );
   const res = spawnSync("git", ["diff", "--name-only", "--", "."], {
     cwd: REPO,
     encoding: "utf8",
