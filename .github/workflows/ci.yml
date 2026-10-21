@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # A1.1 needs MAIN_BASE (9f7129d7) as a reachable ancestor for
+          # `git merge-base --is-ancestor` + `git diff` against that pin.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
