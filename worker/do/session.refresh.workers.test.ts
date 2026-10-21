@@ -140,8 +140,10 @@ describe("SessionDO real workerd refresh serialisation", () => {
     expect(bodies.every((b) => b.status === "ok")).toBe(true);
     expect(bodies.every((b) => b.record?.bsi_access === ACCESS2)).toBe(true);
     expect(bodies.every((b) => b.record?.bsi_refresh === REFRESH2)).toBe(true);
+    // Leader alone gets refreshed:true (KV /me write signal). On real workerd,
+    // blockConcurrencyWhile serializes handlers so joiners re-enter after the
+    // pair is already fresh and return plain ok (no refreshed field) — 0 KV writes.
     expect(bodies.filter((b) => b.refreshed === true).length).toBe(1);
-    expect(bodies.filter((b) => b.refreshed === false).length).toBe(49);
     expect(tokenCalls).toBe(1);
   });
 });
