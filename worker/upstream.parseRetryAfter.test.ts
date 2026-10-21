@@ -13,6 +13,8 @@ describe("AU26.11 parseRetryAfter", () => {
     expect(parseRetryAfter("1")).toBe(1);
     expect(parseRetryAfter("017")).toBe(17);
     expect(parseRetryAfter("0017")).toBe(17);
+    expect(parseRetryAfter("0000017")).toBe(17);
+    expect(parseRetryAfter("0000000")).toBe(1);
     expect(parseRetryAfter("17")).toBe(17);
     expect(parseRetryAfter("600")).toBe(600);
     expect(parseRetryAfter("601")).toBe(600);
@@ -33,7 +35,10 @@ describe("AU26.11 parseRetryAfter", () => {
       // Leading zeros: value is the integer (0017→17), unless 7+ digit form.
       if (padded.length < 7) expect(parseRetryAfter(padded)).toBe(expectN);
     }
-    expect(parseRetryAfter("0000000")).toBe(600); // 7 digits → 600
+    // Leading zeros stripped before length guard: seven zeros → "0" → 1.
+    expect(parseRetryAfter("0000000")).toBe(1);
+    // Seven significant digits still clamp to 600.
+    expect(parseRetryAfter("1000000")).toBe(600);
   });
 
   it("AU26.11 defaults missing / non-numeric / HTTP-date / decimal to 60", () => {

@@ -61,6 +61,8 @@ export type RecordedFetch = {
 function makeDoState() {
   const map = new Map<string, unknown>();
   let alarmAt: number | null = null;
+  /** Serialize like workerd's real blockConcurrencyWhile (not a pass-through). */
+  let concurrencyChain: Promise<unknown> = Promise.resolve();
   const storage = {
     get: async (key: string) => map.get(key),
     put: async (key: string, value: unknown) => map.set(key, value),
@@ -84,7 +86,14 @@ function makeDoState() {
   };
   const state = {
     storage,
-    blockConcurrencyWhile: async <T>(fn: () => Promise<T>) => fn(),
+    blockConcurrencyWhile: async <T>(fn: () => Promise<T>) => {
+      const run = concurrencyChain.then(fn, fn);
+      concurrencyChain = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
+    },
     waitUntil: () => {},
     id: { toString: () => "test-do" },
   } as unknown as DurableObjectState;
@@ -92,8 +101,8 @@ function makeDoState() {
 }
 
 function makeNamespace<T extends { fetch: (r: Request) => Promise<Response> }>(
-  ctor: new (s: DurableObjectState, e: Record<string, string | undefined>) => T,
-  envKeys: Record<string, string | undefined>,
+  ctor: new (s: DurableObjectState, e: never) => T,
+  envKeys: Record<string, unknown>,
   opts?: { throwAll?: boolean },
 ) {
   const instances = new Map<string, { obj: T; st: ReturnType<typeof makeDoState> }>();
@@ -106,7 +115,10 @@ function makeNamespace<T extends { fetch: (r: Request) => Promise<Response> }>(
       const name = id.toString();
       if (!instances.has(name)) {
         const st = makeDoState();
-        instances.set(name, { obj: new ctor(st.state, envKeys), st });
+        instances.set(name, {
+          obj: new ctor(st.state, envKeys as never),
+          st,
+        });
       }
       const entry = instances.get(name)!;
       return {
@@ -309,6 +321,8 @@ export function createHarness(opts?: {
 }) {
   let now = Date.now();
   const kv = makeRecordingKv(() => now);
+  /** Filled after fetchImpl is built — SessionDO must not use globalThis.fetch (AU26.8 / CQ r2). */
+  const sessionFetch = { current: fetch as FetchImpl };
   const sessionNs = makeNamespace(
     SessionDO,
     {
@@ -316,6 +330,7 @@ export function createHarness(opts?: {
       SESSION_ENC_KEY_PREV: opts?.sessionEncKeyPrev,
       DAILY_FIX_API_KEY: KEY,
       BSI_OAUTH_CLIENT_ID: CID,
+      fetchImpl: sessionFetch,
     },
     {
       throwAll: opts?.sessionOutage === "throw",
@@ -494,6 +509,7 @@ export function createHarness(opts?: {
     return new Response("{}", { status: 404 });
   };
 
+  sessionFetch.current = fetchImpl;
   vi.stubGlobal("fetch", vi.fn(fetchImpl));
   vi.stubGlobal("caches", { default: cache });
 

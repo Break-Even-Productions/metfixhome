@@ -110,11 +110,14 @@ export function mapDailyFixComments(payload: unknown): DailyFixComment[] | null 
 async function fetchCommentsNetwork(
   isoDate: string,
   fetchImpl: typeof fetch,
+  opts?: { bypassHttpCache?: boolean },
 ): Promise<Exclude<CommentsLoadState, { status: "loading" }>> {
   try {
     const response = await fetchImpl(dailyFixCommentsRequestUrl(isoDate), {
       method: "GET",
       headers: { Accept: "application/json" },
+      // CW16.3: bypass must be cache:"no-store"|"reload" (query-string alone does not count).
+      ...(opts?.bypassHttpCache ? { cache: "no-store" as RequestCache } : {}),
     });
     if (!response.ok) return { status: "unavailable" };
     let payload: unknown;
@@ -166,7 +169,13 @@ export async function fetchDailyFixComments(
   signal?: AbortSignal,
   options?: { bypassCache?: boolean; fetchImpl?: typeof fetch },
 ): Promise<Exclude<CommentsLoadState, { status: "loading" }>> {
-  const fetchImpl = options?.fetchImpl ?? commentsHttp;
+  // Normal Map GETs stay module-bound (CC1). CW16.3 / CT-P1 bypass uses live
+  // globalThis.fetch so `cache:"no-store"` is observable and hits the network.
+  const fetchImpl =
+    options?.fetchImpl ??
+    (options?.bypassCache
+      ? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init))
+      : commentsHttp);
   if (!options?.bypassCache) {
     const hit = commentsCache.get(isoDate);
     if (hit?.kind === "loaded") {
@@ -176,11 +185,12 @@ export async function fetchDailyFixComments(
       return withCallerAbort(Promise.resolve({ status: "unavailable" as const }), signal);
     }
     if (hit?.kind === "inflight") return withCallerAbort(hit.promise, signal);
-  } else {
-    commentsCache.delete(isoDate);
   }
+  // bypassCache: skip Map hit without purge/invalidate (CW16.2b / CW16.3); force network.
 
-  const promise = fetchCommentsNetwork(isoDate, fetchImpl).then((result) => {
+  const promise = fetchCommentsNetwork(isoDate, fetchImpl, {
+    bypassHttpCache: options?.bypassCache === true,
+  }).then((result) => {
     if (result.status === "loaded") {
       commentsCache.set(isoDate, { kind: "loaded", comments: result.comments });
     } else {
@@ -202,8 +212,10 @@ export function invalidateCommentsCache(isoDate?: string): void {
 export function clampClientRetryAfter(raw: string | null): number {
   if (raw == null || raw === "") return 60;
   if (!/^[0-9]+$/.test(raw)) return 60;
-  if (raw.length >= 7) return 600;
-  const n = Number(raw);
+  const significant = raw.replace(/^0+/, "");
+  const digits = significant === "" ? "0" : significant;
+  if (digits.length >= 7) return 600;
+  const n = Number(digits);
   if (!Number.isFinite(n)) return 600;
   if (n < 1) return 1;
   if (n > 600) return 600;

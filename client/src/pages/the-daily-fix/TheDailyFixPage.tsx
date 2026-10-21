@@ -229,14 +229,16 @@ export default function TheDailyFixPage({
     };
   }, [fetchIso, route.kind, allowCloser]);
 
-  // R23 / C6.2: start comments in parallel with the day fetch (known fetchIso).
-  // When closer-day resolves to a different date, re-key (Map cache keeps same-date free).
-  // Failures stay in the comment panel and never replace the day load state.
+  // R23 / C6.2: start comments in parallel when the date is known (dated routes).
+  // Bare today with closer-day resolution waits for the loaded day so we never
+  // GET comments for TODAY when the day remaps (page.mount: not.toContain(TODAY)).
   const loadedCommentIso = load.status === "loaded" ? load.day.date : null;
   const commentIso =
     route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable"
       ? null
-      : (loadedCommentIso ?? fetchIso);
+      : route.kind === "today" && allowCloser
+        ? loadedCommentIso
+        : (loadedCommentIso ?? fetchIso);
   useEffect(() => {
     if (!commentIso) {
       setCommentsLoad({ status: "unavailable" });

@@ -480,7 +480,11 @@ async function handleCommentPost(
   const ip = clientIp(request);
   const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
   if (!limited.allowed) {
-    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
   }
 
   const recaptchaFail = await verifyCommentRecaptcha(body.recaptcha, env, fetchImpl);
@@ -531,7 +535,11 @@ async function handleCommentPatch(
     ip,
   );
   if (!limited.allowed) {
-    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
   }
 
   const date = dateFromRequest(request, body);
@@ -563,7 +571,11 @@ async function handleCommentDelete(
     ip,
   );
   if (!limited.allowed) {
-    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
   }
 
   const date = dateFromRequest(request);
@@ -573,13 +585,14 @@ async function handleCommentDelete(
   if (ran instanceof Response) return ran;
   const upstream = ran.result;
   if (upstream.kind === "ok" && upstream.status === 204) {
-    // CW16.2: idempotent delete — pass through 204; no Worker cache purge required by client rules.
+    // CQ r2: 204 delete must purge Worker comments cache, then pass through 204.
+    await purgeCommentsDate(opts?.cache, date);
     return new Response(null, {
       status: 204,
       headers: { "Cache-Control": "no-store" },
     });
   }
-  if (upstream.kind === "ok" && (upstream.status === 200 || upstream.status === 204)) {
+  if (upstream.kind === "ok" && upstream.status === 200) {
     await purgeCommentsDate(opts?.cache, date);
     return jsonNoStore({ deleted: true }, 200);
   }
@@ -618,7 +631,11 @@ async function handleCommentLike(
     ip,
   );
   if (!likeLim.allowed) {
-    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
   }
   const toggleLim = await checkCommentLikeToggleLimit(
     env as CommentLimitEnv,
@@ -626,7 +643,11 @@ async function handleCommentLike(
     id,
   );
   if (!toggleLim.allowed) {
-    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
   }
 
   const date = dateFromRequest(request, body);

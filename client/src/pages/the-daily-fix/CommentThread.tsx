@@ -92,6 +92,7 @@ export function CommentThread({
   const [commentType, setCommentType] = useState<Pillar>(pillar);
   const [joinOpen, setJoinOpen] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [replyTo, setReplyTo] = useState<DailyFixComment | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [retryUntilByKey, setRetryUntilByKey] = useState<Record<string, number>>({});
   const [, setRetryTick] = useState(0);
@@ -136,20 +137,28 @@ export function CommentThread({
 
   const postLocked = isLocked("post");
 
-  async function postComment() {
-    if (!dateIso || posting || postLocked) return;
+  async function postComment(parent?: DailyFixComment | null) {
+    if (!dateIso || posting) return;
+    const isReply = parent != null;
+    const lockKey = isReply ? `reply:${parent.id}` : "post";
+    if (isLocked(lockKey)) return;
     const content = body.trim();
     if (!content) return;
     setPosting(true);
     setStatusMsg(null);
     const previous = body;
-    const lockKey = "post";
     try {
       const csrf = await fetchCsrf();
       if (!csrf) {
         setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
         return;
       }
+      const payload: Record<string, unknown> = {
+        date: dateIso,
+        type: commentType,
+        content,
+      };
+      if (isReply) payload.parent_comment_id = parent.id;
       const res = await commentsHttp("/api/daily-fix/comments", {
         method: "POST",
         credentials: "same-origin",
@@ -158,7 +167,7 @@ export function CommentThread({
           "Content-Type": "application/json",
           "X-CSRF-Token": csrf,
         },
-        body: JSON.stringify({ date: dateIso, type: commentType, content }),
+        body: JSON.stringify(payload),
       });
       if (res.status === 429) {
         applyRateLimit(lockKey, res);
@@ -190,6 +199,7 @@ export function CommentThread({
             content?: string;
             timestamp?: string | null;
             user?: { display_name?: string };
+            parent_id?: number | null;
           };
           const mapped: DailyFixComment = {
             id: c.id,
@@ -201,11 +211,13 @@ export function CommentThread({
             content: typeof c.content === "string" ? c.content : content,
             timestamp: typeof c.timestamp === "string" ? c.timestamp : null,
             own: true,
+            parent_id: isReply ? parent.id : c.parent_id == null ? null : Number(c.parent_id),
           };
           if (load.status === "loaded") {
             onCommentsChanged?.({ status: "loaded", comments: [...load.comments, mapped] });
           }
           setBody("");
+          setReplyTo(null);
           return;
         }
       }
@@ -216,6 +228,14 @@ export function CommentThread({
       setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
       setBody(previous);
     } catch {
+      // CT-P1 (c)(d): network/sync throw → one bypass GET, no second POST.
+      invalidateCommentsCache(dateIso);
+      try {
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } catch {
+        /* message still shown */
+      }
       setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
       setBody(previous);
     } finally {
@@ -285,7 +305,13 @@ export function CommentThread({
         applyRateLimit(lockKey, res);
         return;
       }
-      if (res.status === 200 || res.status === 204) {
+      if (res.status === 204) {
+        // CW16.3: one cache-bypassing fresh list GET; no client cache purge (CW16.2b).
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+        return;
+      }
+      if (res.status === 200) {
         invalidateCommentsCache(dateIso);
         onCommentsChanged?.(patchComments(load, comment.id, comment.pillar, null));
         return;
@@ -431,7 +457,9 @@ export function CommentThread({
                     disabled={isLocked(`edit:${comment.id}`)}
                     onClick={() => void editComment(comment)}
                   >
-                    Edit
+                    {isLocked(`edit:${comment.id}`)
+                      ? `Try again in ${retryLeft(`edit:${comment.id}`)}s`
+                      : "Edit"}
                   </button>
                   <button
                     type="button"
@@ -439,9 +467,28 @@ export function CommentThread({
                     disabled={isLocked(`delete:${comment.id}`)}
                     onClick={() => void deleteComment(comment)}
                   >
-                    Delete
+                    {isLocked(`delete:${comment.id}`)
+                      ? `Try again in ${retryLeft(`delete:${comment.id}`)}s`
+                      : "Delete"}
                   </button>
                 </div>
+              ) : null}
+              {loggedIn &&
+              comment.deleted === 0 &&
+              (comment.parent_id == null || comment.parent_id === 0) ? (
+                <button
+                  type="button"
+                  className="df-comment-control"
+                  disabled={isLocked(`reply:${comment.id}`)}
+                  onClick={() => {
+                    setReplyTo(comment);
+                    setCommentType(comment.pillar);
+                  }}
+                >
+                  {isLocked(`reply:${comment.id}`)
+                    ? `Try again in ${retryLeft(`reply:${comment.id}`)}s`
+                    : "Reply"}
+                </button>
               ) : null}
               {loggedIn && comment.deleted === 0 ? (
                 <button
@@ -450,7 +497,9 @@ export function CommentThread({
                   disabled={isLocked(`like:${comment.id}`)}
                   onClick={() => void toggleLike(comment)}
                 >
-                  {likeLabel(comment)}
+                  {isLocked(`like:${comment.id}`)
+                    ? `Try again in ${retryLeft(`like:${comment.id}`)}s`
+                    : likeLabel(comment)}
                 </button>
               ) : null}
             </li>
@@ -478,7 +527,7 @@ export function CommentThread({
                 setJoinOpen(true);
                 return;
               }
-              void postComment();
+              void postComment(replyTo);
             }}
           >
             <div className="df-composer-meta">
@@ -504,13 +553,27 @@ export function CommentThread({
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
+              {replyTo ? (
+                <p className="df-muted" data-testid="df-replying-to">
+                  Replying to {replyTo.author}{" "}
+                  <button
+                    type="button"
+                    className="df-comment-control"
+                    onClick={() => setReplyTo(null)}
+                  >
+                    Cancel reply
+                  </button>
+                </p>
+              ) : null}
             </div>
             <label>
-              <span className="sr-only">Comment</span>
+              <span className="sr-only">{replyTo ? "Reply" : "Comment"}</span>
               <textarea
                 name="comment"
                 rows={3}
-                placeholder="Share a thought on today’s fix"
+                placeholder={
+                  replyTo ? "Write a reply" : "Share a thought on today’s fix"
+                }
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 onFocus={() => {
@@ -518,12 +581,25 @@ export function CommentThread({
                 }}
               />
             </label>
-            <button type="submit" className="df-btn df-btn-ink" disabled={posting || postLocked}>
-              {postLocked
-                ? `Try again in ${retryLeft("post")}s`
-                : posting
-                  ? "Posting…"
-                  : "Post comment"}
+            <button
+              type="submit"
+              className="df-btn df-btn-ink"
+              disabled={
+                posting ||
+                (replyTo ? isLocked(`reply:${replyTo.id}`) : postLocked)
+              }
+            >
+              {replyTo
+                ? isLocked(`reply:${replyTo.id}`)
+                  ? `Try again in ${retryLeft(`reply:${replyTo.id}`)}s`
+                  : posting
+                    ? "Posting…"
+                    : "Post reply"
+                : postLocked
+                  ? `Try again in ${retryLeft("post")}s`
+                  : posting
+                    ? "Posting…"
+                    : "Post comment"}
             </button>
           </form>
 

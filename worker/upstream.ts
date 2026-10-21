@@ -26,14 +26,18 @@ export type RetryAfterSeconds = number & { readonly __brand: "RetryAfterSeconds"
 /**
  * Shared Retry-After parser for login and comment write/like 429 paths (AU26.11).
  * Ethan ruling: all-digit value is the integer, clamp 1..600.
- * "0017"→17, "0000"→1, 7+ digits→600. Missing / non-numeric / HTTP-date / decimal → 60.
+ * Strip leading zeros before the length guard: "0000017"→17, "0000000"→1.
+ * After strip, 7+ significant digits → 600. Missing / non-numeric / HTTP-date / decimal → 60.
  */
 export function parseRetryAfter(header: string | null | undefined): RetryAfterSeconds {
   if (header == null || header === "") return 60 as RetryAfterSeconds;
   if (!/^[0-9]+$/.test(header)) return 60 as RetryAfterSeconds;
-  // 7+ digits cannot be in 1..600; avoid Number() on huge strings (M-RA4).
-  if (header.length >= 7) return 600 as RetryAfterSeconds;
-  const n = Number(header);
+  // Strip leading zeros before length guard (CQ r2): "0000017"→"17", "0000000"→"0".
+  const significant = header.replace(/^0+/, "");
+  const digits = significant === "" ? "0" : significant;
+  // 7+ significant digits cannot be in 1..600; avoid Number() on huge strings (M-RA4).
+  if (digits.length >= 7) return 600 as RetryAfterSeconds;
+  const n = Number(digits);
   if (!Number.isFinite(n)) return 600 as RetryAfterSeconds;
   if (n < 1) return 1 as RetryAfterSeconds;
   if (n > 600) return 600 as RetryAfterSeconds;

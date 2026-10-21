@@ -22,17 +22,20 @@ const REFRESH_WINDOW_MS = 60_000;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export class SessionDO {
-  private refreshChain: Promise<unknown> = Promise.resolve();
+/** Optional injected outbound fetch (tests); production uses platform `fetch`. */
+export type SessionDoEnv = {
+  SESSION_ENC_KEY?: string;
+  SESSION_ENC_KEY_PREV?: string;
+  DAILY_FIX_API_KEY?: string;
+  BSI_OAUTH_CLIENT_ID?: string;
+  /** Direct FetchImpl, or a mutable `{ current }` box filled after harness build. */
+  fetchImpl?: FetchImpl | { current: FetchImpl };
+};
 
+export class SessionDO {
   constructor(
     private readonly state: DurableObjectState,
-    private readonly env: {
-      SESSION_ENC_KEY?: string;
-      SESSION_ENC_KEY_PREV?: string;
-      DAILY_FIX_API_KEY?: string;
-      BSI_OAUTH_CLIENT_ID?: string;
-    },
+    private readonly env: SessionDoEnv,
   ) {}
 
   async fetch(request: Request): Promise<Response> {
@@ -90,13 +93,23 @@ export class SessionDO {
     }
   }
 
+  private resolveFetch(): FetchImpl {
+    const fromEnv = this.env.fetchImpl;
+    if (typeof fromEnv === "function") return fromEnv;
+    if (
+      fromEnv &&
+      typeof fromEnv === "object" &&
+      typeof (fromEnv as { current?: unknown }).current === "function"
+    ) {
+      return (fromEnv as { current: FetchImpl }).current;
+    }
+    // Platform fetch (not globalThis.fetch) — AU26.8 / CQ r2 injected-fetch rule.
+    return fetch;
+  }
+
+  /** Serialise refresh via real DO input-gate (blockConcurrencyWhile). */
   private async withRefreshLock<T extends Response>(fn: () => Promise<T>): Promise<T> {
-    const run = this.refreshChain.then(fn, fn);
-    this.refreshChain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+    return this.state.blockConcurrencyWhile(fn);
   }
 
   private async get(aad: string): Promise<Response> {
@@ -174,7 +187,7 @@ export class SessionDO {
     if (!clientId || !this.env.DAILY_FIX_API_KEY) {
       return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
     }
-    const fetchImpl = globalThis.fetch.bind(globalThis) as FetchImpl;
+    const fetchImpl = this.resolveFetch();
     const upstream = await bsiRefreshToken(
       {
         grant_type: "refresh_token",

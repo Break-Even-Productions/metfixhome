@@ -53,9 +53,18 @@ function makeDoState() {
       alarmAt = null;
     },
   };
+  /** Serialize like workerd's real blockConcurrencyWhile (not a pass-through). */
+  let concurrencyChain: Promise<unknown> = Promise.resolve();
   const state = {
     storage,
-    blockConcurrencyWhile: async <T>(fn: () => Promise<T>) => fn(),
+    blockConcurrencyWhile: async <T>(fn: () => Promise<T>) => {
+      const run = concurrencyChain.then(fn, fn);
+      concurrencyChain = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
+    },
     waitUntil: () => {},
     id: { toString: () => "test-do" },
   } as unknown as DurableObjectState;
@@ -63,8 +72,8 @@ function makeDoState() {
 }
 
 function makeNamespace<T extends { fetch: (r: Request) => Promise<Response> }>(
-  ctor: new (s: DurableObjectState, e: Record<string, string | undefined>) => T,
-  envKeys: Record<string, string | undefined>,
+  ctor: new (s: DurableObjectState, e: never) => T,
+  envKeys: Record<string, unknown>,
 ) {
   const instances = new Map<string, { obj: T; st: ReturnType<typeof makeDoState> }>();
   return {
@@ -76,7 +85,7 @@ function makeNamespace<T extends { fetch: (r: Request) => Promise<Response> }>(
       const name = id.toString();
       if (!instances.has(name)) {
         const st = makeDoState();
-        instances.set(name, { obj: new ctor(st.state, envKeys), st });
+        instances.set(name, { obj: new ctor(st.state, envKeys as never), st });
       }
       const entry = instances.get(name)!;
       return {
@@ -164,7 +173,13 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
   let accessToken = ACCESS1;
   let canModerate: unknown = undefined;
   const kv = makeRecordingKv(() => now);
-  const sessionNs = makeNamespace(SessionDO, { SESSION_ENC_KEY: ENCKEY });
+  const sessionFetch = { current: fetch as FetchImpl };
+  const sessionNs = makeNamespace(SessionDO, {
+    SESSION_ENC_KEY: ENCKEY,
+    DAILY_FIX_API_KEY: KEY,
+    BSI_OAUTH_CLIENT_ID: CID,
+    fetchImpl: sessionFetch,
+  });
   const throttleNs = makeNamespace(LoginThrottleDO, {});
   const oauthNs = makeNamespace(OauthStateDO, {});
   const cache = makeCache();
@@ -269,6 +284,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
   };
 
   const fetchMock = vi.fn(defaultFetch);
+  sessionFetch.current = fetchMock as unknown as FetchImpl;
 
   vi.stubGlobal("fetch", vi.fn(async () => {
     throw new Error("global fetch");

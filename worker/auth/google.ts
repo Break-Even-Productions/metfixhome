@@ -11,6 +11,7 @@ import {
   bsiFollowBridge,
   bsiSocialAuth,
   normalizeCanModerate,
+  parseRetryAfter,
 } from "../upstream";
 import { PRE_COOKIE, SID_COOKIE, getPre, getSid, setHostCookie } from "./cookies";
 import {
@@ -300,7 +301,9 @@ export async function handleGoogleStart(request: Request, env: Env): Promise<Res
 
   const lim = await checkGoogleLimit(env, clientIp(request));
   if (!lim.allowed) {
-    return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": "60" });
+    return authJson(BODY_RATE_LIMITED, 429, {
+      "Retry-After": String(parseRetryAfter(null)),
+    });
   }
 
   const url = new URL(request.url);
@@ -361,7 +364,9 @@ export async function handleGoogleCallback(
 
   const lim = await checkGoogleLimit(env, clientIp(request));
   if (!lim.allowed) {
-    return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": "60" });
+    return authJson(BODY_RATE_LIMITED, 429, {
+      "Retry-After": String(parseRetryAfter(null)),
+    });
   }
 
   const url = new URL(request.url);

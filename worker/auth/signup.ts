@@ -1,5 +1,10 @@
 import type { Env, FetchImpl } from "../upstream";
-import { METFIX_CALLBACK_URI, bsiCheckUsername, bsiRegisterDirect } from "../upstream";
+import {
+  METFIX_CALLBACK_URI,
+  bsiCheckUsername,
+  bsiRegisterDirect,
+  parseRetryAfter,
+} from "../upstream";
 import { checkSignupLimit, checkUsernameLimit } from "./auth-rate-limit";
 import { requireCsrf } from "./csrf";
 import { isAuthHost } from "./host";
@@ -71,7 +76,11 @@ export async function handleSignup(
   if (!isValidUsername(username)) return authJson({ error: "invalid_username" }, 400);
   const ip = clientIp(request);
   const lim = await checkSignupLimit(env, ip);
-  if (!lim.allowed) return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": "60" });
+  if (!lim.allowed) {
+    return authJson(BODY_RATE_LIMITED, 429, {
+      "Retry-After": String(parseRetryAfter(null)),
+    });
+  }
   if (!env.RECAPTCHA_SECRET || !env.BSI_OAUTH_CLIENT_ID) {
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   }
@@ -97,7 +106,7 @@ export async function handleSignup(
     }
     if (upstream.status === 429) {
       return authJson(BODY_RATE_LIMITED, 429, {
-        "Retry-After": String(upstream.retryAfter ?? 60),
+        "Retry-After": String(upstream.retryAfter ?? parseRetryAfter(null)),
       });
     }
   }
@@ -124,7 +133,11 @@ export async function handleUsernameCheck(
   if (username.includes("@")) return authJson({ valid: false }, 200);
   const ip = clientIp(request);
   const lim = await checkUsernameLimit(env, ip);
-  if (!lim.allowed) return authJson(BODY_RATE_LIMITED, 429, { "Retry-After": "60" });
+  if (!lim.allowed) {
+    return authJson(BODY_RATE_LIMITED, 429, {
+      "Retry-After": String(parseRetryAfter(null)),
+    });
+  }
   const upstream = await bsiCheckUsername(username, env, fetchImpl, {
     baseUrl: opts?.bsiBaseUrl,
   });
@@ -137,7 +150,7 @@ export async function handleUsernameCheck(
   }
   if (upstream.kind === "http" && upstream.status === 429) {
     return authJson(BODY_RATE_LIMITED, 429, {
-      "Retry-After": String(upstream.retryAfter ?? 60),
+      "Retry-After": String(upstream.retryAfter ?? parseRetryAfter(null)),
     });
   }
   return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
