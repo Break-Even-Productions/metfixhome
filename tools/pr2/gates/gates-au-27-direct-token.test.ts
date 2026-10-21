@@ -1281,6 +1281,30 @@ describe("AU27.10", () => {
       expect(tokenFetches(h).length).toBe(1);
       expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
     }
+
+    // Non-grant codes: fixed Retry-After 60 (never upstream) — kills M-DT12.
+    for (const ura of ["17", "600"] as const) {
+      const h = createHarness({
+        googleEnabled: true,
+        oauthToken: async (req) => {
+          const form = new URLSearchParams(await req.text());
+          if (form.get("grant_type") === "authorization_code") {
+            return new Response(JSON.stringify({ error: "invalid_client" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json", "Retry-After": ura },
+            });
+          }
+          return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
+        },
+      });
+      const { res } = await signedGoogleCallback(h);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toStrictEqual({ error: "unavailable" });
+      expect(res.headers.get("Retry-After")).toBe("60");
+      expect(meFetches(h).length).toBe(0);
+      expect(tokenFetches(h).length).toBe(1);
+      expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+    }
   });
 
   it("AU27.10 (c) Google session refresh: rotating R0→ACCESS2/R1; in-handler DO has R1; 0 proxy", async () => {
