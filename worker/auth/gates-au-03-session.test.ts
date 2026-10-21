@@ -277,6 +277,43 @@ describe("AU5", () => {
     });
     expect(await me.json()).toMatchObject({ signed_in: true });
     expect(h.kv.puts.at(-1)!.options?.expirationTtl).toBe(60);
+
+    // (e) user-acting refresh — rotating and non-rotating — each ≥1 sess:* put @ TTL 60
+    for (const mode of ["rotating", "non-rotating"] as const) {
+      const hr = createHarness(
+        mode === "non-rotating"
+          ? {
+              refresh: async (req) => {
+                const parsed = JSON.parse(await req.text()) as { refresh_token?: string };
+                if (parsed.refresh_token === REFRESH1) {
+                  return Response.json({
+                    access_token: ACCESS2,
+                    refresh_token: REFRESH1,
+                    expires_in: 3600,
+                    public_name: "Jane",
+                    user_id: 42,
+                  });
+                }
+                return Response.json({ code: "invalid_grant" }, { status: 400 });
+              },
+            }
+          : undefined,
+      );
+      const logged = await hr.login();
+      await patchSession(hr, logged.sid, (r) => {
+        r.access_exp = Date.now() + 30_000;
+        r.bsi_refresh = REFRESH1;
+      });
+      const sessBefore = hr.kv.puts.filter((p) => p.key.startsWith("sess:")).length;
+      const post = await commentPost(hr, logged.sid);
+      expect(post.status).toBe(201);
+      const sessPuts = hr.kv.puts.filter((p) => p.key.startsWith("sess:"));
+      expect(sessPuts.length).toBeGreaterThan(sessBefore);
+      for (const p of sessPuts.slice(sessBefore)) {
+        expect(p.options?.expirationTtl).toBe(60);
+        expect(p.options).not.toHaveProperty("expiration");
+      }
+    }
   });
 
   it("AU5.k DO source of truth after KV TTL expiry", async () => {

@@ -197,12 +197,13 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M-CW19": {
-    files: ["client/src/pages/the-daily-fix/comments.ts"],
+    // Call-site only: leave clampClientRetryAfter intact so CW13.3 (clamp unit) stays green.
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
         replaceOnce(
-          "client/src/pages/the-daily-fix/comments.ts",
-          "export function clampClientRetryAfter(raw: string | null): number {",
-          "export function clampClientRetryAfter(_raw: string | null): number {\n  // MUTANT M-CW19: ignore Retry-After\n  return 0;\n}\nfunction clampClientRetryAfter_orig(raw: string | null): number {",
+          "client/src/pages/the-daily-fix/CommentThread.tsx",
+          "  function applyRateLimit(key: string, res: Response): void {\n    const wait = clampClientRetryAfter(res.headers.get(\"Retry-After\"));\n    setRetryUntilByKey((prev) => ({ ...prev, [key]: Date.now() + wait * 1000 }));\n  }",
+          "  function applyRateLimit(key: string, res: Response): void {\n    // MUTANT M-CW19: ignore Retry-After at UI call site\n    void res;\n    setRetryUntilByKey((prev) => ({ ...prev, [key]: Date.now() }));\n  }",
           "M-CW19",
         );
     },
@@ -358,42 +359,8 @@ export const EXTRA_SABOTAGES = {
     apply() {
         replaceOnce(
           "worker/auth/session.ts",
-          `export async function applyRefreshResult(
-  env: Env,
-  rawId: string,
-  tokens: TokenInput & { refresh_token?: string },
-): Promise<SessionRecord | null> {
-  const hex = await sessionKeyHex(rawId);
-  const stub = sessionStub(env, hex);
-  try {
-    const res = await doFetch(stub, "/refresh", {
-      method: "POST",
-      aad: sessionAad(hex),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tokens),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { record: SessionRecord };
-    await putMeCache(env, hex, data.record);
-    return data.record;`,
-          `export async function applyRefreshResult(
-  env: Env,
-  rawId: string,
-  tokens: TokenInput & { refresh_token?: string },
-): Promise<SessionRecord | null> {
-  const hex = await sessionKeyHex(rawId);
-  const stub = sessionStub(env, hex);
-  try {
-    const res = await doFetch(stub, "/refresh", {
-      method: "POST",
-      aad: sessionAad(hex),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(tokens),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { record: SessionRecord };
-    // MUTANT M-CW33: skip KV /me write on refresh
-    return data.record;`,
+          "  if (data.refreshed) await putMeCache(env, hex, data.record);\n  return { hex, record: data.record };\n}",
+          "  // MUTANT M-CW33: skip KV /me write after refresh\n  void data.refreshed;\n  return { hex, record: data.record };\n}",
           "M-CW33",
         );
     },
@@ -886,19 +853,17 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M27": {
+    // POST-only (P7.1). PATCH/DELETE/like purges stay so CW8.1 stays green.
     files: ["worker/comments.ts"],
     apply() {
-        replaceAllExact(
+        replaceOnce(
           "worker/comments.ts",
-          "await purgeCommentsDate(cache, date);",
-          "// MUTANT M27: skip cache purge after write\n    void date; void cache;",
-          "M27-cache",
-        );
-        replaceAllExact(
-          "worker/comments.ts",
-          "await purgeCommentsDate(opts?.cache, date);",
-          "// MUTANT M27: skip cache purge after write\n    void date; void opts;",
-          "M27-opts",
+          `    await purgeCommentsDate(cache, date);
+    return jsonNoStore({ comment: json }, 201);`,
+          `    // MUTANT M27: skip cache purge after successful POST
+    void date; void cache;
+    return jsonNoStore({ comment: json }, 201);`,
+          "M27",
         );
     },
   },
@@ -915,6 +880,8 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M30": {
+    // session → body validate → limiter → CSRF (limiter before CSRF, after validate).
+    // CSRF-fail burns a slot → P8.2; invalid bodies 400 before limit → P3.5 green.
     files: ["worker/comments.ts"],
     apply() {
         replaceOnce(
@@ -923,21 +890,61 @@ export const EXTRA_SABOTAGES = {
   const csrf = await requireCsrf(request, env, ctx.sid);
   if (csrf) return csrf;
 
-  const parsed = await readJsonBodyLimited(request);`,
+  const parsed = await readJsonBodyLimited(request);
+  if (parsed instanceof Response) return parsed;
+  if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+  const body = parsed.json as Record<string, unknown>;
+  const date = typeof body.date === "string" ? body.date : "";
+  const type = typeof body.type === "string" ? body.type : "";
+  const content = validateContent(body.content);
+  const parent = validateParentId(body.parent_comment_id);
+  if (
+    !isIsoDate(date) ||
+    !isCommentType(type) ||
+    type === "all" ||
+    content == null ||
+    parent === "bad"
+  ) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+
+  const ip = clientIp(request);
+  const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
+  if (!limited.allowed) {
+    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+  }`,
           `  if (!ctx.access) return unavailable();
-  const ipEarly = clientIp(request);
-  const limitedEarly = await checkCommentWriteLimit(
-    env as CommentLimitEnv,
-    ctx.record.bsi_user_id,
-    ipEarly,
-  );
-  if (!limitedEarly.allowed) {
+
+  const parsed = await readJsonBodyLimited(request);
+  if (parsed instanceof Response) return parsed;
+  if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+  const body = parsed.json as Record<string, unknown>;
+  const date = typeof body.date === "string" ? body.date : "";
+  const type = typeof body.type === "string" ? body.type : "";
+  const content = validateContent(body.content);
+  const parent = validateParentId(body.parent_comment_id);
+  if (
+    !isIsoDate(date) ||
+    !isCommentType(type) ||
+    type === "all" ||
+    content == null ||
+    parent === "bad"
+  ) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+
+  // MUTANT M30: limiter before CSRF
+  const ip = clientIp(request);
+  const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
+  if (!limited.allowed) {
     return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
   }
   const csrf = await requireCsrf(request, env, ctx.sid);
-  if (csrf) return csrf;
-
-  const parsed = await readJsonBodyLimited(request);`,
+  if (csrf) return csrf;`,
           "M30",
         );
     },

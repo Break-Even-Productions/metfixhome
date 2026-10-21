@@ -1528,9 +1528,12 @@ function escapeRe(s) {
 }
 
 /** True when `title` contains gate `id` not as a prefix of a longer id (AU17.1 vs AU17.11). */
+/** Match catalog IDs only as the leading token of an `it()` title (not describe names). */
 function titleHasGateId(title, id) {
-  const re = new RegExp(`(^|[^A-Za-z0-9.])${escapeRe(id)}([^A-Za-z0-9.]|$)`);
-  return re.test(title);
+  const first = String(title || "")
+    .trim()
+    .split(/\s+/)[0];
+  return first === id;
 }
 
 /** Vitest `-t` pattern: match gate ids without prefixing longer siblings. */
@@ -1555,21 +1558,17 @@ function runCmd(cmd, cmdArgs, opts = {}) {
   };
 }
 
+/** Files touched by the current mutant apply(); restore only these. */
+let RESTORE_FILES = [];
+
 function restoreTree() {
   spawnSync(
     "bash",
     ["-c", "find worker client -type f 2>/dev/null | head -5000 | while read -r f; do lsattr \"$f\" 2>/dev/null | grep -q -- '-i-' && chattr -i \"$f\" 2>/dev/null; done; true"],
     { cwd: REPO, encoding: "utf8" },
   );
-  const res = spawnSync("git", ["diff", "--name-only", "--", "."], {
-    cwd: REPO,
-    encoding: "utf8",
-  });
-  const files = (res.stdout || "")
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((f) => !f.startsWith("tools/pr2/"));
+  const files = [...new Set(RESTORE_FILES)].filter(Boolean);
+  RESTORE_FILES = [];
   if (files.length) {
     runCmd("git", ["checkout", "--", ...files]);
   }
@@ -1585,11 +1584,26 @@ function gateIdsFromFailedTitles(titles, gateIds) {
   return [...failed].sort();
 }
 
-function runFullSuites(catalogGates, { typeCheck = false } = {}) {
+function sabotageNeedsClientBuild(files) {
+  if (!files || !files.length) return true;
+  return files.some(
+    (f) =>
+      f === "client/index.html" ||
+      f.endsWith("/index.html") ||
+      f.startsWith("client/public/") ||
+      /client\/.*\.(html|css)$/.test(f),
+  );
+}
+
+function runFullSuites(catalogGates, { typeCheck = false, forceBuild = false, files = null } = {}) {
   mkdirSync(path.dirname(VITEST_JSON), { recursive: true });
   writeFileSync(VITEST_JSON, "{}");
   // Build BEFORE vitest so AU19.3 / M-JL1 see sabotaged client/index.html in dist.
-  const build = runCmd("npm", ["run", "build:cf"], { timeout: TIMEOUT_MS * 3 });
+  // Skip when the mutant does not touch HTML/CSS assets (most of the catalog).
+  const doBuild = forceBuild || sabotageNeedsClientBuild(files);
+  const build = doBuild
+    ? runCmd("npm", ["run", "build:cf"], { timeout: TIMEOUT_MS * 3 })
+    : { status: 0, stdout: "", stderr: "", error: null };
   const vitest = runCmd(
     "npx",
     [
@@ -1626,7 +1640,11 @@ function runFullSuites(catalogGates, { typeCheck = false } = {}) {
       const raw = JSON.parse(readFileSync(VITEST_JSON, "utf8"));
       for (const file of raw.testResults || []) {
         for (const a of file.assertionResults || []) {
-          if (a.status === "failed") failedTitles.push(a.fullName || a.title || "");
+          if (a.status === "failed") {
+            // Prefer it() title — fullName includes describe() segments that
+            // collide with gate IDs (e.g. "CC1" in "C / CT / CC1").
+            failedTitles.push(a.title || a.fullName || "");
+          }
         }
       }
       observed = gateIdsFromFailedTitles(failedTitles, catalogGates);
@@ -1779,10 +1797,18 @@ function main() {
 
   console.log(`Catalog mutations: ${catalog.mutations.length}; selected: ${mutations.length}`);
   const catalogGates = catalog.gates;
-  restoreTree();
+  // Start from a clean product tree (do not revert tools/pr2 or untracked logs).
+  {
+    const dirty = spawnSync("git", ["diff", "--name-only", "--", "worker", "client"], {
+      cwd: REPO,
+      encoding: "utf8",
+    });
+    const files = (dirty.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean);
+    if (files.length) runCmd("git", ["checkout", "--", ...files]);
+  }
 
   console.log("Baseline: full gate suite on clean tree…");
-  const baseline = runFullSuites(catalogGates);
+  const baseline = runFullSuites(catalogGates, { forceBuild: true });
   const baselineFailed = new Set(
     baseline.observedRed.filter((id) => mutations.some((m) => m.red.includes(id))),
   );
@@ -1852,16 +1878,30 @@ function main() {
         break;
       }
       let patchMd5 = null;
+      const touchFiles = vsab.files || sab.files || [];
       try {
+        RESTORE_FILES = [...touchFiles];
         vsab.apply();
+        // Capture any extra paths the apply touched.
+        const dirty = spawnSync("git", ["diff", "--name-only", "--", "."], {
+          cwd: REPO,
+          encoding: "utf8",
+        });
+        for (const f of (dirty.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean)) {
+          if (!f.startsWith("tools/pr2/")) RESTORE_FILES.push(f);
+        }
         patchMd5 = patchMd5FromGit();
       } catch (e) {
         applyErr = `${vid}: ${e?.message || e}`;
+        restoreTree();
         break;
       }
       let run;
       try {
-        run = runFullSuites(catalogGates, { typeCheck: !!sab.typeCheck });
+        run = runFullSuites(catalogGates, {
+          typeCheck: !!sab.typeCheck,
+          files: touchFiles,
+        });
       } catch (e) {
         applyErr = `run ${vid}: ${e?.message || e}`;
         restoreTree();
@@ -1873,7 +1913,8 @@ function main() {
         variant: vid,
         verdict,
         expectedRed: m.red,
-        observedRed: run.observedRed.filter((id) => m.red.includes(id)),
+        // Full observed set (extras drive "wider"); do not filter to expected.
+        observedRed: [...run.observedRed].sort(),
         failedTestTitles: run.failedTestTitles,
         patchMd5,
         typeCheckStatus: run.typeCheckStatus,

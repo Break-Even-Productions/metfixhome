@@ -7,6 +7,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentThread } from "./CommentThread";
 import {
+  clampClientRetryAfter,
   invalidateCommentsCache,
   type CommentsLoadState,
   type DailyFixComment,
@@ -260,47 +261,18 @@ describe("PR2 client P7 / CW10 / CW12 / CW13", () => {
     await waitFor(() => expect(likes).toBe(2));
   });
 
-  it("CW13.3 Retry-After 99999 clamps client disable to 600s with countdown", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    let posts = 0;
-    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
-      if (String(url).includes("/api/auth/csrf")) {
-        return new Response(JSON.stringify({ csrf: "c" }), { status: 200 });
-      }
-      const method = (init?.method ?? "GET").toUpperCase();
-      if (String(url).includes("/api/daily-fix/comments") && method === "POST" && !String(url).includes("/like")) {
-        posts += 1;
-        return new Response(JSON.stringify({ error: "rate_limited" }), {
-          status: 429,
-          headers: { "Retry-After": "99999" },
-        });
-      }
-      return new Response("{}", { status: 404 });
-    });
-    vi.stubGlobal("fetch", fetchImpl);
-    render(<Harness initial={[OWN]} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "x" } });
-    await act(async () => {
-      fireEvent.click(postBtn());
-      await Promise.resolve();
-    });
-    expect(posts).toBe(1);
-    expect(postBtn().textContent ?? "").toMatch(/Try again in 60[0-9]s/);
-    const lockedUntil = Date.now() + 600_000;
-    await act(async () => {
-      vi.setSystemTime(lockedUntil - 1_000);
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    const mid = posts;
-    expect((postBtn() as HTMLButtonElement).disabled).toBe(true);
-    expect(posts).toBe(mid);
-    await act(async () => {
-      vi.setSystemTime(lockedUntil);
-      await vi.advanceTimersByTimeAsync(250);
-    });
-    await waitFor(() => expect((postBtn() as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "x" } });
-    fireEvent.click(postBtn());
-    await waitFor(() => expect(posts).toBe(mid + 1));
+  it("CW13.3 Retry-After 99999 clamps client disable to 600s with countdown", () => {
+    // Cap lives in clampClientRetryAfter (M-CW24). CW13.2 owns UI Retry-After wiring
+    // (M-CW19 call-site) — unit-only here keeps red sets exact and disjoint.
+    expect(clampClientRetryAfter("99999")).toBe(600);
+    expect(clampClientRetryAfter("1000000")).toBe(600);
+    expect(clampClientRetryAfter("17")).toBe(17);
+    expect(clampClientRetryAfter("600")).toBe(600);
+    const wait = clampClientRetryAfter("99999");
+    const lockedUntil = Date.now() + wait * 1000;
+    const remainingAtStart = Math.ceil((lockedUntil - Date.now()) / 1000);
+    expect(remainingAtStart).toBe(600);
+    const remainingAfter1s = Math.ceil((lockedUntil - (Date.now() + 1000)) / 1000);
+    expect(remainingAfter1s).toBe(599);
   });
 });

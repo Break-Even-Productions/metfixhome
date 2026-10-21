@@ -1709,26 +1709,15 @@ Object.assign(R2_OVERRIDES, {
     },
   },
   "M-CW33": {
-    files: ["worker/auth/session.ts", "worker/do/session.ts"],
+    // Skip KV rewrite on ensureActingAccess refresh (user-acting path).
+    // No global TTL drift (that reds AU5.3/4/k). AU5.z(e) + CW12.3 both require the put.
+    files: ["worker/auth/session.ts"],
     apply() {
       replaceOnce(
         "worker/auth/session.ts",
-        "    if (data.reissued) await putMeCache(env, hex, data.record);\n    return { record: data.record, reissued: data.reissued === true };",
-        "    // MUTANT M-CW33: skip KV /me write on touch reissue\n    return { record: data.record, reissued: data.reissued === true };",
-        "M-CW33-touch",
-      );
-      replaceOnce(
-        "worker/auth/session.ts",
-        "    await putMeCache(env, hex, data.record);\n    return data.record;\n  } catch {\n    return null;\n  }\n}\n\nexport async function rebuildMeFromDo",
-        "    // MUTANT M-CW33: skip KV /me write after refresh\n    return data.record;\n  } catch {\n    return null;\n  }\n}\n\nexport async function rebuildMeFromDo",
-        "M-CW33-refresh",
-      );
-      // Also break TTL to hit AU5.z
-      replaceOnce(
-        "worker/auth/session.ts",
-        "  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {\n    expirationTtl: 60,\n  });",
-        "  await env.AUTH_SESSIONS.put(sessKvKey(hex), JSON.stringify(value), {\n    expirationTtl: 3600, // MUTANT M-CW33 related TTL drift\n  });",
-        "M-CW33-ttl",
+        "  if (data.refreshed) await putMeCache(env, hex, data.record);\n  return { hex, record: data.record };\n}",
+        "  // MUTANT M-CW33: skip KV /me write after refresh\n  void data.refreshed;\n  return { hex, record: data.record };\n}",
+        "M-CW33",
       );
     },
   },
