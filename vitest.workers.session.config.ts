@@ -11,6 +11,8 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         isolatedStorage: false,
+        // Force local Miniflare KV/DO even if wrangler.jsonc has remote:true.
+        remoteBindings: false,
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
           bindings: {

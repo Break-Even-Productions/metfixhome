@@ -12,6 +12,10 @@ export default defineWorkersConfig({
     exclude: ["worker/do/session.refresh.workers.test.ts"],
     poolOptions: {
       workers: {
+        // CI / npm run test:workers must stay fully local. wrangler.jsonc may
+        // set AUTH_SESSIONS.remote:true for wrangler dev; that must not pull
+        // a Cloudflare remote-proxy login into the vitest pool.
+        remoteBindings: false,
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
           bindings: {
