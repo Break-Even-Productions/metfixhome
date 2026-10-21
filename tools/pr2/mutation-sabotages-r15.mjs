@@ -135,7 +135,7 @@ export const R15_OVERRIDES = {
     },
   },
 
-  /** r1.31: log form body on token error — red {AU20.1, AU27.6}. */
+  /** r1.31/r1.34: log form body on token error — red {AU20.1, AU27.6}. */
   "M-DT6": {
     files: ["worker/upstream.ts"],
     apply() {
@@ -144,14 +144,15 @@ export const R15_OVERRIDES = {
         `    if (response.ok) {
       return { kind: "ok", status: response.status, json, bodyText, retryAfter };
     }
+    // Map on OAuth \`error\` only — never surface or prefer \`bsi_code\` (§0v.3).
     const oauthErr = readOAuthError(json);
-    const bsiCode = readBsiCode(json);
+    void readBsiCode(json);
     return {
       kind: "http",
       status: response.status,
       json,
       bodyText,
-      code: oauthErr ?? bsiCode,
+      code: oauthErr,
       retryAfter,
     };`,
         `    if (response.ok) {
@@ -159,14 +160,15 @@ export const R15_OVERRIDES = {
     }
     // MUTANT M-DT6: log form request body on token error
     console.error("token failed", body.toString());
+    // Map on OAuth \`error\` only — never surface or prefer \`bsi_code\` (§0v.3).
     const oauthErr = readOAuthError(json);
-    const bsiCode = readBsiCode(json);
+    void readBsiCode(json);
     return {
       kind: "http",
       status: response.status,
       json,
       bodyText,
-      code: oauthErr ?? bsiCode,
+      code: oauthErr,
       retryAfter,
     };`,
         "M-DT6",

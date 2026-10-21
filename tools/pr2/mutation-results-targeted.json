@@ -1,0 +1,764 @@
+{
+  "catalogRev": "r1.34",
+  "catalogTotal": 282,
+  "selected": 19,
+  "counts": {
+    "exact": 19,
+    "wider": 0,
+    "missing-red": 0,
+    "survived": 0,
+    "ethan-blocker": 0,
+    "cant-run": 0,
+    "not-run": 263
+  },
+  "baselineFailedAmongSelected": [],
+  "results": [
+    {
+      "id": "M-CW16",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW12.1",
+        "AU22.1"
+      ],
+      "observedRed": [
+        "AU22.1",
+        "CW12.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW16",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW12.1",
+            "AU22.1"
+          ],
+          "observedRed": [
+            "AU22.1",
+            "CW12.1"
+          ],
+          "failedTestTitles": [
+            "AU22.1 scoped storage scan + allowlist",
+            "CW12.1 moderator true shows controls on others; non-boolean localStorage ignored"
+          ],
+          "patchMd5": "0e4e48aa81ff2559de8020473accd3c1",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "moderator controls from localStorage or truthy `moderator`"
+    },
+    {
+      "id": "M-CW19",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW13.2",
+        "CW13.3"
+      ],
+      "observedRed": [
+        "CW13.2",
+        "CW13.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW19",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW13.2",
+            "CW13.3"
+          ],
+          "observedRed": [
+            "CW13.2",
+            "CW13.3"
+          ],
+          "failedTestTitles": [
+            "CW13.2 429 Retry-After 17 disables post, reply, edit, delete, like then re-enables",
+            "CW13.3 Retry-After 99999 UI clamps to 600s with countdown; 17 then 16"
+          ],
+          "patchMd5": "cb39302700b300a21e08fc33340342f8",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "ignore `Retry-After`"
+    },
+    {
+      "id": "M-CW20",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW14.1"
+      ],
+      "observedRed": [
+        "CW14.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW20",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW14.1"
+          ],
+          "observedRed": [
+            "CW14.1"
+          ],
+          "failedTestTitles": [
+            "CW14.1 no reply control on reply rows; top-level rows have one"
+          ],
+          "patchMd5": "18866325ff7dabf472ca1177820d6332",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "render reply control on replies"
+    },
+    {
+      "id": "M-CW24",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW13.3"
+      ],
+      "observedRed": [
+        "CW13.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW24",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW13.3"
+          ],
+          "observedRed": [
+            "CW13.3"
+          ],
+          "failedTestTitles": [
+            "CW13.3 Retry-After 99999 UI clamps to 600s with countdown; 17 then 16"
+          ],
+          "patchMd5": "613df23ecc9495d8355cd346fd9fbbe8",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "no Retry-After cap (honours 99999)"
+    },
+    {
+      "id": "M-CW32",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW12.3"
+      ],
+      "observedRed": [
+        "CW12.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW32",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW12.3"
+          ],
+          "observedRed": [
+            "CW12.3"
+          ],
+          "failedTestTitles": [
+            "CW12.3 refresh true→false rewrites SESSION DO and KV /me; purge rebuild stays false"
+          ],
+          "patchMd5": "1a32b8fd72ef320d441d2b9fbbcde9d4",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/auth refresh",
+      "sabotage": "refresh writes the new token pair to the `SESSION` DO but not the new `can_moderate` (old `true` kept); KV `/me` still rewritten"
+    },
+    {
+      "id": "M19",
+      "verdict": "exact",
+      "expectedRed": [
+        "CT2",
+        "CI2"
+      ],
+      "observedRed": [
+        "CI2",
+        "CT2"
+      ],
+      "variants": [
+        {
+          "variant": "M19",
+          "verdict": "exact",
+          "expectedRed": [
+            "CT2",
+            "CI2"
+          ],
+          "observedRed": [
+            "CI2",
+            "CT2"
+          ],
+          "failedTestTitles": [
+            "CI2 scans daily-fix / auth / leaderboard for html sinks",
+            "CT2 comment HTML renders as literal text without script execution"
+          ],
+          "patchMd5": "851cf2900a84ef4d2ba666f2ff4f9313",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "CommentThread.tsx",
+      "sabotage": "render content via `dangerouslySetInnerHTML`"
+    },
+    {
+      "id": "M27",
+      "verdict": "exact",
+      "expectedRed": [
+        "P7.1"
+      ],
+      "observedRed": [
+        "P7.1"
+      ],
+      "variants": [
+        {
+          "variant": "M27",
+          "verdict": "exact",
+          "expectedRed": [
+            "P7.1"
+          ],
+          "observedRed": [
+            "P7.1"
+          ],
+          "failedTestTitles": [
+            "P7.1 successful POST cache.delete once; failed POST no delete"
+          ],
+          "patchMd5": "347f07029dba01b45f2b2df67b1161a7",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "P7",
+      "sabotage": "no cache purge after write"
+    },
+    {
+      "id": "M95",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU2.1",
+        "AU27.1"
+      ],
+      "observedRed": [
+        "AU2.1",
+        "AU27.1"
+      ],
+      "variants": [
+        {
+          "variant": "M95",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU2.1",
+            "AU27.1"
+          ],
+          "observedRed": [
+            "AU2.1",
+            "AU27.1"
+          ],
+          "failedTestTitles": [
+            "AU2.1 oauth/token + /me contract",
+            "AU27.1 password token request shape; client_id from env (CQ D4)"
+          ],
+          "patchMd5": "7fe3bf397ab3e89e5eeaac2aae6a3cf0",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "login upstream (1.31: `/oauth/token` call site)",
+      "sabotage": "forward `CF-Connecting-IP` on the `/oauth/token` request"
+    },
+    {
+      "id": "M130",
+      "verdict": "exact",
+      "expectedRed": [
+        "C6.1"
+      ],
+      "observedRed": [
+        "C6.1"
+      ],
+      "variants": [
+        {
+          "variant": "M130",
+          "verdict": "exact",
+          "expectedRed": [
+            "C6.1"
+          ],
+          "observedRed": [
+            "C6.1"
+          ],
+          "failedTestTitles": [
+            "C6.1 loadMe single-flights one /api/auth/me across mount/navigate/focus/10min"
+          ],
+          "patchMd5": "eb68357daac9ad566c3a40958fde8f6f",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "R5/C6",
+      "sabotage": "`/me` fetched per component mount"
+    },
+    {
+      "id": "M-WL14b",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU26.8"
+      ],
+      "observedRed": [
+        "AU26.8"
+      ],
+      "variants": [
+        {
+          "variant": "M-WL14b",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU26.8"
+          ],
+          "observedRed": [
+            "AU26.8"
+          ],
+          "failedTestTitles": [
+            "AU26.8 worker non-upstream has no BSI fetch /wp-json literals"
+          ],
+          "patchMd5": "d34b1ab3385e6e1b470723c104f25d04",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "any non-upstream worker file (spec 1.6.4 / CQ N4)",
+      "sabotage": "`globalThis.fetch(`${base}/oauth/token`)`"
+    },
+    {
+      "id": "M-JL1",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU19.3"
+      ],
+      "observedRed": [
+        "AU19.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-JL1a",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "3cff5a67301521f0690d8b2b380045ee",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        },
+        {
+          "variant": "M-JL1b",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "11135e4ceba11769044e52882ed8d7b6",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        },
+        {
+          "variant": "M-JL1c",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "1f771d88a2075e37db4e132e972874e5",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        },
+        {
+          "variant": "M-JL1d",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "05238a774597b59720d14c3639340806",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "built HTML / AU19.3 check (QA, 1.24)",
+      "sabotage": "inject an executable inline script into built `index.html` (`<script>alert(1)</script>`); variant b: the same body as `<script type=\"application/ld+json \">` (trailing space); variant c: `type=\"Application/LD+JSON\"`; variant d (1.25): a valid `<script type=\"application/ld+json\">` placed in `dist/public/x/index.html`. Each variant is applied alone, and each must turn AU19.3 red. The unmutated JSON-LD-only build must stay green"
+    },
+    {
+      "id": "M-P1a",
+      "verdict": "exact",
+      "expectedRed": [
+        "CT-P1"
+      ],
+      "observedRed": [
+        "CT-P1"
+      ],
+      "variants": [
+        {
+          "variant": "M-P1a",
+          "verdict": "exact",
+          "expectedRed": [
+            "CT-P1"
+          ],
+          "observedRed": [
+            "CT-P1"
+          ],
+          "failedTestTitles": [
+            "CT-P1 '(a) 503 unavailable' → 1 POST + 1 bypass GET; no retry",
+            "CT-P1 '(c) TypeError reject' → 1 POST + 1 bypass GET; no retry"
+          ],
+          "patchMd5": "2ed4cc39be3ca0fb5402047563122d15",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client CommentThread POST",
+      "sabotage": "on 503/malformed 201/network error, immediately re-POST once"
+    },
+    {
+      "id": "M-P4L1",
+      "verdict": "exact",
+      "expectedRed": [
+        "P4.1",
+        "CW9.1"
+      ],
+      "observedRed": [
+        "CW9.1",
+        "P4.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-P4L1",
+          "verdict": "exact",
+          "expectedRed": [
+            "P4.1",
+            "CW9.1"
+          ],
+          "observedRed": [
+            "CW9.1",
+            "P4.1"
+          ],
+          "failedTestTitles": [
+            "CW9.1 PATCH/DELETE/like missing CSRF / wrong Origin / cross-site → 403, 0 limiter",
+            "P4.1 logged out POST → 401 signed_out, 0 upstream siteverify and limiter"
+          ],
+          "patchMd5": "38bc601ea725a212fb937b6b1cda04e8",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/comments (QA, 1.26)",
+      "sabotage": "logged-out POST and like consume the like/toggle limiter before the 401"
+    },
+    {
+      "id": "M-C62",
+      "verdict": "exact",
+      "expectedRed": [
+        "C6.2"
+      ],
+      "observedRed": [
+        "C6.2"
+      ],
+      "variants": [
+        {
+          "variant": "M-C62",
+          "verdict": "exact",
+          "expectedRed": [
+            "C6.2"
+          ],
+          "observedRed": [
+            "C6.2"
+          ],
+          "failedTestTitles": [
+            "C6.2 today GET returning different date shows closer day + disclaimer; path stays bare; hash kept; calendar uses response date",
+            "keeps the day loaded when comments return 404",
+            "logged-out submit opens the join modal and does not POST a comment or store a session"
+          ],
+          "patchMd5": "775131e0edaa0195131ab0ec43bc0d24",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client daily-fix page (QA, 1.26)",
+      "sabotage": "on mount, also fetch comments for TODAY in addition to the selected date"
+    },
+    {
+      "id": "M-P1O1",
+      "verdict": "exact",
+      "expectedRed": [
+        "P1.1",
+        "P8.1",
+        "P8.2"
+      ],
+      "observedRed": [
+        "P1.1",
+        "P8.1",
+        "P8.2"
+      ],
+      "variants": [
+        {
+          "variant": "M-P1O1",
+          "verdict": "exact",
+          "expectedRed": [
+            "P1.1",
+            "P8.1",
+            "P8.2"
+          ],
+          "observedRed": [
+            "P1.1",
+            "P8.1",
+            "P8.2"
+          ],
+          "failedTestTitles": [
+            "P1.1 POST with session + recaptcha + BSI 201 → shaped 201 Member; limiter→siteverify→BSI",
+            "P8.1 sixth POST in 60s → 429 rate_limited, limiter key user:ip",
+            "P8.2 CSRF/logged-out skip limiter; signed-in limit() before siteverify; denied limit → 429"
+          ],
+          "patchMd5": "50588b05deeca3c71dcf213c1297f6d3",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/comments POST (QA, 1.29)",
+      "sabotage": "call siteverify before the write limiter (limiter → siteverify → BSI becomes siteverify → limiter → BSI); variant b is catalogue row M-P1O2"
+    },
+    {
+      "id": "M137",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU17.9",
+        "AU27.4"
+      ],
+      "observedRed": [
+        "AU17.9",
+        "AU27.4"
+      ],
+      "variants": [
+        {
+          "variant": "M137",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU17.9",
+            "AU27.4"
+          ],
+          "observedRed": [
+            "AU17.9",
+            "AU27.4"
+          ],
+          "failedTestTitles": [
+            "AU17.9 order config→R8a→R8b→siteverify→R8c→token→/me",
+            "AU27.4 siteverify shape + call order config→R8a→R8b→sv→R8c→token→/me",
+            "AU27.4 siteverify fail skips token; R8b 20 then R8c"
+          ],
+          "patchMd5": "57c8a7376ce7191ef2dbe979279a7382",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/auth login (restored 1.31, Web Lead ruling)",
+      "sabotage": "take the R8c slot before siteverify"
+    },
+    {
+      "id": "M-DT3",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU27.2",
+        "CW7.1",
+        "LB.N10.1",
+        "P8.1"
+      ],
+      "observedRed": [
+        "AU27.2",
+        "CW7.1",
+        "LB.N10.1",
+        "P8.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-DT3",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU27.2",
+            "CW7.1",
+            "LB.N10.1",
+            "P8.1"
+          ],
+          "observedRed": [
+            "AU27.2",
+            "CW7.1",
+            "LB.N10.1",
+            "P8.1"
+          ],
+          "failedTestTitles": [
+            "CW7.1 signed-in GET no-store Bearer own; anonymous no own/liked cached",
+            "P8.1 sixth POST in 60s → 429 rate_limited, limiter key user:ip",
+            "AU27.2 /me headers; session id from /me not token user_id",
+            "LB.N10.1 is_self computed server-side from session bsi_user_id"
+          ],
+          "patchMd5": "f673c0ab4920ce7a35f9dae6d9dbc13d",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/auth login (1.31)",
+      "sabotage": "take the user id from the token JSON `user_id` when present (else `/me.id`)"
+    },
+    {
+      "id": "M-DT6",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU20.1",
+        "AU27.6"
+      ],
+      "observedRed": [
+        "AU20.1",
+        "AU27.6"
+      ],
+      "variants": [
+        {
+          "variant": "M-DT6",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU20.1",
+            "AU27.6"
+          ],
+          "observedRed": [
+            "AU20.1",
+            "AU27.6"
+          ],
+          "failedTestTitles": [
+            "AU20.1 console leak scan across outcomes",
+            "AU27.6 token error paths never log form body or secret canary"
+          ],
+          "patchMd5": "e66dab837ece4463ba59602cfaf2d43b",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/upstream `/oauth/token` (1.31)",
+      "sabotage": "on token error, `console.error` the form request body"
+    },
+    {
+      "id": "M-DT7",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU7.1",
+        "AU7.6",
+        "AU27.7",
+        "AU27.8",
+        "AU27.9"
+      ],
+      "observedRed": [
+        "AU27.7",
+        "AU27.8",
+        "AU27.9",
+        "AU7.1",
+        "AU7.6"
+      ],
+      "variants": [
+        {
+          "variant": "M-DT7",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU7.1",
+            "AU7.6",
+            "AU27.7",
+            "AU27.8",
+            "AU27.9"
+          ],
+          "observedRed": [
+            "AU27.7",
+            "AU27.8",
+            "AU27.9",
+            "AU7.1",
+            "AU7.6"
+          ],
+          "failedTestTitles": [
+            "AU7.1 proactive refresh at 59s window",
+            "AU7.6 refresh serialisation variants N/N0/R",
+            "AU27.7 (a) rotating mock stores ACCESS2/R1; next refresh sends R1; R0 once",
+            "AU27.8 single-flight: 20 concurrent refreshes → 1 token + 1 /me; all ACCESS2",
+            "AU27.9 store-before-/me: DO already holds R1 when /me runs; keep vs end"
+          ],
+          "patchMd5": "b8e2e25fa4cb423a184fb540020389b7",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "SESSION DO refresh (1.32)",
+      "sabotage": "after a successful refresh, write only the access token and keep the old refresh token"
+    }
+  ],
+  "partial": false
+}

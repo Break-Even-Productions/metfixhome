@@ -2636,8 +2636,11 @@
       "target": "SESSION DO refresh (1.32)",
       "sabotage": "after a successful refresh, write only the access token and keep the old refresh token",
       "red": [
+        "AU7.1",
         "AU7.6",
-        "AU27.7"
+        "AU27.7",
+        "AU27.8",
+        "AU27.9"
       ]
     },
     {
