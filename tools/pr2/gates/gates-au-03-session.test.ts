@@ -289,8 +289,15 @@ describe("AU5", () => {
         mode === "non-rotating"
           ? {
               refresh: async (req) => {
-                const parsed = JSON.parse(await req.text()) as { refresh_token?: string };
-                if (parsed.refresh_token === REFRESH1) {
+                const raw = await req.text();
+                let refreshToken: string | null = null;
+                try {
+                  refreshToken =
+                    (JSON.parse(raw) as { refresh_token?: string }).refresh_token ?? null;
+                } catch {
+                  refreshToken = new URLSearchParams(raw).get("refresh_token");
+                }
+                if (refreshToken === REFRESH1) {
                   return Response.json({
                     access_token: ACCESS2,
                     refresh_token: REFRESH1,
@@ -299,7 +306,7 @@ describe("AU5", () => {
                     user_id: 42,
                   });
                 }
-                return Response.json({ code: "invalid_grant" }, { status: 400 });
+                return Response.json({ error: "invalid_grant" }, { status: 400 });
               },
             }
           : undefined,

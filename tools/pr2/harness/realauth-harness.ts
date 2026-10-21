@@ -447,23 +447,39 @@ export function createHarness(opts?: {
       if (opts?.oauthToken) return opts.oauthToken(req);
       // refresh_token: prefer dedicated refresh mock when present
       if (grant === "refresh_token" && opts?.refresh) return opts.refresh(req);
-      // Backward compat: webLogin mapped onto password (and refresh if no refresh opt)
-      if (opts?.webLogin) return opts.webLogin(req);
-      if (opts?.refresh) return opts.refresh(req);
-      if (grant === "password" || grant === "refresh_token") {
-        const refresh =
-          grant === "refresh_token" && form.get("refresh_token") === REFRESH1
-            ? REFRESH2
-            : REFRESH1;
-        const access = grant === "refresh_token" ? ACCESS2 : ACCESS1;
+      // Backward compat: webLogin mapped onto password grant only
+      if (grant === "password" && opts?.webLogin) return opts.webLogin(req);
+      if (grant === "password") {
         // Misleading user_id must not be trusted — session id comes from /me.
         return Response.json({
-          access_token: access,
-          refresh_token: refresh,
+          access_token: ACCESS1,
+          refresh_token: REFRESH1,
           expires_in: 3600,
           token_type: "Bearer",
           user_id: 999,
         });
+      }
+      if (grant === "refresh_token") {
+        const rt = form.get("refresh_token");
+        if (rt === REFRESH1) {
+          return Response.json({
+            access_token: ACCESS2,
+            refresh_token: REFRESH2,
+            expires_in: 3600,
+            token_type: "Bearer",
+            user_id: 999,
+          });
+        }
+        if (rt === REFRESH2) {
+          return Response.json({
+            access_token: ACCESS2,
+            refresh_token: REFRESH2,
+            expires_in: 3600,
+            token_type: "Bearer",
+            user_id: 999,
+          });
+        }
+        return Response.json({ error: "invalid_grant" }, { status: 400 });
       }
       return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
     }
