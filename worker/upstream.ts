@@ -8,6 +8,10 @@ import {
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_ORIGIN = "https://brokenscience.org";
 export const BSI_HOST = "brokenscience.org";
+/** Spec 1.6.12 §0w.2 — staging BSI base (same paths as prod). */
+export const BSI_STAGING_ORIGIN = "https://brokenstaging.wpengine.com";
+export const BSI_STAGING_HOST = "brokenstaging.wpengine.com";
+const ALLOWED_BSI_HOSTS = new Set([BSI_HOST, BSI_STAGING_HOST]);
 /** brokenscience.org's Cloudflare bot rules challenge requests with no User-Agent. */
 export const UPSTREAM_USER_AGENT = "metfixhome-worker/1.0";
 
@@ -87,8 +91,8 @@ export type FetchImpl = typeof fetch;
 
 export function assertBsiHost(url: string): void {
   const host = new URL(url).hostname;
-  if (host !== BSI_HOST) {
-    throw new Error(`X-API-Key only allowed for ${BSI_HOST}, got ${host}`);
+  if (!ALLOWED_BSI_HOSTS.has(host)) {
+    throw new Error(`BSI host not allowed: ${host}`);
   }
 }
 
@@ -252,13 +256,12 @@ function oauthFormHeaders(): Record<string, string> {
   };
 }
 
-/** GET /wp-json/bsi/v1/me headers (§0u.3). */
-function bsiMeHeaders(apiKey: string, accessToken: string): Record<string, string> {
+/** GET /wp-json/bsi/v1/me headers (§0v.1 Q2 — Bearer only, no X-API-Key). */
+function bsiMeHeaders(accessToken: string): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
     Accept: "application/json",
     "User-Agent": UPSTREAM_USER_AGENT,
-    "X-API-Key": apiKey,
   };
 }
 
@@ -292,14 +295,15 @@ async function oauthTokenFetch(
     if (response.ok) {
       return { kind: "ok", status: response.status, json, bodyText, retryAfter };
     }
+    // Map on OAuth `error` only — never surface or prefer `bsi_code` (§0v.3).
     const oauthErr = readOAuthError(json);
-    const bsiCode = readBsiCode(json);
+    void readBsiCode(json);
     return {
       kind: "http",
       status: response.status,
       json,
       bodyText,
-      code: oauthErr ?? bsiCode,
+      code: oauthErr,
       retryAfter,
     };
   } catch (err) {
@@ -632,25 +636,64 @@ export async function oauthRefreshGrant(
   return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000);
 }
 
-/** BSI-C11: GET {origin}/wp-json/bsi/v1/me */
+/** BSI-C11: GET {origin}/wp-json/bsi/v1/me — no X-API-Key (§0v.1 Q2). */
 export async function bsiFetchMe(
   accessToken: string,
   env: Env,
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string; timeoutMs?: number },
 ): Promise<BsiHttpResult> {
-  const cfg = requireAuthConfig(env, { needApiKey: true, baseUrl: opts?.baseUrl });
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
   if (!cfg) return { kind: "nokey" };
   const url = `${cfg.origin}/wp-json/bsi/v1/me`;
   return bsiFetch(
     url,
     {
       method: "GET",
-      headers: bsiMeHeaders(cfg.apiKey, accessToken),
+      headers: bsiMeHeaders(accessToken),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
     fetchImpl,
   );
+}
+
+/** Pro OAuth: POST {origin}/oauth/token, grant_type=authorization_code (§0w.1). */
+export async function oauthAuthorizationCodeGrant(
+  body: { code: string; redirect_uri: string },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/oauth/token`;
+  const form = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: body.code,
+    redirect_uri: body.redirect_uri,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000);
+}
+
+/**
+ * Pro OAuth: POST {origin}/oauth/revoke (§0v.1 Q6).
+ * Body exactly `token` + `token_type_hint`; no secret, client_id, or Authorization.
+ */
+export async function oauthRevokeToken(
+  body: { token: string; token_type_hint: "refresh_token" | "access_token" },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const origin = originFromOpts(opts);
+  const url = `${origin}/oauth/revoke`;
+  const form = new URLSearchParams({
+    token: body.token,
+    token_type_hint: body.token_type_hint,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000);
 }
 
 /** @deprecated BSI-C10 web-login — use oauthPasswordGrant + bsiFetchMe */

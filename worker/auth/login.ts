@@ -106,7 +106,7 @@ export async function handleLogin(
   try {
     const cfg = requireAuthConfig(env, {
       needRecaptcha: true,
-      needApiKey: true,
+      needApiKey: false,
       baseUrl,
     });
     if (!cfg) {

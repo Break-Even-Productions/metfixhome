@@ -657,7 +657,7 @@ describe("AU7", () => {
       expect(pt).toContain(ACCESS2);
       expect(pt).toContain(REFRESH1);
     }
-    // Variant N0: no refresh_token → DO keeps REFRESH1
+    // Variant N0 (r1.32+): no refresh_token → 503, DO pair unchanged (AU27.7 d)
     {
       const h = createHarness({
         refresh: () =>
@@ -673,12 +673,15 @@ describe("AU7", () => {
         r.access_exp = Date.now() + 30_000;
       });
       const before = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
-      await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
+      const [a, c] = await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
+      expect(a.status).toBe(503);
+      expect(c.status).toBe(503);
       expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
       const blob = (await sessionBlob(h, sid))?.blob ?? "";
       const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
-      expect(pt).toContain(ACCESS2);
+      expect(pt).toContain(ACCESS1);
       expect(pt).toContain(REFRESH1);
+      expect(pt).not.toContain(ACCESS2);
     }
     // Variant R: rotating → REFRESH2
     {

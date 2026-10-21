@@ -66,7 +66,12 @@ describe("AU2", () => {
     const me = meFetches[0]!;
     expect(me.method).toBe("GET");
     expect(me.headers.authorization).toMatch(/^Bearer /);
-    expect(me.headers["x-api-key"]).toBe(KEY);
+    expect(me.headers["x-api-key"]).toBeUndefined();
+    expect(Object.keys(me.headers).sort()).toStrictEqual([
+      "accept",
+      "authorization",
+      "user-agent",
+    ]);
 
     expect(h.fetches.filter((x) => x.url.includes("/auth/web-login")).length).toBe(0);
     expect(

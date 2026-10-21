@@ -45,6 +45,9 @@ export type SessionDoEnv = Pick<
 };
 
 export class SessionDO {
+  /** Coalesce concurrent ensure-access / refresh into one upstream token POST (AU27.8). */
+  private refreshInflight: Promise<Response> | null = null;
+
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: SessionDoEnv,
@@ -119,9 +122,19 @@ export class SessionDO {
     return fetch;
   }
 
-  /** Serialise refresh via real DO input-gate (blockConcurrencyWhile). */
-  private async withRefreshLock<T extends Response>(fn: () => Promise<T>): Promise<T> {
-    return this.state.blockConcurrencyWhile(fn);
+  /**
+   * Single-flight refresh: concurrent callers share one ensureAccess/applyRefresh.
+   * blockConcurrencyWhile alone would re-run after a 503 (pair unchanged); coalescing
+   * keeps exactly one /oauth/token POST for success, invalid_grant, and 5xx (AU27.8).
+   */
+  private async withRefreshLock(fn: () => Promise<Response>): Promise<Response> {
+    if (!this.refreshInflight) {
+      this.refreshInflight = this.state.blockConcurrencyWhile(fn).finally(() => {
+        this.refreshInflight = null;
+      });
+    }
+    const shared = await this.refreshInflight;
+    return shared.clone();
   }
 
   private async get(aad: string): Promise<Response> {
@@ -196,7 +209,7 @@ export class SessionDO {
       opts.force === true || record.access_exp - now <= REFRESH_WINDOW_MS;
     if (!needsRefresh) return json({ status: "ok", record });
     const cfg = requireAuthConfig(this.env as Env, {
-      needApiKey: true,
+      needApiKey: false,
       baseUrl: opts.baseUrl,
     });
     if (!cfg) {
@@ -209,6 +222,7 @@ export class SessionDO {
       fetchImpl,
       { baseUrl: opts.baseUrl, timeoutMs: 5000 },
     );
+    // Map on code + grant type (§0v.3): refresh invalid_grant → end session (any status).
     if (upstream.kind === "http" && upstream.code === "invalid_grant") {
       await this.state.storage.deleteAll();
       return json({ status: "expired" }, 401);
@@ -229,15 +243,33 @@ export class SessionDO {
       const ra = parseRetryAfter(null);
       return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
     }
+    // Rotation required: 200 without refresh_token → 503, keep current pair (§0v.4).
+    if (typeof tok.refresh_token !== "string" || tok.refresh_token.length === 0) {
+      const ra = parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    // Store ACCESS2/R1 atomically before /me — R0 is never kept (§0v.4 / AU27.9).
+    record.bsi_access = tok.access_token;
+    record.bsi_refresh = tok.refresh_token;
+    record.access_exp =
+      now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
+    record.last_seen = now;
+    await this.put(aad, record);
+
     const meRes = await bsiFetchMe(tok.access_token, this.env as Env, fetchImpl, {
       baseUrl: opts.baseUrl,
       timeoutMs: 5000,
     });
+    if (meRes.kind === "http" && meRes.status === 401) {
+      await this.state.storage.deleteAll();
+      return json({ status: "expired" }, 401);
+    }
     if (meRes.kind !== "ok") {
       const ra =
         meRes.kind === "http" || meRes.kind === "bad_json"
           ? (meRes.retryAfter ?? parseRetryAfter(null))
           : parseRetryAfter(null);
+      // Keep R1; never restore R0.
       return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
     }
     const profile = parseBsiMeProfile(meRes.json);
@@ -245,13 +277,6 @@ export class SessionDO {
       const ra = parseRetryAfter(null);
       return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
     }
-    record.bsi_access = tok.access_token;
-    if (typeof tok.refresh_token === "string" && tok.refresh_token) {
-      record.bsi_refresh = tok.refresh_token;
-    }
-    record.access_exp =
-      now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
-    record.last_seen = now;
     record.user_public_name = profile.display_name;
     record.bsi_user_id = String(profile.id);
     record.can_moderate = profile.can_moderate;

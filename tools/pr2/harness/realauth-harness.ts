@@ -318,7 +318,7 @@ export function createHarness(opts?: {
   sessionOutage?: "throw";
   oauthOutage?: "throw" | "hang";
   sessionEncKeyPrev?: string;
-  /** Mock POST /oauth/token (password + refresh_token grants). */
+  /** Mock POST /oauth/token (password + refresh_token + authorization_code). */
   oauthToken?: (req: Request) => Response | Promise<Response>;
   /** Mock GET /wp-json/bsi/v1/me. */
   bsiMe?: (req: Request) => Response | Promise<Response>;
@@ -329,8 +329,15 @@ export function createHarness(opts?: {
   revoke?: "throw" | ((req: Request) => Response | Promise<Response>);
   refresh?: (req: Request) => Response | Promise<Response>;
   siteverify?: (req: Request) => Response | Promise<Response>;
+  /**
+   * When true, REFRESH1 is accepted once (→ ACCESS2/REFRESH2); reuse → invalid_grant.
+   * Default false keeps REFRESH2 reusable for non-rotation tests.
+   */
+  rotatingRefresh?: boolean;
 }) {
   let now = Date.now();
+  /** When rotatingRefresh: REFRESH1 accepted once. */
+  let r0Used = false;
   const kv = makeRecordingKv(() => now);
   /** Filled after fetchImpl is built — SessionDO must not use globalThis.fetch (AU26.8 / CQ r2). */
   const sessionFetch = { current: fetch as FetchImpl };
@@ -434,6 +441,7 @@ export function createHarness(opts?: {
     }
     if (
       !url.includes("brokenscience.org") &&
+      !url.includes("brokenstaging.wpengine.com") &&
       !url.includes("oauth2.googleapis.com") &&
       !url.includes("googleapis.com")
     ) {
@@ -459,9 +467,24 @@ export function createHarness(opts?: {
           user_id: 999,
         });
       }
+      if (grant === "authorization_code") {
+        return Response.json({
+          access_token: ACCESS1,
+          refresh_token: REFRESH1,
+          expires_in: 3600,
+          token_type: "Bearer",
+          user_id: 999,
+        });
+      }
       if (grant === "refresh_token") {
         const rt = form.get("refresh_token");
         if (rt === REFRESH1) {
+          if (opts?.rotatingRefresh) {
+            if (r0Used) {
+              return Response.json({ error: "invalid_grant" }, { status: 400 });
+            }
+            r0Used = true;
+          }
           return Response.json({
             access_token: ACCESS2,
             refresh_token: REFRESH2,
@@ -482,6 +505,14 @@ export function createHarness(opts?: {
         return Response.json({ error: "invalid_grant" }, { status: 400 });
       }
       return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
+    }
+    // §0v.1 Q6: POST {origin}/oauth/revoke (not the WP proxy path).
+    if (url.includes("/oauth/revoke") && !url.includes("/proxy/oauth/revoke")) {
+      if (opts?.revoke === "throw") throw new Error("revoke_timeout");
+      if (typeof opts?.revoke === "function") {
+        return opts.revoke(new Request(url, { method, headers, body: bodyText }));
+      }
+      return Response.json({ revoked: true }, { status: 200 });
     }
     if (url.includes("/wp-json/bsi/v1/me") || /\/bsi\/v1\/me(?:\?|$)/.test(url)) {
       if (opts?.bsiMe) {

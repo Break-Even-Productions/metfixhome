@@ -9,6 +9,7 @@ import {
   GOOGLE_JWKS_URL,
   GOOGLE_WEB_CLIENT_ID,
   ORIGIN,
+  SECRET_CANARY,
   WP_BRIDGE_CODE,
   createHarness,
   googleStart,
@@ -243,24 +244,33 @@ describe("AU11", () => {
     expect(tok.bodyText).toContain("client_secret=");
   });
 
-  it("AU11.3 WP code exchange body 4 keys no code_verifier", async () => {
+  it("AU11.3 WP code exchange POST /oauth/token 5 keys incl client_secret; 0 proxy", async () => {
     const h = createHarness({ googleEnabled: true });
     const { res } = await signedCallback(h);
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toBe("/the-daily-fix");
-    const c3 = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token"));
-    expect(c3.length).toBe(1);
-    const body = JSON.parse(c3[0]!.bodyText) as Record<string, unknown>;
+    expect(h.fetches.filter((f) => f.url.includes("/wp-json/metfix/v1/proxy/")).length).toBe(0);
+    const toks = h.fetches.filter(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/"),
+    );
+    const codeTok = toks.find((f) => {
+      const form = Object.fromEntries(new URLSearchParams(f.bodyText));
+      return form.grant_type === "authorization_code";
+    });
+    expect(codeTok).toBeTruthy();
+    expect(codeTok!.url).toBe("https://brokenscience.org/oauth/token");
+    const body = Object.fromEntries(new URLSearchParams(codeTok!.bodyText));
     expect(Object.keys(body).sort()).toStrictEqual(
-      ["client_id", "code", "grant_type", "redirect_uri"].sort(),
+      ["client_id", "client_secret", "code", "grant_type", "redirect_uri"].sort(),
     );
     expect(body).toStrictEqual({
       grant_type: "authorization_code",
       code: WP_BRIDGE_CODE,
       client_id: CID,
+      client_secret: SECRET_CANARY,
       redirect_uri: "https://metfix.org/api/auth/callback",
     });
-    expect(c3[0]!.bodyText).not.toContain("code_verifier");
+    expect(codeTok!.bodyText).not.toContain("code_verifier");
   });
 
   it("AU11.4 browser GET /api/auth/callback rejects", async () => {

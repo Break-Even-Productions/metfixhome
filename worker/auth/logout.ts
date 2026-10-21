@@ -1,5 +1,5 @@
 import type { Env, FetchImpl } from "../upstream";
-import { bsiRevokeToken, oauthClientId } from "../upstream";
+import { oauthRevokeToken } from "../upstream";
 import { requireCsrf } from "./csrf";
 import { SID_COOKIE, clearHostCookie, getSid } from "./cookies";
 import { sha256Prefix12 } from "./crypto";
@@ -37,9 +37,11 @@ export async function handleLogout(
   }
 
   let refresh: string | null = null;
+  let access: string | null = null;
   try {
     const rec = await destroySession(env, sid);
     refresh = rec?.bsi_refresh ?? null;
+    access = rec?.bsi_access ?? null;
   } catch {
     const hex = await sessionKeyHex(sid);
     console.log("session_logout_do_failed", await sha256Prefix12(hex));
@@ -50,14 +52,27 @@ export async function handleLogout(
     }
   }
 
-  const clientId = oauthClientId(env);
-  if (refresh && clientId) {
+  const baseUrl = opts?.bsiBaseUrl ?? opts?.baseUrl;
+  // §0v.1 Q6: two /oauth/revoke calls — refresh first, then access; no secret.
+  if (refresh) {
     try {
-      await bsiRevokeToken(
-        { client_id: clientId, refresh_token: refresh },
+      await oauthRevokeToken(
+        { token: refresh, token_type_hint: "refresh_token" },
         env,
         fetchImpl,
-        { baseUrl: opts?.bsiBaseUrl ?? opts?.baseUrl },
+        { baseUrl },
+      );
+    } catch {
+      console.log("bsi_revoke_failed");
+    }
+  }
+  if (access) {
+    try {
+      await oauthRevokeToken(
+        { token: access, token_type_hint: "access_token" },
+        env,
+        fetchImpl,
+        { baseUrl },
       );
     } catch {
       console.log("bsi_revoke_failed");

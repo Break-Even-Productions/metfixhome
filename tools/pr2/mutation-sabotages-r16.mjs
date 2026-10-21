@@ -34,31 +34,21 @@ export const R16_OVERRIDES = {
     apply() {
       replaceOnce(
         "worker/do/session.ts",
-        `    record.bsi_access = tok.access_token;
-    if (typeof tok.refresh_token === "string" && tok.refresh_token) {
-      record.bsi_refresh = tok.refresh_token;
-    }
+        `    // Store ACCESS2/R1 atomically before /me — R0 is never kept (§0v.4 / AU27.9).
+    record.bsi_access = tok.access_token;
+    record.bsi_refresh = tok.refresh_token;
     record.access_exp =
       now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
     record.last_seen = now;
-    record.user_public_name = profile.display_name;
-    record.bsi_user_id = String(profile.id);
-    record.can_moderate = profile.can_moderate;
-    await this.put(aad, record);
-    return json({ status: "ok", record, refreshed: true });
-  }`,
-        `    record.bsi_access = tok.access_token;
+    await this.put(aad, record);`,
+        `    // Store ACCESS2/R1 atomically before /me — R0 is never kept (§0v.4 / AU27.9).
+    record.bsi_access = tok.access_token;
     // MUTANT M-DT7: write only access; keep old refresh token
     void tok.refresh_token;
     record.access_exp =
       now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
     record.last_seen = now;
-    record.user_public_name = profile.display_name;
-    record.bsi_user_id = String(profile.id);
-    record.can_moderate = profile.can_moderate;
-    await this.put(aad, record);
-    return json({ status: "ok", record, refreshed: true });
-  }`,
+    await this.put(aad, record);`,
         "M-DT7-refresh",
       );
       replaceOnce(
@@ -79,5 +69,3 @@ export const R16_OVERRIDES = {
     },
   },
 };
-
-export default R16_OVERRIDES;

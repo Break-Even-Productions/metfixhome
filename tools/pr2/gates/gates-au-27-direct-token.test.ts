@@ -13,6 +13,7 @@ import {
   ACCESS2,
   BSI_ME_URL,
   CID,
+  CODE,
   ENCKEY,
   IP,
   KEY,
@@ -24,11 +25,17 @@ import {
   RSECRET,
   SECRET_CANARY,
   TOK,
+  WP_BRIDGE_CODE,
   createHarness,
   csrfSid,
+  googleStart,
   hOk,
+  mintGoogleOidcKeys,
+  sessKvKey,
   setupAuthHooks,
   sidHex,
+  signGoogleIdToken,
+  validIdTokenClaims,
 } from "../harness/realauth-harness";
 import { decryptSessionPayload, encryptSessionPayload } from "../../../worker/auth/crypto";
 
@@ -202,14 +209,13 @@ describe("AU27.2", () => {
       "accept",
       "authorization",
       "user-agent",
-      "x-api-key",
     ]);
     expect(meUp[0]!.headers.authorization).toBe(`Bearer ${ACCESS1}`);
-    expect(meUp[0]!.headers["x-api-key"]).toBe(KEY);
+    expect(meUp[0]!.headers["x-api-key"]).toBeUndefined();
     expect(meUp[0]!.bodyText).toBe("");
     forbiddenIpHeaders(
       Object.fromEntries(
-        Object.entries(meUp[0]!.headers).filter(([k]) => k !== "authorization" && k !== "x-api-key"),
+        Object.entries(meUp[0]!.headers).filter(([k]) => k !== "authorization"),
       ),
     );
 
@@ -620,9 +626,121 @@ async function patchSession(
   return rec;
 }
 
+async function commentPost(h: ReturnType<typeof createHarness>, sid: string) {
+  const csrf = await csrfSid(h.env, sid);
+  return h.call("/api/daily-fix/comments", {
+    method: "POST",
+    headers: hOk({ sid, csrf }),
+    body: JSON.stringify({
+      date: "2025-02-10",
+      type: "belly",
+      content: "hi",
+      recaptcha: TOK,
+    }),
+  });
+}
+
+function refreshTokenValues(h: ReturnType<typeof createHarness>): string[] {
+  return tokenFetches(h)
+    .map((f) => Object.fromEntries(new URLSearchParams(f.bodyText)))
+    .filter((form) => form.grant_type === "refresh_token")
+    .map((form) => form.refresh_token ?? "");
+}
+
+function proxyFetches(h: ReturnType<typeof createHarness>) {
+  return h.fetches.filter((f) => f.url.includes("/wp-json/metfix/v1/proxy/"));
+}
+
+async function signedGoogleCallback(h: ReturnType<typeof createHarness>) {
+  const keys = await mintGoogleOidcKeys();
+  const { state, preCookie, rec } = await googleStart(h, "intent=login&return=/the-daily-fix");
+  expect(rec?.nonce).toBeTruthy();
+  const claims = await validIdTokenClaims(h, rec!.nonce, {});
+  const idToken = await signGoogleIdToken(keys.privateKey, keys.kid, claims);
+  h.installGoogleOidc(keys, idToken);
+  const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+    headers: { Cookie: preCookie },
+  });
+  return { res, state, preCookie };
+}
+
+function expireForRefresh(
+  h: ReturnType<typeof createHarness>,
+  sid: string,
+  refresh = REFRESH1,
+) {
+  return patchSession(h, sid, (r) => {
+    r.access_exp = Date.now() + 10_000;
+    r.bsi_refresh = refresh;
+    r.bsi_access = ACCESS1;
+  });
+}
+
 describe("AU27.7", () => {
-  it("AU27.7 refresh keeps REFRESH1 when omitted; stores REFRESH2 when returned", async () => {
-    let phase: "omit" | "rotate" = "omit";
+  it("AU27.7 (a) rotating mock stores ACCESS2/R1; next refresh sends R1; R0 once", async () => {
+    const h = createHarness({ rotatingRefresh: true });
+    const { sid } = await h.login();
+    await expireForRefresh(h, sid);
+
+    const meBefore = meFetches(h).length;
+    const tokBefore = refreshTokenValues(h).length;
+    const res = await commentPost(h, sid);
+    expect(res.status).toBe(201);
+    expect(meFetches(h).length - meBefore).toBe(1);
+    expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+
+    const after = await patchSession(h, sid, () => {});
+    expect(after.bsi_access).toBe(ACCESS2);
+    expect(after.bsi_refresh).toBe(REFRESH2);
+
+    await expireForRefresh(h, sid, REFRESH2);
+    const res2 = await commentPost(h, sid);
+    expect(res2.status).toBe(201);
+    const rts = refreshTokenValues(h);
+    expect(rts.filter((t) => t === REFRESH1).length).toBe(1);
+    expect(rts[rts.length - 1]).toBe(REFRESH2);
+    expect(proxyFetches(h).length).toBe(0);
+  });
+
+  it("AU27.7 (b) refresh invalid_grant 400/401 → signed_out; DO/KV cleared", async () => {
+    for (const status of [400, 401]) {
+      const h = createHarness({
+        oauthToken: async (req) => {
+          const form = new URLSearchParams(await req.text());
+          if (form.get("grant_type") === "password") {
+            return Response.json({
+              access_token: ACCESS1,
+              refresh_token: REFRESH1,
+              expires_in: 3600,
+            });
+          }
+          return Response.json({ error: "invalid_grant" }, { status });
+        },
+      });
+      const { sid } = await h.login();
+      const hex = await sidHex(sid);
+      const aad = sessionAad(hex);
+      await expireForRefresh(h, sid);
+      const tokBefore = refreshTokenValues(h).length;
+
+      const acting = await commentPost(h, sid);
+      expect(acting.status).toBe(401);
+      expect(await acting.json()).toStrictEqual({ error: "signed_out" });
+      expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+
+      const me = await h.call("/api/auth/me", {
+        headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+      });
+      // Cookie present but session gone → 401 signed_out (AU7.7 / AU8.4 contract).
+      expect(me.status).toBe(401);
+      expect(await me.json()).toStrictEqual({ error: "signed_out" });
+      expect(h.sessionNs.getStorage(aad)?.size ?? 0).toBe(0);
+      expect(h.sessionNs.getAlarm(aad)).toBeNull();
+      expect(await h.kv.get(sessKvKey(hex))).toBeNull();
+    }
+  });
+
+  it("AU27.7 (c) refresh 5xx → 503; DO pair unchanged", async () => {
     const h = createHarness({
       oauthToken: async (req) => {
         const form = new URLSearchParams(await req.text());
@@ -631,66 +749,408 @@ describe("AU27.7", () => {
             access_token: ACCESS1,
             refresh_token: REFRESH1,
             expires_in: 3600,
-            user_id: 999,
           });
         }
-        expect(form.get("grant_type")).toBe("refresh_token");
-        expect(form.get("client_id")).toBe(CID);
-        expect(form.get("client_secret")).toBe(SECRET_CANARY);
-        if (phase === "omit") {
-          expect(form.get("refresh_token")).toBe(REFRESH1);
-          return Response.json({ access_token: ACCESS2, expires_in: 3600 });
-        }
-        expect(form.get("refresh_token")).toBe(REFRESH1);
-        return Response.json({
-          access_token: ACCESS2,
-          refresh_token: REFRESH2,
-          expires_in: 3600,
-        });
+        return new Response("boom", { status: 503 });
       },
-      bsiMe: () => Response.json({ id: 42, display_name: "Jane From Me" }),
     });
     const { sid } = await h.login();
-    const csrf = await csrfSid(h.env, sid);
+    await expireForRefresh(h, sid);
+    const before = await patchSession(h, sid, () => {});
+    const res = await commentPost(h, sid);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toStrictEqual({ error: "unavailable" });
+    const after = await patchSession(h, sid, () => {});
+    expect(after.bsi_access).toBe(before.bsi_access);
+    expect(after.bsi_refresh).toBe(before.bsi_refresh);
+    expect(after.bsi_access).toBe(ACCESS1);
+    expect(after.bsi_refresh).toBe(REFRESH1);
+  });
 
-    await patchSession(h, sid, (r) => {
-      r.access_exp = Date.now() + 10_000;
-      r.bsi_refresh = REFRESH1;
+  it("AU27.7 (d) 200 without refresh_token → 503; DO unchanged", async () => {
+    const h = createHarness({
+      oauthToken: async (req) => {
+        const form = new URLSearchParams(await req.text());
+        if (form.get("grant_type") === "password") {
+          return Response.json({
+            access_token: ACCESS1,
+            refresh_token: REFRESH1,
+            expires_in: 3600,
+          });
+        }
+        return Response.json({ access_token: ACCESS2, expires_in: 3600 });
+      },
     });
-    phase = "omit";
+    const { sid } = await h.login();
+    await expireForRefresh(h, sid);
+    const before = await patchSession(h, sid, () => {});
+    const res = await commentPost(h, sid);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toStrictEqual({ error: "unavailable" });
+    const after = await patchSession(h, sid, () => {});
+    expect(after.bsi_access).toBe(before.bsi_access);
+    expect(after.bsi_refresh).toBe(before.bsi_refresh);
+    expect(after.bsi_refresh).toBe(REFRESH1);
+    expect(after.bsi_access).toBe(ACCESS1);
+  });
+});
+
+describe("AU27.8", () => {
+  it("AU27.8 single-flight: 20 concurrent refreshes → 1 token + 1 /me; all ACCESS2", async () => {
+    const h = createHarness({ rotatingRefresh: true });
+    h.env.COMMENT_WRITE_LIMITER = { async limit() { return { success: true }; } };
+    const { sid } = await h.login();
+    await expireForRefresh(h, sid);
+
+    const tokBefore = refreshTokenValues(h).length;
     const meBefore = meFetches(h).length;
-    await h.call("/api/daily-fix/comments", {
-      method: "POST",
-      headers: hOk({ sid, csrf }),
-      body: JSON.stringify({
-        date: "2025-02-10",
-        type: "belly",
-        content: "hi",
-        recaptcha: TOK,
-      }),
-    });
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => commentPost(h, sid)),
+    );
+    expect(results.every((r) => r.status === 201)).toBe(true);
+    expect(refreshTokenValues(h).length - tokBefore).toBe(1);
     expect(meFetches(h).length - meBefore).toBe(1);
-    const afterOmit = await patchSession(h, sid, () => {});
-    expect(afterOmit.bsi_refresh).toBe(REFRESH1);
-    expect(afterOmit.bsi_access).toBe(ACCESS2);
-    expect(afterOmit.user_public_name).toBe("Jane From Me");
+    expect(refreshTokenValues(h).filter((t) => t === REFRESH1).length).toBe(1);
 
-    await patchSession(h, sid, (r) => {
-      r.access_exp = Date.now() + 10_000;
-      r.bsi_refresh = REFRESH1;
+    const bearers = h.fetches
+      .filter(
+        (f) =>
+          f.url.includes("/daily-fix/comments") &&
+          f.method === "POST" &&
+          (f.headers.authorization ?? "").startsWith("Bearer "),
+      )
+      .map((f) => f.headers.authorization);
+    expect(bearers.length).toBeGreaterThanOrEqual(20);
+    expect(bearers.every((a) => a === `Bearer ${ACCESS2}`)).toBe(true);
+
+    const after = await patchSession(h, sid, () => {});
+    expect(after.bsi_access).toBe(ACCESS2);
+    expect(after.bsi_refresh).toBe(REFRESH2);
+  });
+
+  it("AU27.8 failure shared: invalid_grant → 1 token; all 401; DO empty", async () => {
+    const h = createHarness({
+      oauthToken: async (req) => {
+        const form = new URLSearchParams(await req.text());
+        if (form.get("grant_type") === "password") {
+          return Response.json({
+            access_token: ACCESS1,
+            refresh_token: REFRESH1,
+            expires_in: 3600,
+          });
+        }
+        return Response.json({ error: "invalid_grant" }, { status: 400 });
+      },
     });
-    phase = "rotate";
-    await h.call("/api/daily-fix/comments", {
-      method: "POST",
-      headers: hOk({ sid, csrf }),
-      body: JSON.stringify({
-        date: "2025-02-10",
-        type: "belly",
-        content: "hi2",
-        recaptcha: TOK,
-      }),
+    h.env.COMMENT_WRITE_LIMITER = { async limit() { return { success: true }; } };
+    const { sid } = await h.login();
+    const hex = await sidHex(sid);
+    const aad = sessionAad(hex);
+    await expireForRefresh(h, sid);
+    const tokBefore = refreshTokenValues(h).length;
+
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => commentPost(h, sid)),
+    );
+    expect(results.every((r) => r.status === 401)).toBe(true);
+    expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+    expect(h.sessionNs.getStorage(aad)?.size ?? 0).toBe(0);
+    expect(await h.kv.get(sessKvKey(hex))).toBeNull();
+  });
+
+  it("AU27.8 failure shared: refresh 503 → 1 token; all 503; DO unchanged", async () => {
+    const h = createHarness({
+      oauthToken: async (req) => {
+        const form = new URLSearchParams(await req.text());
+        if (form.get("grant_type") === "password") {
+          return Response.json({
+            access_token: ACCESS1,
+            refresh_token: REFRESH1,
+            expires_in: 3600,
+          });
+        }
+        return new Response("up", { status: 503 });
+      },
     });
-    const afterRot = await patchSession(h, sid, () => {});
-    expect(afterRot.bsi_refresh).toBe(REFRESH2);
+    h.env.COMMENT_WRITE_LIMITER = { async limit() { return { success: true }; } };
+    const { sid } = await h.login();
+    await expireForRefresh(h, sid);
+    const before = await patchSession(h, sid, () => {});
+    const tokBefore = refreshTokenValues(h).length;
+
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => commentPost(h, sid)),
+    );
+    expect(results.every((r) => r.status === 503)).toBe(true);
+    expect(refreshTokenValues(h).length - tokBefore).toBe(1);
+    const after = await patchSession(h, sid, () => {});
+    expect(after.bsi_access).toBe(before.bsi_access);
+    expect(after.bsi_refresh).toBe(before.bsi_refresh);
+  });
+});
+
+describe("AU27.9", () => {
+  it("AU27.9 store-before-/me: DO already holds R1 when /me runs; keep vs end", async () => {
+    // Success path: in-handler DO read sees REFRESH2 before /me returns
+    {
+      let mePhase: "login" | "refresh" = "login";
+      let sid = "";
+      const h = createHarness({
+        rotatingRefresh: true,
+        bsiMe: async () => {
+          if (mePhase === "refresh") {
+            const hex = await sidHex(sid);
+            const aad = sessionAad(hex);
+            const blob = (h.sessionNs.getStorage(aad)?.get("rec") as { blob: string })?.blob;
+            const pt = await decryptSessionPayload(blob!, aad, ENCKEY);
+            const rec = JSON.parse(pt!) as { bsi_refresh?: string; bsi_access?: string };
+            expect(rec.bsi_refresh).toBe(REFRESH2);
+            expect(rec.bsi_refresh).not.toBe(REFRESH1);
+            expect(rec.bsi_access).toBe(ACCESS2);
+          }
+          return Response.json({ id: 42, display_name: "Jane" });
+        },
+      });
+      const login = await h.login();
+      sid = login.sid;
+      mePhase = "refresh";
+      await expireForRefresh(h, sid);
+      expect((await commentPost(h, sid)).status).toBe(201);
+      expect(refreshTokenValues(h).filter((t) => t === REFRESH1).length).toBe(1);
+    }
+
+    // /me non-401 failures → 503, keep ACCESS2/R1; never reuse R0
+    for (const fail of [
+      () => new Response("{}", { status: 500 }),
+      () => new Response("{}", { status: 403 }),
+      () => Response.json({ id: "7", display_name: "Jane" }),
+      () => Response.json({ display_name: "Jane" }),
+      () =>
+        new Response("not-json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    ]) {
+      let mePhase: "login" | "fail" | "ok" = "login";
+      let sidFail = "";
+      const hFail = createHarness({
+        rotatingRefresh: true,
+        bsiMe: async () => {
+          if (mePhase === "fail" || mePhase === "ok") {
+            const hex = await sidHex(sidFail);
+            const aad = sessionAad(hex);
+            const blob = (hFail.sessionNs.getStorage(aad)?.get("rec") as { blob: string })?.blob;
+            const pt = await decryptSessionPayload(blob!, aad, ENCKEY);
+            const rec = JSON.parse(pt!) as { bsi_refresh?: string };
+            expect(rec.bsi_refresh).toBe(REFRESH2);
+            expect(rec.bsi_refresh).not.toBe(REFRESH1);
+          }
+          if (mePhase === "fail") return fail();
+          return Response.json({ id: 42, display_name: "Jane" });
+        },
+      });
+      const loginFail = await hFail.login();
+      sidFail = loginFail.sid;
+      mePhase = "fail";
+      await expireForRefresh(hFail, sidFail);
+      const res = await commentPost(hFail, sidFail);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toStrictEqual({ error: "unavailable" });
+      const kept = await patchSession(hFail, sidFail, () => {});
+      expect(kept.bsi_refresh).toBe(REFRESH2);
+      expect(kept.bsi_access).toBe(ACCESS2);
+      expect(refreshTokenValues(hFail).filter((t) => t === REFRESH1).length).toBe(1);
+
+      await expireForRefresh(hFail, sidFail, REFRESH2);
+      mePhase = "ok";
+      expect((await commentPost(hFail, sidFail)).status).toBe(201);
+      const rts = refreshTokenValues(hFail);
+      expect(rts.filter((t) => t === REFRESH1).length).toBe(1);
+      expect(rts[rts.length - 1]).toBe(REFRESH2);
+    }
+
+    // /me 401 → end session; 0 further token POSTs
+    {
+      let mePhase: "login" | "fail" = "login";
+      let sid401 = "";
+      const h401 = createHarness({
+        rotatingRefresh: true,
+        bsiMe: async () => {
+          if (mePhase === "fail") {
+            const hex = await sidHex(sid401);
+            const aad = sessionAad(hex);
+            const blob = (h401.sessionNs.getStorage(aad)?.get("rec") as { blob: string })?.blob;
+            const pt = await decryptSessionPayload(blob!, aad, ENCKEY);
+            expect(JSON.parse(pt!).bsi_refresh).toBe(REFRESH2);
+            return new Response("{}", { status: 401 });
+          }
+          return Response.json({ id: 42, display_name: "Jane" });
+        },
+      });
+      const l = await h401.login();
+      sid401 = l.sid;
+      const hex = await sidHex(sid401);
+      const aad = sessionAad(hex);
+      mePhase = "fail";
+      await expireForRefresh(h401, sid401);
+      const tokBefore = refreshTokenValues(h401).length;
+      const res = await commentPost(h401, sid401);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toStrictEqual({ error: "signed_out" });
+      expect(h401.sessionNs.getStorage(aad)?.size ?? 0).toBe(0);
+      expect(await h401.kv.get(sessKvKey(hex))).toBeNull();
+      expect(
+        await (
+          await h401.call("/api/auth/me", {
+            headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid401)}` },
+          })
+        ).json(),
+      ).toStrictEqual({ error: "signed_out" });
+
+      const nFetch = h401.fetches.length;
+      for (let i = 0; i < 3; i++) {
+        expect((await commentPost(h401, sid401)).status).toBe(401);
+      }
+      expect(h401.fetches.length).toBe(nFetch);
+      expect(refreshTokenValues(h401).length - tokBefore).toBe(1);
+    }
+  });
+});
+
+describe("AU27.10", () => {
+  it("AU27.10 (a) Google code exchange: 5-key /oauth/token; 0 proxy; /me Bearer ACCESS1", async () => {
+    const h = createHarness({ googleEnabled: true });
+    const { res } = await signedGoogleCallback(h);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+
+    expect(proxyFetches(h).length).toBe(0);
+    // No x-api-key on /oauth/token or /me (social/bridge may still use the API key).
+    for (const f of [...tokenFetches(h), ...meFetches(h)]) {
+      expect(f.headers["x-api-key"]).toBeUndefined();
+    }
+
+    const codeToks = tokenFetches(h).filter((f) => {
+      const form = Object.fromEntries(new URLSearchParams(f.bodyText));
+      return form.grant_type === "authorization_code";
+    });
+    expect(codeToks.length).toBe(1);
+    expect(codeToks[0]!.url).toBe(OAUTH_TOKEN_URL);
+    expect(Object.keys(codeToks[0]!.headers).sort()).toStrictEqual([
+      "accept",
+      "content-type",
+      "user-agent",
+    ]);
+    const form = Object.fromEntries(new URLSearchParams(codeToks[0]!.bodyText));
+    expect(form).toStrictEqual({
+      grant_type: "authorization_code",
+      code: WP_BRIDGE_CODE,
+      redirect_uri: "https://metfix.org/api/auth/callback",
+      client_id: CID,
+      client_secret: SECRET_CANARY,
+    });
+    expect(Object.keys(form).sort()).toStrictEqual([
+      "client_id",
+      "client_secret",
+      "code",
+      "grant_type",
+      "redirect_uri",
+    ]);
+
+    const mes = meFetches(h);
+    expect(mes.length).toBe(1);
+    expect(mes[0]!.headers.authorization).toBe(`Bearer ${ACCESS1}`);
+    expect(mes[0]!.headers["x-api-key"]).toBeUndefined();
+    expect(Object.keys(mes[0]!.headers).sort()).toStrictEqual([
+      "accept",
+      "authorization",
+      "user-agent",
+    ]);
+
+    const text = await res.clone().text();
+    expect(text).not.toContain(SECRET_CANARY);
+    expect(text).not.toContain(ACCESS1);
+    expect(text).not.toContain(REFRESH1);
+  });
+
+  it("AU27.10 (b) authorization_code invalid_grant → 401 invalid_login (byte-identical to password)", async () => {
+    const hPw = createHarness({
+      oauthToken: () => Response.json({ error: "invalid_grant" }, { status: 400 }),
+    });
+    const pwRes = await loginPost(hPw);
+    expect(pwRes.status).toBe(401);
+    const pwBody = await pwRes.text();
+    expect(JSON.parse(pwBody)).toStrictEqual({ error: "invalid_login" });
+
+    for (const status of [400, 401]) {
+      const h = createHarness({
+        googleEnabled: true,
+        oauthToken: async (req) => {
+          const form = new URLSearchParams(await req.text());
+          if (form.get("grant_type") === "authorization_code") {
+            return Response.json({ error: "invalid_grant" }, { status });
+          }
+          return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
+        },
+      });
+      const { res } = await signedGoogleCallback(h);
+      expect(res.status).toBe(401);
+      const body = await res.text();
+      expect(body).toBe(pwBody);
+      expect(meFetches(h).length).toBe(0);
+      expect(proxyFetches(h).length).toBe(0);
+      expect(tokenFetches(h).length).toBe(1);
+      expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+    }
+  });
+});
+
+describe("AU27.Q1", () => {
+  it("AU27.Q1 refresh invalid_grant → 1 token POST; 5 further calls → 0 more token POSTs", async () => {
+    for (const status of [400, 401]) {
+      const h = createHarness({
+        oauthToken: async (req) => {
+          const form = new URLSearchParams(await req.text());
+          if (form.get("grant_type") === "password") {
+            return Response.json({
+              access_token: ACCESS1,
+              refresh_token: REFRESH1,
+              expires_in: 3600,
+            });
+          }
+          return Response.json({ error: "invalid_grant" }, { status });
+        },
+      });
+      const { sid } = await h.login();
+      const hex = await sidHex(sid);
+      const aad = sessionAad(hex);
+      await expireForRefresh(h, sid);
+
+      const first = await commentPost(h, sid);
+      expect(first.status).toBe(401);
+      expect(await first.json()).toStrictEqual({ error: "signed_out" });
+      expect(refreshTokenValues(h).length).toBe(1);
+      expect(h.sessionNs.getStorage(aad)?.size ?? 0).toBe(0);
+      expect(h.sessionNs.getAlarm(aad)).toBeNull();
+      expect(await h.kv.get(sessKvKey(hex))).toBeNull();
+
+      const nFetch = h.fetches.length;
+      for (let i = 0; i < 5; i++) {
+        const r = await commentPost(h, sid);
+        expect(r.status).toBe(401);
+        expect(await r.json()).toStrictEqual({ error: "signed_out" });
+      }
+      expect(h.fetches.length).toBe(nFetch);
+      expect(refreshTokenValues(h).length).toBe(1);
+      // password (1) + refresh (1) = 2 total token POSTs; no further refresh
+      expect(tokenFetches(h).length).toBe(2);
+
+      const me = await h.call("/api/auth/me", {
+        headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+      });
+      expect(me.status).toBe(401);
+      expect(await me.json()).toStrictEqual({ error: "signed_out" });
+    }
   });
 });
