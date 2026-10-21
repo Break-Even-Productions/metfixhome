@@ -586,7 +586,8 @@ describe("AU27.6", () => {
     });
     try {
       const h = createHarness({
-        oauthToken: () => new Response("boom", { status: 500 }),
+        oauthToken: () =>
+          Response.json({ error: "server_error", error_description: "boom" }, { status: 500 }),
       });
       await loginPost(h);
       expect(lines.length).toBeGreaterThanOrEqual(0);

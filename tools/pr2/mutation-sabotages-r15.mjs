@@ -269,6 +269,51 @@ export const R15_OVERRIDES = {
       );
     },
   },
+
+  /** r1.31: keep old can_moderate on refresh — red {CW12.3}. */
+  "M-CW32": {
+    files: ["worker/do/session.ts"],
+    apply() {
+      replaceOnce(
+        "worker/do/session.ts",
+        `    record.user_public_name = profile.display_name;
+    record.bsi_user_id = String(profile.id);
+    record.can_moderate = profile.can_moderate;
+    await this.put(aad, record);
+    return json({ status: "ok", record, refreshed: true });
+  }`,
+        `    record.user_public_name = profile.display_name;
+    record.bsi_user_id = String(profile.id);
+    // MUTANT M-CW32: keep old can_moderate on refresh
+    void profile.can_moderate;
+    await this.put(aad, record);
+    return json({ status: "ok", record, refreshed: true });
+  }`,
+        "M-CW32",
+      );
+    },
+  },
+
+  /** r1.31: globalThis.fetch bait on /oauth/token — red {AU26.8}. */
+  "M-WL14b": {
+    files: ["worker/auth/login.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/login.ts",
+        `  const baseUrl = opts?.bsiBaseUrl ?? opts?.baseUrl;
+
+  try {
+    const cfg = requireAuthConfig(env, {`,
+        `  const baseUrl = opts?.bsiBaseUrl ?? opts?.baseUrl;
+  // MUTANT M-WL14b scan bait
+  if (false) void globalThis.fetch(\`\${baseUrl}/oauth/token\`);
+
+  try {
+    const cfg = requireAuthConfig(env, {`,
+        "M-WL14b",
+      );
+    },
+  },
 };
 
 export default R15_OVERRIDES;
