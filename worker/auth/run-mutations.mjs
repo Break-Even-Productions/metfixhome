@@ -30,6 +30,7 @@ import { R6_OVERRIDES } from "./mutation-sabotages-r6.mjs";
 import { R7_OVERRIDES } from "./mutation-sabotages-r7.mjs";
 import { R8_OVERRIDES } from "./mutation-sabotages-r8.mjs";
 import { R9_OVERRIDES } from "./mutation-sabotages-r9.mjs";
+import { R10_OVERRIDES } from "./mutation-sabotages-r10.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -1419,6 +1420,9 @@ for (const [id, sab] of Object.entries(R8_OVERRIDES)) {
 for (const [id, sab] of Object.entries(R9_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
+for (const [id, sab] of Object.entries(R10_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 const RUNNER_KEEP = new Set([
   "worker/auth/run-mutations.mjs",
@@ -1429,6 +1433,7 @@ const RUNNER_KEEP = new Set([
   "worker/auth/mutation-sabotages-r7.mjs",
   "worker/auth/mutation-sabotages-r8.mjs",
   "worker/auth/mutation-sabotages-r9.mjs",
+  "worker/auth/mutation-sabotages-r10.mjs",
 ]);
 
 function patchMd5FromGit() {
