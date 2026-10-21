@@ -108,6 +108,44 @@ export const R9_OVERRIDES = {
     },
   },
 
+  // AU20.1 scans login console; AU7.8 is baseline-red. Leak banned PW+REFRESH1 on client_not_allowed.
+  M42k: {
+    files: ["worker/auth/login.ts", "worker/auth/logout.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/login.ts",
+        '    console.log("bsi_client_not_allowed", await sha256Prefix12(identifier));',
+        '    console.log("bsi_client_not_allowed", await sha256Prefix12(identifier), "pw_QA_SENT", "rt_QA_SENT_1_abcdefghijklmnopqrstuvwxyz"); // MUTANT M42k',
+        "M42k",
+      );
+      replaceOnce(
+        "worker/auth/logout.ts",
+        '      console.log("bsi_revoke_failed");',
+        '      console.error("revoke failed", { refresh_token: refresh }); // MUTANT M42k',
+        "M42k-lo",
+      );
+    },
+  },
+
+  // AU18.1 expects signup siteverify once before BSI — skip siteverify entirely
+  M79: {
+    files: ["worker/auth/signup.ts", "worker/comments.ts"],
+    apply() {
+      replaceOnce(
+        "worker/auth/signup.ts",
+        "  const sv = await siteverify(recaptcha, env.RECAPTCHA_SECRET, fetchImpl);",
+        '  const sv = "pass" as const; // MUTANT M79 skip siteverify\n  void siteverify; void recaptcha;',
+        "M79-signup",
+      );
+      replaceOnce(
+        "worker/comments.ts",
+        "  if (!env.RECAPTCHA_SECRET) return unavailable();\n  const sv = await siteverifyComment(token, env.RECAPTCHA_SECRET, fetchImpl);",
+        '  // MUTANT M79 skip comment siteverify\n  if (false && !env.RECAPTCHA_SECRET) return unavailable();\n  const sv = "ok" as const;\n  void siteverifyComment; void token;',
+        "M79-comment",
+      );
+    },
+  },
+
   // C5.2 requires #10 Sanity vite guard (skipped); C5.1 has no zero-hit assert
   M96: {
     ethanBlocker:
