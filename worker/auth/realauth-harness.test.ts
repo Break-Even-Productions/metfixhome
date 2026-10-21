@@ -9,9 +9,12 @@ import { OauthStateDO } from "../do/oauth-state";
 import { SessionDO } from "../do/session";
 import { bytesToBase64Url, csrfForSid, randomBytes, sha256Hex } from "./crypto";
 import { SID_COOKIE, PRE_COOKIE } from "./cookies";
-import { resetAuthLimiters } from "./auth-rate-limit";
-import { resetCommentLimiters } from "./comment-rate-limit";
+import type { RateLimitBinding } from "../upstream";
 import { sessKvKey, sessionAad, sessionKeyHex } from "./session";
+
+function allowAllLimiter(): RateLimitBinding {
+  return { async limit() { return { success: true }; } };
+}
 
 export { sessKvKey };
 
@@ -491,6 +494,13 @@ export function createHarness(opts?: {
     GOOGLE_WEB_CLIENT_ID,
     GOOGLE_WEB_CLIENT_SECRET: GSECRET,
     GOOGLE_AUTH_ENABLED: opts?.googleEnabled ? "1" : undefined,
+    SIGNUP_LIMITER: allowAllLimiter(),
+    USERNAME_CHECK_LIMITER: allowAllLimiter(),
+    GOOGLE_AUTH_LIMITER: allowAllLimiter(),
+    COMMENT_WRITE_LIMITER: allowAllLimiter(),
+    COMMENT_LIKE_LIMITER: allowAllLimiter(),
+    COMMENT_LIKE_TOGGLE_LIMITER: allowAllLimiter(),
+    LEADERBOARD_LIMITER: allowAllLimiter(),
   };
 
   const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
@@ -701,8 +711,6 @@ export async function sessionBlob(h: Harness, sid: string) {
 
 export function setupAuthHooks() {
   beforeEach(() => {
-    resetAuthLimiters();
-    resetCommentLimiters();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-10-12T12:00:00.000Z"));
   });

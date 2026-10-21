@@ -11,10 +11,8 @@ import {
   POST_BODY,
   callComments,
   destroySession,
-  getLimiterCalls,
   mockSiteverifyPass,
   okComment,
-  resetCommentLimiters,
   seedSession,
   setupGate,
   useGateHooks,
@@ -64,10 +62,9 @@ describe("PR2 gates P — comment POST", () => {
         replies: [],
       },
     });
-    expect(getLimiterCalls().some((c) => c.op === "write")).toBe(true);
+    expect(g.writeLimiter.calls.some((k) => k.startsWith("write:"))).toBe(true);
     expect(order.indexOf("siteverify")).toBeLessThan(order.indexOf("bsi"));
-    const limIdx = getLimiterCalls().findIndex((c) => c.op === "write");
-    expect(limIdx).toBeGreaterThanOrEqual(0);
+    expect(g.writeLimiter.calls.length).toBeGreaterThan(0);
   });
 
   it("P1.2 BSI 201 missing id → 503 unavailable Retry-After 300, 0 cache.delete", async () => {
@@ -256,7 +253,7 @@ describe("PR2 gates P — comment POST", () => {
 
   it("P4.1 logged out POST → 401 signed_out, 0 upstream siteverify and limiter", async () => {
     const g = setupGate();
-    resetCommentLimiters();
+    g.writeLimiter.calls.length = 0;
     const res = await callComments(g, "/api/daily-fix/comments", {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: "https://metfix.org" },
@@ -265,7 +262,7 @@ describe("PR2 gates P — comment POST", () => {
     expect(res?.status).toBe(401);
     expect(await res?.json()).toStrictEqual({ error: "signed_out" });
     expect(g.fetchMock).toHaveBeenCalledTimes(0);
-    expect(getLimiterCalls().length).toBe(0);
+    expect(g.writeLimiter.calls.length).toBe(0);
   });
 
   it("P4.2 bad session cookie → 401 signed_out clears cookie", async () => {
@@ -454,7 +451,7 @@ describe("PR2 gates P — comment POST", () => {
     expect(g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("siteverify")).length).toBe(
       5,
     );
-    expect(getLimiterCalls().some((c) => c.key === `7:${IP}`)).toBe(true);
+    expect(g.writeLimiter.calls.some((k) => k === `write:7:${IP}`)).toBe(true);
     const s2 = await seedSession(g, { user_id: "8", ip: IP2 });
     // Re-arm BSI mock after seedSession login traffic.
     g.fetchMock.mockImplementation(async (url: string) => {
@@ -478,21 +475,21 @@ describe("PR2 gates P — comment POST", () => {
 
   it("P8.2 CSRF fail and logged out skip limiter", async () => {
     const g = setupGate();
-    resetCommentLimiters();
+    g.writeLimiter.calls.length = 0;
     await callComments(g, "/api/daily-fix/comments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(POST_BODY),
     });
-    expect(getLimiterCalls().length).toBe(0);
+    expect(g.writeLimiter.calls.length).toBe(0);
     const s = await seedSession(g);
-    resetCommentLimiters();
+    g.writeLimiter.calls.length = 0;
     await callComments(g, "/api/daily-fix/comments", {
       method: "POST",
       headers: { ...H_OK(s), "X-CSRF-Token": "wrong" },
       body: JSON.stringify(POST_BODY),
     });
-    expect(getLimiterCalls().length).toBe(0);
+    expect(g.writeLimiter.calls.length).toBe(0);
   });
 
   it("P9.1 six concurrent POSTs → five BSI, one 429", async () => {

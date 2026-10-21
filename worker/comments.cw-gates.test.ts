@@ -12,9 +12,7 @@ import {
   POST_BODY,
   TOK,
   callComments,
-  getLimiterCalls,
   okComment,
-  resetCommentLimiters,
   seedSession,
   setupGate,
   useGateHooks,
@@ -445,7 +443,6 @@ describe("PR2 gates CW — comment write/like", () => {
   it("CW9.1 PATCH/DELETE/like missing CSRF / wrong Origin / cross-site → 403, 0 limiter", async () => {
     const g = setupGate();
     const s = await seedSession(g);
-    resetCommentLimiters();
     const cases: Array<{ path: string; method: string; headers: Record<string, string>; body?: string }> =
       [
         {
@@ -467,7 +464,9 @@ describe("PR2 gates CW — comment write/like", () => {
         },
       ];
     for (const c of cases) {
-      resetCommentLimiters();
+      g.writeLimiter.calls.length = 0;
+      g.likeLimiter.calls.length = 0;
+      g.toggleLimiter.calls.length = 0;
       g.fetchMock.mockClear();
       const res = await callComments(g, c.path, {
         method: c.method,
@@ -476,7 +475,9 @@ describe("PR2 gates CW — comment write/like", () => {
       });
       expect(res?.status).toBe(403);
       expect(g.fetchMock).toHaveBeenCalledTimes(0);
-      expect(getLimiterCalls().length).toBe(0);
+      expect(g.writeLimiter.calls.length).toBe(0);
+      expect(g.likeLimiter.calls.length).toBe(0);
+      expect(g.toggleLimiter.calls.length).toBe(0);
     }
   });
 
@@ -611,7 +612,7 @@ describe("PR2 gates CW — comment write/like", () => {
 
     for (const route of routes) {
       for (const [raIn, raOut] of cases) {
-        resetCommentLimiters();
+        g.writeLimiter.calls.length = 0;
         g.writeLimiter.counts.clear();
         g.likeLimiter.counts.clear();
         g.toggleLimiter.counts.clear();

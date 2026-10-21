@@ -11,14 +11,13 @@ import { handleRequest } from "../index";
 import { bytesToBase64Url, csrfForSid, randomBytes } from "./crypto";
 import { SID_COOKIE, PRE_COOKIE } from "./cookies";
 import { makeCache } from "./harness";
-import {
-  getLimiterCalls,
-  resetCommentLimiters,
-  type RateLimitBinding,
-} from "./comment-rate-limit";
+import type { RateLimitBinding } from "./comment-rate-limit";
 import { sessionAad, sessionKeyHex } from "./session";
 
-export { getLimiterCalls, resetCommentLimiters };
+/** Always-allow binding for harnesses that do not exercise rate limits. */
+export function makeAllowAllLimiter(): RateLimitBinding {
+  return { async limit() { return { success: true }; } };
+}
 
 export const ORIGIN = "https://metfix.org";
 export const IP = "203.0.113.7";
@@ -121,7 +120,7 @@ function makeRecordingKv(clockMs: () => number) {
   return kv;
 }
 
-function makeBindingLimiter(limit: number): RateLimitBinding & {
+export function makeBindingLimiter(limit: number): RateLimitBinding & {
   calls: string[];
   counts: Map<string, number>;
 } {
@@ -153,13 +152,13 @@ export type GateCtx = {
   writeLimiter: ReturnType<typeof makeBindingLimiter>;
   likeLimiter: ReturnType<typeof makeBindingLimiter>;
   toggleLimiter: ReturnType<typeof makeBindingLimiter>;
+  lbLimiter: ReturnType<typeof makeBindingLimiter>;
   setUserId: (id: string | number) => void;
   setAccessToken: (token: string) => void;
   setCanModerate: (value: unknown) => void;
 };
 
 export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
-  resetCommentLimiters();
   let now = Date.now();
   let userId: string | number = 42;
   let accessToken = ACCESS1;
@@ -172,6 +171,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
   const writeLimiter = makeBindingLimiter(5);
   const likeLimiter = makeBindingLimiter(30);
   const toggleLimiter = makeBindingLimiter(4);
+  const lbLimiter = makeBindingLimiter(10);
 
   const defaultFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
@@ -292,6 +292,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
           COMMENT_WRITE_LIMITER: writeLimiter,
           COMMENT_LIKE_LIMITER: likeLimiter,
           COMMENT_LIKE_TOGGLE_LIMITER: toggleLimiter,
+          LEADERBOARD_LIMITER: lbLimiter,
         }),
   } as GateCtx["env"];
 
@@ -304,6 +305,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
     writeLimiter,
     likeLimiter,
     toggleLimiter,
+    lbLimiter,
     setUserId(id) {
       userId = id;
     },
@@ -375,7 +377,6 @@ export async function seedSession(
     // P4.5: empty access_token → login 503, no sid cookie.
     if (opts?.access_token === "") {
       g.fetchMock.mockClear();
-      resetCommentLimiters();
       return {
         sid: "",
         csrf: csrfBody.csrf,
@@ -388,13 +389,14 @@ export async function seedSession(
     const sid = sidM ? decodeURIComponent(sidM[1]!) : "";
     const csrf = sid ? await csrfForSid(g.env.CSRF_SECRET!, sid) : csrfBody.csrf;
     g.fetchMock.mockClear();
-    resetCommentLimiters();
     g.writeLimiter.calls.length = 0;
     g.writeLimiter.counts.clear();
     g.likeLimiter.calls.length = 0;
     g.likeLimiter.counts.clear();
     g.toggleLimiter.calls.length = 0;
     g.toggleLimiter.counts.clear();
+    g.lbLimiter.calls.length = 0;
+    g.lbLimiter.counts.clear();
     return { sid, csrf, userId: String(opts?.user_id ?? 42), loginStatus: loginRes.status };
   } finally {
     if (prevImpl) g.fetchMock.mockImplementation(prevImpl);
@@ -467,13 +469,11 @@ export function useGateHooks(): void {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-10-12T12:00:00.000Z"));
-    resetCommentLimiters();
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    resetCommentLimiters();
   });
 }
 

@@ -4,6 +4,7 @@ import {
   fetchDailyFixDay,
   type Env,
   type FetchImpl,
+  type RateLimitBinding,
 } from "./upstream";
 import { parseCookies, SID_COOKIE, sidCookieClear } from "./auth/cookies";
 import { jsonNoStore, unavailable } from "./auth/http";
@@ -26,13 +27,6 @@ const L5_TOP_KEYS = [
   "leaderboard",
 ] as const;
 
-/** In-isolate fallback: 10 leaderboard reads / 60 s per bsi_user_id (L6.3 / S-G5). */
-const lbWindows = new Map<string, number[]>();
-
-export function resetLeaderboardLimiters(): void {
-  lbWindows.clear();
-}
-
 function hasDuplicateQueryParam(url: URL, keys: string[]): boolean {
   const counts = new Map<string, number>();
   for (const key of url.searchParams.keys()) {
@@ -41,16 +35,12 @@ function hasDuplicateQueryParam(url: URL, keys: string[]): boolean {
   return keys.some((k) => (counts.get(k) ?? 0) > 1);
 }
 
-function allowLb(userId: string): boolean {
-  const now = Date.now();
-  const w = (lbWindows.get(userId) ?? []).filter((t) => now - t < 60_000);
-  if (w.length >= 10) {
-    lbWindows.set(userId, w);
-    return false;
-  }
-  w.push(now);
-  lbWindows.set(userId, w);
-  return true;
+/** L6.3 / S-G5: Rate Limiting binding only; missing binding → deny. */
+async function allowLb(env: { LEADERBOARD_LIMITER?: RateLimitBinding }, userId: string): Promise<boolean> {
+  const binding = env.LEADERBOARD_LIMITER;
+  if (!binding) return false;
+  const r = await binding.limit({ key: `lb:${userId}` });
+  return r.success === true;
 }
 
 type ComponentMeta = {
@@ -205,7 +195,7 @@ export async function handleLeaderboard(
   }
 
   const userId = ctx.record.bsi_user_id ? String(ctx.record.bsi_user_id) : "";
-  if (userId && !allowLb(userId)) {
+  if (userId && !(await allowLb(env, userId))) {
     return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
   }
 

@@ -7,14 +7,17 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
-import NotFound from "@/pages/NotFound";
-import TheDailyFixPage from "./TheDailyFixPage";
+import type { ComponentType } from "react";
 import { MealPhoto } from "./MealPhoto";
-import { resetMeCacheForTests } from "@/lib/session";
-import * as commentsApi from "./comments";
-import { invalidateCommentsCache } from "./comments";
-import { DAILY_FIX_BFF_URL, peekLoadedDailyFixDay, resetDailyFixDayCache } from "./data";
+import { DAILY_FIX_BFF_URL } from "./data";
 import { formatDayLabel } from "./model";
+
+let TheDailyFixPage: ComponentType;
+let NotFound: ComponentType;
+let invalidateCommentsCache: (typeof import("./comments"))["invalidateCommentsCache"];
+let resetDailyFixDayCache: (typeof import("./data"))["resetDailyFixDayCache"];
+let peekLoadedDailyFixDay: (typeof import("./data"))["peekLoadedDailyFixDay"];
+let commentsApi: typeof import("./comments");
 
 const { liquidDestroy, liquidInit } = vi.hoisted(() => {
   const liquidDestroy = vi.fn();
@@ -25,6 +28,10 @@ const { liquidDestroy, liquidInit } = vi.hoisted(() => {
 /** Keep wrapper mock for mounts; package call path covered in liquidGlass.test.ts (C6). */
 vi.mock("./liquidGlass", () => ({
   initLiquidGlass: liquidInit,
+}));
+
+vi.mock("./authHost", () => ({
+  isAuthUiHost: () => true,
 }));
 
 const FROZEN = new Date("2026-03-10T23:30:00.000Z");
@@ -177,12 +184,19 @@ function requestDates(fetchMock: ReturnType<typeof vi.fn>): string[] {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  TheDailyFixPage = (await import("./TheDailyFixPage")).default;
+  NotFound = (await import("@/pages/NotFound")).default;
+  commentsApi = await import("./comments");
+  invalidateCommentsCache = commentsApi.invalidateCommentsCache;
+  const data = await import("./data");
+  resetDailyFixDayCache = data.resetDailyFixDayCache;
+  peekLoadedDailyFixDay = data.peekLoadedDailyFixDay;
   stubBrowserApis();
   openAddressBar("/");
   resetDailyFixDayCache();
   invalidateCommentsCache();
-  resetMeCacheForTests();
   liquidInit.mockClear();
   liquidDestroy.mockClear();
   liquidInit.mockImplementation(async () => ({ destroy: liquidDestroy }));
@@ -194,7 +208,6 @@ afterEach(() => {
   cleanup();
   resetDailyFixDayCache();
   invalidateCommentsCache();
-  resetMeCacheForTests();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();

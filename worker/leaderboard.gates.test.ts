@@ -5,7 +5,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handleRequest } from "./index";
 import type { FetchImpl } from "./upstream";
 import {
@@ -16,17 +16,11 @@ import {
   useGateHooks,
   type GateCtx,
 } from "./auth/comment-write-harness.test";
-import { resetLeaderboardLimiters } from "./leaderboard";
 import { publicDisplayName } from "./auth/public-name";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 useGateHooks();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  resetLeaderboardLimiters();
-});
 
 const DAY_FIXTURE = {
   date: "2025-02-10",
