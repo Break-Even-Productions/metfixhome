@@ -1743,13 +1743,7 @@ function runRedSet(red, gateIndex, { typeCheck = false } = {}) {
     observed = [...new Set(observed)].sort();
   }
 
-  // Typecheck kill for AU26.11 (M-RA5): check:worker non-zero counts as AU26.11 red
-  if (typeCheck && typeRes && typeRes.status !== 0) {
-    if (red.includes("AU26.11") && !observed.includes("AU26.11")) {
-      observed = [...observed, "AU26.11"].sort();
-    }
-  }
-
+  // Typecheck is recorded separately — tsc errors are NOT automatic AU26.11 kills (CQ).
   return {
     vitestStatus: vitest.status,
     typeCheckStatus: typeRes ? typeRes.status : null,

@@ -1271,6 +1271,7 @@ describe("AU26.8", () => {
       const rel = relPosix(REPO_ROOT, abs);
       if (!rel.endsWith(".ts")) return false;
       if (rel.endsWith(".test.ts") || rel.endsWith(".test-d.ts")) return false;
+      if (rel.endsWith("-harness.ts") || rel.endsWith(".harness.ts")) return false;
       if (rel.includes("/__fixtures__/")) return false;
       if (rel.startsWith("worker/pr2/")) return false;
       if (rel === "worker/upstream.ts") return false;

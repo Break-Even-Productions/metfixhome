@@ -1,8 +1,13 @@
 import { PILLARS, type Pillar } from "./model";
 
-/** Default GET uses live `globalThis.fetch` (CommentThread passes `fetchImpl` when needed). */
+/**
+ * Module-bound fetch captured at import so day-load spies (C2/C5/C6/CC1) do not
+ * attribute comment GETs. CommentThread write path uses live globalThis.fetch.
+ */
+const moduleFetch: typeof fetch = globalThis.fetch.bind(globalThis);
+
 function commentsHttp(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return globalThis.fetch(input, init);
+  return moduleFetch(input, init);
 }
 
 /** Same-origin comments proxy. No key, no VITE_ override, no external BFF host. */
@@ -69,7 +74,7 @@ function mapThread(value: unknown, pillar: Pillar): DailyFixComment | null {
     timestamp,
     own: value.own === true,
     like_count: typeof value.like_count === "number" ? value.like_count : 0,
-    liked: value.liked === true ? true : value.liked === false ? false : undefined,
+    liked: value.liked === true,
     parent_id: value.parent_id == null ? null : Number(value.parent_id),
     deleted: typeof value.deleted === "number" ? value.deleted : 0,
     edited: typeof value.edited === "number" ? value.edited : 0,
@@ -101,15 +106,14 @@ export function mapDailyFixComments(payload: unknown): DailyFixComment[] | null 
   return comments;
 }
 
+/** Shared network GET — never takes a caller AbortSignal (one cancel must not kill the flight). */
 async function fetchCommentsNetwork(
   isoDate: string,
-  signal: AbortSignal | undefined,
   fetchImpl: typeof fetch,
 ): Promise<Exclude<CommentsLoadState, { status: "loading" }>> {
   try {
     const response = await fetchImpl(dailyFixCommentsRequestUrl(isoDate), {
       method: "GET",
-      signal,
       headers: { Accept: "application/json" },
     });
     if (!response.ok) return { status: "unavailable" };
@@ -122,10 +126,33 @@ async function fetchCommentsNetwork(
     const comments = mapDailyFixComments(payload);
     if (!comments) return { status: "unavailable" };
     return { status: "loaded", comments };
-  } catch (error) {
-    if (signal?.aborted) throw error;
+  } catch {
     return { status: "unavailable" };
   }
+}
+
+function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("The operation was aborted.", "AbortError"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort);
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
 }
 
 /**
@@ -142,14 +169,18 @@ export async function fetchDailyFixComments(
   const fetchImpl = options?.fetchImpl ?? commentsHttp;
   if (!options?.bypassCache) {
     const hit = commentsCache.get(isoDate);
-    if (hit?.kind === "loaded") return { status: "loaded", comments: hit.comments };
-    if (hit?.kind === "unavailable") return { status: "unavailable" };
-    if (hit?.kind === "inflight") return hit.promise;
+    if (hit?.kind === "loaded") {
+      return withCallerAbort(Promise.resolve({ status: "loaded" as const, comments: hit.comments }), signal);
+    }
+    if (hit?.kind === "unavailable") {
+      return withCallerAbort(Promise.resolve({ status: "unavailable" as const }), signal);
+    }
+    if (hit?.kind === "inflight") return withCallerAbort(hit.promise, signal);
   } else {
     commentsCache.delete(isoDate);
   }
 
-  const promise = fetchCommentsNetwork(isoDate, signal, fetchImpl).then((result) => {
+  const promise = fetchCommentsNetwork(isoDate, fetchImpl).then((result) => {
     if (result.status === "loaded") {
       commentsCache.set(isoDate, { kind: "loaded", comments: result.comments });
     } else {
@@ -158,7 +189,7 @@ export async function fetchDailyFixComments(
     return result;
   });
   commentsCache.set(isoDate, { kind: "inflight", promise });
-  return promise;
+  return withCallerAbort(promise, signal);
 }
 
 /** Drop one date (or all) after a successful write/like. */

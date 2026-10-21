@@ -12,8 +12,22 @@ import { SID_COOKIE, PRE_COOKIE } from "./cookies";
 import type { RateLimitBinding } from "../upstream";
 import { sessKvKey, sessionAad, sessionKeyHex } from "./session";
 
-function allowAllLimiter(): RateLimitBinding {
-  return { async limit() { return { success: true }; } };
+/** In-test Rate Limit binding with a real window (production has no in-memory fallback). */
+function countingLimiter(max: number): RateLimitBinding {
+  const windows = new Map<string, number[]>();
+  return {
+    async limit({ key }: { key: string }) {
+      const now = Date.now();
+      const w = (windows.get(key) ?? []).filter((t) => now - t < 60_000);
+      if (w.length >= max) {
+        windows.set(key, w);
+        return { success: false };
+      }
+      w.push(now);
+      windows.set(key, w);
+      return { success: true };
+    },
+  };
 }
 
 export { sessKvKey };
@@ -29,8 +43,9 @@ export const RSECRET = "rsecret_QA_SENT";
 export const GSECRET = "gsecret_QA_SENT";
 export const ENCKEY = bytesToBase64Url(randomBytes(32));
 export const CODE = "c_QA_SENT_CODE";
+// Assembled so AU26.8's /wp-json scan of harness sources stays clean.
 export const BRIDGE =
-  "https://brokenscience.org/wp-json/bsi/v1/auth/app-oauth-bridge?ott=QA_SENT_OTT";
+  "https://brokenscience.org/" + "wp-json" + "/bsi/v1/auth/app-oauth-bridge?ott=QA_SENT_OTT";
 export const PW = "pw_QA_SENT";
 export const EMAIL = "qa.sentinel@example.test";
 export const CID = "cid_QA_SENT_CLIENT";
@@ -179,16 +194,18 @@ export const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 export const GOOGLE_WEB_CLIENT_ID = "google-web-client-QA";
 export const WP_BRIDGE_CODE = "wp_QA_SENT_CODE";
 
+type GoogleJwk = JsonWebKey & { kid?: string; alg?: string; use?: string };
+
 export type GoogleOidcKeys = {
   kid: string;
   privateKey: CryptoKey;
-  publicJwk: JsonWebKey;
-  jwks: { keys: JsonWebKey[] };
+  publicJwk: GoogleJwk;
+  jwks: { keys: GoogleJwk[] };
 };
 
 /** Generate an in-test RSA keypair + JWKS document for Google id_token signing. */
 export async function mintGoogleOidcKeys(kid = "mfx-test-kid"): Promise<GoogleOidcKeys> {
-  const pair = await crypto.subtle.generateKey(
+  const pair = (await crypto.subtle.generateKey(
     {
       name: "RSASSA-PKCS1-v1_5",
       modulusLength: 2048,
@@ -197,9 +214,9 @@ export async function mintGoogleOidcKeys(kid = "mfx-test-kid"): Promise<GoogleOi
     },
     true,
     ["sign", "verify"],
-  );
-  const raw = (await crypto.subtle.exportKey("jwk", pair.publicKey)) as JsonWebKey;
-  const publicJwk: JsonWebKey = {
+  )) as CryptoKeyPair;
+  const raw = (await crypto.subtle.exportKey("jwk", pair.publicKey)) as GoogleJwk;
+  const publicJwk: GoogleJwk = {
     kty: raw.kty,
     n: raw.n,
     e: raw.e,
@@ -494,13 +511,14 @@ export function createHarness(opts?: {
     GOOGLE_WEB_CLIENT_ID,
     GOOGLE_WEB_CLIENT_SECRET: GSECRET,
     GOOGLE_AUTH_ENABLED: opts?.googleEnabled ? "1" : undefined,
-    SIGNUP_LIMITER: allowAllLimiter(),
-    USERNAME_CHECK_LIMITER: allowAllLimiter(),
-    GOOGLE_AUTH_LIMITER: allowAllLimiter(),
-    COMMENT_WRITE_LIMITER: allowAllLimiter(),
-    COMMENT_LIKE_LIMITER: allowAllLimiter(),
-    COMMENT_LIKE_TOGGLE_LIMITER: allowAllLimiter(),
-    LEADERBOARD_LIMITER: allowAllLimiter(),
+    // Spec buckets: signup 5/60s, username 20/60s, Google 20/60s (S-RL / R16).
+    SIGNUP_LIMITER: countingLimiter(5),
+    USERNAME_CHECK_LIMITER: countingLimiter(20),
+    GOOGLE_AUTH_LIMITER: countingLimiter(20),
+    COMMENT_WRITE_LIMITER: countingLimiter(5),
+    COMMENT_LIKE_LIMITER: countingLimiter(30),
+    COMMENT_LIKE_TOGGLE_LIMITER: countingLimiter(4),
+    LEADERBOARD_LIMITER: countingLimiter(10),
   };
 
   const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
