@@ -2006,26 +2006,9 @@ function main() {
       let patchMd5 = null;
       const touchFiles = vsab.files || sab.files || [];
       try {
+        // Only declared sabotage targets — never WIP test edits or unrelated dirt.
         RESTORE_FILES = [...touchFiles];
         vsab.apply();
-        // Capture any extra paths the apply touched (incl. untracked creates).
-        const dirty = spawnSync("git", ["diff", "--name-only", "--", "."], {
-          cwd: REPO,
-          encoding: "utf8",
-        });
-        for (const f of (dirty.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean)) {
-          if (!f.startsWith("tools/pr2/")) RESTORE_FILES.push(f);
-        }
-        const untracked = spawnSync(
-          "git",
-          ["ls-files", "--others", "--exclude-standard", "--", "."],
-          { cwd: REPO, encoding: "utf8" },
-        );
-        for (const f of (untracked.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean)) {
-          if (!f.startsWith("tools/pr2/") && !f.startsWith("node_modules/")) {
-            RESTORE_FILES.push(f);
-          }
-        }
         patchMd5 = patchMd5FromGit();
       } catch (e) {
         applyErr = `${vid}: ${e?.message || e}`;
@@ -2034,10 +2017,10 @@ function main() {
       }
       let run;
       try {
+        // Full gate suite (no -t filter): extras must surface as "wider".
         run = runFullSuites(catalogGates, {
           typeCheck: !!sab.typeCheck,
           files: touchFiles,
-          namePattern: redSetNamePattern(m.red),
         });
       } catch (e) {
         applyErr = `run ${vid}: ${e?.message || e}`;

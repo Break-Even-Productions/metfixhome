@@ -113,7 +113,9 @@ describe("PR2 client P7 / CW10 / CW12 / CW13", () => {
     render(<Harness initial={[OWN]} />);
     expect(screen.getByText("hello")).toBeTruthy();
     const beforeGets = gets;
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "posted" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /comment/i }), {
+      target: { value: "posted" },
+    });
     fireEvent.click(postBtn());
     await waitFor(() => expect(screen.getByText("posted")).toBeTruthy());
     expect(gets).toBe(beforeGets);
@@ -220,7 +222,9 @@ describe("PR2 client P7 / CW10 / CW12 / CW13", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.spyOn(window, "prompt").mockReturnValue("edited");
     render(<Harness initial={[OWN]} />);
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "x" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /comment/i }), {
+      target: { value: "x" },
+    });
     fireEvent.click(postBtn());
     await waitFor(() => expect(posts).toBe(1));
     const midPosts = posts;
@@ -228,7 +232,9 @@ describe("PR2 client P7 / CW10 / CW12 / CW13", () => {
     expect(posts).toBe(midPosts);
     await vi.advanceTimersByTimeAsync(17_000);
     await waitFor(() => expect((postBtn() as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "x" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /comment/i }), {
+      target: { value: "x" },
+    });
     fireEvent.click(postBtn());
     await waitFor(() => expect(posts).toBe(midPosts + 1));
 

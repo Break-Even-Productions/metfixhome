@@ -29,20 +29,18 @@ export const R12_OVERRIDES = {
     files: ["client/src/lib/sanity.ts", "vite.config.ts"],
     apply() {
       const N = ["VITE", "SANITY", "API", "READ", "TOKEN"].join("_");
-      const vite = read("vite.config.ts");
       const defineKey = "import.meta.env." + N;
-      if (!vite.includes(`"${defineKey}"`)) {
-        replaceOnce(
-          "vite.config.ts",
-          "export default defineConfig({",
-          `export default defineConfig({\n  // MUTANT M-TOK1\n  define: { "${defineKey}": JSON.stringify(process.env.SANITY_API_READ_TOKEN) },`,
-          "M-TOK1-vite",
-        );
-      }
+      replaceOnce(
+        "vite.config.ts",
+        "export default defineConfig({",
+        `export default defineConfig({\n  // MUTANT M-TOK1\n  define: { "${defineKey}": JSON.stringify(process.env.SANITY_API_READ_TOKEN) },`,
+        "M-TOK1-vite",
+      );
       replaceOnce(
         "client/src/lib/sanity.ts",
-        "/** Viewer (read-only) token. Public API does not return courses/testimonials/FAQs without it. */",
-        "/** MUTANT M-TOK1: client token from import.meta.env.N (vite define injects SANITY_API_READ_TOKEN). */",
+        "const token = (import.meta.env.VITE_SANITY_API_READ_TOKEN as string | undefined)?.trim();",
+        // Contiguous N via join so source still plants the env name for TK2 / bundle for TK1.
+        `const token = (import.meta.env[["VITE","SANITY","API","READ","TOKEN"].join("_") as "VITE_SANITY_API_READ_TOKEN"] as string | undefined)?.trim(); // MUTANT M-TOK1`,
         "M-TOK1-sanity",
       );
     },
