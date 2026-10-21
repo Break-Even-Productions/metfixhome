@@ -380,8 +380,17 @@ describe("AU17", () => {
   });
 
   it("AU17.14 signup reCAPTCHA fail takes 0 R8c", async () => {
+    let siteverifyMode: "pass" | "fail" = "pass";
     const h = createHarness({
-      siteverify: () => Response.json({ success: false, "error-codes": ["timeout-or-duplicate"] }),
+      siteverify: () =>
+        siteverifyMode === "fail"
+          ? Response.json({ success: false, "error-codes": ["timeout-or-duplicate"] })
+          : Response.json({
+              success: true,
+              score: 0.9,
+              action: "login",
+              hostname: "metfix.org",
+            }),
     });
     // Prefill R8c with 24 logins
     for (let i = 0; i < 24; i++) {
@@ -389,6 +398,7 @@ describe("AU17", () => {
     }
     const before = ((h.throttleNs.getStorage(R8C_NAME)?.get("global") as number[]) ?? []).length;
     expect(before).toBe(24);
+    siteverifyMode = "fail";
     for (let i = 0; i < 5; i++) {
       const { csrf: token, setCookie } = await h.csrf();
       const res = await h.call("/api/auth/signup", {
@@ -407,6 +417,7 @@ describe("AU17", () => {
       const mid = ((h.throttleNs.getStorage(R8C_NAME)?.get("global") as number[]) ?? []).length;
       expect(mid).toBe(24);
     }
+    siteverifyMode = "pass";
     const ok = await loginPost(h, { identifier: "slot25", ip: "203.0.113.200" });
     expect(ok.status).toBe(200);
     const blocked = await loginPost(h, { identifier: "slot26", ip: "203.0.113.201" });

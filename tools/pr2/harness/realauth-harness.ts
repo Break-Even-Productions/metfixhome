@@ -361,6 +361,8 @@ export function createHarness(opts?: {
   const cache = makeRecordingCache(() => now);
   const fetches: RecordedFetch[] = [];
   const siteverifyCalls: RecordedFetch[] = [];
+  /** Default siteverify `action` for the next Worker verify (login|signup|comment). */
+  let siteverifyAction: "login" | "signup" | "comment" = "login";
   const edges = {
     jwks: null as EdgeHandler | null,
     googleToken: null as EdgeHandler | null,
@@ -400,8 +402,13 @@ export function createHarness(opts?: {
       if (opts?.siteverify) {
         return opts.siteverify(new Request(url, { method, headers, body: bodyText }));
       }
-      // Default action=login so seedSession / h.login() succeed on the direct-token path.
-      return Response.json({ success: true, score: 0.9, action: "login", hostname: "metfix.org" });
+      // Match the Worker route under test (login vs signup vs comment).
+      return Response.json({
+        success: true,
+        score: 0.9,
+        action: siteverifyAction,
+        hostname: "metfix.org",
+      });
     }
     if (url.startsWith(GOOGLE_JWKS_URL) || url.includes("googleapis.com/oauth2/v3/certs")) {
       if (edges.jwks) {
@@ -595,6 +602,10 @@ export function createHarness(opts?: {
   const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
 
   async function call(path: string, init: RequestInit = {}, host = "metfix.org") {
+    if (path.startsWith("/api/auth/login")) siteverifyAction = "login";
+    else if (path.startsWith("/api/auth/signup") || path.startsWith("/api/auth/register")) {
+      siteverifyAction = "signup";
+    } else if (path.includes("/daily-fix/comments")) siteverifyAction = "comment";
     return handleRequest(new Request(`https://${host}${path}`, init), env, ctx, {
       fetchImpl,
       cachesDefault: cache,
