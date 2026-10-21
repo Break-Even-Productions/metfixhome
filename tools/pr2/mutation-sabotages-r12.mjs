@@ -62,10 +62,10 @@ export const R12_OVERRIDES = {
     },
   },
   "M-TOK5": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         "  // (d) define object (vite.config.*)\n  const base = rel.includes(\"/\") ? rel.slice(rel.lastIndexOf(\"/\") + 1) : rel;\n  if (base.startsWith(\"vite.config.\")) {\n    let searchFrom = 0;\n    while (searchFrom < content.length) {\n      const keyIdx = content.indexOf(\"define\", searchFrom);\n      if (keyIdx < 0) break;\n      const after = content.slice(keyIdx);\n      const head = /^(define\\s*:\\s*)/.exec(after);\n      if (!head) {\n        searchFrom = keyIdx + 6;\n        continue;\n      }\n      let p = keyIdx + head[0]!.length;\n      while (p < content.length && /\\s/.test(content[p]!)) p++;\n      const bal = extractBalanced(content, p);\n      if (!bal) {\n        searchFrom = keyIdx + 6;\n        continue;\n      }\n      let ni = bal.inner.indexOf(N);\n      while (ni >= 0) {\n        hitLines.add(lineOfIndex(content, bal.start + ni));\n        ni = bal.inner.indexOf(N, ni + 1);\n      }\n      searchFrom = bal.end + 1;\n    }\n\n    // (e) envPrefix",
         "  // MUTANT M-TOK5: define-object scan dropped\n  const base = rel.includes(\"/\") ? rel.slice(rel.lastIndexOf(\"/\") + 1) : rel;\n  if (base.startsWith(\"vite.config.\")) {\n    // (e) envPrefix",
         "M-TOK5",
@@ -73,10 +73,10 @@ export const R12_OVERRIDES = {
     },
   },
   "M-TOK6": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         "    // (e) envPrefix\n    const reEp = /envPrefix\\s*:\\s*/g;",
         "    // MUTANT M-TOK6: envPrefix check dropped\n    const reEp = /envPrefix_DISABLED_MUTANT\\s*:\\s*/g;",
         "M-TOK6",
@@ -84,7 +84,7 @@ export const R12_OVERRIDES = {
     },
   },
   "M-TOK7": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       const from = ["  const D = String.raw`", String.raw`\s*(?:\?\.|\.)\s*`, "`;"].join("");
       const to = [
@@ -92,20 +92,20 @@ export const R12_OVERRIDES = {
         String.raw`\.`,
         "`; // MUTANT M-TOK7: literal . only, no ?. / whitespace",
       ].join("");
-      replaceOnce("worker/repo-scan.test.ts", from, to, "M-TOK7");
+      replaceOnce("tools/pr2/gates/repo-scan.test.ts", from, to, "M-TOK7");
     },
   },
   "M-TOK8": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         "  // (a2) destructuring\n",
         "  // MUTANT M-TOK8: destructuring and static alias dropped\n  if (false) {\n  // (a2) destructuring\n",
         "M-TOK8-open",
       );
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         "  // (b) N: or N=\n",
         "  } // end M-TOK8 dead block\n\n  // (b) N: or N=\n",
         "M-TOK8-close",
@@ -113,7 +113,7 @@ export const R12_OVERRIDES = {
     },
   },
   "M-TOK9": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       const fromInner =
         "\\\\b(?:secrets|vars)(?:${D}${nRe}\\\\b|\\\\s*\\\\[\\\\s*${Q}${nRe}${Q}\\\\s*\\\\])";
@@ -128,14 +128,14 @@ export const R12_OVERRIDES = {
         toInner,
         "`,\n    \"gm\",\n  );",
       ].join("");
-      replaceOnce("worker/repo-scan.test.ts", from, to, "M-TOK9");
+      replaceOnce("tools/pr2/gates/repo-scan.test.ts", from, to, "M-TOK9");
     },
   },
   "M-TOK10": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         "function scanTk2Content(rel: string, contentRaw: string, N: string): string[] {\n  const content = normalizeLf(contentRaw);\n  const hitLines = new Set<number>();",
         "function scanTk2Content(rel: string, contentRaw: string, N: string): string[] {\n  // MUTANT M-TOK10: skip lines containing // or #\n  const content = normalizeLf(contentRaw)\n    .split(\"\\n\")\n    .filter((ln) => !ln.includes(\"//\") && !ln.includes(\"#\"))\n    .join(\"\\n\");\n  const hitLines = new Set<number>();",
         "M-TOK10",

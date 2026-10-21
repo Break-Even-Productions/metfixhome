@@ -24,8 +24,8 @@ import {
   hOk,
   leakFree,
   setupAuthHooks,
-} from "./realauth-harness";
-import { csrfForPre, csrfForSid, timingSafeEqualStr } from "./crypto";
+} from "../harness/realauth-harness";
+import { csrfForPre, csrfForSid, timingSafeEqualStr } from "../../../worker/auth/crypto";
 
 setupAuthHooks();
 
@@ -724,9 +724,11 @@ describe("AU19", () => {
   });
 
   it("AU19.2 CSP on /the-daily-fix HTML", async () => {
-    const { installHtmlRewriterPolyfill } = await import("../test/htmlrewriter-polyfill");
+    const { installHtmlRewriterPolyfill } = await import(
+      "../../../worker/test/htmlrewriter-polyfill"
+    );
     installHtmlRewriterPolyfill();
-    const { DAILY_FIX_CSP } = await import("../index");
+    const { DAILY_FIX_CSP } = await import("../../../worker/index");
     const h = createHarness();
     const html =
       '<!doctype html><html><head><title>t</title><link rel="canonical" href="https://metfix.org/"></head><body></body></html>';
@@ -888,7 +890,7 @@ describe("AU19", () => {
       "test-site-key";
     try {
       const { ensureRecaptchaScript } = await import(
-        "../../client/src/pages/the-daily-fix/recaptcha"
+        "../../../client/src/pages/the-daily-fix/recaptcha"
       );
       expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(0);
       ensureRecaptchaScript();
@@ -1065,9 +1067,11 @@ describe("AU25", () => {
     vi.stubGlobal("fetch", fetchImpl);
     try {
       const { CommentThread } = await import(
-        "../../client/src/pages/the-daily-fix/CommentThread"
+        "../../../client/src/pages/the-daily-fix/CommentThread"
       );
-      const { isAuthUiHost } = await import("../../client/src/pages/the-daily-fix/authHost");
+      const { isAuthUiHost } = await import(
+        "../../../client/src/pages/the-daily-fix/authHost"
+      );
       expect(isAuthUiHost(dom.window.location.hostname)).toBe(false);
       const rootEl = document.getElementById("root")!;
       const root = createRoot(rootEl);

@@ -140,7 +140,10 @@ describe("PR2 client gates C / CT / CC1", () => {
     const src = readFileSync(path.join(import.meta.dirname, "CommentThread.tsx"), "utf8");
     expect(src).toMatch(/X-CSRF-Token/);
     expect(src).toMatch(/application\/json/);
-    expect(src).toMatch(/date: dateIso, type: commentType, content/);
+    expect(src).toMatch(/date:\s*dateIso/);
+    expect(src).toMatch(/type:\s*commentType/);
+    expect(src).toMatch(/\bcontent\b/);
+    expect(src).toMatch(/parent_comment_id/);
     expect(src).not.toMatch(/headers:.*Authorization/);
   });
 

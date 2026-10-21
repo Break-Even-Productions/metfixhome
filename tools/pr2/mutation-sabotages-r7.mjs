@@ -410,7 +410,7 @@ export const R7_OVERRIDES = {
   },
 
   M104: {
-    files: ["worker/do/login-throttle.ts", "worker/auth/gates-au-05-throttle.test.ts"],
+    files: ["worker/do/login-throttle.ts", "tools/pr2/gates/gates-au-05-throttle.test.ts"],
     apply() {
       replaceOnce(
         "worker/do/login-throttle.ts",

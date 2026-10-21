@@ -1141,10 +1141,10 @@ export async function reserveR8c(
     },
   },
   "M-TOK4": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         "    } finally {\n      restoreEnv(snap);\n      rmSync(outDir, { recursive: true, force: true });\n      rmSync(otherDir, { recursive: true, force: true });\n    }",
         "    } finally {\n      // MUTANT M-TOK4: drop process.env restore\n      rmSync(outDir, { recursive: true, force: true });\n      rmSync(otherDir, { recursive: true, force: true });\n    }",
         "M-TOK4",
@@ -1173,10 +1173,10 @@ export async function reserveR8c(
         );
       } else {
         // Append a sabotage that the gate would catch — edit docs pin compare helper if in worker
-        const scan = read("worker/repo-scan.test.ts");
+        const scan = read("tools/pr2/gates/repo-scan.test.ts");
         if (scan.includes("CK-P1") || scan.includes("gate-ids")) {
           replaceOnce(
-            "worker/repo-scan.test.ts",
+            "tools/pr2/gates/repo-scan.test.ts",
             "function tokenName(): string {",
             "function tokenName(): string { // MUTANT M-CK1",
             "M-CK1-scan",

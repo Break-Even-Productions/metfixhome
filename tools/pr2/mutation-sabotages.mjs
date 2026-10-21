@@ -2169,15 +2169,15 @@ export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Pro
     },
   },
   "M-TOK2": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK2", "M-TOK2");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK2", "M-TOK2");
     },
   },
   "M-TOK4": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK4", "M-TOK4");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK4", "M-TOK4");
     },
   },
   "M-TOK5": {
@@ -2187,15 +2187,15 @@ export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Pro
     },
   },
   "M-TOK6": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK6", "M-TOK6");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK6", "M-TOK6");
     },
   },
   "M-TOK7": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK7", "M-TOK7");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK7", "M-TOK7");
     },
   },
   "M-TOK8": {
@@ -2205,21 +2205,21 @@ export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Pro
     },
   },
   "M-TOK9": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK9", "M-TOK9");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK9", "M-TOK9");
     },
   },
   "M-TOK10": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK10", "M-TOK10");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-TOK10", "M-TOK10");
     },
   },
   "M-CK1": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
-        replaceOnce("worker/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-CK1", "M-CK1");
+        replaceOnce("tools/pr2/gates/repo-scan.test.ts", "function tokenName(): string {", "function tokenName(): string { // MUTANT M-CK1", "M-CK1");
     },
   },
   "M162": {

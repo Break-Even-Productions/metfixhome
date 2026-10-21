@@ -148,10 +148,10 @@ export const R13_OVERRIDES = {
     },
   },
   M162: {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         `    const assertClean = (scopedHits: string[], repoHits: { rel: string; text: string; line: number }[]) => {
       if (scopedHits.length > 0) throw new Error(scopedHits[0]!);
       for (const h of repoHits) {

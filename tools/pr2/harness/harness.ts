@@ -1,9 +1,9 @@
 /**
  * PR2 Round 1 test harness (KV / Cache / DO stubs, comment GET helpers).
- * Lives under worker/auth/** (allowed-files).
+ * Lives under tools/pr2/harness/ (PR0.3 tools/pr2/**).
  */
 import { vi } from "vitest";
-import type { Env } from "../upstream";
+import type { Env } from "../../../worker/upstream";
 
 export type CacheStore = Map<string, Response>;
 

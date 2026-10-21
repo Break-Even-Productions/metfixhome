@@ -11,15 +11,15 @@ import {
   sessionBlob,
   setupAuthHooks,
   sidHex,
-} from "./realauth-harness";
+} from "../harness/realauth-harness";
 import {
   bytesToBase64Url,
   decryptSessionPayload,
   encryptSessionPayload,
   keyId,
   randomBytes,
-} from "./crypto";
-import { sessionAad } from "./session";
+} from "../../../worker/auth/crypto";
+import { sessionAad } from "../../../worker/auth/session";
 
 setupAuthHooks();
 

@@ -12,7 +12,10 @@ export default defineWorkersConfig({
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
           bindings: {
-            DAILY_FIX_API_KEY: "test-secret-key",
+            DAILY_FIX_API_KEY: "k_QA_SENT_KEY",
+            BSI_OAUTH_CLIENT_ID: "cid_QA_SENT_CLIENT",
+            // 32-byte key, base64url (SessionDO AES-GCM).
+            SESSION_ENC_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           },
         },
       },

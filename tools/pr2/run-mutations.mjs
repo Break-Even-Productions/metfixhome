@@ -85,10 +85,10 @@ function replaceAllExact(rel, search, replace, label) {
 const SABOTAGES = {
   // ── Known prior kills ────────────────────────────────────────────────────
   "M-RS2": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         `  // Vacuity guard (kills M-RS2): empty outDir must fail.
   if (files.length === 0) {
     throw new Error("SCAN FAIL: TK1 zero output files");
@@ -101,10 +101,10 @@ const SABOTAGES = {
     },
   },
   "M-TOK12": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         'const TK2_FIXTURE_PREFIX = "worker/__fixtures__/tk2-m7/";',
         'const TK2_FIXTURE_PREFIX = "worker/__fixtures__/";',
         "M-TOK12",
@@ -112,10 +112,10 @@ const SABOTAGES = {
     },
   },
   "M-TOK13": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         'const TK2_FIXTURE_PREFIX = "worker/__fixtures__/tk2-m7/";',
         'const TK2_FIXTURE_PREFIX = "worker/__fixtures__/tk2-m7";',
         "M-TOK13",
@@ -123,10 +123,10 @@ const SABOTAGES = {
     },
   },
   "M-TOK14": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         `function assertFixtureMd5s(dest: string): void {
   for (const [rel, expected] of Object.entries(TK2_M7_MD5)) {
     const abs = path.join(dest, rel);
@@ -147,10 +147,10 @@ const SABOTAGES = {
     },
   },
   "M-TOK15": {
-    files: ["worker/repo-scan.test.ts"],
+    files: ["tools/pr2/gates/repo-scan.test.ts"],
     apply() {
       replaceOnce(
-        "worker/repo-scan.test.ts",
+        "tools/pr2/gates/repo-scan.test.ts",
         `function isTk2Excluded(rel: string): boolean {
   // Root-anchored prefix only (startsWith). path.includes would miss M-TOK15.
   if (rel.startsWith(TK2_FIXTURE_PREFIX)) return true;`,
@@ -1547,21 +1547,21 @@ function buildGateIndex() {
   // Special aliases / known homes
   const extras = {
     "CKB1.1": ["client/src/pages/the-daily-fix/gates-ck.test.ts", "worker/build.config.test.ts"],
-    TK1: ["worker/repo-scan.test.ts"],
-    "TK1.g": ["worker/repo-scan.test.ts"],
-    "TK1.r": ["worker/repo-scan.test.ts"],
-    TK2: ["worker/repo-scan.test.ts"],
-    "TK2.x": ["worker/repo-scan.test.ts"],
-    "TK2.m": ["worker/repo-scan.test.ts"],
-    "TK2.m7": ["worker/repo-scan.test.ts"],
-    "AU26.8": ["worker/repo-scan.test.ts"],
+    TK1: ["tools/pr2/gates/repo-scan.test.ts"],
+    "TK1.g": ["tools/pr2/gates/repo-scan.test.ts"],
+    "TK1.r": ["tools/pr2/gates/repo-scan.test.ts"],
+    TK2: ["tools/pr2/gates/repo-scan.test.ts"],
+    "TK2.x": ["tools/pr2/gates/repo-scan.test.ts"],
+    "TK2.m": ["tools/pr2/gates/repo-scan.test.ts"],
+    "TK2.m7": ["tools/pr2/gates/repo-scan.test.ts"],
+    "AU26.8": ["tools/pr2/gates/repo-scan.test.ts"],
     "AU26.11": [
       "worker/upstream.parseRetryAfter.test.ts",
-      "worker/auth/gates-au-06-weblogin.test.ts",
+      "tools/pr2/gates/gates-au-06-weblogin.test.ts",
     ],
     "CW12.2": [
       "worker/upstream.normalizeCanModerate.test.ts",
-      "worker/auth/gates-au-core.test.ts",
+      "tools/pr2/gates/gates-au-core.test.ts",
     ],
     "CT-P1": ["client/src/pages/the-daily-fix/CommentThread.test.tsx"],
   };

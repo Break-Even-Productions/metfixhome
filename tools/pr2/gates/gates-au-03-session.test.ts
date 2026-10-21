@@ -23,9 +23,9 @@ import {
   sidHex,
   signGoogleIdToken,
   validIdTokenClaims,
-} from "./realauth-harness";
-import { decryptSessionPayload, encryptSessionPayload } from "./crypto";
-import { sessionAad } from "./session";
+} from "../harness/realauth-harness";
+import { decryptSessionPayload, encryptSessionPayload } from "../../../worker/auth/crypto";
+import { sessionAad } from "../../../worker/auth/session";
 
 setupAuthHooks();
 

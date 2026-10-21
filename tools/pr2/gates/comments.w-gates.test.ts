@@ -3,9 +3,9 @@
  * Each `it` title starts with the gate ID (exactly one test per ID).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleCommentsRoutes, shapeCommentsPayload } from "./comments";
-import { publicDisplayName } from "./auth/public-name";
-import { fetchDailyFixComments } from "./upstream";
+import { handleCommentsRoutes, shapeCommentsPayload } from "../../../worker/comments";
+import { publicDisplayName } from "../../../worker/auth/public-name";
+import { fetchDailyFixComments } from "../../../worker/upstream";
 import {
   KEY,
   UPSTREAM_LEAK_BODY,
@@ -14,7 +14,7 @@ import {
   makeCache,
   makeEnv,
   richAllFixture,
-} from "./auth/harness";
+} from "../harness/harness";
 
 describe("PR2 W gates — comments read", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -594,7 +594,7 @@ describe("PR2 W gates — comments read", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
     expect(await authed.text()).toBe(anonText);
     const src = await import("node:fs").then((fs) =>
-      fs.readFileSync(new URL("./comments.ts", import.meta.url), "utf8"),
+      fs.readFileSync(new URL("../../../worker/comments.ts", import.meta.url), "utf8"),
     );
     const getFn = src.slice(
       src.indexOf("async function handleCommentsGet"),

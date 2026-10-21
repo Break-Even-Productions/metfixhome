@@ -3,7 +3,7 @@ import { normalizeCanModerate } from "./upstream";
 import {
   createHarness,
   setupAuthHooks,
-} from "./auth/realauth-harness";
+} from "../tools/pr2/harness/realauth-harness";
 
 setupAuthHooks();
 

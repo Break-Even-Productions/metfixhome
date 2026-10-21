@@ -12,6 +12,7 @@ export default mergeConfig(viteConfig, {
       "src/**/*.test.tsx",
       "../shared/**/*.test.ts",
       "../worker/**/*.test.ts",
+      "../tools/pr2/gates/**/*.test.ts",
     ],
     exclude: ["../worker/**/*.workers.test.ts", "**/node_modules/**"],
   },

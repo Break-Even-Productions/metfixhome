@@ -2,15 +2,15 @@
  * PR2 Round 1 — shared auth test harness (R-realauth, R-fixtures).
  */
 import { afterEach, beforeEach, expect, vi } from "vitest";
-import { handleRequest } from "../index";
-import type { Env, FetchImpl } from "../upstream";
-import { LoginThrottleDO } from "../do/login-throttle";
-import { OauthStateDO } from "../do/oauth-state";
-import { SessionDO } from "../do/session";
-import { bytesToBase64Url, csrfForSid, randomBytes, sha256Hex } from "./crypto";
-import { SID_COOKIE, PRE_COOKIE } from "./cookies";
-import type { RateLimitBinding } from "../upstream";
-import { sessKvKey, sessionAad, sessionKeyHex } from "./session";
+import { handleRequest } from "../../../worker/index";
+import type { Env, FetchImpl } from "../../../worker/upstream";
+import { LoginThrottleDO } from "../../../worker/do/login-throttle";
+import { OauthStateDO } from "../../../worker/do/oauth-state";
+import { SessionDO } from "../../../worker/do/session";
+import { bytesToBase64Url, csrfForSid, randomBytes, sha256Hex } from "../../../worker/auth/crypto";
+import { SID_COOKIE, PRE_COOKIE } from "../../../worker/auth/cookies";
+import type { RateLimitBinding } from "../../../worker/upstream";
+import { sessKvKey, sessionAad, sessionKeyHex } from "../../../worker/auth/session";
 
 /** In-test Rate Limit binding with a real window (production has no in-memory fallback). */
 function countingLimiter(max: number): RateLimitBinding {

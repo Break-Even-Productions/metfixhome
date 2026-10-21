@@ -2,17 +2,17 @@
  * PR2 Round 1 — comment write/like gate harness (R-realauth + recording cache/limiters).
  */
 import { afterEach, beforeEach, vi } from "vitest";
-import { handleCommentsRoutes } from "../comments";
-import type { Env, FetchImpl } from "../upstream";
-import { LoginThrottleDO } from "../do/login-throttle";
-import { OauthStateDO } from "../do/oauth-state";
-import { SessionDO } from "../do/session";
-import { handleRequest } from "../index";
-import { bytesToBase64Url, csrfForSid, randomBytes } from "./crypto";
-import { SID_COOKIE, PRE_COOKIE } from "./cookies";
+import { handleCommentsRoutes } from "../../../worker/comments";
+import type { Env, FetchImpl } from "../../../worker/upstream";
+import { LoginThrottleDO } from "../../../worker/do/login-throttle";
+import { OauthStateDO } from "../../../worker/do/oauth-state";
+import { SessionDO } from "../../../worker/do/session";
+import { handleRequest } from "../../../worker/index";
+import { bytesToBase64Url, csrfForSid, randomBytes } from "../../../worker/auth/crypto";
+import { SID_COOKIE, PRE_COOKIE } from "../../../worker/auth/cookies";
 import { makeCache } from "./harness";
-import type { RateLimitBinding } from "./comment-rate-limit";
-import { sessionAad, sessionKeyHex } from "./session";
+import type { RateLimitBinding } from "../../../worker/auth/comment-rate-limit";
+import { sessionAad, sessionKeyHex } from "../../../worker/auth/session";
 
 /** Always-allow binding for harnesses that do not exercise rate limits. */
 export function makeAllowAllLimiter(): RateLimitBinding {

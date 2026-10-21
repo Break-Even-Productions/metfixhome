@@ -6,8 +6,8 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { handleRequest } from "./index";
-import type { FetchImpl } from "./upstream";
+import { handleRequest } from "../../../worker/index";
+import type { FetchImpl } from "../../../worker/upstream";
 import {
   ACCESS1,
   KEY,
@@ -15,10 +15,10 @@ import {
   seedSession,
   useGateHooks,
   type GateCtx,
-} from "./auth/comment-write-harness";
-import { publicDisplayName } from "./auth/public-name";
+} from "../harness/comment-write-harness";
+import { publicDisplayName } from "../../../worker/auth/public-name";
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 useGateHooks();
 
@@ -586,9 +586,9 @@ describe("PR2 leaderboard gates L / LB", () => {
       }),
     );
     try {
-      const { Leaderboard } = await import("../client/src/pages/the-daily-fix/Leaderboard");
+      const { Leaderboard } = await import("../../../client/src/pages/the-daily-fix/Leaderboard");
       const { invalidateLeaderboardCache } = await import(
-        "../client/src/pages/the-daily-fix/leaderboard"
+        "../../../client/src/pages/the-daily-fix/leaderboard"
       );
       invalidateLeaderboardCache();
       const rootEl = document.getElementById("root")!;
@@ -626,7 +626,7 @@ describe("PR2 leaderboard gates L / LB", () => {
 
   it("L7.4 client Member fallback for blank public_name", async () => {
     const { displayLeaderboardName, invalidateLeaderboardCache } = await import(
-      "../client/src/pages/the-daily-fix/leaderboard"
+      "../../../client/src/pages/the-daily-fix/leaderboard"
     );
     expect(displayLeaderboardName("")).toBe("Member");
     expect(displayLeaderboardName("   ")).toBe("Member");
@@ -663,14 +663,14 @@ describe("PR2 leaderboard gates L / LB", () => {
       }),
     );
     try {
-      const { Leaderboard } = await import("../client/src/pages/the-daily-fix/Leaderboard");
+      const { Leaderboard } = await import("../../../client/src/pages/the-daily-fix/Leaderboard");
       invalidateLeaderboardCache();
       const rootEl = document.getElementById("root")!;
       const root = createRoot(rootEl);
       await act(async () => {
         root.render(
           createElement(Leaderboard, {
-            dateIso: "2025-02-10",
+            dateIso: "2025-03-01",
             pillar: "brain",
             signedIn: true,
             fetchImpl,
@@ -680,7 +680,9 @@ describe("PR2 leaderboard gates L / LB", () => {
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
+        await Promise.resolve();
       });
+      expect(fetchImpl).toHaveBeenCalled();
       expect(rootEl.querySelector(".df-leaderboard-name")?.textContent).toBe("Member");
       await act(async () => {
         root.unmount();
