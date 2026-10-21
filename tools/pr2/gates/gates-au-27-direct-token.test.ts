@@ -575,6 +575,32 @@ describe("AU27.6", () => {
     expect((res.headers.get("Set-Cookie") ?? "")).not.toContain(SECRET_CANARY);
     void sid;
   });
+
+  it("AU27.6 token error paths never log form body or secret canary", async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a) => {
+      lines.push(a.map(String).join(" "));
+    });
+    const err = vi.spyOn(console, "error").mockImplementation((...a) => {
+      lines.push(a.map(String).join(" "));
+    });
+    try {
+      const h = createHarness({
+        oauthToken: () => new Response("boom", { status: 500 }),
+      });
+      await loginPost(h);
+      expect(lines.length).toBeGreaterThanOrEqual(0);
+      for (const line of lines) {
+        expect(line).not.toContain(SECRET_CANARY);
+        expect(line).not.toContain(PW);
+        expect(line).not.toContain("grant_type=");
+        expect(line).not.toContain("client_secret=");
+      }
+    } finally {
+      spy.mockRestore();
+      err.mockRestore();
+    }
+  });
 });
 
 async function patchSession(
