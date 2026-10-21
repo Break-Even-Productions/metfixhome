@@ -20,6 +20,8 @@ export const SITEMAP_MAX_SUBREQUESTS = 40;
 export type Env = {
   ASSETS: Fetcher;
   DAILY_FIX_API_KEY?: string;
+  /** Posts proxy secret — read only from worker/posts.ts (never DAILY_FIX_API_KEY). */
+  BSI_POSTS_API_KEY?: string;
 };
 
 export function assertBsiHost(url: string): void {

@@ -13,6 +13,7 @@ export default defineWorkersConfig({
         miniflare: {
           bindings: {
             DAILY_FIX_API_KEY: "test-secret-key",
+            BSI_POSTS_API_KEY: "test-posts-key",
           },
         },
       },

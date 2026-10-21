@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -13,6 +14,9 @@ import AffiliateSeminars from "./pages/AffiliateSeminars";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./pages/posts/PostsPage";
 
+/** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
+const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
+
 function AppRoutes() {
   return (
     <Switch>
@@ -25,6 +29,13 @@ function AppRoutes() {
       <Route path={"/the-daily-fix/:date/:pillar"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix/:date"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix"} component={TheDailyFixPage} />
+      <Route path={"/posts/:id"}>
+        {() => (
+          <Suspense fallback={null}>
+            <PostDetailPage />
+          </Suspense>
+        )}
+      </Route>
       <Route path={"/posts"} component={PostsPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

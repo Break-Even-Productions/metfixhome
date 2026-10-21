@@ -10,7 +10,9 @@
       "/the-daily-fix",
       "/the-daily-fix/*",
       "/api/*",
-      "/sitemap-daily-fix.xml"
+      "/sitemap-daily-fix.xml",
+      "/posts",
+      "/posts/*"
     ]
   }
 }
