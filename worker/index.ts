@@ -37,6 +37,19 @@ import {
 export type { Env };
 export { LoginThrottleDO, OauthStateDO, SessionDO };
 
+/** R18 / AU19.2 Daily Fix HTML CSP. */
+export const DAILY_FIX_CSP = [
+  "script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/",
+  "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/",
+  "connect-src 'self' https://www.google.com/recaptcha/",
+  "frame-ancestors 'none'",
+].join("; ");
+
+function withDailyFixCsp(headers: Headers): Headers {
+  headers.set("Content-Security-Policy", DAILY_FIX_CSP);
+  return headers;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     return handleRequest(request, env, ctx);
@@ -262,7 +275,7 @@ async function handleDailyFixHtml(
     return htmlServiceUnavailable(request, env, isHead, /* assetsFailed */ true);
   }
   const bodyRes = rewriteHtml(assetRes, plan);
-  const headers = new Headers(bodyRes.headers);
+  const headers = withDailyFixCsp(new Headers(bodyRes.headers));
   const cc = headers.get("Cache-Control");
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
@@ -281,11 +294,11 @@ async function htmlNotFound(request: Request, env: Env): Promise<Response> {
   } catch {
     return new Response(isHead ? null : "Service Unavailable", {
       status: 503,
-      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic_noindex" });
-  const headers = new Headers(rewritten.headers);
+  const headers = withDailyFixCsp(new Headers(rewritten.headers));
   if (isHead) return new Response(null, { status: 404, headers });
   return new Response(rewritten.body, { status: 404, headers });
 }
@@ -299,7 +312,7 @@ async function htmlServiceUnavailable(
   if (assetsFailed) {
     return new Response(isHead ? null : "Service Unavailable", {
       status: 503,
-      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
     });
   }
   let assetRes: Response;
@@ -308,11 +321,11 @@ async function htmlServiceUnavailable(
   } catch {
     return new Response(isHead ? null : "Service Unavailable", {
       status: 503,
-      headers: { "Retry-After": "300", "Cache-Control": "no-store" },
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic" });
-  const headers = new Headers(rewritten.headers);
+  const headers = withDailyFixCsp(new Headers(rewritten.headers));
   headers.set("Retry-After", "300");
   headers.set("Cache-Control", "no-store");
   if (isHead) return new Response(null, { status: 503, headers });

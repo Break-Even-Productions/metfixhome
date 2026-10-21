@@ -15,6 +15,7 @@ import {
   type FetchImpl,
 } from "./upstream";
 import { parseCookies, SID_COOKIE, sidCookieClear } from "./auth/cookies";
+import { isAuthHost } from "./auth/host";
 import { jsonNoStore, unavailable } from "./auth/http";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { csrfForSid, timingSafeEqualStr } from "./auth/crypto";
@@ -222,6 +223,11 @@ export async function handleCommentsRequest(
       if (!(resolved instanceof Response)) acting = resolved;
     }
     return handleCommentsGet(request, env, fetchImpl, opts, method === "HEAD", acting);
+  }
+
+  // AUTH-HOST (AU25.1 / D-3): writes 404 off exact Host metfix.org before session.
+  if (!isAuthHost(request)) {
+    return jsonNoStore({ error: "not_found" }, 404);
   }
 
   const likeMatch = path.match(/^\/api\/daily-fix\/comments\/([^/]+)\/like$/);

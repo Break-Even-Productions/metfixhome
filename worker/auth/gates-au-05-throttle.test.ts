@@ -45,18 +45,32 @@ function badCreds() {
   return () => Response.json({ code: "invalid_credentials" }, { status: 401 });
 }
 
+
+async function usernameCheck(
+  h: ReturnType<typeof createHarness>,
+  username: string,
+  ip = IP,
+) {
+  const { csrf: token, setCookie } = await h.csrf();
+  return h.call(`/api/auth/username-check?username=${encodeURIComponent(username)}`, {
+    headers: {
+      Origin: ORIGIN,
+      "Sec-Fetch-Site": "same-origin",
+      "X-CSRF-Token": token,
+      "CF-Connecting-IP": ip,
+      Cookie: setCookie?.split(";")[0] ?? "",
+    },
+  });
+}
+
 describe("AU15", () => {
   it("AU15.2 username-check 21st → 429; buckets separate", async () => {
     const h = createHarness();
     for (let i = 0; i < 20; i++) {
-      const res = await h.call(`/api/auth/username-check?username=u${i}`, {
-        headers: { "CF-Connecting-IP": IP },
-      });
+      const res = await usernameCheck(h, `u${i}`);
       expect([200, 429]).toContain(res.status);
     }
-    const r21 = await h.call("/api/auth/username-check?username=u20", {
-      headers: { "CF-Connecting-IP": IP },
-    });
+    const r21 = await usernameCheck(h, "u20");
     expect(r21.status).toBe(429);
     expect(await r21.json()).toStrictEqual({ error: "rate_limited" });
     expect(r21.headers.get("Retry-After")).toBe("60");
@@ -104,13 +118,14 @@ describe("AU17", () => {
 
   it("AU17.3 R8b 21st distinct identifier", async () => {
     const h = createHarness({ webLogin: badCreds() });
-    h.setNow(Date.now());
+    const t0 = Date.now();
+    h.setNow(t0);
     for (let i = 0; i < 20; i++) {
-      h.setNow(Date.now() + i * 1000);
+      h.setNow(t0 + i * 1000);
       const res = await loginPost(h, { identifier: `id${i}` });
       expect(res.status).toBe(401);
     }
-    h.setNow(Date.now() + 20_000);
+    h.setNow(t0 + 20_000);
     const r21 = await loginPost(h, { identifier: "id20" });
     expect(r21.status).toBe(429);
     const other = await loginPost(h, { identifier: "other", ip: "198.51.100.9" });

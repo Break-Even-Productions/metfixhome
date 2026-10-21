@@ -3,6 +3,13 @@ import { normalizeCanModerate } from "../upstream";
 import { randomId32, sha256Hex } from "./crypto";
 import type { SessionRecord } from "../do/session";
 
+export class SessionUnavailableError extends Error {
+  constructor() {
+    super("session_unavailable");
+    this.name = "SessionUnavailableError";
+  }
+}
+
 export type MeCache = {
   public_name: string;
   moderator: boolean;
@@ -36,13 +43,17 @@ async function doFetch(
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("X-Session-AAD", init.aad);
-  return stub.fetch(
-    new Request(`https://session.do${path}`, {
-      method: init.method,
-      headers,
-      body: init.body,
-    }),
-  );
+  try {
+    return await stub.fetch(
+      new Request(`https://session.do${path}`, {
+        method: init.method,
+        headers,
+        body: init.body,
+      }),
+    );
+  } catch {
+    throw new SessionUnavailableError();
+  }
 }
 
 type TokenInput = {
@@ -54,7 +65,6 @@ type TokenInput = {
   can_moderate?: unknown;
 };
 
-/** Overload: createSession(env, tokens) → sid; createSession(env, sid, tokens) → {hex, record}. */
 export async function createSession(env: Env, tokens: TokenInput): Promise<string>;
 export async function createSession(
   env: Env,
@@ -131,30 +141,68 @@ export async function loadSession(
 ): Promise<{ hex: string; record: SessionRecord } | null> {
   const hex = await sessionKeyHex(rawId);
   const stub = sessionStub(env, hex);
-  try {
-    const res = await doFetch(stub, "/session", { method: "GET", aad: sessionAad(hex) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { present?: boolean; record?: SessionRecord | null };
-    if (!data.record) return null;
-    return { hex, record: data.record };
-  } catch {
+  const res = await doFetch(stub, "/session", { method: "GET", aad: sessionAad(hex) });
+  if (res.status === 503) throw new SessionUnavailableError();
+  if (!res.ok) return null;
+  const data = (await res.json()) as { present?: boolean; record?: SessionRecord | null };
+  if (!data.record) return null;
+  return { hex, record: data.record };
+}
+
+export async function ensureActingAccess(
+  env: Env,
+  rawId: string,
+  opts?: { force?: boolean; baseUrl?: string },
+): Promise<{ hex: string; record: SessionRecord } | null> {
+  const hex = await sessionKeyHex(rawId);
+  const stub = sessionStub(env, hex);
+  const res = await doFetch(stub, "/ensure-access", {
+    method: "POST",
+    aad: sessionAad(hex),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force: opts?.force === true, baseUrl: opts?.baseUrl }),
+  });
+  if (res.status === 503) throw new SessionUnavailableError();
+  if (res.status === 401 || res.status === 404) {
+    try {
+      await deleteMeCache(env, hex);
+    } catch {
+      /* */
+    }
     return null;
   }
+  if (!res.ok) throw new SessionUnavailableError();
+  const data = (await res.json()) as { record?: SessionRecord; refreshed?: boolean };
+  if (!data.record) return null;
+  if (data.refreshed) await putMeCache(env, hex, data.record);
+  return { hex, record: data.record };
 }
 
 export async function destroySession(env: Env, rawId: string): Promise<SessionRecord | null> {
-  const loaded = await loadSession(env, rawId);
+  let loaded: { hex: string; record: SessionRecord } | null = null;
+  try {
+    loaded = await loadSession(env, rawId);
+  } catch (e) {
+    if (e instanceof SessionUnavailableError) throw e;
+  }
   const hex = await sessionKeyHex(rawId);
   const stub = sessionStub(env, hex);
   try {
     await doFetch(stub, "/session", { method: "DELETE", aad: sessionAad(hex) });
-  } catch {
-    /* best-effort */
+  } catch (e) {
+    if (e instanceof SessionUnavailableError) {
+      try {
+        await deleteMeCache(env, hex);
+      } catch {
+        /* */
+      }
+      throw e;
+    }
   }
   try {
     await deleteMeCache(env, hex);
   } catch {
-    /* best-effort */
+    /* */
   }
   return loaded?.record ?? null;
 }
@@ -172,12 +220,14 @@ export async function touchSession(
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
+    if (res.status === 503) throw new SessionUnavailableError();
     if (!res.ok) return null;
     const data = (await res.json()) as { record: SessionRecord; reissued: boolean };
     if (data.reissued) await putMeCache(env, hex, data.record);
     return { record: data.record, reissued: data.reissued === true };
-  } catch {
-    return null;
+  } catch (e) {
+    if (e instanceof SessionUnavailableError) throw e;
+    throw new SessionUnavailableError();
   }
 }
 

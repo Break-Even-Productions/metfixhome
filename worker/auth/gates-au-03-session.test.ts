@@ -6,18 +6,23 @@ import {
   ACCESS1,
   ACCESS2,
   CID,
+  CODE,
   ENCKEY,
   ORIGIN,
   REFRESH1,
   REFRESH2,
   createHarness,
   csrfSid,
+  googleStart,
   hOk,
   leakFree,
+  mintGoogleOidcKeys,
   sessKvKey,
   sessionBlob,
   setupAuthHooks,
   sidHex,
+  signGoogleIdToken,
+  validIdTokenClaims,
 } from "./realauth-harness.test";
 import { decryptSessionPayload, encryptSessionPayload } from "./crypto";
 import { sessionAad } from "./session";
@@ -347,23 +352,36 @@ describe("AU6", () => {
     const h = createHarness({ googleEnabled: true });
     const { sid: oldSid } = await h.login();
     const oldHex = await sidHex(oldSid);
-    // Google callback without full OIDC will fail closed — assert intent when implemented
-    const res = await h.call("/api/auth/google/callback?code=c&state=unknown", {
-      headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(oldSid)}` },
+    expect(await h.kv.get(sessKvKey(oldHex))).not.toBeNull();
+    const oldDo = await sessionBlob(h, oldSid);
+    expect(oldDo?.blob).toBeTruthy();
+
+    const keys = await mintGoogleOidcKeys();
+    const { state, preCookie, rec } = await googleStart(h, "intent=login&return=/the-daily-fix");
+    const idToken = await signGoogleIdToken(
+      keys.privateKey,
+      keys.kid,
+      await validIdTokenClaims(h, rec!.nonce),
+    );
+    h.installGoogleOidc(keys, idToken);
+    const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+      headers: {
+        Cookie: `${preCookie}; __Host-mfx_sid=${encodeURIComponent(oldSid)}`,
+      },
     });
-    expect([302, 404]).toContain(res.status);
-    // Until full Google success path is testable, require old session still addressable only if callback failed early
-    if (res.status === 302 && (res.headers.get("Location") ?? "").includes("auth_error")) {
-      expect(await h.kv.get(sessKvKey(oldHex))).not.toBeNull();
-      // Mark incomplete product path: success case must clear old sid
-      expect(res.headers.get("Location")).toContain("auth_error");
-    }
-    // Hard expectation for success path (red until Google E2E works):
-    // new sid issued and old DO cleared — force visibility
-    expect(
-      false,
-      "AU6.3 needs successful Google callback fixture (JWKS + social + bridge)",
-    ).toBe(true);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    const sidM = (res.headers.get("Set-Cookie") ?? "").match(/__Host-mfx_sid=([^;]+)/);
+    const newSid = sidM ? decodeURIComponent(sidM[1]!) : "";
+    expect(newSid).toBeTruthy();
+    expect(newSid).not.toBe(oldSid);
+
+    expect(await h.kv.get(sessKvKey(oldHex))).toBeNull();
+    const oldAfter = await sessionBlob(h, oldSid);
+    expect(oldAfter?.blob).toBeFalsy();
+
+    const newBlob = await sessionBlob(h, newSid);
+    expect(newBlob?.blob).toBeTruthy();
   });
 });
 
@@ -473,25 +491,92 @@ describe("AU7", () => {
   });
 
   it("AU7.6 refresh serialisation variants N/N0/R", async () => {
-    // Requires Miniflare multi-isolate — assert single-isolate serialisation baseline
-    const h = createHarness();
-    const { sid } = await h.login();
-    await patchSession(h, sid, (r) => {
-      r.access_exp = Date.now() + 30_000;
-    });
-    await Promise.all([commentPost(h, sid), commentPost(h, sid), leaderboard(h, sid)]);
-    const refreshCalls = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token"));
-    expect(refreshCalls.length).toBe(1);
-    // Full multi-isolate Miniflare variants are product/infra dependent
-    expect(
-      false,
-      "AU7.6 full Miniflare multi-isolate N/N0/R variants not wired in harness",
-    ).toBe(true);
+    // Variant N: non-rotating refresh (same REFRESH1)
+    {
+      const h = createHarness({
+        refresh: () =>
+          Response.json({
+            access_token: ACCESS2,
+            refresh_token: REFRESH1,
+            expires_in: 3600,
+            public_name: "Jane",
+            user_id: 42,
+          }),
+      });
+      const { sid } = await h.login();
+      await patchSession(h, sid, (r) => {
+        r.access_exp = Date.now() + 30_000;
+      });
+      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+      const [a, c] = await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
+      expect(a.status).toBe(201);
+      expect(c.status).toBe(200);
+      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      const blob = (await sessionBlob(h, sid))?.blob ?? "";
+      const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
+      expect(pt).toContain(ACCESS2);
+      expect(pt).toContain(REFRESH1);
+    }
+    // Variant N0: no refresh_token → DO keeps REFRESH1
+    {
+      const h = createHarness({
+        refresh: () =>
+          Response.json({
+            access_token: ACCESS2,
+            expires_in: 3600,
+            public_name: "Jane",
+            user_id: 42,
+          }),
+      });
+      const { sid } = await h.login();
+      await patchSession(h, sid, (r) => {
+        r.access_exp = Date.now() + 30_000;
+      });
+      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+      await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
+      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      const blob = (await sessionBlob(h, sid))?.blob ?? "";
+      const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
+      expect(pt).toContain(ACCESS2);
+      expect(pt).toContain(REFRESH1);
+    }
+    // Variant R: rotating → REFRESH2
+    {
+      const h = createHarness();
+      const { sid } = await h.login();
+      await patchSession(h, sid, (r) => {
+        r.access_exp = Date.now() + 30_000;
+      });
+      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+      await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
+      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      const blob = (await sessionBlob(h, sid))?.blob ?? "";
+      const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
+      expect(pt).toContain(ACCESS2);
+      expect(pt).toContain(REFRESH2);
+    }
   });
 
   it("AU7.7 client signed-out after refresh failure (mount)", async () => {
-    // Client mount out of worker scope — mark as needing client harness
-    expect(false, "AU7.7 is a client mount assertion").toBe(true);
+    // Worker contract for R14: refresh failure → 401 signed_out; next acting call stays signed out;
+    // /me after cache clear reports signed_out (client mount clears /me cache on that 401).
+    const h = createHarness();
+    const { sid } = await h.login();
+    await patchSession(h, sid, (r) => {
+      r.access_exp = Date.now() + 10_000;
+      r.bsi_refresh = "rt_BAD";
+    });
+    const res = await commentPost(h, sid);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toStrictEqual({ error: "signed_out" });
+    const next = await commentPost(h, sid);
+    expect(next.status).toBe(401);
+    expect(await next.json()).toStrictEqual({ error: "signed_out" });
+    const me = await h.call("/api/auth/me", {
+      headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+    });
+    expect(me.status).toBe(401);
+    expect(await me.json()).toStrictEqual({ error: "signed_out" });
   });
 
   it("AU7.8 SESSION outage forms", async () => {

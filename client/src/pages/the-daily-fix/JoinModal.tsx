@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { clampClientRetryAfter } from "./comments";
+import { ensureRecaptchaScript } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
 
 type JoinModalProps = {
@@ -116,7 +117,9 @@ export function JoinModal({
       setPassword("");
       setError(null);
       setBusy(false);
+      return;
     }
+    ensureRecaptchaScript();
   }, [open]);
 
   useEffect(() => {

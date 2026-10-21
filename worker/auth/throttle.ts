@@ -1,7 +1,15 @@
 import type { Env } from "../upstream";
 import { sha256Hex } from "./crypto";
 
+export class ThrottleUnavailableError extends Error {
+  constructor() {
+    super("throttle_unavailable");
+    this.name = "ThrottleUnavailableError";
+  }
+}
+
 function stub(env: Env, name: string): DurableObjectStub {
+  if (!env.LOGIN_THROTTLE) throw new ThrottleUnavailableError();
   return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));
 }
 
@@ -10,9 +18,15 @@ async function post(
   name: string,
   path: string,
 ): Promise<{ allowed: boolean; retryAfter?: number; count?: number; failures?: number }> {
-  const res = await stub(env, name).fetch(
-    new Request(`https://throttle.do${path}`, { method: "POST" }),
-  );
+  let res: Response;
+  try {
+    res = await stub(env, name).fetch(
+      new Request(`https://throttle.do${path}`, { method: "POST" }),
+    );
+  } catch {
+    throw new ThrottleUnavailableError();
+  }
+  if (res.status === 503) throw new ThrottleUnavailableError();
   return (await res.json()) as {
     allowed: boolean;
     retryAfter?: number;

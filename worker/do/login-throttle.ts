@@ -77,7 +77,8 @@ export class LoginThrottleDO implements DurableObject {
       lastLockSecs: 0,
     };
     st.failures += 1;
-    if (st.failures > R8A_FREE) {
+    // After 5 recorded failures, lock subsequent attempts (AU17.1: 6th login → 429).
+    if (st.failures >= R8A_FREE) {
       const next =
         st.lastLockSecs <= 0 ? 1 : Math.min(R8A_CAP_S, st.lastLockSecs * 2);
       st.lastLockSecs = next;

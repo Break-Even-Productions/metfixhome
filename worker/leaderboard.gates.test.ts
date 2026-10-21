@@ -561,16 +561,144 @@ describe("PR2 leaderboard gates L / LB", () => {
     );
   });
 
-  it("L7.3 XSS name renders as text without img nodes", () => {
-    expect(
-      false,
-      "L7.3 needs client leaderboard DOM render (text nodes; no img for XSS public_name)",
-    ).toBe(true);
+  it("L7.3 XSS name renders as text without img nodes", async () => {
+    const { JSDOM } = await import("jsdom");
+    const { createElement } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { act } = await import("react");
+    const xss = "<img src=x onerror=alert(1)>";
+    const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
+      url: "https://metfix.org/the-daily-fix",
+    });
+    const prevWindow = globalThis.window;
+    const prevDocument = globalThis.document;
+    // @ts-expect-error test shim
+    globalThis.window = dom.window;
+    // @ts-expect-error test shim
+    globalThis.document = dom.window.document;
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        leaderboard: [
+          {
+            rank: 1,
+            public_name: xss,
+            score_value: 10,
+            scaling_mode: "rx",
+            logged_at: "t",
+            is_self: false,
+          },
+        ],
+        total: 1,
+      }),
+    );
+    try {
+      const { Leaderboard } = await import("../client/src/pages/the-daily-fix/Leaderboard");
+      const { invalidateLeaderboardCache } = await import(
+        "../client/src/pages/the-daily-fix/leaderboard"
+      );
+      invalidateLeaderboardCache();
+      const rootEl = document.getElementById("root")!;
+      const root = createRoot(rootEl);
+      await act(async () => {
+        root.render(
+          createElement(Leaderboard, {
+            dateIso: "2025-02-10",
+            pillar: "brain",
+            signedIn: true,
+            fetchImpl,
+          }),
+        );
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const board = rootEl.querySelector(".df-leaderboard");
+      expect(board).toBeTruthy();
+      expect(board!.querySelector("img")).toBeNull();
+      const nameEl = board!.querySelector(".df-leaderboard-name");
+      expect(nameEl?.textContent).toBe(xss);
+      await act(async () => {
+        root.unmount();
+      });
+    } finally {
+      // @ts-expect-error restore
+      globalThis.window = prevWindow;
+      // @ts-expect-error restore
+      globalThis.document = prevDocument;
+    }
   });
 
-  it("L7.4 client Member fallback for blank public_name", () => {
-    expect(false, "L7.4 needs client Member fallback for blank public_name").toBe(true);
+
+  it("L7.4 client Member fallback for blank public_name", async () => {
+    const { displayLeaderboardName, invalidateLeaderboardCache } = await import(
+      "../client/src/pages/the-daily-fix/leaderboard"
+    );
+    expect(displayLeaderboardName("")).toBe("Member");
+    expect(displayLeaderboardName("   ")).toBe("Member");
+    expect(displayLeaderboardName(null)).toBe("Member");
+    expect(displayLeaderboardName(undefined)).toBe("Member");
+    expect(displayLeaderboardName("Jane")).toBe("Jane");
+
+    const { JSDOM } = await import("jsdom");
+    const { createElement } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { act } = await import("react");
+    const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
+      url: "https://metfix.org/the-daily-fix",
+    });
+    const prevWindow = globalThis.window;
+    const prevDocument = globalThis.document;
+    // @ts-expect-error test shim
+    globalThis.window = dom.window;
+    // @ts-expect-error test shim
+    globalThis.document = dom.window.document;
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        leaderboard: [
+          {
+            rank: 1,
+            public_name: "",
+            score_value: 1,
+            scaling_mode: "rx",
+            logged_at: "t",
+            is_self: false,
+          },
+        ],
+        total: 1,
+      }),
+    );
+    try {
+      const { Leaderboard } = await import("../client/src/pages/the-daily-fix/Leaderboard");
+      invalidateLeaderboardCache();
+      const rootEl = document.getElementById("root")!;
+      const root = createRoot(rootEl);
+      await act(async () => {
+        root.render(
+          createElement(Leaderboard, {
+            dateIso: "2025-02-10",
+            pillar: "brain",
+            signedIn: true,
+            fetchImpl,
+          }),
+        );
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(rootEl.querySelector(".df-leaderboard-name")?.textContent).toBe("Member");
+      await act(async () => {
+        root.unmount();
+      });
+    } finally {
+      // @ts-expect-error restore
+      globalThis.window = prevWindow;
+      // @ts-expect-error restore
+      globalThis.document = prevDocument;
+    }
   });
+
 
   it("LB.N9 renders at most 25 rows with limit 25 offset 0", async () => {
     const g = setupGate();

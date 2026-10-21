@@ -26,6 +26,7 @@ import {
   clientIp,
   failR8a,
   reserveR8c,
+  ThrottleUnavailableError,
 } from "./throttle";
 
 const SID_MAX_AGE = 2_592_000; // 30d
@@ -63,7 +64,8 @@ export async function handleLogin(
     return authJson(BODY_INVALID_REQUEST, 400);
   }
 
-  // Order: R8a → R8b → token shape → R8c → BSI-C10 (§0s.1 / 1.6.3)
+  try {
+    // Order: R8a → R8b → token shape → R8c → BSI-C10 (§0s.1 / 1.6.3)
   const r8a = await checkR8a(env, identifier);
   if (!r8a.allowed) {
     return authJson(BODY_RATE_LIMITED, 429, {
@@ -110,11 +112,17 @@ export async function handleLogin(
     { baseUrl, timeoutMs: 5000 },
   );
 
-  return mapWebLoginOutcome(upstream, {
-    env,
-    identifier,
-    incomingSid: getSid(request),
-  });
+  return await mapWebLoginOutcome(upstream, {
+      env,
+      identifier,
+      incomingSid: getSid(request),
+    });
+  } catch (e) {
+    if (e instanceof ThrottleUnavailableError) {
+      return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
+    }
+    throw e;
+  }
 }
 
 async function mapWebLoginOutcome(

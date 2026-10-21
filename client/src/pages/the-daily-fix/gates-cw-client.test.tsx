@@ -4,13 +4,21 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentThread } from "./CommentThread";
 import {
   invalidateCommentsCache,
   type CommentsLoadState,
   type DailyFixComment,
 } from "./comments";
+
+beforeEach(() => {
+  // AU25.2 / isAuthUiHost: composer only on metfix.org
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...window.location, hostname: "metfix.org", href: "https://metfix.org/" },
+  });
+});
 
 afterEach(() => {
   cleanup();

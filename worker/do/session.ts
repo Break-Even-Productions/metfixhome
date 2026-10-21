@@ -3,6 +3,7 @@
  * Instance name / AAD: sess:<sha256hex(id)>.
  */
 import { decryptSessionPayload, encryptSessionPayload } from "../auth/crypto";
+import { bsiRefreshToken, type Env, type FetchImpl } from "../upstream";
 
 export type SessionRecord = {
   bsi_access: string;
@@ -17,6 +18,10 @@ export type SessionRecord = {
 
 type Stored = { blob: string };
 
+const REFRESH_WINDOW_MS = 60_000;
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export class SessionDO {
   private refreshChain: Promise<unknown> = Promise.resolve();
 
@@ -25,6 +30,8 @@ export class SessionDO {
     private readonly env: {
       SESSION_ENC_KEY?: string;
       SESSION_ENC_KEY_PREV?: string;
+      DAILY_FIX_API_KEY?: string;
+      BSI_OAUTH_CLIENT_ID?: string;
     },
   ) {}
 
@@ -48,6 +55,13 @@ export class SessionDO {
         return new Response(null, { status: 204 });
       }
       if (path === "/touch" && request.method === "POST") return this.touch(aad);
+      if (path === "/ensure-access" && request.method === "POST") {
+        const body = (await request.json().catch(() => ({}))) as {
+          force?: boolean;
+          baseUrl?: string;
+        };
+        return this.withRefreshLock(() => this.ensureAccess(aad, body));
+      }
       if (path === "/refresh" && request.method === "POST") {
         return this.withRefreshLock(async () => {
           const body = (await request.json()) as {
@@ -61,7 +75,6 @@ export class SessionDO {
           return this.applyRefresh(aad, body);
         });
       }
-      // Legacy paths used by older helpers
       if (path === "/get" || path === "/get/") return this.get(aad);
       if ((path === "/put" || path === "/put/") && request.method === "POST") {
         const body = (await request.json()) as SessionRecord;
@@ -133,10 +146,80 @@ export class SessionDO {
     if (!body.present || !body.record) return json({ record: null }, 404);
     const now = Date.now();
     const prev = body.record.last_seen;
-    body.record.last_seen = now;
-    await this.put(aad, body.record);
-    const reissued = now - prev > 24 * 60 * 60 * 1000;
+    const reissued = now - prev > DAY_MS;
+    if (reissued) {
+      body.record.last_seen = now;
+      await this.put(aad, body.record);
+    }
     return json({ record: body.record, reissued });
+  }
+
+  private async ensureAccess(
+    aad: string,
+    opts: { force?: boolean; baseUrl?: string },
+  ): Promise<Response> {
+    const got = await this.get(aad);
+    const body = (await got.json()) as { present?: boolean; record?: SessionRecord };
+    if (!body.present || !body.record) return json({ status: "absent" }, 404);
+    const record = body.record;
+    const now = Date.now();
+    if (now - record.created >= NINETY_DAYS_MS) {
+      await this.state.storage.deleteAll();
+      return json({ status: "expired" }, 401);
+    }
+    const needsRefresh =
+      opts.force === true || record.access_exp - now <= REFRESH_WINDOW_MS;
+    if (!needsRefresh) return json({ status: "ok", record });
+    const clientId = this.env.BSI_OAUTH_CLIENT_ID;
+    if (!clientId || !this.env.DAILY_FIX_API_KEY) {
+      return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
+    }
+    const fetchImpl = globalThis.fetch.bind(globalThis) as FetchImpl;
+    const upstream = await bsiRefreshToken(
+      {
+        grant_type: "refresh_token",
+        client_id: clientId,
+        refresh_token: record.bsi_refresh,
+      },
+      this.env as Env,
+      fetchImpl,
+      { baseUrl: opts.baseUrl, timeoutMs: 5000 },
+    );
+    if (upstream.kind === "ok") {
+      const tok = upstream.json as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+        public_name?: string;
+        user_id?: string | number;
+        can_moderate?: unknown;
+      };
+      if (typeof tok.access_token !== "string") {
+        await this.state.storage.deleteAll();
+        return json({ status: "expired" }, 401);
+      }
+      record.bsi_access = tok.access_token;
+      if (typeof tok.refresh_token === "string" && tok.refresh_token) {
+        record.bsi_refresh = tok.refresh_token;
+      }
+      record.access_exp =
+        now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
+      record.last_seen = now;
+      if (typeof tok.public_name === "string" && tok.public_name.trim()) {
+        record.user_public_name = tok.public_name.trim();
+      }
+      if (tok.user_id != null) record.bsi_user_id = String(tok.user_id);
+      if (tok.can_moderate !== undefined) {
+        record.can_moderate = tok.can_moderate === true;
+      }
+      await this.put(aad, record);
+      return json({ status: "ok", record, refreshed: true });
+    }
+    if (upstream.kind === "http" && (upstream.status === 400 || upstream.status === 401)) {
+      await this.state.storage.deleteAll();
+      return json({ status: "expired" }, 401);
+    }
+    return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
   }
 
   private async applyRefresh(

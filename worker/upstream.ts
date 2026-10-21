@@ -48,6 +48,10 @@ export function normalizeCanModerate(value: unknown): boolean {
 
 export type CommentType = "belly" | "body" | "brain" | "all";
 
+export type RateLimitBinding = {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+};
+
 export type Env = {
   ASSETS: Fetcher;
   DAILY_FIX_API_KEY?: string;
@@ -65,6 +69,9 @@ export type Env = {
   GOOGLE_WEB_CLIENT_SECRET?: string;
   /** When "1"/"true", Google auth routes are live (R9 gate). */
   GOOGLE_AUTH_ENABLED?: string;
+  SIGNUP_LIMITER?: RateLimitBinding;
+  USERNAME_CHECK_LIMITER?: RateLimitBinding;
+  GOOGLE_AUTH_LIMITER?: RateLimitBinding;
 };
 
 export type FetchImpl = typeof fetch;

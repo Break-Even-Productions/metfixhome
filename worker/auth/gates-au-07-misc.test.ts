@@ -399,9 +399,18 @@ describe("AU14", () => {
 describe("AU15", () => {
   it("AU15.1 username-check shapes; no BSI extras", async () => {
     const h = createHarness();
-    const res = await h.call("/api/auth/username-check?username=jane");
+    const { csrf: token, setCookie } = await h.csrf();
+    const hdrs = {
+      Origin: ORIGIN,
+      "Sec-Fetch-Site": "same-origin",
+      "X-CSRF-Token": token,
+      Cookie: setCookie?.split(";")[0] ?? "",
+    };
+    const res = await h.call("/api/auth/username-check?username=jane", { headers: hdrs });
     expect(await res.json()).toStrictEqual({ available: true });
-    const text = await (await h.call("/api/auth/username-check?username=jane")).text();
+    const text = await (
+      await h.call("/api/auth/username-check?username=jane", { headers: hdrs })
+    ).text();
     expect(text).not.toContain("email_exists");
     expect(text).not.toContain("user_id");
   });
@@ -409,14 +418,31 @@ describe("AU15", () => {
   it("AU15.3 username-check CSRF", async () => {
     const h = createHarness();
     const res = await h.call("/api/auth/username-check?username=jane");
-    // Spec requires CSRF; current may allow — assert 403
     expect(res.status).toBe(403);
+    const { csrf: token, setCookie } = await h.csrf();
+    const wrong = await h.call("/api/auth/username-check?username=jane", {
+      headers: {
+        Origin: ORIGIN,
+        "X-CSRF-Token": "wrong",
+        Cookie: setCookie?.split(";")[0] ?? "",
+      },
+    });
+    expect(wrong.status).toBe(403);
+    void token;
   });
 
   it("AU15.4 @ input → valid:false 0 BSI", async () => {
     const h = createHarness();
+    const { csrf: token, setCookie } = await h.csrf();
     const n = h.fetches.length;
-    const res = await h.call("/api/auth/username-check?username=a@b.c");
+    const res = await h.call("/api/auth/username-check?username=a@b.c", {
+      headers: {
+        Origin: ORIGIN,
+        "Sec-Fetch-Site": "same-origin",
+        "X-CSRF-Token": token,
+        Cookie: setCookie?.split(";")[0] ?? "",
+      },
+    });
     expect(await res.json()).toStrictEqual({ valid: false });
     expect(h.fetches.length).toBe(n);
   });
@@ -628,8 +654,46 @@ describe("AU19", () => {
   });
 
   it("AU19.2 CSP on /the-daily-fix HTML", async () => {
-    expect(false, "AU19.2 needs HTMLRewriter/ASSETS CSP fixture").toBe(true);
+    const { installHtmlRewriterPolyfill } = await import("../test/htmlrewriter-polyfill");
+    installHtmlRewriterPolyfill();
+    const { DAILY_FIX_CSP } = await import("../index");
+    const h = createHarness();
+    const html =
+      '<!doctype html><html><head><title>t</title><link rel="canonical" href="https://metfix.org/"></head><body></body></html>';
+    h.env.ASSETS = {
+      fetch: async () =>
+        new Response(html, { status: 200, headers: { "Content-Type": "text/html" } }),
+    } as unknown as Fetcher;
+    const res = await h.call("/the-daily-fix", {
+      headers: { Accept: "text/html" },
+    });
+    expect(res.status).toBeLessThan(500);
+    const csp = res.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toBe(DAILY_FIX_CSP);
+    const dirs = csp.split(";").map((part) => part.trim());
+    const scriptSrc = dirs.find((d) => d.startsWith("script-src ")) ?? "";
+    const scriptTokens = new Set(scriptSrc.replace(/^script-src\s+/, "").split(/\s+/));
+    expect(scriptTokens).toEqual(
+      new Set(["'self'", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/"]),
+    );
+    expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval|\*|data:/);
+    const frameSrc = dirs.find((d) => d.startsWith("frame-src ")) ?? "";
+    expect(frameSrc).toContain("https://www.google.com/recaptcha/");
+    expect(frameSrc).toContain("https://recaptcha.google.com/recaptcha/");
+    const connectSrc = dirs.find((d) => d.startsWith("connect-src ")) ?? "";
+    expect(connectSrc).toContain("'self'");
+    expect(connectSrc).toContain("https://www.google.com/recaptcha/");
+    expect(dirs.some((d) => d === "frame-ancestors 'none'")).toBe(true);
+
+    const headersFile = join(REPO, "client/public/_headers");
+    expect(existsSync(headersFile), "AU19.2 needs client/public/_headers").toBe(true);
+    const headersText = readFileSync(headersFile, "utf8");
+    expect(headersText).toMatch(/Content-Security-Policy-Report-Only/);
+    expect(headersText).toMatch(/https:\/\/www\.google\.com\/recaptcha\//);
+    expect(headersText).toMatch(/https:\/\/www\.gstatic\.com\/recaptcha\//);
+    expect(headersText).toMatch(/frame-ancestors 'none'/);
   });
+
 
   it("AU19.3 built HTML no inline script/handlers", async () => {
     const dist = join(REPO, "dist/public");
@@ -657,8 +721,38 @@ describe("AU19", () => {
   });
 
   it("AU19.5 recaptcha script lazy mount", async () => {
-    expect(false, "AU19.5 is a client mount test").toBe(true);
+    const { JSDOM } = await import("jsdom");
+    const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
+      url: "https://metfix.org/the-daily-fix",
+    });
+    const prevWindow = globalThis.window;
+    const prevDocument = globalThis.document;
+    // @ts-expect-error test shim
+    globalThis.window = dom.window;
+    // @ts-expect-error test shim
+    globalThis.document = dom.window.document;
+    (dom.window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string }).__MFX_RECAPTCHA_SITE_KEY__ =
+      "test-site-key";
+    try {
+      const { ensureRecaptchaScript } = await import(
+        "../../client/src/pages/the-daily-fix/recaptcha"
+      );
+      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(0);
+      ensureRecaptchaScript();
+      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(1);
+      ensureRecaptchaScript();
+      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(1);
+      const src = document.querySelector('script[src*="recaptcha"]')?.getAttribute("src") ?? "";
+      expect(src).toContain("google.com");
+      expect(src).toContain("recaptcha");
+    } finally {
+      // @ts-expect-error restore
+      globalThis.window = prevWindow;
+      // @ts-expect-error restore
+      globalThis.document = prevDocument;
+    }
   });
+
 });
 
 describe("AU20", () => {
@@ -701,25 +795,47 @@ describe("AU22", () => {
     if (!existsSync(client)) {
       throw new Error("SCAN FAIL: bsi-host zero files scanned");
     }
-    const hits: string[] = [];
-    for (const abs of walk(client)) {
-      if (abs.includes("node_modules") || abs.endsWith(".test.ts") || abs.endsWith(".test.tsx"))
-        continue;
-      const lines = readFileSync(abs, "utf8").split("\n");
-      lines.forEach((line, i) => {
-        if (/brokenscience\.org/.test(line)) {
-          const rel = abs.replace(REPO + "/", "");
-          hits.push(`SCAN FAIL: bsi-host ${rel}:${i + 1}`);
-        }
-      });
+    /** PR2 auth/Daily Fix surface (marketing BSI hrefs are out of AU22.2 scope). */
+    function inScanScope(rel: string): boolean {
+      if (rel.startsWith("client/src/pages/the-daily-fix/")) return true;
+      if (rel.startsWith("client/src/lib/session")) return true;
+      if (/\/auth\//.test(rel) || /\/auth\.[^/]+$/.test(rel)) return true;
+      return false;
     }
-    const plant = join(client, "src", `_au222_plant_${Date.now()}.ts`);
+    function isTestFile(rel: string): boolean {
+      return (
+        rel.endsWith(".test.ts") ||
+        rel.endsWith(".test.tsx") ||
+        rel.endsWith(".spec.ts") ||
+        rel.endsWith(".spec.tsx")
+      );
+    }
+    function scan(): { hits: string[]; scanned: number } {
+      const hits: string[] = [];
+      let scanned = 0;
+      for (const abs of walk(client)) {
+        if (abs.includes("node_modules") || abs.includes("/dist/")) continue;
+        const rel = abs.replace(REPO + "/", "").split("\\").join("/");
+        if (!inScanScope(rel) || isTestFile(rel)) continue;
+        scanned += 1;
+        const lines = readFileSync(abs, "utf8").split("\n");
+        lines.forEach((line, i) => {
+          if (/brokenscience\.org/.test(line)) {
+            hits.push(`SCAN FAIL: bsi-host ${rel}:${i + 1}`);
+          }
+        });
+      }
+      return { hits, scanned };
+    }
+    const { hits, scanned } = scan();
+    if (scanned === 0) throw new Error("SCAN FAIL: bsi-host zero files scanned");
+
+    const plantRel = `client/src/pages/the-daily-fix/_au222_plant_${Date.now()}.ts`;
+    const plant = join(REPO, plantRel);
     try {
       writeFileSync(plant, 'const x = "https://brokenscience.org";\n');
-      const lineNo = 1;
-      expect(`SCAN FAIL: bsi-host client/src/${plant.split("/").pop()}:${lineNo}`).toMatch(
-        /^SCAN FAIL: bsi-host /,
-      );
+      const planted = scan();
+      expect(planted.hits).toContain(`SCAN FAIL: bsi-host ${plantRel}:1`);
     } finally {
       try {
         unlinkSync(plant);
@@ -773,6 +889,61 @@ describe("AU25", () => {
   });
 
   it("AU25.2 preview hostname client UI", async () => {
-    expect(false, "AU25.2 is a client mount test").toBe(true);
+    const { JSDOM } = await import("jsdom");
+    const { createElement } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { act } = await import("react");
+    const dom = new JSDOM(
+      "<!doctype html><html><head></head><body><div id='root'></div></body></html>",
+      { url: "https://pr-2.metfixhome.pages.dev/the-daily-fix" },
+    );
+    const prevWindow = globalThis.window;
+    const prevDocument = globalThis.document;
+    // @ts-expect-error test shim
+    globalThis.window = dom.window;
+    // @ts-expect-error test shim
+    globalThis.document = dom.window.document;
+    const authFetches: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const u = String(input);
+      if (u.includes("/api/auth/")) authFetches.push(u);
+      return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    };
+    vi.stubGlobal("fetch", fetchImpl);
+    try {
+      const { CommentThread } = await import(
+        "../../client/src/pages/the-daily-fix/CommentThread"
+      );
+      const { isAuthUiHost } = await import("../../client/src/pages/the-daily-fix/authHost");
+      expect(isAuthUiHost(dom.window.location.hostname)).toBe(false);
+      const rootEl = document.getElementById("root")!;
+      const root = createRoot(rootEl);
+      await act(async () => {
+        root.render(
+          createElement(CommentThread, {
+            load: { status: "loaded", comments: [] },
+            pillar: "belly",
+            dateIso: "2025-02-10",
+            viewerDisplayName: null,
+          }),
+        );
+      });
+      const textContent = rootEl.textContent ?? "";
+      expect(textContent).toContain("Sign in on metfix.org to comment.");
+      expect(rootEl.querySelector(".df-composer")).toBeNull();
+      expect(rootEl.querySelector(".df-join-modal")).toBeNull();
+      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(0);
+      expect(authFetches).toEqual([]);
+      await act(async () => {
+        root.unmount();
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      // @ts-expect-error restore
+      globalThis.window = prevWindow;
+      // @ts-expect-error restore
+      globalThis.document = prevDocument;
+    }
   });
+
 });

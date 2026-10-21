@@ -4,6 +4,7 @@ import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { loadMe, type MeState } from "@/lib/session";
 import { ArchiveBrowser } from "./ArchiveBrowser";
+import { isAuthUiHost } from "./authHost";
 import { CommentThread } from "./CommentThread";
 import { DayPanel } from "./DayPanel";
 import { HeroMark, useHeroGlass } from "./HeroGlass";
@@ -16,6 +17,7 @@ import {
   type DailyFixLoadState,
 } from "./data";
 import { fetchDailyFixComments, type CommentsLoadState } from "./comments";
+import { Leaderboard } from "./Leaderboard";
 import "./daily-fix.css";
 import {
   bsiTodayIso,
@@ -147,7 +149,9 @@ export default function TheDailyFixPage({
   }, []);
 
   // R5 / C6.1: one `/me` per app load. Skip setState when still signed_out (CC1 C5).
+  // AU25.2: preview hosts never hit /api/auth/*.
   useEffect(() => {
+    if (!isAuthUiHost()) return;
     let active = true;
     void loadMe().then((next) => {
       if (!active) return;
@@ -385,14 +389,21 @@ export default function TheDailyFixPage({
               }
             />
             {route.kind !== "invalid" ? (
-              <CommentThread
-                load={commentsLoad}
-                pillar={route.pillar}
-                dateIso={commentIso}
-                viewerDisplayName={me.status === "signed_in" ? me.public_name : null}
-                moderator={me.status === "signed_in" ? me.moderator : false}
-                onCommentsChanged={setCommentsLoad}
-              />
+              <>
+                <Leaderboard
+                  dateIso={commentIso}
+                  pillar={route.pillar}
+                  signedIn={me.status === "signed_in"}
+                />
+                <CommentThread
+                  load={commentsLoad}
+                  pillar={route.pillar}
+                  dateIso={commentIso}
+                  viewerDisplayName={me.status === "signed_in" ? me.public_name : null}
+                  moderator={me.status === "signed_in" ? me.moderator : false}
+                  onCommentsChanged={setCommentsLoad}
+                />
+              </>
             ) : null}
           </div>
         </section>

@@ -7,6 +7,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isAuthUiHost } from "./authHost";
 import {
   clampClientRetryAfter,
   fetchDailyFixComments,
@@ -15,6 +16,7 @@ import {
   type DailyFixComment,
 } from "./comments";
 import { JoinModal } from "./JoinModal";
+import { ensureRecaptchaScript } from "./recaptcha";
 import { PILLARS, pillarLabel, type Pillar } from "./model";
 
 /** Indirect binding so tests can stub `globalThis.fetch` (P7.2). */
@@ -55,6 +57,7 @@ export function CommentThread({
   moderator = false,
   onCommentsChanged,
 }: CommentThreadProps) {
+  const authHost = isAuthUiHost();
   const loggedIn = Boolean(viewerDisplayName?.trim());
   const [body, setBody] = useState("");
   const [commentType, setCommentType] = useState<Pillar>(pillar);
@@ -244,59 +247,74 @@ export function CommentThread({
         </p>
       ) : null}
 
-      <form
-        className="df-composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!loggedIn) {
-            setJoinOpen(true);
-            return;
-          }
-          void postComment();
-        }}
-      >
-        <div className="df-composer-meta">
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger className="df-comment-type" aria-label="Comment type">
-              {pillarLabel(commentType)}
-              <ChevronDown className="df-comment-type-caret" aria-hidden="true" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={8} className="df-share-menu df-comment-type-menu">
-              <DropdownMenuRadioGroup
-                value={commentType}
-                onValueChange={(value) => setCommentType(value as Pillar)}
-              >
-                {PILLARS.map((item) => (
-                  <DropdownMenuRadioItem key={item} value={item}>
-                    {pillarLabel(item)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <label>
-          <span className="sr-only">Comment</span>
-          <textarea
-            name="comment"
-            rows={3}
-            placeholder="Share a thought on today’s fix"
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="df-btn df-btn-ink" disabled={posting || locked}>
-          {locked ? `Try again in ${retryLeft}s` : posting ? "Posting…" : "Post comment"}
-        </button>
-      </form>
+      {!authHost ? (
+        <p className="df-muted" role="status">
+          Sign in on metfix.org to comment.
+        </p>
+      ) : (
+        <>
+          <form
+            className="df-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!loggedIn) {
+                setJoinOpen(true);
+                return;
+              }
+              void postComment();
+            }}
+          >
+            <div className="df-composer-meta">
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger className="df-comment-type" aria-label="Comment type">
+                  {pillarLabel(commentType)}
+                  <ChevronDown className="df-comment-type-caret" aria-hidden="true" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  sideOffset={8}
+                  className="df-share-menu df-comment-type-menu"
+                >
+                  <DropdownMenuRadioGroup
+                    value={commentType}
+                    onValueChange={(value) => setCommentType(value as Pillar)}
+                  >
+                    {PILLARS.map((item) => (
+                      <DropdownMenuRadioItem key={item} value={item}>
+                        {pillarLabel(item)}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <label>
+              <span className="sr-only">Comment</span>
+              <textarea
+                name="comment"
+                rows={3}
+                placeholder="Share a thought on today’s fix"
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                onFocus={() => {
+                  if (loggedIn) ensureRecaptchaScript();
+                }}
+              />
+            </label>
+            <button type="submit" className="df-btn df-btn-ink" disabled={posting || locked}>
+              {locked ? `Try again in ${retryLeft}s` : posting ? "Posting…" : "Post comment"}
+            </button>
+          </form>
 
-      <JoinModal
-        open={joinOpen}
-        onClose={() => setJoinOpen(false)}
-        onSignedIn={() => {
-          /* parent reloads /me via shared cache */
-        }}
-      />
+          <JoinModal
+            open={joinOpen}
+            onClose={() => setJoinOpen(false)}
+            onSignedIn={() => {
+              /* parent reloads /me via shared cache */
+            }}
+          />
+        </>
+      )}
     </section>
   );
 }

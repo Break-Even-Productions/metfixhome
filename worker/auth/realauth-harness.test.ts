@@ -7,8 +7,10 @@ import type { Env, FetchImpl } from "../upstream";
 import { LoginThrottleDO } from "../do/login-throttle";
 import { OauthStateDO } from "../do/oauth-state";
 import { SessionDO } from "../do/session";
-import { bytesToBase64Url, csrfForSid, randomBytes } from "./crypto";
+import { bytesToBase64Url, csrfForSid, randomBytes, sha256Hex } from "./crypto";
 import { SID_COOKIE, PRE_COOKIE } from "./cookies";
+import { resetAuthLimiters } from "./auth-rate-limit";
+import { resetCommentLimiters } from "./comment-rate-limit";
 import { sessKvKey, sessionAad, sessionKeyHex } from "./session";
 
 export { sessKvKey };
@@ -170,17 +172,119 @@ const COMMENTS_FIXTURE = {
 
 export type Harness = ReturnType<typeof createHarness>;
 
+export const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
+export const GOOGLE_WEB_CLIENT_ID = "google-web-client-QA";
+export const WP_BRIDGE_CODE = "wp_QA_SENT_CODE";
+
+export type GoogleOidcKeys = {
+  kid: string;
+  privateKey: CryptoKey;
+  publicJwk: JsonWebKey;
+  jwks: { keys: JsonWebKey[] };
+};
+
+/** Generate an in-test RSA keypair + JWKS document for Google id_token signing. */
+export async function mintGoogleOidcKeys(kid = "mfx-test-kid"): Promise<GoogleOidcKeys> {
+  const pair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+  const raw = (await crypto.subtle.exportKey("jwk", pair.publicKey)) as JsonWebKey;
+  const publicJwk: JsonWebKey = {
+    kty: raw.kty,
+    n: raw.n,
+    e: raw.e,
+    kid,
+    alg: "RS256",
+    use: "sig",
+  };
+  return {
+    kid,
+    privateKey: pair.privateKey,
+    publicJwk,
+    jwks: { keys: [publicJwk] },
+  };
+}
+
+export async function signGoogleIdToken(
+  privateKey: CryptoKey,
+  kid: string,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const header = bytesToBase64Url(
+    new TextEncoder().encode(JSON.stringify({ alg: "RS256", kid, typ: "JWT" })),
+  );
+  const body = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const data = new TextEncoder().encode(`${header}.${body}`);
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, data);
+  return `${header}.${body}.${bytesToBase64Url(sig)}`;
+}
+
+function cacheKey(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return (input as Request).url;
+}
+
+function makeRecordingCache(clockMs: () => number) {
+  const data = new Map<string, { body: string; expiresAt: number | null; headers: Headers }>();
+  const puts: Array<{ key: string; maxAge: number | null }> = [];
+  const matches: string[] = [];
+  const cache = {
+    puts,
+    matches,
+    data,
+    async match(input: RequestInfo | URL) {
+      const key = cacheKey(input);
+      matches.push(key);
+      const row = data.get(key);
+      if (!row) return undefined;
+      if (row.expiresAt != null && clockMs() >= row.expiresAt) {
+        data.delete(key);
+        return undefined;
+      }
+      return new Response(row.body, { headers: row.headers });
+    },
+    async put(input: RequestInfo | URL, response: Response) {
+      const key = cacheKey(input);
+      const cc = response.headers.get("Cache-Control") ?? "";
+      const m = /max-age=(\d+)/i.exec(cc);
+      const maxAge = m ? Number(m[1]) : null;
+      puts.push({ key, maxAge });
+      const headers = new Headers(response.headers);
+      data.set(key, {
+        body: await response.clone().text(),
+        expiresAt: maxAge != null ? clockMs() + maxAge * 1000 : null,
+        headers,
+      });
+    },
+    async delete(input: RequestInfo | URL) {
+      return data.delete(cacheKey(input));
+    },
+  };
+  return cache as unknown as Cache & {
+    puts: typeof puts;
+    matches: string[];
+    data: typeof data;
+  };
+}
+
+type EdgeHandler = (req: Request) => Response | Promise<Response>;
+
 export function createHarness(opts?: {
   googleEnabled?: boolean;
   sessionOutage?: "throw";
-  /** Optional previous session encryption key (ENC.T2). */
+  oauthOutage?: "throw" | "hang";
   sessionEncKeyPrev?: string;
   webLogin?: (req: Request) => Response | Promise<Response>;
-  /** Optional BSI-C4 revoke mock (`throw` rejects the fetch). */
   revoke?: "throw" | ((req: Request) => Response | Promise<Response>);
-  /** Optional override for BSI-C3 /oauth/token refresh. */
   refresh?: (req: Request) => Response | Promise<Response>;
-  /** Optional siteverify mock. */
   siteverify?: (req: Request) => Response | Promise<Response>;
 }) {
   let now = Date.now();
@@ -190,29 +294,32 @@ export function createHarness(opts?: {
     {
       SESSION_ENC_KEY: ENCKEY,
       SESSION_ENC_KEY_PREV: opts?.sessionEncKeyPrev,
+      DAILY_FIX_API_KEY: KEY,
+      BSI_OAUTH_CLIENT_ID: CID,
     },
     {
       throwAll: opts?.sessionOutage === "throw",
     },
   );
   const throttleNs = makeNamespace(LoginThrottleDO, {});
-  const oauthNs = makeNamespace(OauthStateDO, {});
+  const oauthNs = makeNamespace(OauthStateDO, {}, {
+    throwAll: opts?.oauthOutage === "throw",
+  });
+  if (opts?.oauthOutage === "hang") {
+    oauthNs.get = (_id: { toString(): string }) => ({
+      fetch: async () => new Promise<Response>(() => {}),
+    });
+  }
 
-  const cache = {
-    puts: [] as unknown[],
-    async match() {
-      return undefined;
-    },
-    async put(k: unknown, v: unknown) {
-      cache.puts.push({ k, v });
-    },
-    async delete() {
-      return false;
-    },
-  } as unknown as Cache & { puts: unknown[] };
-
+  const cache = makeRecordingCache(() => now);
   const fetches: RecordedFetch[] = [];
   const siteverifyCalls: RecordedFetch[] = [];
+  const edges = {
+    jwks: null as EdgeHandler | null,
+    googleToken: null as EdgeHandler | null,
+    social: null as EdgeHandler | null,
+    bridge: null as EdgeHandler | null,
+  };
 
   const fetchImpl: FetchImpl = async (input, init) => {
     const url =
@@ -221,7 +328,11 @@ export function createHarness(opts?: {
         : input instanceof URL
           ? input.href
           : (input as Request).url;
-    const method = (init?.method ?? "GET").toUpperCase();
+    const method =
+      init?.method?.toUpperCase() ??
+      (typeof input !== "string" && !(input instanceof URL)
+        ? (input as Request).method.toUpperCase()
+        : "GET");
     const rawBody = init?.body;
     const bodyText =
       typeof rawBody === "string"
@@ -242,10 +353,35 @@ export function createHarness(opts?: {
       if (opts?.siteverify) {
         return opts.siteverify(new Request(url, { method, headers, body: bodyText }));
       }
-      // Default action `comment` for write routes; signup/login tests override via `siteverify`.
       return Response.json({ success: true, score: 0.9, action: "comment", hostname: "metfix.org" });
     }
-    if (!url.includes("brokenscience.org") && !url.includes("oauth2.googleapis.com")) {
+    if (url.startsWith(GOOGLE_JWKS_URL) || url.includes("googleapis.com/oauth2/v3/certs")) {
+      if (edges.jwks) {
+        // GET Request cannot carry a body (undici throws).
+        return edges.jwks(new Request(url, { method, headers }));
+      }
+      return new Response(JSON.stringify({ keys: [] }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("oauth2.googleapis.com/token")) {
+      if (edges.googleToken) {
+        return edges.googleToken(
+          new Request(url, {
+            method,
+            headers,
+            body: method === "GET" || method === "HEAD" ? undefined : bodyText,
+          }),
+        );
+      }
+      return new Response("{}", { status: 404 });
+    }
+    if (
+      !url.includes("brokenscience.org") &&
+      !url.includes("oauth2.googleapis.com") &&
+      !url.includes("googleapis.com")
+    ) {
       return new Response("x", { status: 502 });
     }
     if (url.includes("/auth/web-login")) {
@@ -258,9 +394,34 @@ export function createHarness(opts?: {
         user_id: 42,
       });
     }
+    if (url.includes("/auth/social")) {
+      if (edges.social) return edges.social(new Request(url, { method, headers, body: bodyText }));
+      return Response.json({ bridge_url: BRIDGE });
+    }
+    if (url.includes("app-oauth-bridge")) {
+      if (edges.bridge) return edges.bridge(new Request(url, { method, headers }));
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=bridge`,
+        },
+      });
+    }
     if (url.includes("/proxy/oauth/token")) {
       if (opts?.refresh) return opts.refresh(new Request(url, { method, headers, body: bodyText }));
-      const parsed = JSON.parse(bodyText || "{}") as { refresh_token?: string };
+      const parsed = JSON.parse(bodyText || "{}") as {
+        refresh_token?: string;
+        grant_type?: string;
+      };
+      if (parsed.grant_type === "authorization_code") {
+        return Response.json({
+          access_token: ACCESS1,
+          refresh_token: REFRESH1,
+          expires_in: 3600,
+          public_name: "Jane",
+          user_id: 42,
+        });
+      }
       if (parsed.refresh_token === REFRESH1) {
         return Response.json({
           access_token: ACCESS2,
@@ -302,9 +463,9 @@ export function createHarness(opts?: {
     if (url.includes("/daily-fix") && method === "GET") {
       return Response.json({
         date: "2025-02-10",
-        belly: { title: "b" },
-        body: { title: "b", scoring_field: "reps" },
-        brain: { title: "b" },
+        belly: { title: "b", body: "bx" },
+        body: { title: "b", body: "bx", scoring_field: "reps" },
+        brain: { title: "b", body: "bx", scoring_field: "reps" },
         daily_workout_id: 99,
       });
     }
@@ -313,7 +474,8 @@ export function createHarness(opts?: {
     return new Response("{}", { status: 404 });
   };
 
-  vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("global fetch"); }));
+  vi.stubGlobal("fetch", vi.fn(fetchImpl));
+  vi.stubGlobal("caches", { default: cache });
 
   const env: Env = {
     ASSETS: { fetch: async () => new Response("x") } as unknown as Fetcher,
@@ -326,7 +488,7 @@ export function createHarness(opts?: {
     SESSION_ENC_KEY: ENCKEY,
     CSRF_SECRET: "csrf_secret_QA_32bytes___________",
     RECAPTCHA_SECRET: RSECRET,
-    GOOGLE_WEB_CLIENT_ID: "google-web-client-QA",
+    GOOGLE_WEB_CLIENT_ID,
     GOOGLE_WEB_CLIENT_SECRET: GSECRET,
     GOOGLE_AUTH_ENABLED: opts?.googleEnabled ? "1" : undefined,
   };
@@ -375,8 +537,10 @@ export function createHarness(opts?: {
     sessionNs,
     throttleNs,
     oauthNs,
+    cache,
     fetches,
     siteverifyCalls,
+    edges,
     call,
     login,
     csrf,
@@ -384,6 +548,123 @@ export function createHarness(opts?: {
       now = ms;
       vi.setSystemTime(new Date(now));
     },
+    installGoogleOidc(keys: GoogleOidcKeys, idToken: string) {
+      const doc = JSON.parse(JSON.stringify(keys.jwks)) as { keys: JsonWebKey[] };
+      edges.jwks = async () =>
+        new Response(JSON.stringify(doc), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      edges.googleToken = async () =>
+        new Response(
+          JSON.stringify({
+            id_token: idToken,
+            access_token: "g_at_unused",
+            token_type: "Bearer",
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+    },
+    setJwks(keys: GoogleOidcKeys | { keys: JsonWebKey[] }) {
+      const doc = JSON.parse(JSON.stringify("jwks" in keys ? keys.jwks : keys)) as {
+        keys: JsonWebKey[];
+      };
+      edges.jwks = async () =>
+        new Response(JSON.stringify(doc), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+    },
+    setGoogleIdToken(idToken: string) {
+      edges.googleToken = async () =>
+        new Response(
+          JSON.stringify({
+            id_token: idToken,
+            access_token: "g_at_unused",
+            token_type: "Bearer",
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+    },
+    setSocial(handler: EdgeHandler | { status?: number; body?: unknown } | "404") {
+      if (handler === "404") {
+        edges.social = async () =>
+          new Response(JSON.stringify({ code: "account_not_found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        return;
+      }
+      if (typeof handler === "function") {
+        edges.social = handler;
+        return;
+      }
+      edges.social = async () =>
+        new Response(JSON.stringify(handler.body ?? { bridge_url: BRIDGE }), {
+          status: handler.status ?? 200,
+          headers: { "Content-Type": "application/json" },
+        });
+    },
+  };
+}
+
+export async function readOauthRecord(
+  h: Harness,
+  state: string,
+): Promise<{
+  flow: string;
+  nonce: string;
+  verifier: string;
+  intent: string;
+  return: string;
+  pre_hash: string;
+  created: number;
+} | undefined> {
+  const name = `oauth:${await sha256Hex(state)}`;
+  return h.oauthNs.getStorage(name)?.get("rec") as
+    | {
+        flow: string;
+        nonce: string;
+        verifier: string;
+        intent: string;
+        return: string;
+        pre_hash: string;
+        created: number;
+      }
+    | undefined;
+}
+
+export async function googleStart(
+  h: Harness,
+  query = "intent=login&return=/the-daily-fix",
+) {
+  const start = await h.call(`/api/auth/google/start?${query}`);
+  const loc = start.headers.get("Location") ?? "";
+  const state = new URL(loc).searchParams.get("state") ?? "";
+  const pre = (start.headers.get("Set-Cookie") ?? "").match(/__Host-mfx_pre=([^;]+)/);
+  const preCookie = pre ? `__Host-mfx_pre=${pre[1]}` : "";
+  const rec = await readOauthRecord(h, state);
+  return { start, state, preCookie, rec, loc };
+}
+
+export async function validIdTokenClaims(
+  h: Harness,
+  nonce: string,
+  extra: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    iss: "https://accounts.google.com",
+    aud: h.env.GOOGLE_WEB_CLIENT_ID,
+    exp: now + 3600,
+    iat: now,
+    nonce,
+    email_verified: true,
+    email: "qa.sentinel@example.test",
+    sub: "google-sub-QA",
+    ...extra,
   };
 }
 
@@ -420,6 +701,8 @@ export async function sessionBlob(h: Harness, sid: string) {
 
 export function setupAuthHooks() {
   beforeEach(() => {
+    resetAuthLimiters();
+    resetCommentLimiters();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-10-12T12:00:00.000Z"));
   });

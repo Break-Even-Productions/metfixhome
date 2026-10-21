@@ -22,6 +22,13 @@ const REPO_ROOT = path.resolve(
   "../../../..",
 );
 
+beforeEach(() => {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...window.location, hostname: "metfix.org", href: "https://metfix.org/" },
+  });
+});
+
 afterEach(() => {
   cleanup();
   invalidateCommentsCache();

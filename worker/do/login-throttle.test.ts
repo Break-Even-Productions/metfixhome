@@ -25,19 +25,24 @@ function makeDo() {
 describe("LoginThrottleDO (R8a/R8b/R8c)", () => {
   it("R8a: 5 free failures then lockout", async () => {
     const { do: throttle } = makeDo();
-    for (let i = 0; i < 5; i++) {
+    // Failures 1–4 record as allowed; 5th records lock; subsequent /r8a/check denied.
+    for (let i = 0; i < 4; i++) {
       const res = await throttle.fetch(
         new Request("https://t/r8a/fail", { method: "POST" }),
       );
       const body = (await res.json()) as { allowed: boolean };
       expect(body.allowed).toBe(true);
     }
-    const sixth = await throttle.fetch(
+    const fifth = await throttle.fetch(
       new Request("https://t/r8a/fail", { method: "POST" }),
     );
-    const body = (await sixth.json()) as { allowed: boolean; retryAfter: number };
-    expect(body.allowed).toBe(false);
-    expect(body.retryAfter).toBe(1);
+    expect(((await fifth.json()) as { allowed: boolean }).allowed).toBe(false);
+    const check = await throttle.fetch(
+      new Request("https://t/r8a/check", { method: "POST" }),
+    );
+    const locked = (await check.json()) as { allowed: boolean; retryAfter: number };
+    expect(locked.allowed).toBe(false);
+    expect(locked.retryAfter).toBe(1);
   });
 
   it("R8b: 21st attempt in window is rejected", async () => {

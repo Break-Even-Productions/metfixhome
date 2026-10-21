@@ -1,12 +1,21 @@
 /**
  * AU10–AU13 Google / OAuth / return-URL gates.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  BRIDGE,
+  CID,
   CODE,
+  GOOGLE_JWKS_URL,
+  GOOGLE_WEB_CLIENT_ID,
   ORIGIN,
+  WP_BRIDGE_CODE,
   createHarness,
+  googleStart,
+  mintGoogleOidcKeys,
   setupAuthHooks,
+  signGoogleIdToken,
+  validIdTokenClaims,
 } from "./realauth-harness.test";
 import { sha256Hex, bytesToBase64Url, randomBytes } from "./crypto";
 
@@ -18,6 +27,35 @@ function b64urlJson(obj: object): string {
 
 function fakeJwt(payload: object): string {
   return `${b64urlJson({ alg: "none", kid: "k1" })}.${b64urlJson(payload)}.sig`;
+}
+
+async function signedCallback(
+  h: ReturnType<typeof createHarness>,
+  opts?: {
+    intent?: "login" | "register";
+    returnPath?: string;
+    claims?: Record<string, unknown>;
+    keys?: Awaited<ReturnType<typeof mintGoogleOidcKeys>>;
+    cookieExtra?: string;
+    callbackQueryExtra?: string;
+  },
+) {
+  const keys = opts?.keys ?? (await mintGoogleOidcKeys());
+  const q = new URLSearchParams({
+    intent: opts?.intent ?? "login",
+    return: opts?.returnPath ?? "/the-daily-fix",
+  });
+  const { state, preCookie, rec } = await googleStart(h, q.toString());
+  expect(rec?.nonce).toBeTruthy();
+  const claims = await validIdTokenClaims(h, rec!.nonce, opts?.claims ?? {});
+  const idToken = await signGoogleIdToken(keys.privateKey, keys.kid, claims);
+  h.installGoogleOidc(keys, idToken);
+  const cookie = [preCookie, opts?.cookieExtra].filter(Boolean).join("; ");
+  const extra = opts?.callbackQueryExtra ? `&${opts.callbackQueryExtra}` : "";
+  const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}${extra}`, {
+    headers: { Cookie: cookie },
+  });
+  return { res, state, preCookie, rec, keys, idToken, claims };
 }
 
 describe("AU10", () => {
@@ -135,24 +173,34 @@ describe("AU10", () => {
   });
 
   it("AU10.9 OAUTH_STATE outage → unavailable", async () => {
-    // Harness lacks oauth outage flag — assert unbound-like by deleting namespace get throw
-    const h = createHarness({ googleEnabled: true });
-    const orig = h.env.OAUTH_STATE.get.bind(h.env.OAUTH_STATE);
-    h.env.OAUTH_STATE.get = () => {
-      throw new Error("oauth_outage");
-    };
-    try {
-      const start = await h.call("/api/auth/google/start");
-      expect(start.status).toBe(302);
-      expect(start.headers.get("Location")).toMatch(/auth_error=unavailable/);
-    } catch {
-      // Current product may throw instead of 302 — still map the ID
-      expect(true, "AU10.9 product should map OAUTH_STATE outage to auth_error=unavailable").toBe(
-        false,
-      );
-    } finally {
-      h.env.OAUTH_STATE.get = orig;
-    }
+    const hThrow = createHarness({ googleEnabled: true, oauthOutage: "throw" });
+    const startThrow = await hThrow.call("/api/auth/google/start");
+    expect(startThrow.status).toBe(302);
+    expect(startThrow.headers.get("Location")).toBe("/?auth_error=unavailable");
+    expect(hThrow.fetches.filter((f) => f.url.includes("oauth2.googleapis.com")).length).toBe(0);
+    expect(hThrow.fetches.filter((f) => f.url.includes("brokenscience.org")).length).toBe(0);
+    expect(startThrow.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+
+    const hUnbound = createHarness({ googleEnabled: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (hUnbound.env as any).OAUTH_STATE = undefined;
+    const startUnbound = await hUnbound.call("/api/auth/google/start");
+    expect(startUnbound.headers.get("Location")).toBe("/?auth_error=unavailable");
+
+    const hHang = createHarness({ googleEnabled: true });
+    const { state, preCookie } = await googleStart(hHang);
+    const origGet = hHang.env.OAUTH_STATE.get.bind(hHang.env.OAUTH_STATE);
+    hHang.env.OAUTH_STATE.get = () => ({
+      fetch: async () => new Promise<Response>(() => {}),
+    });
+    const cbPromise = hHang.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+      headers: { Cookie: preCookie },
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    const cb = await cbPromise;
+    expect(cb.headers.get("Location")).toBe("/?auth_error=unavailable");
+    expect(hHang.fetches.filter((f) => f.url.includes("oauth2.googleapis.com/token")).length).toBe(0);
+    hHang.env.OAUTH_STATE.get = origGet;
   });
 });
 
@@ -196,14 +244,23 @@ describe("AU11", () => {
   });
 
   it("AU11.3 WP code exchange body 4 keys no code_verifier", async () => {
-    // Bridge follow path not fully wired in harness — assert METFIX_CALLBACK_URI contract via source + red fixture
     const h = createHarness({ googleEnabled: true });
-    const res = await h.call(`/api/auth/callback?code=${CODE}&state=wpstate`);
-    expect(res.status).toBe(400);
-    expect(await res.json()).toStrictEqual({ error: "invalid_request" });
-    expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length).toBe(0);
-    // Full bridge→C3 body assertion requires internal bridge follow (red until fixture):
-    expect(false, "AU11.3 needs in-worker bridge follow fixture").toBe(true);
+    const { res } = await signedCallback(h);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    const c3 = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token"));
+    expect(c3.length).toBe(1);
+    const body = JSON.parse(c3[0]!.bodyText) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toStrictEqual(
+      ["client_id", "code", "grant_type", "redirect_uri"].sort(),
+    );
+    expect(body).toStrictEqual({
+      grant_type: "authorization_code",
+      code: WP_BRIDGE_CODE,
+      client_id: CID,
+      redirect_uri: "https://metfix.org/api/auth/callback",
+    });
+    expect(c3[0]!.bodyText).not.toContain("code_verifier");
   });
 
   it("AU11.4 browser GET /api/auth/callback rejects", async () => {
@@ -344,33 +401,232 @@ describe("AU12", () => {
   });
 
   it("AU12.10 valid token → 1 BSI-C5 social call", async () => {
-    expect(false, "AU12.10 needs JWKS + valid signed id_token fixture").toBe(true);
+    const h = createHarness({ googleEnabled: true });
+    const { res } = await signedCallback(h);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+    const social = h.fetches.filter((f) => f.url.includes("/auth/social"));
+    expect(social.length).toBe(1);
   });
 
   it("AU12.11 JWKS cache TTL 3600 / kid-miss 300", async () => {
-    expect(false, "AU12.11 needs JWKS Cache API wiring").toBe(true);
+    const h = createHarness({ googleEnabled: true });
+    const keys = await mintGoogleOidcKeys("cache-kid");
+    h.setJwks(keys);
+
+    const s1 = await googleStart(h);
+    const t1 = await signGoogleIdToken(
+      keys.privateKey,
+      keys.kid,
+      await validIdTokenClaims(h, s1.rec!.nonce),
+    );
+    h.setGoogleIdToken(t1);
+    const r1 = await h.call(`/api/auth/google/callback?code=${CODE}&state=${s1.state}`, {
+      headers: { Cookie: s1.preCookie },
+    });
+    expect(r1.headers.get("Location")).toBe("/the-daily-fix");
+    const jwksFetches = () =>
+      h.fetches.filter((f) => f.url.includes("googleapis.com/oauth2/v3/certs"));
+    expect(jwksFetches().length).toBe(1);
+
+    const s2 = await googleStart(h);
+    const t2 = await signGoogleIdToken(
+      keys.privateKey,
+      keys.kid,
+      await validIdTokenClaims(h, s2.rec!.nonce),
+    );
+    h.setGoogleIdToken(t2);
+    const nAfterFirst = jwksFetches().length;
+    await h.call(`/api/auth/google/callback?code=${CODE}&state=${s2.state}`, {
+      headers: { Cookie: s2.preCookie },
+    });
+    expect(jwksFetches().length).toBe(nAfterFirst);
+
+    h.setNow(Date.now() + 3601_000);
+    const s3 = await googleStart(h);
+    const t3 = await signGoogleIdToken(
+      keys.privateKey,
+      keys.kid,
+      await validIdTokenClaims(h, s3.rec!.nonce),
+    );
+    h.setGoogleIdToken(t3);
+    await h.call(`/api/auth/google/callback?code=${CODE}&state=${s3.state}`, {
+      headers: { Cookie: s3.preCookie },
+    });
+    expect(jwksFetches().length).toBe(nAfterFirst + 1);
+
+    const nBeforeMiss = jwksFetches().length;
+    const sMiss1 = await googleStart(h);
+    const badKidToken = await signGoogleIdToken(
+      keys.privateKey,
+      "unknown-kid-AAAA",
+      await validIdTokenClaims(h, sMiss1.rec!.nonce),
+    );
+    h.setJwks(keys);
+    h.setGoogleIdToken(badKidToken);
+    const miss1 = await h.call(`/api/auth/google/callback?code=${CODE}&state=${sMiss1.state}`, {
+      headers: { Cookie: sMiss1.preCookie },
+    });
+    expect(miss1.headers.get("Location")).toBe("/?auth_error=google");
+    expect(jwksFetches().length).toBeGreaterThan(nBeforeMiss);
+
+    const sMiss2 = await googleStart(h);
+    const badKidToken2 = await signGoogleIdToken(
+      keys.privateKey,
+      "unknown-kid-BBBB",
+      await validIdTokenClaims(h, sMiss2.rec!.nonce),
+    );
+    h.setGoogleIdToken(badKidToken2);
+    const nBeforeMiss2 = jwksFetches().length;
+    await h.call(`/api/auth/google/callback?code=${CODE}&state=${sMiss2.state}`, {
+      headers: { Cookie: sMiss2.preCookie },
+    });
+    expect(jwksFetches().length).toBe(nBeforeMiss2);
+
+    h.setNow(Date.now() + 301_000);
+    const sMiss3 = await googleStart(h);
+    const badKidToken3 = await signGoogleIdToken(
+      keys.privateKey,
+      "unknown-kid-CCCC",
+      await validIdTokenClaims(h, sMiss3.rec!.nonce),
+    );
+    h.setGoogleIdToken(badKidToken3);
+    const nBeforeMiss3 = jwksFetches().length;
+    await h.call(`/api/auth/google/callback?code=${CODE}&state=${sMiss3.state}`, {
+      headers: { Cookie: sMiss3.preCookie },
+    });
+    expect(jwksFetches().length).toBe(nBeforeMiss3 + 1);
+    void GOOGLE_JWKS_URL;
   });
 
   it("AU12.c aud must be web client id", async () => {
-    expect(false, "AU12.c needs signed token matrix").toBe(true);
+    const hOk = createHarness({ googleEnabled: true });
+    const ok = await signedCallback(hOk, { claims: { aud: GOOGLE_WEB_CLIENT_ID } });
+    expect(ok.res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(hOk.fetches.filter((f) => f.url.includes("/auth/social")).length).toBe(1);
+
+    const rejects: Array<Record<string, unknown>> = [
+      { aud: "metfix-android-client" },
+      { aud: "metfix-other-web" },
+      { aud: [GOOGLE_WEB_CLIENT_ID, "other"] },
+      { aud: GOOGLE_WEB_CLIENT_ID, azp: "not-the-web-client" },
+    ];
+    for (const claims of rejects) {
+      const h = createHarness({ googleEnabled: true });
+      const keys = await mintGoogleOidcKeys();
+      const { state, preCookie, rec } = await googleStart(h);
+      const idToken = await signGoogleIdToken(
+        keys.privateKey,
+        keys.kid,
+        await validIdTokenClaims(h, rec!.nonce, claims),
+      );
+      h.installGoogleOidc(keys, idToken);
+      const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+        headers: { Cookie: preCookie },
+      });
+      expect(res.headers.get("Location")).toBe("/?auth_error=google");
+      expect(h.fetches.filter((f) => f.url.includes("/auth/social")).length).toBe(0);
+    }
   });
 
   it("AU12.v email_verified gates register social", async () => {
-    expect(false, "AU12.v needs Google callback success path").toBe(true);
+    const hReg = createHarness({ googleEnabled: true });
+    const reg = await signedCallback(hReg, {
+      intent: "register",
+      claims: { email_verified: true },
+    });
+    expect(reg.res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+    const socialReg = hReg.fetches.filter((f) => f.url.includes("/auth/social"));
+    expect(socialReg.length).toBe(1);
+    expect(JSON.parse(socialReg[0]!.bodyText).intent).toBe("register");
+
+    for (const ev of [false, "true", undefined] as const) {
+      const h = createHarness({ googleEnabled: true });
+      const keys = await mintGoogleOidcKeys();
+      const { state, preCookie, rec } = await googleStart(h, "intent=register&return=/");
+      const claims = await validIdTokenClaims(h, rec!.nonce, {});
+      if (ev === undefined) delete claims.email_verified;
+      else claims.email_verified = ev;
+      const idToken = await signGoogleIdToken(keys.privateKey, keys.kid, claims);
+      h.installGoogleOidc(keys, idToken);
+      await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+        headers: { Cookie: preCookie },
+      });
+      const social = h.fetches.filter((f) => f.url.includes("/auth/social"));
+      expect(social.filter((f) => JSON.parse(f.bodyText).intent === "register").length).toBe(0);
+      expect(social.length).toBeLessThanOrEqual(1);
+      if (social.length === 1) {
+        expect(JSON.parse(social[0]!.bodyText).intent).toBe("login");
+      }
+    }
   });
 
   it("AU12.u unverified login 404 → auth_error=google", async () => {
-    expect(false, "AU12.u needs social 404 fixture").toBe(true);
+    const h = createHarness({ googleEnabled: true });
+    h.setSocial("404");
+    const keys = await mintGoogleOidcKeys();
+    const { state, preCookie, rec } = await googleStart(h, "intent=login&return=/");
+    const claims = await validIdTokenClaims(h, rec!.nonce, { email_verified: false });
+    const idToken = await signGoogleIdToken(keys.privateKey, keys.kid, claims);
+    h.installGoogleOidc(keys, idToken);
+    const puts0 = h.kv.puts.filter((p) => p.key.startsWith("sess:")).length;
+    const res = await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+      headers: { Cookie: preCookie },
+    });
+    expect(res.headers.get("Location")).toBe("/?auth_error=google");
+    expect(res.headers.get("Set-Cookie") ?? "").not.toMatch(/__Host-mfx_sid=/);
+    const social = h.fetches.filter((f) => f.url.includes("/auth/social"));
+    expect(social.length).toBe(1);
+    expect(JSON.parse(social[0]!.bodyText).intent).toBe("login");
+    expect(social.every((f) => JSON.parse(f.bodyText).intent !== "register")).toBe(true);
+    expect(h.kv.puts.filter((p) => p.key.startsWith("sess:")).length).toBe(puts0);
   });
 
   it("AU12.e social body key set exact; no browser email leak", async () => {
-    expect(false, "AU12.e needs social request capture on success").toBe(true);
+    const h = createHarness({ googleEnabled: true });
+    const keys = await mintGoogleOidcKeys();
+    const { start, state, preCookie, rec, loc } = await googleStart(
+      h,
+      "intent=login&return=/&email=evil@x.test&login_hint=evil@x.test&sub=evil&user_id=9",
+    );
+    expect(loc).not.toContain("login_hint");
+    expect(new URL(loc).searchParams.get("login_hint")).toBeNull();
+    const idToken = await signGoogleIdToken(
+      keys.privateKey,
+      keys.kid,
+      await validIdTokenClaims(h, rec!.nonce),
+    );
+    h.installGoogleOidc(keys, idToken);
+    const res = await h.call(
+      `/api/auth/google/callback?code=${CODE}&state=${state}&email=browser@x.test&login_hint=browser@x.test&sub=browser&user_id=99`,
+      {
+        headers: {
+          Cookie: `${preCookie}; email=cookie@x.test; login_hint=cookie@x.test`,
+        },
+      },
+    );
+    expect(res.headers.get("Location")).toBe("/");
+    const social = h.fetches.filter((f) => f.url.includes("/auth/social"));
+    expect(social.length).toBe(1);
+    const body = JSON.parse(social[0]!.bodyText) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toStrictEqual(
+      ["access_token", "client_id", "intent", "provider", "redirect_uri", "state"].sort(),
+    );
+    expect(body.provider).toBe("google");
+    expect(body.client_id).toBe(CID);
+    expect(body.redirect_uri).toBe("https://metfix.org/api/auth/callback");
+    const blob = JSON.stringify(body);
+    expect(blob).not.toContain("evil@x.test");
+    expect(blob).not.toContain("browser@x.test");
+    expect(blob).not.toContain("cookie@x.test");
+    expect(blob).not.toContain("login_hint");
+    void start;
   });
 });
 
 describe("AU13", () => {
   it("AU13.1 return sanitization", async () => {
-    const h = createHarness({ googleEnabled: true });
     const evil = [
       "//evil.com",
       "https://evil.com",
@@ -383,23 +639,31 @@ describe("AU13", () => {
       "/" + "a".repeat(512),
     ];
     for (const ret of evil) {
-      const res = await h.call(`/api/auth/google/start?return=${encodeURIComponent(ret)}`);
+      const h = createHarness({ googleEnabled: true });
+      const { res } = await signedCallback(h, { returnPath: ret });
       expect(res.status).toBe(302);
-      // Stored return checked on final callback — start should still 302 to Google
-      expect(res.headers.get("Location")).toContain("accounts.google.com");
+      expect(res.headers.get("Location")).toBe("/");
     }
-    const good = await h.call(
-      `/api/auth/google/start?return=${encodeURIComponent("/the-daily-fix/250210#brain")}`,
-    );
-    expect(good.status).toBe(302);
-    // Final Location after callback must keep exact return — needs success path
-    expect(false, "AU13.1 final callback Location assertion needs success fixture").toBe(true);
+    const hGood = createHarness({ googleEnabled: true });
+    const good = await signedCallback(hGood, {
+      returnPath: "/the-daily-fix/250210#brain",
+    });
+    expect(good.res.headers.get("Location")).toBe("/the-daily-fix/250210#brain");
   });
 
   it("AU13.2 query return ignored vs stored", async () => {
-    expect(false, "AU13.2 needs successful callback with stored return").toBe(true);
+    const h = createHarness({ googleEnabled: true });
+    const { res } = await signedCallback(h, {
+      returnPath: "/the-daily-fix/safe",
+      callbackQueryExtra: "return=https://evil.com",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix/safe");
+    expect(res.headers.get("Location")).not.toContain("evil.com");
   });
 });
 
 void ORIGIN;
 void randomBytes;
+void BRIDGE;
+void fakeJwt;
