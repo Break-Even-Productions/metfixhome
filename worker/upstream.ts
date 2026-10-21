@@ -9,6 +9,10 @@ import { parseLocalBsiOrigin, type LocalAuthEnv } from "./dev-auth";
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_ORIGIN = "https://brokenscience.org";
 export const BSI_HOST = "brokenscience.org";
+/** Spec 1.6.12 §0w.2 — staging BSI base (same paths as prod). */
+export const BSI_STAGING_ORIGIN = "https://brokenstaging.wpengine.com";
+export const BSI_STAGING_HOST = "brokenstaging.wpengine.com";
+const ALLOWED_BSI_HOSTS = new Set([BSI_HOST, BSI_STAGING_HOST]);
 /** brokenscience.org's Cloudflare bot rules challenge requests with no User-Agent. */
 export const UPSTREAM_USER_AGENT = "metfixhome-worker/1.0";
 
@@ -65,6 +69,8 @@ export type Env = {
   OAUTH_STATE: DurableObjectNamespace;
   /** Dedicated metfix.org WP OAuth client id (non-secret). */
   BSI_OAUTH_CLIENT_ID?: string;
+  /** WP OAuth confidential client secret (Worker-only). */
+  METFIX_ORG_OAUTH_CLIENT_SECRET?: string;
   SESSION_ENC_KEY?: string;
   SESSION_ENC_KEY_PREV?: string;
   CSRF_SECRET?: string;
@@ -92,15 +98,15 @@ export type Env = {
 export type FetchImpl = typeof fetch;
 
 /**
- * X-API-Key may only go to production brokenscience.org, or — when LOCAL_AUTH is on —
- * the explicitly configured BSI_ORIGIN host. Never an arbitrary request-derived host.
+ * BSI host allowlist: prod + staging, or — when LOCAL_AUTH is on — the explicitly
+ * configured BSI_ORIGIN host. Never an arbitrary request-derived host.
  */
 export function assertBsiHost(url: string, env?: LocalAuthEnv): void {
   const host = new URL(url).hostname;
-  if (host === BSI_HOST) return;
+  if (ALLOWED_BSI_HOSTS.has(host)) return;
   const localOrigin = parseLocalBsiOrigin(env);
   if (localOrigin && host === new URL(localOrigin).hostname) return;
-  throw new Error(`X-API-Key only allowed for ${BSI_HOST}, got ${host}`);
+  throw new Error(`BSI host not allowed: ${host}`);
 }
 
 /** Resolved BSI site origin (production, opts.baseUrl, or LOCAL_AUTH BSI_ORIGIN). */
@@ -170,6 +176,197 @@ function readBsiCode(json: unknown): string | null {
     return (json as { code: string }).code;
   }
   return null;
+}
+
+function readOAuthError(json: unknown): string | null {
+  if (json && typeof json === "object" && typeof (json as { error?: unknown }).error === "string") {
+    return (json as { error: string }).error;
+  }
+  return null;
+}
+
+export function oauthClientId(env: Env): string | null {
+  const v = env.BSI_OAUTH_CLIENT_ID;
+  return v && v.length > 0 ? v : null;
+}
+
+export function oauthClientSecret(env: Env): string | null {
+  const v = env.METFIX_ORG_OAUTH_CLIENT_SECRET;
+  return v && v.length > 0 ? v : null;
+}
+
+export function dailyFixApiKey(env: Env): string | null {
+  const v = env.DAILY_FIX_API_KEY;
+  return v && v.length > 0 ? v : null;
+}
+
+export function recaptchaSecret(env: Env): string | null {
+  const v = env.RECAPTCHA_SECRET;
+  return v && v.length > 0 ? v : null;
+}
+
+export type AuthConfig = {
+  clientId: string;
+  clientSecret: string;
+  recaptchaSecret: string;
+  apiKey: string;
+  origin: string;
+};
+
+export type RequireAuthConfigOpts = {
+  /** When true, require non-empty RECAPTCHA_SECRET (login). */
+  needRecaptcha?: boolean;
+  /** When true, require non-empty DAILY_FIX_API_KEY (/me and BSI routes). */
+  needApiKey?: boolean;
+  /** Test/prod BSI base URL; `""` is treated as missing (`BSI_BASE_URL`). */
+  baseUrl?: string;
+};
+
+function logAuthConfigMissing(field: string): void {
+  console.log("auth_config_missing", field);
+}
+
+function resolveAuthOrigin(
+  env: Env,
+  baseUrl?: string,
+): { origin: string } | { missing: "BSI_BASE_URL" } {
+  if (baseUrl === "") return { missing: "BSI_BASE_URL" };
+  return { origin: originFromOpts(env, { baseUrl }) };
+}
+
+/**
+ * Validates auth-related bindings. Logs `auth_config_missing` with the field name only.
+ * Returns null when any required value is missing or empty.
+ */
+export function requireAuthConfig(env: Env, opts?: RequireAuthConfigOpts): AuthConfig | null {
+  const originRes = resolveAuthOrigin(env, opts?.baseUrl);
+  if ("missing" in originRes) {
+    logAuthConfigMissing(originRes.missing);
+    return null;
+  }
+  const clientId = oauthClientId(env);
+  if (!clientId) {
+    logAuthConfigMissing("BSI_OAUTH_CLIENT_ID");
+    return null;
+  }
+  const clientSecret = oauthClientSecret(env);
+  if (!clientSecret) {
+    logAuthConfigMissing("METFIX_ORG_OAUTH_CLIENT_SECRET");
+    return null;
+  }
+  if (opts?.needRecaptcha) {
+    const rs = recaptchaSecret(env);
+    if (!rs) {
+      logAuthConfigMissing("RECAPTCHA_SECRET");
+      return null;
+    }
+  }
+  if (opts?.needApiKey) {
+    const apiKey = dailyFixApiKey(env);
+    if (!apiKey) {
+      logAuthConfigMissing("DAILY_FIX_API_KEY");
+      return null;
+    }
+  }
+  return {
+    clientId,
+    clientSecret,
+    recaptchaSecret: recaptchaSecret(env) ?? "",
+    apiKey: dailyFixApiKey(env) ?? "",
+    origin: originRes.origin,
+  };
+}
+
+/** W5 OAuth token POST (no X-API-Key, no Authorization). */
+function oauthFormHeaders(): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+}
+
+/** GET /wp-json/bsi/v1/me headers (§0v.1 Q2 — Bearer only, no X-API-Key). */
+function bsiMeHeaders(accessToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+  };
+}
+
+async function oauthTokenFetch(
+  url: string,
+  body: URLSearchParams,
+  fetchImpl: FetchImpl,
+  timeoutMs: number,
+  env?: Env,
+): Promise<BsiHttpResult> {
+  try {
+    assertBsiHost(url, env);
+  } catch {
+    return { kind: "throw" };
+  }
+  try {
+    const response = await fetchImpl(url, {
+      method: "POST",
+      headers: oauthFormHeaders(),
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const bodyText = await response.text();
+    const raRaw = response.headers.get("Retry-After");
+    const retryAfter = raRaw != null ? parseRetryAfter(raRaw) : null;
+    let json: unknown = null;
+    try {
+      json = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      return { kind: "bad_json", status: response.status, bodyText, retryAfter };
+    }
+    if (response.ok) {
+      return { kind: "ok", status: response.status, json, bodyText, retryAfter };
+    }
+    // Map on OAuth `error` only — never surface or prefer `bsi_code` (§0v.3).
+    const oauthErr = readOAuthError(json);
+    void readBsiCode(json);
+    return {
+      kind: "http",
+      status: response.status,
+      json,
+      bodyText,
+      code: oauthErr,
+      retryAfter,
+    };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") return { kind: "timeout" };
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      return { kind: "timeout" };
+    }
+    return { kind: "throw" };
+  }
+}
+
+export type BsiMeProfile = {
+  id: number;
+  display_name: string;
+  avatar_url?: string;
+  can_moderate: boolean;
+};
+
+export function parseBsiMeProfile(json: unknown): BsiMeProfile | null {
+  if (!json || typeof json !== "object") return null;
+  const id = (json as { id?: unknown }).id;
+  if (typeof id !== "number" || !Number.isInteger(id)) return null;
+  const display_name = (json as { display_name?: unknown }).display_name;
+  if (typeof display_name !== "string") return null;
+  const avatar_url = (json as { avatar_url?: unknown }).avatar_url;
+  const can_moderate = normalizeCanModerate((json as { can_moderate?: unknown }).can_moderate);
+  return {
+    id,
+    display_name,
+    avatar_url: typeof avatar_url === "string" ? avatar_url : undefined,
+    can_moderate,
+  };
 }
 
 async function bsiFetch(
@@ -412,14 +609,7 @@ export async function fetchDailyFixComments(
   }
 }
 
-// ── Auth upstream (BSI-C10 / C2 / C2a / C3 / C4 / C5) ───────────────────────
-
-export type WebLoginBody = {
-  username: string;
-  password: string;
-  client_id: string;
-  recaptcha_token: string;
-};
+// ── Auth upstream (Pro OAuth + BSI-C2 / C2a / C5) ───────────────────────────
 
 export type TokenPairBody = {
   access_token: string;
@@ -432,25 +622,104 @@ export type TokenPairBody = {
   can_moderate?: unknown;
 };
 
-/** BSI-C10: POST /wp-json/bsi/v1/auth/web-login */
-export async function bsiWebLogin(
-  body: WebLoginBody,
+/** Pro OAuth: POST {origin}/oauth/token, grant_type=password (§0u.3). */
+export async function oauthPasswordGrant(
+  body: { username: string; password: string },
   env: Env,
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string; timeoutMs?: number },
 ): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(env, opts);
-  const url = `${origin}/wp-json/bsi/v1/auth/web-login`;
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/oauth/token`;
+  const form = new URLSearchParams({
+    grant_type: "password",
+    username: body.username,
+    password: body.password,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000, env);
+}
+
+/** Pro OAuth: POST {origin}/oauth/token, grant_type=refresh_token (§0u.3). */
+export async function oauthRefreshGrant(
+  body: { refresh_token: string },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/oauth/token`;
+  const form = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: body.refresh_token,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000, env);
+}
+
+/** BSI-C11: GET {origin}/wp-json/bsi/v1/me — no X-API-Key (§0v.1 Q2). */
+export async function bsiFetchMe(
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/wp-json/bsi/v1/me`;
   return bsiFetch(
     url,
     {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
+      method: "GET",
+      headers: bsiMeHeaders(accessToken),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
+}
+
+/** Pro OAuth: POST {origin}/oauth/token, grant_type=authorization_code (§0w.1). */
+export async function oauthAuthorizationCodeGrant(
+  body: { code: string; redirect_uri: string },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/oauth/token`;
+  const form = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: body.code,
+    redirect_uri: body.redirect_uri,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000, env);
+}
+
+/**
+ * Pro OAuth: POST {origin}/oauth/revoke (§0v.1 Q6).
+ * Body exactly `token` + `token_type_hint`; no secret, client_id, or Authorization.
+ */
+export async function oauthRevokeToken(
+  body: { token: string; token_type_hint: "refresh_token" | "access_token" },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const origin = originFromOpts(env, opts);
+  const url = `${origin}/oauth/revoke`;
+  const form = new URLSearchParams({
+    token: body.token,
+    token_type_hint: body.token_type_hint,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000, env);
 }
 
 /** BSI-C2: POST /wp-json/bsi/v1/auth/register-direct */
@@ -477,7 +746,9 @@ export async function bsiRegisterDirect(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
 }
 
 /** BSI-C2a: GET /wp-json/bsi/v1/auth/register/check-username */
@@ -497,75 +768,9 @@ export async function bsiCheckUsername(
       headers: bsiGetHeaders(env.DAILY_FIX_API_KEY),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 3000),
     },
-    fetchImpl, env);
-}
-
-/** BSI-C3 refresh: POST /wp-json/metfix/v1/proxy/oauth/token */
-export async function bsiRefreshToken(
-  body: { grant_type: "refresh_token"; client_id: string; refresh_token: string },
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(env, opts);
-  const url = `${origin}/wp-json/metfix/v1/proxy/oauth/token`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
-    },
-    fetchImpl, env);
-}
-
-/** BSI-C3 code exchange: exactly 4 keys (1.6.3). */
-export async function bsiExchangeCode(
-  body: {
-    grant_type: "authorization_code";
-    code: string;
-    client_id: string;
-    redirect_uri: string;
-  },
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(env, opts);
-  const url = `${origin}/wp-json/metfix/v1/proxy/oauth/token`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
-    },
-    fetchImpl, env);
-}
-
-/** BSI-C4: POST /wp-json/metfix/v1/proxy/oauth/revoke — no Authorization. */
-export async function bsiRevokeToken(
-  body: { client_id: string; refresh_token: string },
-  env: Env,
-  fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string; timeoutMs?: number },
-): Promise<BsiHttpResult> {
-  if (!env.DAILY_FIX_API_KEY) return { kind: "nokey" };
-  const origin = originFromOpts(env, opts);
-  const url = `${origin}/wp-json/metfix/v1/proxy/oauth/revoke`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiJsonHeaders(env.DAILY_FIX_API_KEY),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
-    },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
 }
 
 /** BSI-C5: POST /wp-json/bsi/v1/auth/social */
@@ -593,7 +798,9 @@ export async function bsiSocialAuth(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
 }
 
 /** Follow BSI-C5a bridge server-side (never 302 the browser). */
@@ -668,7 +875,9 @@ export async function bsiPostComment(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
   return mapWriteResult(r);
 }
 
@@ -691,7 +900,9 @@ export async function bsiPatchComment(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
   return mapWriteResult(r);
 }
 
@@ -717,7 +928,9 @@ export async function bsiDeleteComment(
       },
       signal: AbortSignal.timeout(5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
   return mapWriteResult(r);
 }
 
@@ -740,7 +953,9 @@ export async function bsiLikeComment(
       body: JSON.stringify({ liked }),
       signal: AbortSignal.timeout(5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
   return mapWriteResult(r);
 }
 
@@ -768,6 +983,8 @@ export async function bsiFetchLeaderboard(
       },
       signal: AbortSignal.timeout(5000),
     },
-    fetchImpl, env);
+    fetchImpl,
+    env,
+  );
   return mapWriteResult(r);
 }

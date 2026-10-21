@@ -4,6 +4,7 @@ import {
   bsiCheckUsername,
   bsiRegisterDirect,
   parseRetryAfter,
+  requireAuthConfig,
 } from "../upstream";
 import { checkSignupLimit, checkUsernameLimit } from "./auth-rate-limit";
 import { requireCsrf } from "./csrf";
@@ -81,17 +82,22 @@ export async function handleSignup(
       "Retry-After": String(parseRetryAfter(null)),
     });
   }
-  if (!env.RECAPTCHA_SECRET || !env.BSI_OAUTH_CLIENT_ID) {
-    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
+  const cfg = requireAuthConfig(env, {
+    needRecaptcha: true,
+    needApiKey: false,
+    baseUrl: opts?.bsiBaseUrl,
+  });
+  if (!cfg) {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
   }
-  const sv = await siteverify(recaptcha, env.RECAPTCHA_SECRET, fetchImpl);
+  const sv = await siteverify(recaptcha, cfg.recaptchaSecret, fetchImpl);
   if (sv === "fail") return authJson(BODY_TRY_AGAIN, 403);
   if (sv === "outage") return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   const upstream = await bsiRegisterDirect(
     {
       username,
       email,
-      client_id: env.BSI_OAUTH_CLIENT_ID,
+      client_id: cfg.clientId,
       redirect_uri: METFIX_CALLBACK_URI,
     },
     env,

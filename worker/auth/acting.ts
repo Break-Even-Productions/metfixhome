@@ -48,7 +48,11 @@ export async function resolveActingSession(
   let loaded: Awaited<ReturnType<typeof ensureActingAccess>>;
   try {
     loaded = await ensureActingAccess(env, sid, { baseUrl: opts?.baseUrl });
-  } catch {
+  } catch (e) {
+    // Forward DO Retry-After (AU27.3 non-grant → 60; 429/5xx clamp).
+    if (e instanceof SessionUnavailableError && e.retryAfter != null) {
+      return unavailable(e.retryAfter);
+    }
     return unavailable();
   }
   if (!loaded) return signedOut();

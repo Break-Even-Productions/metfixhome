@@ -1,11 +1,34 @@
 import type { Env, FetchImpl } from "../upstream";
-import { bsiRevokeToken } from "../upstream";
+import { oauthRevokeToken } from "../upstream";
 import { requireCsrf } from "./csrf";
 import { SID_COOKIE, clearHostCookie, getSid } from "./cookies";
 import { sha256Prefix12 } from "./crypto";
 import { isAuthHost } from "./host";
 import { BODY_NOT_FOUND, authEmpty, methodNotAllowed } from "./responses";
 import { destroySession, sessionKeyHex } from "./session";
+
+async function revokeBestEffort(
+  token: string,
+  hint: "refresh_token" | "access_token",
+  env: Env,
+  fetchImpl: FetchImpl,
+  baseUrl?: string,
+): Promise<void> {
+  try {
+    const res = await oauthRevokeToken(
+      { token, token_type_hint: hint },
+      env,
+      fetchImpl,
+      { baseUrl },
+    );
+    if (res.kind !== "ok") {
+      console.log("bsi_revoke_failed", hint);
+    }
+  } catch {
+    // oauthRevokeToken does not throw; keep for fetchImpl edges.
+    console.log("bsi_revoke_failed", hint);
+  }
+}
 
 export async function handleLogout(
   request: Request,
@@ -37,9 +60,11 @@ export async function handleLogout(
   }
 
   let refresh: string | null = null;
+  let access: string | null = null;
   try {
     const rec = await destroySession(env, sid);
     refresh = rec?.bsi_refresh ?? null;
+    access = rec?.bsi_access ?? null;
   } catch {
     const hex = await sessionKeyHex(sid);
     console.log("session_logout_do_failed", await sha256Prefix12(hex));
@@ -50,17 +75,14 @@ export async function handleLogout(
     }
   }
 
-  if (refresh && env.BSI_OAUTH_CLIENT_ID) {
-    try {
-      await bsiRevokeToken(
-        { client_id: env.BSI_OAUTH_CLIENT_ID, refresh_token: refresh },
-        env,
-        fetchImpl,
-        { baseUrl: opts?.bsiBaseUrl ?? opts?.baseUrl },
-      );
-    } catch {
-      console.log("bsi_revoke_failed");
-    }
+  const baseUrl = opts?.bsiBaseUrl ?? opts?.baseUrl;
+  // §0v.1 Q6: two /oauth/revoke calls — refresh first, then access; no secret.
+  // Always attempt both when tokens exist; failures log hint only (AU8.2).
+  if (refresh) {
+    await revokeBestEffort(refresh, "refresh_token", env, fetchImpl, baseUrl);
+  }
+  if (access) {
+    await revokeBestEffort(access, "access_token", env, fetchImpl, baseUrl);
   }
 
   return authEmpty(204, {}, [clear]);

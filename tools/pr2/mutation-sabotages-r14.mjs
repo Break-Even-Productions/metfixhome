@@ -160,6 +160,332 @@ export const R14_OVERRIDES = {
       );
     },
   },
+
+  /** r1.29: reply control on replies (client) — overrides R5 worker mapping. */
+  "M-CW20": {
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
+    apply() {
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        `              {loggedIn &&
+              comment.deleted === 0 &&
+              (comment.parent_id == null || comment.parent_id === 0) ? (`,
+        `              {/* MUTANT M-CW20: reply control on replies */}
+              {loggedIn && comment.deleted === 0 ? (`,
+        "M-CW20",
+      );
+    },
+  },
+
+  /** r1.29: siteverify before write limiter — red {P1.1, P8.2}. */
+  "M-P1O1": {
+    files: ["worker/comments.ts"],
+    apply() {
+      replaceOnce(
+        "worker/comments.ts",
+        `  const ip = clientIp(request);
+  const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
+  if (!limited.allowed) {
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
+  }
+
+  const recaptchaFail = await verifyCommentRecaptcha(body.recaptcha, env, fetchImpl);
+  if (recaptchaFail) return recaptchaFail;
+
+  const upstreamBody: {
+    date: string;
+    type: string;
+    content: string;
+    parent_comment_id?: number;
+  } = { date, type, content };
+  if (parent !== undefined) upstreamBody.parent_comment_id = parent;
+
+  const ran = await runUserBsiCall(ctx, env, fetchImpl, opts, (access) =>
+    bsiPostComment(upstreamBody, access, env, fetchImpl, opts),
+  );`,
+        `  // MUTANT M-P1O1: siteverify before write limiter
+  const recaptchaFail = await verifyCommentRecaptcha(body.recaptcha, env, fetchImpl);
+  if (recaptchaFail) return recaptchaFail;
+
+  const ip = clientIp(request);
+  const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
+  if (!limited.allowed) {
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
+  }
+
+  const upstreamBody: {
+    date: string;
+    type: string;
+    content: string;
+    parent_comment_id?: number;
+  } = { date, type, content };
+  if (parent !== undefined) upstreamBody.parent_comment_id = parent;
+
+  const ran = await runUserBsiCall(ctx, env, fetchImpl, opts, (access) =>
+    bsiPostComment(upstreamBody, access, env, fetchImpl, opts),
+  );`,
+        "M-P1O1",
+      );
+    },
+  },
+
+  /** r1.29: logged-out POST/like burn like+toggle limiters before 401 — red {P4.1}. */
+  "M-P4L1": {
+    files: ["worker/comments.ts"],
+    apply() {
+      replaceOnce(
+        "worker/comments.ts",
+        `async function handleCommentPost(
+  request: Request,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; cache?: Cache },
+): Promise<Response> {
+  const ctx = await requireSession(request, env, fetchImpl, opts);
+  if (ctx instanceof Response) return ctx;`,
+        `async function handleCommentPost(
+  request: Request,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; cache?: Cache },
+): Promise<Response> {
+  // MUTANT M-P4L1: burn like/toggle limiters before session 401
+  {
+    const ip = clientIp(request);
+    await checkCommentLikeLimit(env as CommentLimitEnv, "anon", ip);
+    await checkCommentLikeToggleLimit(env as CommentLimitEnv, "anon", "0");
+  }
+  const ctx = await requireSession(request, env, fetchImpl, opts);
+  if (ctx instanceof Response) return ctx;`,
+        "M-P4L1-post",
+      );
+      replaceOnce(
+        "worker/comments.ts",
+        `async function handleCommentLike(
+  request: Request,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts: { baseUrl?: string; cache?: Cache } | undefined,
+  id: string,
+): Promise<Response> {
+  if (!COMMENT_ID_RE.test(id)) return jsonNoStore({ error: "not_found" }, 404);
+  const session = await requireSession(request, env, fetchImpl, opts);
+  if (session instanceof Response) return session;`,
+        `async function handleCommentLike(
+  request: Request,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts: { baseUrl?: string; cache?: Cache } | undefined,
+  id: string,
+): Promise<Response> {
+  if (!COMMENT_ID_RE.test(id)) return jsonNoStore({ error: "not_found" }, 404);
+  // MUTANT M-P4L1: burn like/toggle limiters before session 401
+  {
+    const ip = clientIp(request);
+    await checkCommentLikeLimit(env as CommentLimitEnv, "anon", ip);
+    await checkCommentLikeToggleLimit(env as CommentLimitEnv, "anon", id);
+  }
+  const session = await requireSession(request, env, fetchImpl, opts);
+  if (session instanceof Response) return session;`,
+        "M-P4L1-like",
+      );
+    },
+  },
+
+  /** r1.29: extra TODAY comments GET on mount — red {C6.2}. */
+  "M-C62": {
+    files: ["client/src/pages/the-daily-fix/TheDailyFixPage.tsx"],
+    apply() {
+      replaceOnce(
+        "client/src/pages/the-daily-fix/TheDailyFixPage.tsx",
+        `  useEffect(() => {
+    if (!commentIso) {
+      setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    const controller = new AbortController();
+    setCommentsLoad({ status: "loading" });
+    void fetchDailyFixComments(commentIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCommentsLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
+      });
+    return () => controller.abort();
+  }, [commentIso]);`,
+        `  useEffect(() => {
+    if (!commentIso) {
+      setCommentsLoad({ status: "unavailable" });
+      return;
+    }
+    const controller = new AbortController();
+    setCommentsLoad({ status: "loading" });
+    void fetchDailyFixComments(commentIso, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setCommentsLoad(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
+      });
+    // MUTANT M-C62: also fetch comments for TODAY
+    if (commentIso !== todayIso) {
+      void fetchDailyFixComments(todayIso, controller.signal).catch(() => {});
+    }
+    return () => controller.abort();
+  }, [commentIso, todayIso]);`,
+        "M-C62",
+      );
+    },
+  },
+
+  /** Fix M30 needle for parseRetryAfter Retry-After — red {P8.2}. */
+  M30: {
+    files: ["worker/comments.ts"],
+    apply() {
+      replaceOnce(
+        "worker/comments.ts",
+        `  if (!ctx.access) return unavailable();
+  const csrf = await requireCsrf(request, env, ctx.sid);
+  if (csrf) return csrf;
+
+  const parsed = await readJsonBodyLimited(request);
+  if (parsed instanceof Response) return parsed;
+  if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+  const body = parsed.json as Record<string, unknown>;
+  const date = typeof body.date === "string" ? body.date : "";
+  const type = typeof body.type === "string" ? body.type : "";
+  const content = validateContent(body.content);
+  const parent = validateParentId(body.parent_comment_id);
+  if (
+    !isIsoDate(date) ||
+    !isCommentType(type) ||
+    type === "all" ||
+    content == null ||
+    parent === "bad"
+  ) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+
+  const ip = clientIp(request);
+  const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
+  if (!limited.allowed) {
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
+  }`,
+        `  if (!ctx.access) return unavailable();
+
+  const parsed = await readJsonBodyLimited(request);
+  if (parsed instanceof Response) return parsed;
+  if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+  const body = parsed.json as Record<string, unknown>;
+  const date = typeof body.date === "string" ? body.date : "";
+  const type = typeof body.type === "string" ? body.type : "";
+  const content = validateContent(body.content);
+  const parent = validateParentId(body.parent_comment_id);
+  if (
+    !isIsoDate(date) ||
+    !isCommentType(type) ||
+    type === "all" ||
+    content == null ||
+    parent === "bad"
+  ) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+
+  // MUTANT M30: limiter before CSRF
+  const ip = clientIp(request);
+  const limited = await checkCommentWriteLimit(env as CommentLimitEnv, ctx.record.bsi_user_id, ip);
+  if (!limited.allowed) {
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
+  }
+  const csrf = await requireCsrf(request, env, ctx.sid);
+  if (csrf) return csrf;`,
+        "M30",
+      );
+    },
+  },
+
+  /** Fix M-P1a needle for CT-P1 refetch shape — red {CT-P1}. */
+  "M-P1a": {
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
+    apply() {
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        `      // CT-P1: one refetch, no auto-retry of POST.
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } catch {
+      // CT-P1 (c)(d): network/sync throw → one bypass GET, no second POST.
+      invalidateCommentsCache(dateIso);
+      try {
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } catch {
+        /* message still shown */
+      }
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } finally {
+      setPosting(false);
+    }`,
+        `      // MUTANT M-P1a: immediately re-POST once on 503/malformed 201/network error
+      if (!(globalThis as unknown as { __mP1a?: boolean }).__mP1a) {
+        (globalThis as unknown as { __mP1a?: boolean }).__mP1a = true;
+        await postComment(parent);
+        return;
+      }
+      // CT-P1: one refetch, no auto-retry of POST.
+      invalidateCommentsCache(dateIso);
+      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+      onCommentsChanged?.(refetched);
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } catch {
+      if (!(globalThis as unknown as { __mP1aCatch?: boolean }).__mP1aCatch) {
+        (globalThis as unknown as { __mP1aCatch?: boolean }).__mP1aCatch = true;
+        await postComment(parent);
+        return;
+      }
+      // CT-P1 (c)(d): network/sync throw → one bypass GET, no second POST.
+      invalidateCommentsCache(dateIso);
+      try {
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } catch {
+        /* message still shown */
+      }
+      setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
+      setBody(previous);
+    } finally {
+      setPosting(false);
+    }`,
+        "M-P1a",
+      );
+    },
+  },
 };
 
 export default R14_OVERRIDES;

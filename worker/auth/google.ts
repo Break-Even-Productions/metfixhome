@@ -7,11 +7,13 @@ import type { Env, FetchImpl } from "../upstream";
 import { checkGoogleLimit } from "./auth-rate-limit";
 import {
   METFIX_CALLBACK_URI,
-  bsiExchangeCode,
+  bsiFetchMe,
   bsiFollowBridge,
   bsiSocialAuth,
-  normalizeCanModerate,
+  oauthAuthorizationCodeGrant,
+  parseBsiMeProfile,
   parseRetryAfter,
+  requireAuthConfig,
 } from "../upstream";
 import { PRE_COOKIE, SID_COOKIE, getPre, getSid, setHostCookie } from "./cookies";
 import {
@@ -24,13 +26,15 @@ import {
 import { isAuthHost } from "./host";
 import {
   AUTH_HEADERS,
+  BODY_INVALID_LOGIN,
   BODY_INVALID_REQUEST,
   BODY_NOT_FOUND,
   BODY_RATE_LIMITED,
+  BODY_UNAVAILABLE,
   authJson,
   methodNotAllowed,
 } from "./responses";
-import { clientIp } from "./throttle";
+import { attemptR8b, clientIp } from "./throttle";
 import { createSession, destroySession } from "./session";
 import type { OauthStateRecord } from "../do/oauth-state";
 
@@ -362,6 +366,15 @@ export async function handleGoogleCallback(
   if (!googleEnabled(env)) return authJson(BODY_NOT_FOUND, 404);
   if (request.method.toUpperCase() !== "GET") return methodNotAllowed("GET");
 
+  // CQ: missing OAuth client config → 503 before Google limiter (auth_config_missing).
+  const cfg = requireAuthConfig(env, {
+    needApiKey: false,
+    baseUrl: opts?.bsiBaseUrl,
+  });
+  if (!cfg) {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
+  }
+
   const lim = await checkGoogleLimit(env, clientIp(request));
   if (!lim.allowed) {
     return authJson(BODY_RATE_LIMITED, 429, {
@@ -412,8 +425,6 @@ export async function handleGoogleCallback(
   const verified = payload.email_verified === true;
   const intent = verified ? rec.intent : "login";
 
-  if (!env.BSI_OAUTH_CLIENT_ID) return authErrorRedirect("google");
-
   const bridgeState = randomId32();
   try {
     await putOauthState(env, bridgeState, {
@@ -434,7 +445,7 @@ export async function handleGoogleCallback(
       provider: "google",
       intent,
       access_token: idToken,
-      client_id: env.BSI_OAUTH_CLIENT_ID,
+      client_id: cfg.clientId,
       redirect_uri: METFIX_CALLBACK_URI,
       state: bridgeState,
     },
@@ -452,38 +463,86 @@ export async function handleGoogleCallback(
   if (followed.kind !== "redirect") return authErrorRedirect("google");
 
   let wpCode: string | null = null;
+  let bridgeLocState: string | null = null;
   try {
     const loc = new URL(followed.location);
     wpCode = loc.searchParams.get("code");
+    bridgeLocState = loc.searchParams.get("state");
   } catch {
     wpCode = null;
   }
+  // AU27.10 (d): compare and consume bridge state before any token exchange.
+  const takenBridge = await takeOauthState(env, bridgeState);
+  if (takenBridge === "unavailable") return authErrorRedirect("unavailable");
+  if (
+    !takenBridge ||
+    takenBridge.flow !== "bridge" ||
+    !bridgeLocState ||
+    bridgeLocState !== bridgeState
+  ) {
+    return authErrorRedirect("state");
+  }
   if (!wpCode) return authErrorRedirect("google");
 
-  const exchanged = await bsiExchangeCode(
-    {
-      grant_type: "authorization_code",
-      code: wpCode,
-      client_id: env.BSI_OAUTH_CLIENT_ID,
-      redirect_uri: METFIX_CALLBACK_URI,
-    },
+  // §0w.1: exchange WP code at Pro /oauth/token (not BSI-C3 proxy).
+  const exchanged = await oauthAuthorizationCodeGrant(
+    { code: wpCode, redirect_uri: METFIX_CALLBACK_URI },
     env,
     fetchImpl,
     { baseUrl: opts?.bsiBaseUrl },
   );
 
-  if (exchanged.kind !== "ok") return authErrorRedirect("google");
+  if (exchanged.kind === "nokey") {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
+  }
+  if (exchanged.kind === "http" && exchanged.code === "invalid_grant") {
+    // AU27.10 (b): same body as password invalid_grant; R8b +1.
+    try {
+      await attemptR8b(env, clientIp(request));
+    } catch {
+      /* best-effort */
+    }
+    return authJson(BODY_INVALID_LOGIN, 401);
+  }
+  if (exchanged.kind !== "ok") {
+    if (
+      exchanged.kind === "http" &&
+      (exchanged.status === 429 || exchanged.status >= 500)
+    ) {
+      const ra = exchanged.retryAfter ?? parseRetryAfter(null);
+      return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": String(ra) });
+    }
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
+  }
 
   const tok = exchanged.json as {
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
-    public_name?: string;
-    user_id?: string | number;
-    can_moderate?: unknown;
   };
-  if (typeof tok.access_token !== "string" || typeof tok.refresh_token !== "string") {
-    return authErrorRedirect("google");
+  if (
+    typeof tok.access_token !== "string" ||
+    tok.access_token.length === 0 ||
+    typeof tok.refresh_token !== "string" ||
+    tok.refresh_token.length === 0
+  ) {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
+  }
+
+  const meRes = await bsiFetchMe(tok.access_token, env, fetchImpl, {
+    baseUrl: opts?.bsiBaseUrl,
+    timeoutMs: 5000,
+  });
+  if (meRes.kind !== "ok") {
+    const ra =
+      meRes.kind === "http" || meRes.kind === "bad_json"
+        ? (meRes.retryAfter ?? parseRetryAfter(null))
+        : parseRetryAfter(null);
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": String(ra) });
+  }
+  const profile = parseBsiMeProfile(meRes.json);
+  if (!profile) {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
   }
 
   const incomingSid = getSid(request);
@@ -500,9 +559,9 @@ export async function handleGoogleCallback(
     access_token: tok.access_token,
     refresh_token: tok.refresh_token,
     expires_in: tok.expires_in,
-    public_name: typeof tok.public_name === "string" ? tok.public_name : "Member",
-    user_id: tok.user_id ?? "0",
-    can_moderate: normalizeCanModerate(tok.can_moderate),
+    public_name: profile.display_name,
+    user_id: profile.id,
+    can_moderate: profile.can_moderate,
   });
 
   return new Response(null, {

@@ -3,7 +3,15 @@
  * Instance name / AAD: sess:<sha256hex(id)>.
  */
 import { decryptSessionPayload, encryptSessionPayload } from "../auth/crypto";
-import { bsiRefreshToken, type Env, type FetchImpl } from "../upstream";
+import {
+  bsiFetchMe,
+  oauthRefreshGrant,
+  parseBsiMeProfile,
+  parseRetryAfter,
+  requireAuthConfig,
+  type Env,
+  type FetchImpl,
+} from "../upstream";
 
 export type SessionRecord = {
   bsi_access: string;
@@ -16,6 +24,13 @@ export type SessionRecord = {
   last_seen: number;
 };
 
+/** Successful ensure-access body — `refreshed` is required (AU7.6 / CQ e290ffc1). */
+export type EnsureAccessOk = {
+  status: "ok";
+  record: SessionRecord;
+  refreshed: boolean;
+};
+
 type Stored = { blob: string };
 
 const REFRESH_WINDOW_MS = 60_000;
@@ -23,16 +38,23 @@ const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Optional injected outbound fetch (tests); production uses platform `fetch`. */
-export type SessionDoEnv = {
-  SESSION_ENC_KEY?: string;
-  SESSION_ENC_KEY_PREV?: string;
-  DAILY_FIX_API_KEY?: string;
-  BSI_OAUTH_CLIENT_ID?: string;
-  /** Direct FetchImpl, or a mutable `{ current }` box filled after harness build. */
-  fetchImpl?: FetchImpl | { current: FetchImpl };
+export type SessionDoEnv = Pick<
+  Env,
+  | "SESSION_ENC_KEY"
+  | "SESSION_ENC_KEY_PREV"
+  | "DAILY_FIX_API_KEY"
+  | "BSI_OAUTH_CLIENT_ID"
+  | "METFIX_ORG_OAUTH_CLIENT_SECRET"
+  | "RECAPTCHA_SECRET"
+> & {
+  /** Test harness may assign a FetchImpl on the shared env object; prod uses platform `fetch`. */
+  fetchImpl?: FetchImpl;
 };
 
 export class SessionDO {
+  /** Coalesce concurrent ensure-access / refresh into one upstream token POST (AU27.8). */
+  private refreshInflight: Promise<Response> | null = null;
+
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: SessionDoEnv,
@@ -65,19 +87,6 @@ export class SessionDO {
         };
         return this.withRefreshLock(() => this.ensureAccess(aad, body));
       }
-      if (path === "/refresh" && request.method === "POST") {
-        return this.withRefreshLock(async () => {
-          const body = (await request.json()) as {
-            access_token: string;
-            refresh_token?: string;
-            expires_in?: number;
-            public_name?: string;
-            user_id?: string | number;
-            can_moderate?: unknown;
-          };
-          return this.applyRefresh(aad, body);
-        });
-      }
       if (path === "/get" || path === "/get/") return this.get(aad);
       if ((path === "/put" || path === "/put/") && request.method === "POST") {
         const body = (await request.json()) as SessionRecord;
@@ -96,20 +105,34 @@ export class SessionDO {
   private resolveFetch(): FetchImpl {
     const fromEnv = this.env.fetchImpl;
     if (typeof fromEnv === "function") return fromEnv;
-    if (
-      fromEnv &&
-      typeof fromEnv === "object" &&
-      typeof (fromEnv as { current?: unknown }).current === "function"
-    ) {
-      return (fromEnv as { current: FetchImpl }).current;
-    }
     // Platform fetch (not globalThis.fetch) — AU26.8 / CQ r2 injected-fetch rule.
     return fetch;
   }
 
-  /** Serialise refresh via real DO input-gate (blockConcurrencyWhile). */
-  private async withRefreshLock<T extends Response>(fn: () => Promise<T>): Promise<T> {
-    return this.state.blockConcurrencyWhile(fn);
+  /**
+   * Single-flight refresh: concurrent callers share one ensureAccess.
+   * Leader alone keeps refreshed:true so only one KV /me write (AU7.6 / CQ B1).
+   */
+  private async withRefreshLock(fn: () => Promise<Response>): Promise<Response> {
+    const leader = !this.refreshInflight;
+    if (!this.refreshInflight) {
+      this.refreshInflight = this.state.blockConcurrencyWhile(fn).finally(() => {
+        this.refreshInflight = null;
+      });
+    }
+    const shared = await this.refreshInflight;
+    if (leader) return shared.clone();
+    // Leader-only KV /me write: joiners see refreshed:false (AU7.6).
+    const clone = shared.clone();
+    try {
+      const body = (await clone.json()) as { refreshed?: boolean; [k: string]: unknown };
+      if (body && typeof body === "object" && body.status === "ok") {
+        body.refreshed = false;
+      }
+      return json(body, shared.status);
+    } catch {
+      return shared.clone();
+    }
   }
 
   private async get(aad: string): Promise<Response> {
@@ -182,90 +205,89 @@ export class SessionDO {
     }
     const needsRefresh =
       opts.force === true || record.access_exp - now <= REFRESH_WINDOW_MS;
-    if (!needsRefresh) return json({ status: "ok", record });
-    const clientId = this.env.BSI_OAUTH_CLIENT_ID;
-    if (!clientId || !this.env.DAILY_FIX_API_KEY) {
-      return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
+    if (!needsRefresh) {
+      const ok: EnsureAccessOk = { status: "ok", record, refreshed: false };
+      return json(ok);
+    }
+    const cfg = requireAuthConfig(this.env as Env, {
+      needApiKey: false,
+      baseUrl: opts.baseUrl,
+    });
+    if (!cfg) {
+      return json({ status: "unavailable" }, 503, { "Retry-After": "60" });
     }
     const fetchImpl = this.resolveFetch();
-    const upstream = await bsiRefreshToken(
-      {
-        grant_type: "refresh_token",
-        client_id: clientId,
-        refresh_token: record.bsi_refresh,
-      },
+    const upstream = await oauthRefreshGrant(
+      { refresh_token: record.bsi_refresh },
       this.env as Env,
       fetchImpl,
       { baseUrl: opts.baseUrl, timeoutMs: 5000 },
     );
-    if (upstream.kind === "ok") {
-      const tok = upstream.json as {
-        access_token?: string;
-        refresh_token?: string;
-        expires_in?: number;
-        public_name?: string;
-        user_id?: string | number;
-        can_moderate?: unknown;
-      };
-      if (typeof tok.access_token !== "string") {
-        await this.state.storage.deleteAll();
-        return json({ status: "expired" }, 401);
-      }
-      record.bsi_access = tok.access_token;
-      if (typeof tok.refresh_token === "string" && tok.refresh_token) {
-        record.bsi_refresh = tok.refresh_token;
-      }
-      record.access_exp =
-        now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
-      record.last_seen = now;
-      if (typeof tok.public_name === "string" && tok.public_name.trim()) {
-        record.user_public_name = tok.public_name.trim();
-      }
-      if (tok.user_id != null) record.bsi_user_id = String(tok.user_id);
-      if (tok.can_moderate !== undefined) {
-        record.can_moderate = tok.can_moderate === true;
-      }
-      await this.put(aad, record);
-      return json({ status: "ok", record, refreshed: true });
-    }
-    if (upstream.kind === "http" && (upstream.status === 400 || upstream.status === 401)) {
+    // Map on code + grant type (§0v.3): refresh invalid_grant → end session (any status).
+    if (upstream.kind === "http" && upstream.code === "invalid_grant") {
       await this.state.storage.deleteAll();
       return json({ status: "expired" }, 401);
     }
-    return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
-  }
-
-  private async applyRefresh(
-    aad: string,
-    tokens: {
-      access_token: string;
+    if (upstream.kind !== "ok") {
+      // §0v.3: only 429/5xx use parseRetryAfter; non-grant 4xx → fixed 60.
+      if (
+        upstream.kind === "http" &&
+        (upstream.status === 429 || upstream.status >= 500)
+      ) {
+        const ra = upstream.retryAfter ?? parseRetryAfter(null);
+        return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+      }
+      return json({ status: "unavailable" }, 503, { "Retry-After": "60" });
+    }
+    const tok = upstream.json as {
+      access_token?: string;
       refresh_token?: string;
       expires_in?: number;
-      public_name?: string;
-      user_id?: string | number;
-      can_moderate?: unknown;
-    },
-  ): Promise<Response> {
-    const got = await this.get(aad);
-    const body = (await got.json()) as { present?: boolean; record?: SessionRecord };
-    if (!body.present || !body.record) return json({ record: null }, 404);
-    const now = Date.now();
-    body.record.bsi_access = tokens.access_token;
-    if (typeof tokens.refresh_token === "string" && tokens.refresh_token) {
-      body.record.bsi_refresh = tokens.refresh_token;
+    };
+    if (typeof tok.access_token !== "string" || tok.access_token.length === 0) {
+      const ra = parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
     }
-    body.record.access_exp =
-      now + (typeof tokens.expires_in === "number" ? tokens.expires_in * 1000 : 3600_000);
-    body.record.last_seen = now;
-    if (typeof tokens.public_name === "string" && tokens.public_name.trim()) {
-      body.record.user_public_name = tokens.public_name.trim();
+    // Rotation required: 200 without refresh_token → 503, keep current pair (§0v.4).
+    if (typeof tok.refresh_token !== "string" || tok.refresh_token.length === 0) {
+      const ra = parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
     }
-    if (tokens.user_id != null) body.record.bsi_user_id = String(tokens.user_id);
-    if (tokens.can_moderate !== undefined) {
-      body.record.can_moderate = tokens.can_moderate === true;
+    // Store ACCESS2/R1 atomically before /me — R0 is never kept (§0v.4 / AU27.9).
+    record.bsi_access = tok.access_token;
+    record.bsi_refresh = tok.refresh_token;
+    record.access_exp =
+      now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
+    record.last_seen = now;
+    await this.put(aad, record);
+
+    const meRes = await bsiFetchMe(tok.access_token, this.env as Env, fetchImpl, {
+      baseUrl: opts.baseUrl,
+      timeoutMs: 5000,
+    });
+    if (meRes.kind === "http" && meRes.status === 401) {
+      await this.state.storage.deleteAll();
+      return json({ status: "expired" }, 401);
     }
-    await this.put(aad, body.record);
-    return json({ record: body.record });
+    if (meRes.kind !== "ok") {
+      const ra =
+        meRes.kind === "http" || meRes.kind === "bad_json"
+          ? (meRes.retryAfter ?? parseRetryAfter(null))
+          : parseRetryAfter(null);
+      // Keep R1; never restore R0.
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    const profile = parseBsiMeProfile(meRes.json);
+    if (!profile) {
+      const ra = parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    record.user_public_name = profile.display_name;
+    record.bsi_user_id = String(profile.id);
+    record.can_moderate = profile.can_moderate;
+    await this.put(aad, record);
+    const ok: EnsureAccessOk = { status: "ok", record, refreshed: true };
+    return json(ok);
   }
 
   async alarm(): Promise<void> {

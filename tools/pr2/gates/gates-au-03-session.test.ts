@@ -1,7 +1,7 @@
 /**
  * AU5.4+ / AU6 / AU7 / AU8.2 session lifecycle gates.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ACCESS1,
   ACCESS2,
@@ -228,8 +228,7 @@ describe("AU5", () => {
 
     // (b) refresh failure
     const h2 = createHarness({
-      webLogin: undefined,
-    });
+          });
     // Override token refresh via fetch recording — use custom harness with failing refresh
     const login = await h2.login();
     await patchSession(h2, login.sid, (r) => {
@@ -290,8 +289,15 @@ describe("AU5", () => {
         mode === "non-rotating"
           ? {
               refresh: async (req) => {
-                const parsed = JSON.parse(await req.text()) as { refresh_token?: string };
-                if (parsed.refresh_token === REFRESH1) {
+                const raw = await req.text();
+                let refreshToken: string | null = null;
+                try {
+                  refreshToken =
+                    (JSON.parse(raw) as { refresh_token?: string }).refresh_token ?? null;
+                } catch {
+                  refreshToken = new URLSearchParams(raw).get("refresh_token");
+                }
+                if (refreshToken === REFRESH1) {
                   return Response.json({
                     access_token: ACCESS2,
                     refresh_token: REFRESH1,
@@ -300,7 +306,7 @@ describe("AU5", () => {
                     user_id: 42,
                   });
                 }
-                return Response.json({ code: "invalid_grant" }, { status: 400 });
+                return Response.json({ error: "invalid_grant" }, { status: 400 });
               },
             }
           : undefined,
@@ -430,29 +436,35 @@ describe("AU6", () => {
 
 describe("CW12", () => {
   it("CW12.3 refresh true→false rewrites SESSION DO and KV /me; purge rebuild stays false", async () => {
+    let meN = 0;
     const h = createHarness({
-      webLogin: async () =>
-        Response.json({
-          access_token: ACCESS1,
-          refresh_token: REFRESH1,
-          expires_in: 3600,
-          public_name: "Jane",
-          user_id: 42,
-          can_moderate: true,
-        }),
-      refresh: async (req) => {
-        const parsed = JSON.parse(await req.text()) as { refresh_token?: string };
-        if (parsed.refresh_token === REFRESH1) {
+      oauthToken: async (req) => {
+        const form = new URLSearchParams(await req.text());
+        if (form.get("grant_type") === "password") {
+          return Response.json({
+            access_token: ACCESS1,
+            refresh_token: REFRESH1,
+            expires_in: 3600,
+            user_id: 999,
+          });
+        }
+        if (form.get("refresh_token") === REFRESH1) {
           return Response.json({
             access_token: ACCESS2,
             refresh_token: REFRESH2,
             expires_in: 3600,
-            public_name: "Jane",
-            user_id: 42,
-            can_moderate: false,
+            user_id: 999,
           });
         }
-        return Response.json({ code: "invalid_grant" }, { status: 400 });
+        return Response.json({ error: "invalid_grant" }, { status: 400 });
+      },
+      bsiMe: () => {
+        meN++;
+        return Response.json({
+          id: 42,
+          display_name: "Jane",
+          can_moderate: meN === 1,
+        });
       },
     });
     const { sid } = await h.login();
@@ -511,13 +523,19 @@ describe("AU7", () => {
     });
     const res = await commentPost(h, sid);
     expect(res.status).toBe(201);
-    const refresh = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token"));
-    expect(refresh.length).toBe(1);
-    expect(JSON.parse(refresh[0]!.bodyText)).toStrictEqual({
+    const refresh = h.fetches.filter(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+    );
+    // password grant + refresh grant
+    expect(refresh.length).toBeGreaterThanOrEqual(2);
+    const refreshGrant = refresh.find((f) => f.bodyText.includes("grant_type=refresh_token"))!;
+    const form = Object.fromEntries(new URLSearchParams(refreshGrant.bodyText));
+    expect(form).toMatchObject({
       grant_type: "refresh_token",
       client_id: CID,
       refresh_token: REFRESH1,
     });
+    expect(form).toHaveProperty("client_secret");
     const write = h.fetches.filter((f) => f.url.includes("/comments") && f.method === "POST").pop();
     expect(write?.headers["authorization"]).toContain(ACCESS2);
     const blob = (await sessionBlob(h, sid))?.blob ?? "";
@@ -530,9 +548,15 @@ describe("AU7", () => {
     await patchSession(h2, l2.sid, (r) => {
       r.access_exp = Date.now() + 61_000;
     });
-    const n = h2.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+    const n = h2.fetches.filter(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+    ).length;
     await commentPost(h2, l2.sid);
-    expect(h2.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length).toBe(n);
+    expect(
+      h2.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(n);
   });
 
   it("AU7.2 401 retry then signed_out", async () => {
@@ -584,9 +608,9 @@ describe("AU7", () => {
     await patchSession(h, sid, (r) => {
       r.access_exp = Date.now() + 30_000;
     });
-    const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+    const before = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
     await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-    const after = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+    const after = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
     expect(after - before).toBe(1);
   });
 
@@ -606,70 +630,93 @@ describe("AU7", () => {
     expect(await res.json()).toStrictEqual({ error: "signed_out" });
   });
 
-  it("AU7.6 refresh serialisation variants N/N0/R", async () => {
-    // Variant N: non-rotating refresh (same REFRESH1)
-    {
-      const h = createHarness({
-        refresh: () =>
-          Response.json({
-            access_token: ACCESS2,
-            refresh_token: REFRESH1,
-            expires_in: 3600,
-            public_name: "Jane",
-            user_id: 42,
-          }),
-      });
-      const { sid } = await h.login();
+  it("AU7.6 50 concurrent refresh → 1 token, 1 KV /me put (leader); throttled KV ok", async () => {
+    async function runFifty(h: ReturnType<typeof createHarness>, sid: string) {
+      h.env.COMMENT_WRITE_LIMITER = { async limit() { return { success: true }; } };
+      h.env.LEADERBOARD_LIMITER = { async limit() { return { success: true }; } };
       await patchSession(h, sid, (r) => {
-        r.access_exp = Date.now() + 30_000;
+        r.access_exp = Date.now() + 10_000;
+        r.bsi_refresh = REFRESH1;
+        r.bsi_access = ACCESS1;
       });
-      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
-      const [a, c] = await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-      expect(a.status).toBe(201);
-      expect(c.status).toBe(200);
-      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      const hex = await sidHex(sid);
+      const meKey = sessKvKey(hex);
+      const putsBefore = h.kv.puts.filter((p) => p.key === meKey).length;
+      const tokBefore = h.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length;
+
+      const results = await Promise.all(
+        Array.from({ length: 50 }, (_, i) =>
+          i % 2 === 0 ? commentPost(h, sid) : leaderboard(h, sid),
+        ),
+      );
+      expect(results.every((r) => r.status === 201 || r.status === 200)).toBe(true);
+
+      const tokAfter = h.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length;
+      expect(tokAfter - tokBefore).toBe(1);
+
+      const bearers = h.fetches
+        .filter(
+          (f) =>
+            (f.url.includes("/daily-fix/comments") || f.url.includes("/leaderboard")) &&
+            (f.headers.authorization ?? "").startsWith("Bearer "),
+        )
+        .map((f) => f.headers.authorization);
+      expect(bearers.length).toBeGreaterThanOrEqual(50);
+      expect(bearers.every((a) => a === `Bearer ${ACCESS2}`)).toBe(true);
+
+      expect(h.kv.puts.filter((p) => p.key === meKey).length - putsBefore).toBe(1);
+
       const blob = (await sessionBlob(h, sid))?.blob ?? "";
-      const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
-      expect(pt).toContain(ACCESS2);
-      expect(pt).toContain(REFRESH1);
-    }
-    // Variant N0: no refresh_token → DO keeps REFRESH1
-    {
-      const h = createHarness({
-        refresh: () =>
-          Response.json({
-            access_token: ACCESS2,
-            expires_in: 3600,
-            public_name: "Jane",
-            user_id: 42,
-          }),
-      });
-      const { sid } = await h.login();
-      await patchSession(h, sid, (r) => {
-        r.access_exp = Date.now() + 30_000;
-      });
-      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
-      await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
-      const blob = (await sessionBlob(h, sid))?.blob ?? "";
-      const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
-      expect(pt).toContain(ACCESS2);
-      expect(pt).toContain(REFRESH1);
-    }
-    // Variant R: rotating → REFRESH2
-    {
-      const h = createHarness();
-      const { sid } = await h.login();
-      await patchSession(h, sid, (r) => {
-        r.access_exp = Date.now() + 30_000;
-      });
-      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
-      await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
-      const blob = (await sessionBlob(h, sid))?.blob ?? "";
-      const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
+      const pt = await decryptSessionPayload(blob, sessionAad(hex), ENCKEY);
       expect(pt).toContain(ACCESS2);
       expect(pt).toContain(REFRESH2);
+      expect(pt).not.toContain(REFRESH1);
+    }
+
+    // Password session + rotating mock
+    {
+      const h = createHarness({ rotatingRefresh: true });
+      const { sid } = await h.login();
+      await runFifty(h, sid);
+    }
+
+    // Throttled KV: 2nd put to sess:/me within 1s rejects — callers still succeed
+    {
+      const h = createHarness({ rotatingRefresh: true });
+      const { sid } = await h.login();
+      const hex = await sidHex(sid);
+      const meKey = sessKvKey(hex);
+      const putTimes = new Map<string, number>();
+      const origPut = h.kv.put.bind(h.kv);
+      h.kv.put = async (key: string, value: string, options?: KVNamespacePutOptions) => {
+        if (key === meKey) {
+          const prev = putTimes.get(key);
+          const t = Date.now();
+          if (prev != null && t - prev < 1000) {
+            throw new Error("kv_put_throttled");
+          }
+          putTimes.set(key, t);
+        }
+        return origPut(key, value, options);
+      };
+      h.env.COMMENT_WRITE_LIMITER = { async limit() { return { success: true }; } };
+      h.env.LEADERBOARD_LIMITER = { async limit() { return { success: true }; } };
+      await patchSession(h, sid, (r) => {
+        r.access_exp = Date.now() + 10_000;
+        r.bsi_refresh = REFRESH1;
+        r.bsi_access = ACCESS1;
+      });
+      const results = await Promise.all(
+        Array.from({ length: 50 }, (_, i) =>
+          i % 2 === 0 ? commentPost(h, sid) : leaderboard(h, sid),
+        ),
+      );
+      expect(results.every((r) => r.status === 201 || r.status === 200)).toBe(true);
+      expect(putTimes.get(meKey)).toBeTruthy();
     }
   });
 
@@ -747,21 +794,98 @@ describe("AU7", () => {
 });
 
 describe("AU8", () => {
-  it("AU8.2 revoke 500/timeout/throw still 204", async () => {
-    for (const revoke of [
-      "throw" as const,
+  it("AU8.2 revoke 500/timeout/throw → 204; hint-only logs; both legs always attempted", async () => {
+    function revokeFetches(h: ReturnType<typeof createHarness>) {
+      return h.fetches.filter(
+        (f) => f.url.includes("/oauth/revoke") && !f.url.includes("/proxy/"),
+      );
+    }
+    function captureLogs(run: () => Promise<void>) {
+      const lines: unknown[][] = [];
+      const spy = vi.spyOn(console, "log").mockImplementation((...a) => {
+        lines.push(a);
+      });
+      return run().finally(() => spy.mockRestore()).then(() => lines);
+    }
+
+    // Success: 2 revoke requests, 0 bsi_revoke_failed
+    {
+      const h = createHarness();
+      const { sid } = await h.login();
+      const hex = await sidHex(sid);
+      const token = await csrfSid(h.env, sid);
+      const lines = await captureLogs(async () => {
+        const res = await h.call("/api/auth/logout", {
+          method: "POST",
+          headers: hOk({ sid, csrf: token }),
+        });
+        expect(res.status).toBe(204);
+      });
+      expect(revokeFetches(h).length).toBe(2);
+      expect(lines.filter((a) => a[0] === "bsi_revoke_failed")).toHaveLength(0);
+      expect(h.sessionNs.getStorage(sessionAad(hex))?.size ?? 0).toBe(0);
+      expect(await h.kv.get(sessKvKey(hex))).toBeNull();
+    }
+
+    const failModes: Array<"throw" | "timeout" | (() => Response)> = [
+      "throw",
+      "timeout",
       () => new Response(null, { status: 500 }),
-    ]) {
+    ];
+    for (const revoke of failModes) {
       const h = createHarness({ revoke });
       const { sid } = await h.login();
       const hex = await sidHex(sid);
       const token = await csrfSid(h.env, sid);
-      const res = await h.call("/api/auth/logout", { method: "POST", headers: hOk({ sid, csrf: token }) });
-      expect(res.status).toBe(204);
+      const lines = await captureLogs(async () => {
+        const res = await h.call("/api/auth/logout", {
+          method: "POST",
+          headers: hOk({ sid, csrf: token }),
+        });
+        expect(res.status).toBe(204);
+        leakFree(await res.clone().text());
+      });
+      expect(revokeFetches(h).length).toBe(2);
+      const failed = lines.filter((a) => a[0] === "bsi_revoke_failed");
+      expect(failed).toHaveLength(2);
+      expect(failed.map((a) => a[1])).toEqual(["refresh_token", "access_token"]);
+      for (const a of failed) {
+        expect(a).toHaveLength(2);
+        const joined = a.map(String).join(" ");
+        expect(joined).not.toContain(ACCESS1);
+        expect(joined).not.toContain(REFRESH1);
+      }
       expect(h.sessionNs.getStorage(sessionAad(hex))?.size ?? 0).toBe(0);
       expect(h.sessionNs.getAlarm(sessionAad(hex))).toBeNull();
       expect(await h.kv.get(sessKvKey(hex))).toBeNull();
-      leakFree(await res.clone().text());
+    }
+
+    // First leg fails, second succeeds → still 2 requests, 1 log (refresh_token)
+    {
+      let n = 0;
+      const h = createHarness({
+        revoke: () => {
+          n += 1;
+          if (n === 1) return new Response(null, { status: 500 });
+          return Response.json({ revoked: true }, { status: 200 });
+        },
+      });
+      const { sid } = await h.login();
+      const token = await csrfSid(h.env, sid);
+      const lines = await captureLogs(async () => {
+        expect(
+          (
+            await h.call("/api/auth/logout", {
+              method: "POST",
+              headers: hOk({ sid, csrf: token }),
+            })
+          ).status,
+        ).toBe(204);
+      });
+      expect(revokeFetches(h).length).toBe(2);
+      const failed = lines.filter((a) => a[0] === "bsi_revoke_failed");
+      expect(failed).toHaveLength(1);
+      expect(failed[0]![1]).toBe("refresh_token");
     }
   });
 });

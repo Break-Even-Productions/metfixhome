@@ -496,19 +496,7 @@ function gitPorcelain(): string {
   );
   if (r.error) throw new Error(`git status failed: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`git status failed: ${r.stderr}`);
-  // TK1.r flake (Node 22 / parallel runs): vite + npm touch node_modules/.vite and
-  // ignored caches under the tree; those are not repo dirt from the TK1 build.
-  return (r.stdout || "")
-    .split("\n")
-    .filter((line) => {
-      if (!line.trim()) return false;
-      const p = line.slice(3).trim().replace(/^"/, "").replace(/"$/, "");
-      if (p.startsWith("node_modules/") || p.includes("/node_modules/")) return false;
-      if (p.startsWith("dist/") || p.startsWith(".vite/") || p.includes("/.vite/")) return false;
-      if (p.startsWith(".turbo/") || p.startsWith("coverage/")) return false;
-      return true;
-    })
-    .join("\n");
+  return r.stdout || "";
 }
 
 function assertNAbsentForTk1(): void {
@@ -990,8 +978,13 @@ describe("TK1.r", () => {
     process.env.SANITY_API_READ_TOKEN = preset;
     const snap = snapshotEnv(keys);
     const beforePorcelain = gitPorcelain();
-    const outDir = mkdtempSync(path.join(tmpdir(), "tk1r-out-"));
-    const otherDir = mkdtempSync(path.join(tmpdir(), "tk1r-other-"));
+    // Absolute dirs under os.tmpdir() — never the repo `dist/` (TK1.r / CQ e290ffc1).
+    // No porcelain filter: isolation alone must keep git status unchanged.
+    const outDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-out-")));
+    const otherDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-other-")));
+    const cacheDir = path.join(otherDir, "vite-cache");
+    expect(outDir.startsWith(REPO_ROOT)).toBe(false);
+    expect(cacheDir.startsWith(REPO_ROOT)).toBe(false);
     try {
       for (const k of CANARY_KEYS) {
         process.env[k] = `r-${randomBytes(6).toString("hex")}`;
@@ -1001,8 +994,14 @@ describe("TK1.r", () => {
         configFile: path.join(REPO_ROOT, "vite.config.ts"),
         root: path.join(REPO_ROOT, "client"),
         logLevel: "error",
+        cacheDir,
         build: { outDir, emptyOutDir: true },
       });
+      // Build wrote only to the isolated outDir — not the repo Vite default.
+      expect(existsSync(outDir)).toBe(true);
+      if (!beforePorcelain.includes("dist/")) {
+        expect(existsSync(path.join(REPO_ROOT, "dist", "public"))).toBe(false);
+      }
     } finally {
       restoreEnv(snap);
       rmSync(outDir, { recursive: true, force: true });
@@ -1338,13 +1337,15 @@ describe("AU26.8", () => {
     );
 
     const hits: string[] = [];
+    // 1.31: also ban fetch/globalThis.fetch to /oauth/token (direct-token path).
     const bad =
-      /(?:fetch\s*\([^;]{0,200}(?:brokenscience\.org|brokenstaging\.wpengine\.com|\/wp-json)|["'`][^"'`]*\/wp-json)/;
+      /(?:(?:globalThis\.)?fetch\s*\([^;]{0,200}(?:brokenscience\.org|brokenstaging\.wpengine\.com|\/wp-json|\/oauth\/token)|["'`][^"'`]*\/wp-json)/;
+    const lineBad = (line: string) => bad.test(line) || /\/wp-json/.test(line);
     for (const abs of files) {
       const rel = relPosix(REPO_ROOT, abs);
       const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
       for (let i = 0; i < lines.length; i++) {
-        if (bad.test(lines[i]!) || /\/wp-json/.test(lines[i]!)) {
+        if (lineBad(lines[i]!)) {
           hits.push(`SCAN FAIL: bsi-client ${rel}:${i + 1}`);
         }
       }
@@ -1359,8 +1360,7 @@ describe("AU26.8", () => {
     try {
       writeFileSync(
         login,
-        loginBefore +
-          `\nvoid fetch(\`\${base}/wp-json/bsi/v1/auth/web-login\`);\n`,
+        loginBefore + `\nvoid fetch(\`\${base}/oauth/token\`);\n`,
       );
       writeFileSync(
         comments,
@@ -1373,7 +1373,7 @@ describe("AU26.8", () => {
       ] as const) {
         const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
         for (let i = 0; i < lines.length; i++) {
-          if (bad.test(lines[i]!) || /\/wp-json/.test(lines[i]!)) {
+          if (lineBad(lines[i]!)) {
             plantHits.push(`SCAN FAIL: bsi-client ${rel}:${i + 1}`);
           }
         }

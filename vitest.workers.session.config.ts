@@ -16,6 +16,7 @@ export default defineWorkersConfig({
           bindings: {
             DAILY_FIX_API_KEY: "k_QA_SENT_KEY",
             BSI_OAUTH_CLIENT_ID: "cid_QA_SENT_CLIENT",
+            METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
             SESSION_ENC_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           },
         },

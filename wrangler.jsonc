@@ -1,72 +1,112 @@
 {
-  "name": "metfixhome",
-  "main": "worker/index.ts",
-  "compatibility_date": "2026-10-12",
-  "workers_dev": false,
-  "assets": {
-    "directory": "./dist/public",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": [
-      "/the-daily-fix",
-      "/the-daily-fix/*",
-      "/api/*",
-      "/sitemap-daily-fix.xml"
-    ]
-  },
-  "kv_namespaces": [
-    {
-      "binding": "AUTH_SESSIONS",
-      // PLACEHOLDER — Ethan must replace with the real KV namespace id before deploy.
-      "id": "00000000000000000000000000000000",
-      "preview_id": "00000000000000000000000000000000"
-    }
-  ],
-  // Six Rate Limiting bindings (S-RL / P8). namespace_id values are placeholders —
-  // Ethan must assign unique account-scoped integers before production deploy.
-  "ratelimits": [
-    {
-      "name": "SIGNUP_LIMITER",
-      "namespace_id": "1001",
-      "simple": { "limit": 5, "period": 60 }
-    },
-    {
-      "name": "USERNAME_CHECK_LIMITER",
-      "namespace_id": "1002",
-      "simple": { "limit": 20, "period": 60 }
-    },
-    {
-      "name": "GOOGLE_AUTH_LIMITER",
-      "namespace_id": "1003",
-      "simple": { "limit": 20, "period": 60 }
-    },
-    {
-      "name": "COMMENT_WRITE_LIMITER",
-      "namespace_id": "1004",
-      "simple": { "limit": 5, "period": 60 }
-    },
-    {
-      "name": "COMMENT_LIKE_LIMITER",
-      "namespace_id": "1005",
-      "simple": { "limit": 30, "period": 60 }
-    },
-    {
-      "name": "COMMENT_LIKE_TOGGLE_LIMITER",
-      "namespace_id": "1006",
-      "simple": { "limit": 4, "period": 60 }
-    }
-  ],
-  "durable_objects": {
-    "bindings": [
-      { "name": "SESSION", "class_name": "SessionDO" },
-      { "name": "LOGIN_THROTTLE", "class_name": "LoginThrottleDO" },
-      { "name": "OAUTH_STATE", "class_name": "OauthStateDO" }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1-auth-dos",
-      "new_classes": ["SessionDO", "LoginThrottleDO", "OauthStateDO"]
-    }
-  ]
+	"name": "metfixhome",
+	"main": "worker/index.ts",
+	"compatibility_date": "2026-10-12",
+	"account_id": "84da09b9c67aa02ce3deb8edbdf5379c",
+	"workers_dev": false,
+	"assets": {
+		"directory": "./dist/public",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/the-daily-fix",
+			"/the-daily-fix/*",
+			"/api/*",
+			"/sitemap-daily-fix.xml"
+		]
+	},
+	"kv_namespaces": [
+		{
+			"binding": "AUTH_SESSIONS",
+			"id": "16d2ca6eae6c41adb8af8da5b71019ec",
+			"preview_id": "6976f8cf9e934258bd253b1d65bb4ece",
+			"remote": true
+		}
+	],
+	// Six Rate Limiting bindings (S-RL / P8). namespace_id is an account-unique
+	// integer you choose (not created in the dashboard). 27101–27106 are reserved
+	// for metfixhome on account 84da09b9… so they do not collide with other Workers.
+	"ratelimits": [
+		{
+			"name": "SIGNUP_LIMITER",
+			"namespace_id": "27101",
+			"simple": {
+				"limit": 5,
+				"period": 60
+			}
+		},
+		{
+			"name": "USERNAME_CHECK_LIMITER",
+			"namespace_id": "27102",
+			"simple": {
+				"limit": 20,
+				"period": 60
+			}
+		},
+		{
+			"name": "GOOGLE_AUTH_LIMITER",
+			"namespace_id": "27103",
+			"simple": {
+				"limit": 20,
+				"period": 60
+			}
+		},
+		{
+			"name": "COMMENT_WRITE_LIMITER",
+			"namespace_id": "27104",
+			"simple": {
+				"limit": 5,
+				"period": 60
+			}
+		},
+		{
+			"name": "COMMENT_LIKE_LIMITER",
+			"namespace_id": "27105",
+			"simple": {
+				"limit": 30,
+				"period": 60
+			}
+		},
+		{
+			"name": "COMMENT_LIKE_TOGGLE_LIMITER",
+			"namespace_id": "27106",
+			"simple": {
+				"limit": 4,
+				"period": 60
+			}
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "SESSION",
+				"class_name": "SessionDO"
+			},
+			{
+				"name": "LOGIN_THROTTLE",
+				"class_name": "LoginThrottleDO"
+			},
+			{
+				"name": "OAUTH_STATE",
+				"class_name": "OauthStateDO"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1-auth-dos",
+			"new_classes": [
+				"SessionDO",
+				"LoginThrottleDO",
+				"OauthStateDO"
+			]
+		}
+	],
+	// Non-secret: dedicated metfix.org WP OAuth client_id for BSI-C10 web-login (§0s.2).
+	// Never from the browser; Worker never holds/sends METFIX_ORG_OAUTH_CLIENT_SECRET.
+	"vars": {
+		"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
+		"GOOGLE_AUTH_ENABLED": "1",
+		"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com"
+	}
 }

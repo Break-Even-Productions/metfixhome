@@ -93,7 +93,12 @@ function mockDayAndLb(
         hostname: "metfix.org",
       });
     }
-    if (url.includes("/auth/web-login")) return g.defaultFetch(input, init);
+    if (
+      (url.includes("/oauth/token") && !url.includes("/proxy/oauth/token")) ||
+      url.includes("/wp-json/bsi/v1/me")
+    ) {
+      return g.defaultFetch(input, init);
+    }
     if (url.includes("/proxy/oauth/")) return g.defaultFetch(input, init);
     if (url.includes("/leaderboard")) {
       if (typeof opts?.lb === "function") return opts.lb(url, init);
