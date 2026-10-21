@@ -11,9 +11,8 @@ import {
   bsiFollowBridge,
   bsiSocialAuth,
   normalizeCanModerate,
-  oauthClientId,
-  oauthClientSecret,
   parseRetryAfter,
+  requireAuthConfig,
 } from "../upstream";
 import { PRE_COOKIE, SID_COOKIE, getPre, getSid, setHostCookie } from "./cookies";
 import {
@@ -365,6 +364,15 @@ export async function handleGoogleCallback(
   if (!googleEnabled(env)) return authJson(BODY_NOT_FOUND, 404);
   if (request.method.toUpperCase() !== "GET") return methodNotAllowed("GET");
 
+  // CQ: missing OAuth client config → 503 before Google limiter (auth_config_missing).
+  const cfg = requireAuthConfig(env, {
+    needApiKey: true,
+    baseUrl: opts?.bsiBaseUrl,
+  });
+  if (!cfg) {
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
+  }
+
   const lim = await checkGoogleLimit(env, clientIp(request));
   if (!lim.allowed) {
     return authJson(BODY_RATE_LIMITED, 429, {
@@ -415,14 +423,6 @@ export async function handleGoogleCallback(
   const verified = payload.email_verified === true;
   const intent = verified ? rec.intent : "login";
 
-  const oauthClient = oauthClientId(env);
-  const oauthSecret = oauthClientSecret(env);
-  if (!oauthClient || !oauthSecret) {
-    if (!oauthClient) console.log("auth_config_missing", "BSI_OAUTH_CLIENT_ID");
-    else console.log("auth_config_missing", "METFIX_ORG_OAUTH_CLIENT_SECRET");
-    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
-  }
-
   const bridgeState = randomId32();
   try {
     await putOauthState(env, bridgeState, {
@@ -443,7 +443,7 @@ export async function handleGoogleCallback(
       provider: "google",
       intent,
       access_token: idToken,
-      client_id: oauthClient,
+      client_id: cfg.clientId,
       redirect_uri: METFIX_CALLBACK_URI,
       state: bridgeState,
     },
@@ -473,7 +473,7 @@ export async function handleGoogleCallback(
     {
       grant_type: "authorization_code",
       code: wpCode,
-      client_id: oauthClient,
+      client_id: cfg.clientId,
       redirect_uri: METFIX_CALLBACK_URI,
     },
     env,

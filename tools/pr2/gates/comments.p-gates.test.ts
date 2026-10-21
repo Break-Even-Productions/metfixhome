@@ -501,7 +501,7 @@ describe("PR2 gates P — comment POST", () => {
     expect(otherIp?.status).toBe(201);
   });
 
-  it("P8.2 CSRF fail and logged out skip limiter", async () => {
+  it("P8.2 CSRF/logged-out skip limiter; signed-in limit() before siteverify; denied limit → 429", async () => {
     const g = setupGate();
     g.writeLimiter.calls.length = 0;
     await callComments(g, "/api/daily-fix/comments", {
@@ -518,6 +518,81 @@ describe("PR2 gates P — comment POST", () => {
       body: JSON.stringify(POST_BODY),
     });
     expect(g.writeLimiter.calls.length).toBe(0);
+
+    // Signed-in, CSRF-valid: one ordered log spanning writeLimiter.limit() and every fetch.
+    const order: string[] = [];
+    const origLimit = g.writeLimiter.limit.bind(g.writeLimiter);
+    g.writeLimiter.limit = async (opts) => {
+      order.push("limit");
+      return origLimit(opts);
+    };
+    g.fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("siteverify")) {
+        order.push("siteverify");
+        return Response.json({
+          success: true,
+          score: 0.9,
+          action: "comment",
+          hostname: "metfix.org",
+        });
+      }
+      if (u.includes("brokenscience") && (init?.method ?? "GET").toUpperCase() === "POST") {
+        order.push("bsi");
+        return Response.json(okComment({ id: 1, content: "h", timestamp: "t" }), { status: 201 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const okRes = await callComments(g, "/api/daily-fix/comments", {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify(POST_BODY),
+    });
+    expect(okRes?.status).toBe(201);
+    expect(order.indexOf("limit")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("siteverify")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("limit")).toBeLessThan(order.indexOf("siteverify"));
+
+    // Same P8.2 test: limit() denied → 429 rate_limited, 0 siteverify, 0 BSI.
+    g.writeLimiter.limit = async () => {
+      order.push("limit");
+      return { success: false };
+    };
+    g.fetchMock.mockClear();
+    g.fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("siteverify")) {
+        order.push("siteverify");
+        return Response.json({
+          success: true,
+          score: 0.9,
+          action: "comment",
+          hostname: "metfix.org",
+        });
+      }
+      if (u.includes("brokenscience") && (init?.method ?? "GET").toUpperCase() === "POST") {
+        order.push("bsi");
+        return Response.json(okComment({ id: 2, content: "h", timestamp: "t" }), { status: 201 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const denied = await callComments(g, "/api/daily-fix/comments", {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify(POST_BODY),
+    });
+    expect(denied?.status).toBe(429);
+    expect(await denied?.json()).toStrictEqual({ error: "rate_limited" });
+    expect(g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("siteverify")).length).toBe(
+      0,
+    );
+    expect(
+      g.fetchMock.mock.calls.filter(
+        (c) =>
+          String(c[0]).includes("brokenscience") &&
+          ((c[1] as RequestInit | undefined)?.method ?? "GET").toUpperCase() === "POST",
+      ).length,
+    ).toBe(0);
   });
 
   it("P9.1 six concurrent POSTs → five BSI, one 429", async () => {

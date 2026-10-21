@@ -133,11 +133,24 @@ describe("ENC", () => {
 describe("AU16", () => {
   it("AU16.1 invalid_login", async () => {
     const cases: Array<() => Response> = [
-      () => Response.json({ code: "invalid_credentials" }, { status: 401 }),
-      () => Response.json({ code: "login_disabled" }, { status: 403 }),
+      () =>
+        Response.json(
+          { error: "invalid_grant", error_description: "unknown user" },
+          { status: 400 },
+        ),
+      () =>
+        Response.json(
+          { error: "invalid_grant", error_description: "wrong password" },
+          { status: 400 },
+        ),
+      () =>
+        Response.json(
+          { error: "invalid_grant", error_description: "disabled account" },
+          { status: 401 },
+        ),
     ];
-    for (const webLogin of cases) {
-      const h = createHarness({ webLogin });
+    for (const oauthToken of cases) {
+      const h = createHarness({ oauthToken });
       const { csrf: token, setCookie } = await h.csrf();
       const res = await h.call("/api/auth/login", {
         method: "POST",
@@ -146,6 +159,7 @@ describe("AU16", () => {
       });
       expect(res.status).toBe(401);
       expect(await res.json()).toStrictEqual({ error: "invalid_login" });
+      expect(h.fetches.filter((f) => f.url.includes("/wp-json/bsi/v1/me")).length).toBe(0);
     }
   });
 });

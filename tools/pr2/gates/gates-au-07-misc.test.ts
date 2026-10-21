@@ -921,22 +921,26 @@ describe("AU20", () => {
     });
     try {
       const outcomes = [
-        () => Response.json({ code: "client_not_allowed" }, { status: 403 }),
-        () => Response.json({ code: "invalid_credentials" }, { status: 401 }),
+        () => Response.json({ error: "invalid_client" }, { status: 401 }),
+        () => Response.json({ error: "invalid_grant" }, { status: 400 }),
         () => new Response("x", { status: 500 }),
       ];
-      for (const webLogin of outcomes) {
-        const h = createHarness({ webLogin });
+      for (const oauthToken of outcomes) {
+        const h = createHarness({ oauthToken });
         await loginPost(h);
       }
-      const banned = [PW, ACCESS1, REFRESH1, CODE, BRIDGE, EMAIL, KEY, RSECRET, TOK];
+      // Vacuity: auth_config_missing on missing secret
+      const hMiss = createHarness();
+      delete hMiss.env.METFIX_ORG_OAUTH_CLIENT_SECRET;
+      await loginPost(hMiss);
+      const banned = [PW, ACCESS1, REFRESH1, CODE, BRIDGE, EMAIL, KEY, RSECRET, TOK, "secret_QA_CANARY"];
       for (const line of lines) {
         expect(line).not.toMatch(/web-login failed/i);
         for (const b of banned) {
           expect(line).not.toContain(b);
         }
       }
-      expect(lines.some((l) => l.includes("bsi_client_not_allowed"))).toBe(true);
+      expect(lines.some((l) => l.includes("auth_config_missing"))).toBe(true);
     } finally {
       spy.mockRestore();
       err.mockRestore();

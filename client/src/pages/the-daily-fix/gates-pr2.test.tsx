@@ -159,6 +159,7 @@ describe("PR2 client gates C / CT / CC1", () => {
       label: "(a) 503 unavailable",
       post: async () =>
         new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }),
+      getFail: false,
     },
     {
       label: "(b) 201 missing id",
@@ -166,20 +167,30 @@ describe("PR2 client gates C / CT / CC1", () => {
         new Response(JSON.stringify({ comment: { content: "x", timestamp: "t" } }), {
           status: 201,
         }),
+      getFail: false,
     },
     {
       label: "(c) TypeError reject",
       post: async () => {
         throw new TypeError("Failed to fetch");
       },
+      getFail: false,
     },
     {
       label: "(d) sync throw",
       post: () => {
         throw new TypeError("sync boom");
       },
+      getFail: false,
     },
-  ])("CT-P1 $label → 1 POST + 1 bypass GET; no retry", async ({ post }) => {
+    {
+      label: "(e) refetch GET fails",
+      post: async () =>
+        new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }),
+      getFail: true,
+    },
+  ])("CT-P1 $label → 1 POST + 1 bypass GET; no retry", async ({ post, getFail }) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const src = readFileSync(path.join(import.meta.dirname, "CommentThread.tsx"), "utf8");
     expect(src).toContain("We couldn't confirm your comment. Check the thread before posting again.");
     expect(src).toMatch(/bypassCache: true/);
@@ -210,6 +221,9 @@ describe("PR2 client gates C / CT / CC1", () => {
       if (u.includes("/api/daily-fix/comments") && method === "GET") {
         bypassGets += 1;
         expect(init?.cache === "no-store" || init?.cache === "reload").toBe(true);
+        if (getFail) {
+          throw new TypeError("Failed to fetch");
+        }
         return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
           status: 200,
         });
@@ -238,11 +252,24 @@ describe("PR2 client gates C / CT / CC1", () => {
     await waitFor(() => expect(bypassGets).toBe(1));
     expect(posts).toBe(1);
     expect(bypassGets).toBe(1);
+    expect(
+      screen.getByText("We couldn't confirm your comment. Check the thread before posting again.")
+        .textContent,
+    ).toBe("We couldn't confirm your comment. Check the thread before posting again.");
     expect((screen.getByPlaceholderText(/Share a thought/i) as HTMLTextAreaElement).value).toBe(
       "retry-check",
     );
     // No optimistic comment row — composer keeps the typed text, thread has no new item.
     expect(document.querySelectorAll(".df-comment-item, .df-comment").length).toBe(0);
+
+    // Drop the retry-tick setInterval so runAllTimers can flush without looping;
+    // any mutant setTimeout retry would still fire and bump POST/GET counts.
+    cleanup();
+    await act(async () => {
+      vi.runAllTimers();
+    });
+    expect(posts).toBe(1);
+    expect(bypassGets).toBe(1);
   });
 
   it("CT2 comment HTML renders as literal text without script execution", () => {
@@ -364,7 +391,7 @@ describe("PR2 client gates C / CT / CC1", () => {
     );
   });
 
-  it("C6.2 comments fetch starts before day load and Map-caches by date (behavioural)", async () => {
+  it("C6.2 comments start before day resolves; Map-cache; navigate-back in page.mount", async () => {
     const page = readFileSync(path.join(import.meta.dirname, "TheDailyFixPage.tsx"), "utf8");
     // Closer-day waits for loaded day (not source-regex-only for C6.2).
     expect(page).toMatch(/route\.kind === "today" && allowCloser/);
@@ -374,6 +401,9 @@ describe("PR2 client gates C / CT / CC1", () => {
     const mount = readFileSync(path.join(import.meta.dirname, "page.mount.test.tsx"), "utf8");
     expect(mount).toMatch(/expect\(isos\)\.not\.toContain\(TODAY\)/);
     expect(mount).toMatch(/byDate/);
+    // Real navigate-back (0 new comment GETs) lives in page.mount C6.2.
+    expect(mount).toMatch(/C6\.2[\s\S]*navigate/);
+    expect(mount).toMatch(/commentGets/);
 
     invalidateCommentsCache();
     let resolveDay!: (v: Response) => void;
@@ -381,10 +411,12 @@ describe("PR2 client gates C / CT / CC1", () => {
       resolveDay = r;
     });
     let commentsStarted = false;
+    let dayResolved = false;
     const fetchImpl = vi.fn(async (url: string) => {
       const u = String(url);
       if (u.includes("/api/daily-fix/comments")) {
         commentsStarted = true;
+        expect(dayResolved).toBe(false);
         return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
           status: 200,
         });
@@ -397,9 +429,11 @@ describe("PR2 client gates C / CT / CC1", () => {
       }
       return new Response("{}", { status: 404 });
     });
-    // Dated route: comments may start before day resolves.
+    // Behavioural: comments request starts before the day response resolves.
     const a = fetchDailyFixComments("2025-02-10", undefined, { fetchImpl });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(commentsStarted).toBe(true);
+    dayResolved = true;
     resolveDay(
       new Response(
         JSON.stringify({
@@ -415,7 +449,6 @@ describe("PR2 client gates C / CT / CC1", () => {
     const b = fetchDailyFixComments("2025-02-10", undefined, { fetchImpl });
     await b;
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    void commentsStarted;
   });
 
   it("CC1 cloudflare-client.test.tsx matches main blob md5", () => {

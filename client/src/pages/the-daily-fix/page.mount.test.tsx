@@ -1839,7 +1839,13 @@ describe("C6.1 /me single-flight on mount", () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/auth/me"))).toBe(true),
     );
+    // Header (comments head) and CommentThread both show the /me name from loadMe.
     expect(await screen.findByText(/Signed in as Jane/i)).toBeTruthy();
+    const thread = document.querySelector(".df-comments");
+    expect(thread).toBeTruthy();
+    expect(within(thread as HTMLElement).getByTestId("df-comments-viewer").textContent).toBe(
+      "Signed in as Jane",
+    );
 
     // Switch pillar, navigate to another date and back, focus, advance 10 min.
     const brainTab = screen.getByRole("tab", { name: /Brain/i });
@@ -1857,8 +1863,97 @@ describe("C6.1 /me single-flight on mount", () => {
     const meCalls = () =>
       fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/auth/me"));
     expect(meCalls()).toHaveLength(1);
+    // Still Jane in the thread after navigate/focus (from /me cache, not a hardcoded prop).
+    const threadAfter = document.querySelector(".df-comments");
+    expect(threadAfter).toBeTruthy();
+    expect(within(threadAfter as HTMLElement).getByTestId("df-comments-viewer").textContent).toBe(
+      "Signed in as Jane",
+    );
     await refreshMeAfterAuthChange();
     expect(meCalls()).toHaveLength(2);
+  });
+});
+
+describe("C6.2 comments GET per date + start-before-day", () => {
+  it("C6.2 navigate two dates and back → 1 comments GET each; comments start before day", async () => {
+    // Bind comments moduleFetch to the stub: resetModules then stub then import.
+    vi.resetModules();
+    let firstDayResolve!: (v: Response) => void;
+    const firstDayPending = new Promise<Response>((r) => {
+      firstDayResolve = r;
+    });
+    let firstDayReleased = false;
+    let commentsStartedBeforeDay = false;
+    const commentGets: string[] = [];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/auth/me")) {
+        return new Response(JSON.stringify({ signed_in: false }), { status: 200 });
+      }
+      if (isCommentsRequest(url)) {
+        const date = new URL(url, "https://metfix.org").searchParams.get("date")!;
+        if (!firstDayReleased) commentsStartedBeforeDay = true;
+        commentGets.push(date);
+        return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
+          status: 200,
+        });
+      }
+      const date = new URL(url, "https://metfix.org").searchParams.get("date") ?? TODAY;
+      if (date === "2025-02-10" && !firstDayReleased) {
+        return firstDayPending;
+      }
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    TheDailyFixPage = (await import("./TheDailyFixPage")).default;
+    NotFound = (await import("@/pages/NotFound")).default;
+    commentsApi = await import("./comments");
+    invalidateCommentsCache = commentsApi.invalidateCommentsCache;
+    const data = await import("./data");
+    resetDailyFixDayCache = data.resetDailyFixDayCache;
+    stubBrowserApis();
+    resetDailyFixDayCache();
+    invalidateCommentsCache();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(FROZEN);
+
+    cleanup();
+    renderShell("/the-daily-fix/250210");
+    // Comments request starts before the day response resolves.
+    await waitFor(() => expect(commentsStartedBeforeDay).toBe(true));
+    expect(commentGets.filter((d) => d === "2025-02-10")).toHaveLength(1);
+
+    firstDayReleased = true;
+    firstDayResolve(
+      new Response(JSON.stringify(dayPayload("2025-02-10")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+
+    // In-app navigate (not Map-only): Next → 2025-02-11 comments GET.
+    // (Previous from FIRST_FIX 2025-02-10 is out of range and redirects back.)
+    fireEvent.click(screen.getByRole("link", { name: /Next/i }));
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-11" })).toBeTruthy();
+    await waitFor(() => expect(commentGets.filter((d) => d === "2025-02-11")).toHaveLength(1));
+    const afterTwoDates = commentGets.length;
+    expect(commentGets.filter((d) => d === "2025-02-10")).toHaveLength(1);
+
+    // Back-navigation to a cached date → 0 new comments GETs.
+    fireEvent.click(screen.getByRole("link", { name: /Previous/i }));
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(commentGets.filter((d) => d === "2025-02-10")).toHaveLength(1);
+    expect(commentGets.filter((d) => d === "2025-02-11")).toHaveLength(1);
+    expect(commentGets.length).toBe(afterTwoDates);
   });
 });
 

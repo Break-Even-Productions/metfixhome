@@ -228,8 +228,7 @@ describe("AU5", () => {
 
     // (b) refresh failure
     const h2 = createHarness({
-      webLogin: undefined,
-    });
+          });
     // Override token refresh via fetch recording — use custom harness with failing refresh
     const login = await h2.login();
     await patchSession(h2, login.sid, (r) => {
@@ -430,29 +429,35 @@ describe("AU6", () => {
 
 describe("CW12", () => {
   it("CW12.3 refresh true→false rewrites SESSION DO and KV /me; purge rebuild stays false", async () => {
+    let meN = 0;
     const h = createHarness({
-      webLogin: async () =>
-        Response.json({
-          access_token: ACCESS1,
-          refresh_token: REFRESH1,
-          expires_in: 3600,
-          public_name: "Jane",
-          user_id: 42,
-          can_moderate: true,
-        }),
-      refresh: async (req) => {
-        const parsed = JSON.parse(await req.text()) as { refresh_token?: string };
-        if (parsed.refresh_token === REFRESH1) {
+      oauthToken: async (req) => {
+        const form = new URLSearchParams(await req.text());
+        if (form.get("grant_type") === "password") {
+          return Response.json({
+            access_token: ACCESS1,
+            refresh_token: REFRESH1,
+            expires_in: 3600,
+            user_id: 999,
+          });
+        }
+        if (form.get("refresh_token") === REFRESH1) {
           return Response.json({
             access_token: ACCESS2,
             refresh_token: REFRESH2,
             expires_in: 3600,
-            public_name: "Jane",
-            user_id: 42,
-            can_moderate: false,
+            user_id: 999,
           });
         }
-        return Response.json({ code: "invalid_grant" }, { status: 400 });
+        return Response.json({ error: "invalid_grant" }, { status: 400 });
+      },
+      bsiMe: () => {
+        meN++;
+        return Response.json({
+          id: 42,
+          display_name: "Jane",
+          can_moderate: meN === 1,
+        });
       },
     });
     const { sid } = await h.login();
@@ -511,13 +516,19 @@ describe("AU7", () => {
     });
     const res = await commentPost(h, sid);
     expect(res.status).toBe(201);
-    const refresh = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token"));
-    expect(refresh.length).toBe(1);
-    expect(JSON.parse(refresh[0]!.bodyText)).toStrictEqual({
+    const refresh = h.fetches.filter(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+    );
+    // password grant + refresh grant
+    expect(refresh.length).toBeGreaterThanOrEqual(2);
+    const refreshGrant = refresh.find((f) => f.bodyText.includes("grant_type=refresh_token"))!;
+    const form = Object.fromEntries(new URLSearchParams(refreshGrant.bodyText));
+    expect(form).toMatchObject({
       grant_type: "refresh_token",
       client_id: CID,
       refresh_token: REFRESH1,
     });
+    expect(form).toHaveProperty("client_secret");
     const write = h.fetches.filter((f) => f.url.includes("/comments") && f.method === "POST").pop();
     expect(write?.headers["authorization"]).toContain(ACCESS2);
     const blob = (await sessionBlob(h, sid))?.blob ?? "";
@@ -530,9 +541,15 @@ describe("AU7", () => {
     await patchSession(h2, l2.sid, (r) => {
       r.access_exp = Date.now() + 61_000;
     });
-    const n = h2.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+    const n = h2.fetches.filter(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+    ).length;
     await commentPost(h2, l2.sid);
-    expect(h2.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length).toBe(n);
+    expect(
+      h2.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(n);
   });
 
   it("AU7.2 401 retry then signed_out", async () => {
@@ -584,9 +601,9 @@ describe("AU7", () => {
     await patchSession(h, sid, (r) => {
       r.access_exp = Date.now() + 30_000;
     });
-    const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+    const before = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
     await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-    const after = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+    const after = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
     expect(after - before).toBe(1);
   });
 
@@ -623,11 +640,11 @@ describe("AU7", () => {
       await patchSession(h, sid, (r) => {
         r.access_exp = Date.now() + 30_000;
       });
-      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+      const before = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
       const [a, c] = await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
       expect(a.status).toBe(201);
       expect(c.status).toBe(200);
-      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
       const blob = (await sessionBlob(h, sid))?.blob ?? "";
       const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
       expect(pt).toContain(ACCESS2);
@@ -648,9 +665,9 @@ describe("AU7", () => {
       await patchSession(h, sid, (r) => {
         r.access_exp = Date.now() + 30_000;
       });
-      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+      const before = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
       await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
       const blob = (await sessionBlob(h, sid))?.blob ?? "";
       const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
       expect(pt).toContain(ACCESS2);
@@ -663,9 +680,9 @@ describe("AU7", () => {
       await patchSession(h, sid, (r) => {
         r.access_exp = Date.now() + 30_000;
       });
-      const before = h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length;
+      const before = h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length;
       await Promise.all([commentPost(h, sid), leaderboard(h, sid)]);
-      expect(h.fetches.filter((f) => f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
+      expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length - before).toBe(1);
       const blob = (await sessionBlob(h, sid))?.blob ?? "";
       const pt = await decryptSessionPayload(blob, sessionAad(await sidHex(sid)), ENCKEY);
       expect(pt).toContain(ACCESS2);

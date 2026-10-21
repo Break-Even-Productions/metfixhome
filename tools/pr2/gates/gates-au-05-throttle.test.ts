@@ -42,7 +42,7 @@ async function loginPost(
 }
 
 function badCreds() {
-  return () => Response.json({ code: "invalid_credentials" }, { status: 401 });
+  return () => Response.json({ error: "invalid_grant" }, { status: 400 });
 }
 
 
@@ -103,7 +103,7 @@ describe("AU15", () => {
 
 describe("AU17", () => {
   it("AU17.1 R8a lockout ladder", async () => {
-    const h = createHarness({ webLogin: badCreds() });
+    const h = createHarness({ oauthToken: badCreds() });
     const id = "Jane";
     for (let i = 0; i < 5; i++) {
       const res = await loginPost(h, { identifier: i % 2 ? " jane " : "JANE" });
@@ -117,17 +117,16 @@ describe("AU17", () => {
 
   it("AU17.2 success clears R8a not R8b/R8c", async () => {
     const h = createHarness({
-      webLogin: (() => {
+      oauthToken: (() => {
         let n = 0;
         return () => {
           n++;
-          if (n <= 4) return Response.json({ code: "invalid_credentials" }, { status: 401 });
+          if (n <= 4) return Response.json({ error: "invalid_grant" }, { status: 400 });
           return Response.json({
             access_token: "at_QA_SENT_1_abcdefghijklmnopqrstuvwxyz",
             refresh_token: "rt_QA_SENT_1_abcdefghijklmnopqrstuvwxyz",
             expires_in: 3600,
-            public_name: "Jane",
-            user_id: 42,
+            user_id: 999,
           });
         };
       })(),
@@ -141,7 +140,7 @@ describe("AU17", () => {
   });
 
   it("AU17.3 R8b 21st distinct identifier", async () => {
-    const h = createHarness({ webLogin: badCreds() });
+    const h = createHarness({ oauthToken: badCreds() });
     const t0 = Date.now();
     h.setNow(t0);
     for (let i = 0; i < 20; i++) {
@@ -210,12 +209,12 @@ describe("AU17", () => {
     const res = await loginPost(h);
     expect(res.status).toBe(503);
     expect(await res.json()).toStrictEqual({ error: "unavailable" });
-    expect(res.headers.get("Retry-After")).toBe("300");
-    expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(0);
+    expect(res.headers.get("Retry-After")).toBe("60");
+    expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length).toBe(0);
   });
 
   it("AU17.7 idFromName hashed names only", async () => {
-    const h = createHarness({ webLogin: badCreds() });
+    const h = createHarness({ oauthToken: badCreds() });
     const id = "RawIdentifierXYZ";
     await loginPost(h, { identifier: id, ip: IP });
     const names = [...h.throttleNs.instances.keys()];
@@ -239,17 +238,32 @@ describe("AU17", () => {
         expect(res.status).toBe(429);
       }
     }
-    expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(25);
+    expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length).toBe(25);
     expect(bsi).toBe(25);
   });
 
-  it("AU17.9 order R8a→R8b→shape→R8c→BSI; 0 siteverify", async () => {
+  it("AU17.9 order config→R8a→R8b→siteverify→R8c→token→/me", async () => {
     const h = createHarness();
     await loginPost(h);
-    expect(h.siteverifyCalls.length).toBe(0);
-    expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(1);
-    // Malformed does not spend R8c
+    expect(h.siteverifyCalls.length).toBe(1);
+    expect(
+      h.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(1);
+    expect(h.fetches.filter((f) => f.url.includes("/wp-json/bsi/v1/me")).length).toBe(1);
+    const svIdx = h.fetches.findIndex((f) => f.url.includes("siteverify"));
+    const tokIdx = h.fetches.findIndex(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/"),
+    );
+    const meIdx = h.fetches.findIndex((f) => f.url.includes("/wp-json/bsi/v1/me"));
+    expect(svIdx).toBeLessThan(tokIdx);
+    expect(tokIdx).toBeLessThan(meIdx);
+    // Bad/missing recaptcha does not spend R8c or call token
     const before = ((h.throttleNs.getStorage(R8C_NAME)?.get("global") as number[]) ?? []).length;
+    const tokBefore = h.fetches.filter(
+      (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+    ).length;
     for (const bad of ["", 123, null, []] as unknown[]) {
       const { csrf: token, setCookie } = await h.csrf();
       await h.call("/api/auth/login", {
@@ -266,10 +280,35 @@ describe("AU17", () => {
     }
     const after = ((h.throttleNs.getStorage(R8C_NAME)?.get("global") as number[]) ?? []).length;
     expect(after).toBe(before);
+    expect(
+      h.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(tokBefore);
+
+    // Siteverify fail must not spend R8c (M137: R8c-before-siteverify burns the slot).
+    const hFail = createHarness({
+      siteverify: () => Response.json({ success: false }),
+    });
+    const r8cBeforeFail =
+      ((hFail.throttleNs.getStorage(R8C_NAME)?.get("global") as number[] | undefined) ?? []).length;
+    for (let i = 0; i < 10; i++) {
+      const res = await loginPost(hFail, { identifier: `svfail${i}` });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toStrictEqual({ error: "try_again" });
+    }
+    const r8cAfterFail =
+      ((hFail.throttleNs.getStorage(R8C_NAME)?.get("global") as number[] | undefined) ?? []).length;
+    expect(r8cAfterFail).toBe(r8cBeforeFail);
+    expect(
+      hFail.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(0);
   });
 
   it("AU17.10 429 shape; no timer advance", async () => {
-    const h = createHarness({ webLogin: badCreds() });
+    const h = createHarness({ oauthToken: badCreds() });
     for (let i = 0; i < 6; i++) await loginPost(h, { identifier: "lockme" });
     const before = vi.getTimerCount();
     const res = await loginPost(h, { identifier: "lockme" });
@@ -277,7 +316,12 @@ describe("AU17", () => {
     expect(await res.json()).toStrictEqual({ error: "rate_limited" });
     expect(res.headers.get("Retry-After")).toMatch(/^[1-9][0-9]*$/);
     expect(vi.getTimerCount()).toBe(before);
-    expect(h.siteverifyCalls.length).toBe(0);
+    // R8a lockout returns before siteverify on the locked attempt
+    expect(
+      h.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(5);
   });
 
   it("AU17.11 R8c concurrency 40 → 25 BSI / 15×429", async () => {
@@ -291,7 +335,7 @@ describe("AU17", () => {
     const limited = results.filter((r) => r.status === 429).length;
     expect(ok).toBe(25);
     expect(limited).toBe(15);
-    expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(25);
+    expect(h.fetches.filter((f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token")).length).toBe(25);
     const repo = process.cwd().endsWith("/client") ? join(process.cwd(), "..") : process.cwd();
     const loginSrc = readFileSync(join(repo, "worker/auth/login.ts"), "utf8");
     // Word-bounded: BODY_RATE_LIMITED is allowed; bare RATE_LIMIT / .limit( are not.
@@ -305,14 +349,14 @@ describe("AU17", () => {
     expect(upstream).toMatch(/LOGIN_THROTTLE:\s*DurableObjectNamespace/);
   });
 
-  it("AU17.13 BSI recaptcha_failed accounting", async () => {
+  it("AU17.13 login siteverify-fail accounting", async () => {
     const h = createHarness({
-      webLogin: (() => {
+      siteverify: (() => {
         let n = 0;
         return () => {
           n++;
-          if (n <= 10) return Response.json({ code: "recaptcha_failed" }, { status: 403 });
-          return Response.json({ code: "recaptcha_missing" }, { status: 400 });
+          if (n <= 10) return Response.json({ success: false });
+          return Response.json({ success: true, score: 0.1, action: "login", hostname: "metfix.org" });
         };
       })(),
     });
@@ -323,9 +367,12 @@ describe("AU17", () => {
     }
     const r21 = await loginPost(h, { identifier: "r21" });
     expect(r21.status).toBe(429);
-    expect(h.fetches.filter((f) => f.url.includes("web-login")).length).toBe(20);
-    expect(h.siteverifyCalls.length).toBe(0);
-    // R8a counters for those identifiers stay 0 (catalog AU17.13 / N5).
+    expect(
+      h.fetches.filter(
+        (f) => f.url.includes("/oauth/token") && !f.url.includes("/proxy/oauth/token"),
+      ).length,
+    ).toBe(0);
+    expect(h.siteverifyCalls.length).toBe(20);
     for (let i = 0; i < 20; i++) {
       const name = await r8aName(`r${i}`);
       expect(h.throttleNs.getStorage(name)?.get("id")).toBeUndefined();

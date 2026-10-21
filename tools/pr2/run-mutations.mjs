@@ -32,10 +32,11 @@ import { R11_OVERRIDES } from "./mutation-sabotages-r11.mjs";
 import { R12_OVERRIDES } from "./mutation-sabotages-r12.mjs";
 import { R13_OVERRIDES } from "./mutation-sabotages-r13.mjs";
 import { R14_OVERRIDES } from "./mutation-sabotages-r14.mjs";
+import { R15_OVERRIDES } from "./mutation-sabotages-r15.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
-const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.29-catalog.json");
+const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.31-catalog.json");
 const VITEST_JSON = path.join(REPO, "tools/pr2/.mutation-vitest-last.json");
 
 const args = process.argv.slice(2);
@@ -1473,6 +1474,9 @@ for (const [id, sab] of Object.entries(R13_OVERRIDES)) {
 for (const [id, sab] of Object.entries(R14_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
+for (const [id, sab] of Object.entries(R15_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 function patchMd5FromGit() {
   const res = spawnSync("git", ["diff", "--", "."], {
@@ -1638,6 +1642,18 @@ function restoreTree() {
     }
     runCmd("git", ["checkout", "--", ...files]);
   }
+  // M-JL1d plants client/public/x/index.html → build copies to dist/public/x/.
+  // Leave neither tree dirty for the next mutant / AU19.3 scan.
+  spawnSync(
+    "bash",
+    [
+      "-c",
+      "rm -rf client/public/x dist/public/x; " +
+        "rmdir client/public 2>/dev/null || true; " +
+        "true",
+    ],
+    { cwd: REPO, encoding: "utf8" },
+  );
 }
 
 function gateIdsFromFailedTitles(titles, gateIds) {
@@ -1954,7 +1970,7 @@ function main() {
 
   function writeCheckpoint() {
     const summary = {
-      catalogRev: "r1.25",
+      catalogRev: "r1.31",
       catalogTotal: catalog.mutations.length,
       selected: mutations.length,
       counts: {
@@ -2117,7 +2133,7 @@ function main() {
 
   // Final write (clears partial).
   const summary = {
-    catalogRev: "r1.25",
+    catalogRev: "r1.31",
     catalogTotal: catalog.mutations.length,
     selected: mutations.length,
     counts: {

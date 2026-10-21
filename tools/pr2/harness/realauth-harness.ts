@@ -49,7 +49,11 @@ export const BRIDGE =
 export const PW = "pw_QA_SENT";
 export const EMAIL = "qa.sentinel@example.test";
 export const CID = "cid_QA_SENT_CLIENT";
+export const SECRET_CANARY = "secret_QA_CANARY";
 export const TOK = "recaptcha_tok_QA_SENT";
+export const BSI_ORIGIN = "https://brokenscience.org";
+export const OAUTH_TOKEN_URL = `${BSI_ORIGIN}/oauth/token`;
+export const BSI_ME_URL = `${BSI_ORIGIN}/wp-json/bsi/v1/me`;
 
 export type RecordedFetch = {
   url: string;
@@ -314,6 +318,13 @@ export function createHarness(opts?: {
   sessionOutage?: "throw";
   oauthOutage?: "throw" | "hang";
   sessionEncKeyPrev?: string;
+  /** Mock POST /oauth/token (password + refresh_token grants). */
+  oauthToken?: (req: Request) => Response | Promise<Response>;
+  /** Mock GET /wp-json/bsi/v1/me. */
+  bsiMe?: (req: Request) => Response | Promise<Response>;
+  /**
+   * @deprecated Prefer `oauthToken`. Mapped to the `/oauth/token` mock during transition.
+   */
   webLogin?: (req: Request) => Response | Promise<Response>;
   revoke?: "throw" | ((req: Request) => Response | Promise<Response>);
   refresh?: (req: Request) => Response | Promise<Response>;
@@ -330,7 +341,7 @@ export function createHarness(opts?: {
       SESSION_ENC_KEY_PREV: opts?.sessionEncKeyPrev,
       DAILY_FIX_API_KEY: KEY,
       BSI_OAUTH_CLIENT_ID: CID,
-      METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
+      METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
       fetchImpl: sessionFetch,
     },
     {
@@ -389,7 +400,8 @@ export function createHarness(opts?: {
       if (opts?.siteverify) {
         return opts.siteverify(new Request(url, { method, headers, body: bodyText }));
       }
-      return Response.json({ success: true, score: 0.9, action: "comment", hostname: "metfix.org" });
+      // Default action=login so seedSession / h.login() succeed on the direct-token path.
+      return Response.json({ success: true, score: 0.9, action: "login", hostname: "metfix.org" });
     }
     if (url.startsWith(GOOGLE_JWKS_URL) || url.includes("googleapis.com/oauth2/v3/certs")) {
       if (edges.jwks) {
@@ -420,14 +432,49 @@ export function createHarness(opts?: {
     ) {
       return new Response("x", { status: 502 });
     }
-    if (url.includes("/auth/web-login")) {
-      if (opts?.webLogin) return opts.webLogin(new Request(url, { method, headers, body: bodyText }));
+    // Direct-token Pro OAuth: POST {origin}/oauth/token (not the WP proxy path).
+    if (url.includes("/oauth/token") && !url.includes("/proxy/oauth/token")) {
+      const form = new URLSearchParams(bodyText);
+      const grant = form.get("grant_type");
+      const req = new Request(url, { method, headers, body: bodyText });
+      if (opts?.oauthToken) return opts.oauthToken(req);
+      // refresh_token: prefer dedicated refresh mock when present
+      if (grant === "refresh_token" && opts?.refresh) return opts.refresh(req);
+      // Backward compat: webLogin mapped onto password (and refresh if no refresh opt)
+      if (opts?.webLogin) return opts.webLogin(req);
+      if (opts?.refresh) return opts.refresh(req);
+      if (grant === "password" || grant === "refresh_token") {
+        const refresh =
+          grant === "refresh_token" && form.get("refresh_token") === REFRESH1
+            ? REFRESH2
+            : REFRESH1;
+        const access = grant === "refresh_token" ? ACCESS2 : ACCESS1;
+        // Misleading user_id must not be trusted — session id comes from /me.
+        return Response.json({
+          access_token: access,
+          refresh_token: refresh,
+          expires_in: 3600,
+          token_type: "Bearer",
+          user_id: 999,
+        });
+      }
+      return Response.json({ error: "unsupported_grant_type" }, { status: 400 });
+    }
+    if (url.includes("/wp-json/bsi/v1/me") || /\/bsi\/v1\/me(?:\?|$)/.test(url)) {
+      if (opts?.bsiMe) {
+        // GET must not carry a body (undici throws).
+        return opts.bsiMe(
+          new Request(url, {
+            method,
+            headers,
+            body: method === "GET" || method === "HEAD" ? undefined : bodyText,
+          }),
+        );
+      }
       return Response.json({
-        access_token: ACCESS1,
-        refresh_token: REFRESH1,
-        expires_in: 3600,
-        public_name: "Jane",
-        user_id: 42,
+        id: 42,
+        display_name: "Jane",
+        can_moderate: false,
       });
     }
     if (url.includes("/auth/social")) {
@@ -445,10 +492,16 @@ export function createHarness(opts?: {
     }
     if (url.includes("/proxy/oauth/token")) {
       if (opts?.refresh) return opts.refresh(new Request(url, { method, headers, body: bodyText }));
-      const parsed = JSON.parse(bodyText || "{}") as {
-        refresh_token?: string;
-        grant_type?: string;
-      };
+      let parsed: { refresh_token?: string; grant_type?: string } = {};
+      try {
+        parsed = JSON.parse(bodyText || "{}") as typeof parsed;
+      } catch {
+        const form = new URLSearchParams(bodyText);
+        parsed = {
+          grant_type: form.get("grant_type") ?? undefined,
+          refresh_token: form.get("refresh_token") ?? undefined,
+        };
+      }
       if (parsed.grant_type === "authorization_code") {
         return Response.json({
           access_token: ACCESS1,
@@ -467,7 +520,7 @@ export function createHarness(opts?: {
           user_id: 42,
         });
       }
-      return Response.json({ code: "invalid_grant" }, { status: 400 });
+      return Response.json({ error: "invalid_grant" }, { status: 400 });
     }
     if (url.includes("/proxy/oauth/revoke")) {
       if (opts?.revoke === "throw") throw new Error("revoke_timeout");
@@ -522,7 +575,7 @@ export function createHarness(opts?: {
     LOGIN_THROTTLE: throttleNs as unknown as DurableObjectNamespace,
     OAUTH_STATE: oauthNs as unknown as DurableObjectNamespace,
     BSI_OAUTH_CLIENT_ID: CID,
-    METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
+    METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
     SESSION_ENC_KEY: ENCKEY,
     CSRF_SECRET: "csrf_secret_QA_32bytes___________",
     RECAPTCHA_SECRET: RSECRET,

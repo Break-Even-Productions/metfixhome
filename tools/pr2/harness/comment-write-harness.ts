@@ -30,7 +30,9 @@ export const RSECRET = "rsecret_QA_SENT";
 export const ENCKEY = bytesToBase64Url(randomBytes(32));
 export const PW = "pw_QA_SENT";
 export const CID = "cid_QA_SENT_CLIENT";
+export const SECRET_CANARY = "secret_QA_CANARY";
 export const TOK = "recaptcha_tok_QA_SENT";
+export const BSI_ORIGIN = "https://brokenscience.org";
 
 function makeDoState() {
   const map = new Map<string, unknown>();
@@ -165,6 +167,7 @@ export type GateCtx = {
   setUserId: (id: string | number) => void;
   setAccessToken: (token: string) => void;
   setCanModerate: (value: unknown) => void;
+  setSiteverifyAction: (action: "login" | "comment") => void;
 };
 
 export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
@@ -178,7 +181,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
     SESSION_ENC_KEY: ENCKEY,
     DAILY_FIX_API_KEY: KEY,
     BSI_OAUTH_CLIENT_ID: CID,
-    METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
+    METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
     fetchImpl: sessionFetch,
   });
   const throttleNs = makeNamespace(LoginThrottleDO, {});
@@ -188,6 +191,8 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
   const likeLimiter = makeBindingLimiter(30);
   const toggleLimiter = makeBindingLimiter(4);
   const lbLimiter = makeBindingLimiter(10);
+  /** login for seedSession; comment for write/like after seed. */
+  let siteverifyAction: "login" | "comment" = "login";
 
   const defaultFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
@@ -196,47 +201,59 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
         : input instanceof URL
           ? input.href
           : (input as Request).url;
-    const method = (init?.method ?? "GET").toUpperCase();
+    const method = (init?.method ?? (typeof input !== "string" && !(input instanceof URL) ? (input as Request).method : "GET")).toUpperCase();
 
     if (url.includes("recaptcha/api/siteverify")) {
       return Response.json({
         success: true,
         score: 0.9,
-        action: "comment",
+        action: siteverifyAction,
         hostname: "metfix.org",
       });
     }
     if (!url.includes("brokenscience.org")) return new Response("x", { status: 502 });
-    if (url.includes("/auth/web-login")) {
+    // Direct-token: POST /oauth/token then GET /wp-json/bsi/v1/me
+    if (url.includes("/oauth/token") && !url.includes("/proxy/oauth/token")) {
       if (accessToken === "") {
         return Response.json({
           access_token: "",
           refresh_token: REFRESH1,
           expires_in: 3600,
-          public_name: "Jane",
-          user_id: userId,
+          token_type: "Bearer",
+          user_id: 999,
         });
       }
-      const loginBody: Record<string, unknown> = {
-        access_token: accessToken,
+      const form =
+        typeof init?.body === "string"
+          ? new URLSearchParams(init.body)
+          : init?.body instanceof URLSearchParams
+            ? init.body
+            : new URLSearchParams();
+      const grant = form.get("grant_type");
+      return Response.json({
+        access_token: grant === "refresh_token" ? ACCESS2 : accessToken,
         refresh_token: REFRESH1,
         expires_in: 3600,
-        public_name: "Jane",
-        user_id: userId,
+        token_type: "Bearer",
+        user_id: 999,
+      });
+    }
+    if (url.includes("/wp-json/bsi/v1/me") || /\/bsi\/v1\/me(?:\?|$)/.test(url)) {
+      const meBody: Record<string, unknown> = {
+        id: typeof userId === "number" ? userId : Number(userId) || 42,
+        display_name: "Jane",
       };
-      if (canModerate !== undefined) loginBody.can_moderate = canModerate;
-      return Response.json(loginBody);
+      if (canModerate !== undefined) meBody.can_moderate = canModerate;
+      return Response.json(meBody);
     }
     if (url.includes("/proxy/oauth/token")) {
-      const tokBody: Record<string, unknown> = {
+      return Response.json({
         access_token: ACCESS2,
         refresh_token: REFRESH1,
         expires_in: 3600,
-        public_name: "Jane",
-        user_id: userId,
-      };
-      if (canModerate !== undefined) tokBody.can_moderate = canModerate;
-      return Response.json(tokBody);
+        token_type: "Bearer",
+        user_id: 999,
+      });
     }
     if (url.includes("/proxy/oauth/revoke")) return new Response(null, { status: 200 });
     if (url.includes("/daily-fix/comments") && method === "GET") {
@@ -300,7 +317,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
     LOGIN_THROTTLE: throttleNs as unknown as DurableObjectNamespace,
     OAUTH_STATE: oauthNs as unknown as DurableObjectNamespace,
     BSI_OAUTH_CLIENT_ID: CID,
-    METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
+    METFIX_ORG_OAUTH_CLIENT_SECRET: SECRET_CANARY,
     SESSION_ENC_KEY: ENCKEY,
     CSRF_SECRET: "csrf_secret_QA_32bytes___________",
     RECAPTCHA_SECRET: RSECRET,
@@ -333,6 +350,9 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
     setCanModerate(value) {
       canModerate = value;
     },
+    setSiteverifyAction(action) {
+      siteverifyAction = action;
+    },
   };
 }
 
@@ -353,9 +373,11 @@ export async function seedSession(
     passThroughOnException() {},
   } as unknown as ExecutionContext;
 
-  // Tests often replace fetchMock; restore defaults for the real login path.
+  // Tests often replace fetchMock; restore defaults for the real login path
+  // (config → R8a → R8b → siteverify → R8c → /oauth/token → /me).
   const prevImpl = g.fetchMock.getMockImplementation();
   g.fetchMock.mockImplementation(g.defaultFetch);
+  g.setSiteverifyAction("login");
 
   try {
     const csrfRes = await handleRequest(
@@ -406,6 +428,8 @@ export async function seedSession(
     const sidM = (loginRes.headers.get("Set-Cookie") ?? "").match(/__Host-mfx_sid=([^;]+)/);
     const sid = sidM ? decodeURIComponent(sidM[1]!) : "";
     const csrf = sid ? await csrfForSid(g.env.CSRF_SECRET!, sid) : csrfBody.csrf;
+    // Comment routes expect action=comment after a successful seed login.
+    g.setSiteverifyAction("comment");
     g.fetchMock.mockClear();
     g.writeLimiter.calls.length = 0;
     g.writeLimiter.counts.clear();
