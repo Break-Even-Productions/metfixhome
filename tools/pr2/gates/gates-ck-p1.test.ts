@@ -27,7 +27,7 @@ describe("CK-P1", () => {
     const qa = readFileSync(
       path.join(
         REPO_ROOT,
-        "docs/metfix-pr2-comments-login/metfix-pr2-comments-login-tests.r1.34.md",
+        "docs/metfix-pr2-comments-login/metfix-pr2-comments-login-tests.r1.35.md",
       ),
       "utf8",
     );
