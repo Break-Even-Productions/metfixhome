@@ -183,9 +183,9 @@ export async function ensureActingAccess(
     return null;
   }
   if (!res.ok) throw new SessionUnavailableError();
-  const data = (await res.json()) as { record?: SessionRecord; refreshed?: boolean };
+  const data = (await res.json()) as { record?: SessionRecord; refreshed: boolean };
   if (!data.record) return null;
-  if (data.refreshed) await putMeCache(env, hex, data.record);
+  if (data.refreshed === true) await putMeCache(env, hex, data.record);
   return { hex, record: data.record };
 }
 

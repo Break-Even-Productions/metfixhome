@@ -978,15 +978,18 @@ describe("TK1.r", () => {
     process.env.SANITY_API_READ_TOKEN = preset;
     const snap = snapshotEnv(keys);
     const beforePorcelain = gitPorcelain();
-    const outDir = mkdtempSync(path.join(tmpdir(), "tk1r-out-"));
-    const otherDir = mkdtempSync(path.join(tmpdir(), "tk1r-other-"));
+    // Absolute dirs under os.tmpdir() — never the repo `dist/` (TK1.r / CQ e290ffc1).
+    // No porcelain filter: isolation alone must keep git status unchanged.
+    const outDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-out-")));
+    const otherDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-other-")));
     const cacheDir = path.join(otherDir, "vite-cache");
+    expect(outDir.startsWith(REPO_ROOT)).toBe(false);
+    expect(cacheDir.startsWith(REPO_ROOT)).toBe(false);
     try {
       for (const k of CANARY_KEYS) {
         process.env[k] = `r-${randomBytes(6).toString("hex")}`;
       }
       delete process.env[N];
-      // Isolated outDir + cacheDir so the build never dirties the repo tree (TK1.r).
       await build({
         configFile: path.join(REPO_ROOT, "vite.config.ts"),
         root: path.join(REPO_ROOT, "client"),
@@ -994,6 +997,11 @@ describe("TK1.r", () => {
         cacheDir,
         build: { outDir, emptyOutDir: true },
       });
+      // Build wrote only to the isolated outDir — not the repo Vite default.
+      expect(existsSync(outDir)).toBe(true);
+      if (!beforePorcelain.includes("dist/")) {
+        expect(existsSync(path.join(REPO_ROOT, "dist", "public"))).toBe(false);
+      }
     } finally {
       restoreEnv(snap);
       rmSync(outDir, { recursive: true, force: true });

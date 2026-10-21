@@ -549,6 +549,8 @@ describe("PR2 gates P — comment POST", () => {
       body: JSON.stringify(POST_BODY),
     });
     expect(okRes?.status).toBe(201);
+    expect(order.indexOf("limit")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("siteverify")).toBeGreaterThanOrEqual(0);
     expect(order.indexOf("limit")).toBeLessThan(order.indexOf("siteverify"));
 
     // Same P8.2 test: limit() denied → 429 rate_limited, 0 siteverify, 0 BSI.

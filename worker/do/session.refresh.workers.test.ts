@@ -1,7 +1,8 @@
 /**
  * AU7.6 / CQ r1.35 — concurrent refresh on the REAL SessionDO under
  * @cloudflare/vitest-pool-workers (real blockConcurrencyWhile).
- * 50 callers → exactly 1 /oauth/token; only the leader sees refreshed:true.
+ * 50 callers → exactly 1 /oauth/token; only the leader sees refreshed:true
+ * (KV /me write signal); 49 joiners see refreshed:false.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { env, fetchMock } from "cloudflare:test";
@@ -132,7 +133,7 @@ describe("SessionDO real workerd refresh serialisation", () => {
         (r) =>
           r.json() as Promise<{
             status?: string;
-            refreshed?: boolean;
+            refreshed: boolean;
             record?: { bsi_access?: string; bsi_refresh?: string };
           }>,
       ),
@@ -140,10 +141,12 @@ describe("SessionDO real workerd refresh serialisation", () => {
     expect(bodies.every((b) => b.status === "ok")).toBe(true);
     expect(bodies.every((b) => b.record?.bsi_access === ACCESS2)).toBe(true);
     expect(bodies.every((b) => b.record?.bsi_refresh === REFRESH2)).toBe(true);
-    // Leader alone gets refreshed:true (KV /me write signal). On real workerd,
-    // blockConcurrencyWhile serializes handlers so joiners re-enter after the
-    // pair is already fresh and return plain ok (no refreshed field) — 0 KV writes.
+    // Leader alone gets refreshed:true (exactly 1 KV /me put at acting layer).
+    // Joiners (serialised behind blockConcurrencyWhile) hit ensureAccess on the
+    // fresh pair and return refreshed:false — never putMeCache.
     expect(bodies.filter((b) => b.refreshed === true).length).toBe(1);
+    expect(bodies.filter((b) => b.refreshed === false).length).toBe(49);
     expect(tokenCalls).toBe(1);
+    // Product: putMeCache runs only when refreshed===true → exactly 1 KV put.
   });
 });

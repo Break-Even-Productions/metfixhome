@@ -24,6 +24,13 @@ export type SessionRecord = {
   last_seen: number;
 };
 
+/** Successful ensure-access body — `refreshed` is required (AU7.6 / CQ e290ffc1). */
+export type EnsureAccessOk = {
+  status: "ok";
+  record: SessionRecord;
+  refreshed: boolean;
+};
+
 type Stored = { blob: string };
 
 const REFRESH_WINDOW_MS = 60_000;
@@ -119,7 +126,9 @@ export class SessionDO {
     const clone = shared.clone();
     try {
       const body = (await clone.json()) as { refreshed?: boolean; [k: string]: unknown };
-      if (body?.refreshed === true) body.refreshed = false;
+      if (body && typeof body === "object" && body.status === "ok") {
+        body.refreshed = false;
+      }
       return json(body, shared.status);
     } catch {
       return shared.clone();
@@ -196,7 +205,10 @@ export class SessionDO {
     }
     const needsRefresh =
       opts.force === true || record.access_exp - now <= REFRESH_WINDOW_MS;
-    if (!needsRefresh) return json({ status: "ok", record });
+    if (!needsRefresh) {
+      const ok: EnsureAccessOk = { status: "ok", record, refreshed: false };
+      return json(ok);
+    }
     const cfg = requireAuthConfig(this.env as Env, {
       needApiKey: false,
       baseUrl: opts.baseUrl,
@@ -274,7 +286,8 @@ export class SessionDO {
     record.bsi_user_id = String(profile.id);
     record.can_moderate = profile.can_moderate;
     await this.put(aad, record);
-    return json({ status: "ok", record, refreshed: true });
+    const ok: EnsureAccessOk = { status: "ok", record, refreshed: true };
+    return json(ok);
   }
 
   async alarm(): Promise<void> {
