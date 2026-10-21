@@ -1427,6 +1427,8 @@ const RUNNER_KEEP = new Set([
   "worker/auth/mutation-sabotages-r5.mjs",
   "worker/auth/mutation-sabotages-r6.mjs",
   "worker/auth/mutation-sabotages-r7.mjs",
+  "worker/auth/mutation-sabotages-r8.mjs",
+  "worker/auth/mutation-sabotages-r9.mjs",
 ]);
 
 function patchMd5FromGit() {

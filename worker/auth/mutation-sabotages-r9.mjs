@@ -66,9 +66,10 @@ export const R9_OVERRIDES = {
     },
   },
 
-  // AU10.4: test forces alarm() — must no-op alarm + skip TTL + skip setAlarm
+  // AU10.4: test omits pre cookie (same Location as expiry). No-op alarm/TTL plus
+  // skip pre_hash so surviving state is observable (google fetch / non-state error).
   M53: {
-    files: ["worker/do/oauth-state.ts"],
+    files: ["worker/do/oauth-state.ts", "worker/auth/google.ts"],
     apply() {
       replaceOnce(
         "worker/do/oauth-state.ts",
@@ -87,6 +88,22 @@ export const R9_OVERRIDES = {
         "        if (Date.now() - rec.created > TTL_MS) {\n          return json({ error: \"expired\" }, 404);\n        }",
         "        // MUTANT M53: no 600s check\n        if (false && Date.now() - rec.created > TTL_MS) {\n          return json({ error: \"expired\" }, 404);\n        }",
         "M53-ttl",
+      );
+      // AU10.4 never sends pre — without this, expiry sabotage is masked by !pre
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  const rec = await takeOauthState(env, state);\n  const pre = getPre(request);\n  if (!rec || !pre || (await sha256Hex(pre)) !== rec.pre_hash) {\n    return new Response(null, {\n      status: 302,\n      headers: { Location: \"/?auth_error=state\", \"Cache-Control\": \"no-store\" },\n    });\n  }",
+        `  const rec = await takeOauthState(env, state);
+  const pre = getPre(request);
+  // MUTANT M53: skip pre binding so TTL/alarm gap is observable
+  if (!rec) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/?auth_error=state", "Cache-Control": "no-store" },
+    });
+  }
+  void pre; void sha256Hex;`,
+        "M53-pre",
       );
     },
   },
