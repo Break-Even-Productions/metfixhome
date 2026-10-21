@@ -9,8 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
-import { dailyFixCommentsRequestUrl } from "@/pages/the-daily-fix/comments";
-import { DAILY_FIX_BFF_URL } from "@/pages/the-daily-fix/data";
+import { DAILY_FIX_BFF_URL, resetDailyFixDayCache } from "@/pages/the-daily-fix/data";
 import TheDailyFixPage from "@/pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./PostsPage";
 
@@ -24,13 +23,13 @@ const FORBIDDEN_SAMPLE_TITLES = [
 ] as const;
 
 /** Same BSI Worker day body shape used in Daily Fix mount tests — not shipped as posts content. */
-function bsiDayBodyFor(isoDate: string) {
+function dayPayload(date: string) {
   return {
-    date: isoDate,
+    date,
     belly: {
-      title: "Steak bowls",
-      photo_url: "https://example.com/ignore-belly.jpg",
-      plate_photo: "https://example.com/ignore-plate.jpg",
+      title: `Belly ${date}`,
+      photo_url: null,
+      plate_photo: null,
       macros: { fat: 22, carb: null, protein: 34 },
       body: "<p>Legacy ingredients</p>",
       steps: "<p>Legacy steps</p>",
@@ -43,25 +42,23 @@ function bsiDayBodyFor(isoDate: string) {
       recipe_steps: [{ instruction: "Cook.", sort_order: 1 }],
     },
     body: {
-      title: "Push",
-      body: "<p>Work</p>",
-      photo_url: "https://example.com/ignore-body.jpg",
+      title: `Body ${date}`,
+      body: `<p>Workout ${date}</p>`,
+      excerpt: null,
     },
     brain: {
-      title: "Read",
-      body: "<p>Think</p>",
-      excerpt: "<p>Fallback excerpt</p>",
-      article_url: "https://example.com/article",
-      button_text: "FULL ARTICLE",
-      photo_url: "https://example.com/ignore-brain.jpg",
+      title: `Brain ${date}`,
+      body: `<p>Read ${date}</p>`,
+      excerpt: null,
     },
   };
 }
 
-const emptyCommentsBody = {
-  comments: { belly: [], body: [], brain: [] },
-  meta: { date: "2025-02-10", type: "all", count: { belly: 0, body: 0, brain: 0, total: 0 } },
-};
+/** Keeps the lazy archive from fetching, so per-day fetch counts stay exact. */
+class NeverIntersecting {
+  observe() {}
+  disconnect() {}
+}
 
 /** Mirrors App.tsx routes without GlobalNav / theme chrome. */
 function MountedApp() {
@@ -97,15 +94,8 @@ function stubBrowserApis() {
     })),
   });
   window.scrollTo = vi.fn() as typeof window.scrollTo;
-  Object.defineProperty(window, "IntersectionObserver", {
-    configurable: true,
-    writable: true,
-    value: class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  });
+  Element.prototype.scrollTo = vi.fn() as typeof Element.prototype.scrollTo;
+  vi.stubGlobal("IntersectionObserver", NeverIntersecting);
 }
 
 function openAddressBar(url: string) {
@@ -130,19 +120,14 @@ function stubPostsPayloadFetch() {
   return fetchMock;
 }
 
-function mockDayAndCommentsFetch() {
+function mockDayFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     expect(url).not.toContain("brokenscience.org");
     expect(url).not.toContain("/api/substack/archive");
     expect(url).not.toContain("substack.com");
-    if (url.includes("/daily-fix/comments")) {
-      return new Response(JSON.stringify(emptyCommentsBody), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return new Response(JSON.stringify(bsiDayBodyFor("2025-02-10")), {
+    expect(url).not.toContain("/api/daily-fix/comments");
+    return new Response(JSON.stringify(dayPayload("2025-02-10")), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -155,6 +140,7 @@ beforeEach(() => {
   stubBrowserApis();
   openAddressBar("/");
   localStorage.clear();
+  resetDailyFixDayCache();
 });
 
 afterEach(() => {
@@ -171,10 +157,10 @@ describe("Posts page mount", () => {
 
     expect(await screen.findByRole("heading", { name: /Posts are unavailable/i })).toBeTruthy();
     expect(screen.getByText(/Posts are unavailable right now/i)).toBeTruthy();
-    expect(screen.queryByText(/This day could not be loaded/i)).toBeNull();
+    expect(screen.queryByText(/Not available/i)).toBeNull();
     expect(screen.queryByText("Error 404")).toBeNull();
     expect(screen.queryByText("The Metabolic Fix")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Steak bowls" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Belly 2025-02-10" })).toBeNull();
     expect(screen.queryByText(/Today’s fix/i)).toBeNull();
     for (const title of FORBIDDEN_SAMPLE_TITLES) {
       expect(screen.queryByText(title)).toBeNull();
@@ -208,25 +194,20 @@ describe("Posts page mount", () => {
     },
   );
 
-  it("Daily Fix /250210 still fetches day + comments once and never shows posts unavailable", async () => {
-    const fetchMock = mockDayAndCommentsFetch();
+  it("Daily Fix /250210 still fetches the day once and never shows posts unavailable", async () => {
+    const fetchMock = mockDayFetch();
     openAddressBar("/the-daily-fix/250210");
     render(<MountedApp />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
       `${DAILY_FIX_BFF_URL}?date=2025-02-10`,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      dailyFixCommentsRequestUrl("2025-02-10"),
       expect.objectContaining({
         method: "GET",
         headers: { Accept: "application/json" },
-        signal: expect.any(AbortSignal),
       }),
     );
-    expect(await screen.findByRole("heading", { name: "Steak bowls" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Belly 2025-02-10" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /Posts are unavailable/i })).toBeNull();
     expect(screen.queryByText(/Posts are unavailable right now/i)).toBeNull();
     expect(window.location.pathname).toBe("/the-daily-fix/250210");
