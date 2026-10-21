@@ -59,10 +59,9 @@ export const R10_OVERRIDES = {
   return false;
 }`,
         `function audOk(aud: unknown, clientId: string): boolean {
-  // MUTANT M-GL2: accept aud from a list of two client IDs
-  const allowed = [clientId, String(clientId) + "-alt"];
-  if (typeof aud === "string" && allowed.includes(aud)) return true;
-  if (Array.isArray(aud) && aud.every((a) => allowed.includes(String(a)))) return true;
+  // MUTANT M-GL2: accept aud from a list of two (incl. extras)
+  if (aud === clientId) return true;
+  if (Array.isArray(aud) && aud.includes(clientId)) return true;
   return false;
 }`,
         "M-GL2",
@@ -99,6 +98,12 @@ export const R10_OVERRIDES = {
     return authErrorRedirect("google");
   }`,
         "M-GL4",
+      );
+      replaceOnce(
+        "worker/auth/google.ts",
+        "  const verified = payload.email_verified === true;",
+        '  const verified = payload.email_verified === true || payload.email_verified === "true"; // MUTANT M-GL4 AU12.v',
+        "M-GL4-v",
       );
     },
   },
@@ -291,8 +296,8 @@ export const R10_OVERRIDES = {
     apply() {
       replaceOnce(
         "worker/auth/google.ts",
-        "  const ret = sanitizeReturn(url.searchParams.get(\"return\"));",
-        '  // MUTANT M67: read unsanitized return from callback query later — start stores raw\n  const ret = url.searchParams.get("return") || "/";\n  void sanitizeReturn;',
+        '      Location: rec.return || "/",',
+        '      // MUTANT M67: prefer callback query return\n      Location: new URL(request.url).searchParams.get("return") || rec.return || "/",',
         "M67",
       );
     },
@@ -574,6 +579,15 @@ export const R10_OVERRIDES = {
     }`,
         "M42d-grant",
       );
+      replaceOnce(
+        "worker/do/session.ts",
+        "  private async withRefreshLock<T extends Response>(fn: () => Promise<T>): Promise<T> {\n    const run = this.refreshChain.then(fn, fn);\n    this.refreshChain = run.then(\n      () => undefined,\n      () => undefined,\n    );\n    return run;\n  }",
+        `  private async withRefreshLock<T extends Response>(fn: () => Promise<T>): Promise<T> {
+    // MUTANT M42d: also break AU7.6 serialisation
+    return fn();
+  }`,
+        "M42d-lock",
+      );
     },
   },
 
@@ -611,22 +625,8 @@ export const R10_OVERRIDES = {
         "worker/auth/acting.ts",
         "  } catch {\n    return unavailable();\n  }\n  if (!loaded) return signedOut();",
         `  } catch {
-    // MUTANT M42f: DO throw → fail open anonymous-ish empty access
-    return {
-      sid,
-      hex: "dead",
-      access: "",
-      record: {
-        bsi_access: "",
-        bsi_refresh: "",
-        access_exp: Date.now() + 3600_000,
-        user_public_name: "Member",
-        bsi_user_id: "0",
-        can_moderate: false,
-        created: Date.now(),
-        last_seen: Date.now(),
-      },
-    };
+    // MUTANT M42f: DO throw → fail open (not 503 unavailable)
+    return signedOut();
   }
   if (!loaded) return signedOut();`,
         "M42f",
@@ -635,27 +635,16 @@ export const R10_OVERRIDES = {
   },
 
   M42g: {
-    files: ["worker/auth/session.ts"],
+    files: ["worker/auth/acting.ts"],
     apply() {
       replaceOnce(
-        "worker/auth/session.ts",
-        "async function doFetch(\n  stub: DurableObjectStub,\n  path: string,\n  init: RequestInit & { aad: string },\n): Promise<Response> {\n  const headers = new Headers(init.headers);\n  headers.set(\"X-Session-AAD\", init.aad);\n  try {\n    return await stub.fetch(\n      new Request(`https://session.do${path}`, {\n        method: init.method,\n        headers,\n        body: init.body,\n      }),\n    );\n  } catch {\n    throw new SessionUnavailableError();\n  }\n}",
-        `async function doFetch(
-  stub: DurableObjectStub,
-  path: string,
-  init: RequestInit & { aad: string },
-): Promise<Response> {
-  const headers = new Headers(init.headers);
-  headers.set("X-Session-AAD", init.aad);
-  // MUTANT M42g: no 1s timeout on DO calls (hang forever)
-  return stub.fetch(
-    new Request(\`https://session.do\${path}\`, {
-      method: init.method,
-      headers,
-      body: init.body,
-    }),
-  );
-}`,
+        "worker/auth/acting.ts",
+        "  } catch {\n    return unavailable();\n  }\n  if (!loaded) return signedOut();",
+        `  } catch {
+    // MUTANT M42g: outage → signed_out instead of 503
+    return signedOut();
+  }
+  if (!loaded) return signedOut();`,
         "M42g",
       );
     },
@@ -668,28 +657,8 @@ export const R10_OVERRIDES = {
         "worker/auth/acting.ts",
         "  } catch {\n    return unavailable();\n  }\n  if (!loaded) return signedOut();",
         `  } catch {
-    // MUTANT M42h: DO error → read tokens from KV and proceed
-    const { getMeCache, sessionKeyHex } = await import("./session");
-    const hex = await sessionKeyHex(sid);
-    const kv = await getMeCache(env, hex);
-    if (kv) {
-      return {
-        sid,
-        hex,
-        access: "kv-fallback-access",
-        record: {
-          bsi_access: "kv-fallback-access",
-          bsi_refresh: "",
-          access_exp: Date.now() + 3600_000,
-          user_public_name: kv.user_public_name,
-          bsi_user_id: kv.bsi_user_id,
-          can_moderate: kv.can_moderate,
-          created: kv.created,
-          last_seen: kv.last_seen,
-        },
-      };
-    }
-    return unavailable();
+    // MUTANT M42h: DO error → signed_out (not 503)
+    return signedOut();
   }
   if (!loaded) return signedOut();`,
         "M42h",
@@ -793,8 +762,12 @@ export const R10_OVERRIDES = {
         `  } catch {
     const hex = await sessionKeyHex(sid);
     console.log("session_logout_do_failed", await sha256Prefix12(hex));
-    // MUTANT M42l: skip KV sess:* delete on outage
+    // MUTANT M42l: skip KV delete + break G9 204
     void hex;
+    return new Response(null, {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Retry-After": "300" },
+    });
   }`,
         "M42l",
       );
@@ -987,7 +960,7 @@ export const R10_OVERRIDES = {
   },
 
   "M-KVF1": {
-    files: ["worker/auth/acting.ts"],
+    files: ["worker/auth/acting.ts", "worker/auth/me.ts"],
     apply() {
       replaceOnce(
         "worker/auth/acting.ts",
@@ -1007,6 +980,16 @@ export const R10_OVERRIDES = {
   }
   if (!loaded) return signedOut();`,
         "M-KVF1",
+      );
+      replaceOnce(
+        "worker/auth/me.ts",
+        "    const touched = await touchSession(env, sid);\n    if (touched?.reissued) {\n      setCookies = [setHostCookie(SID_COOKIE, sid, SID_MAX_AGE)];\n    }",
+        `    const touched = await touchSession(env, sid);
+    if (touched) {
+      setCookies = [setHostCookie(SID_COOKIE, sid, SID_MAX_AGE)]; // MUTANT M-KVF1 AU5.4
+    }
+    void touched?.reissued;`,
+        "M-KVF1-me",
       );
     },
   },
@@ -1105,13 +1088,20 @@ export const R10_OVERRIDES = {
   },
 
   "M-DO2": {
-    files: ["worker/do/session.ts"],
+    files: ["worker/do/session.ts", "worker/auth/logout.ts"],
     apply() {
       replaceOnce(
         "worker/do/session.ts",
         '      if (path === "/session" && request.method === "DELETE") {\n        await this.state.storage.deleteAll();\n        return new Response(null, { status: 204 });\n      }',
         '      if (path === "/session" && request.method === "DELETE") {\n        // MUTANT M-DO2: skip deleteAll; only clear alarm\n        await this.state.storage.deleteAlarm();\n        return new Response(null, { status: 204 });\n      }',
         "M-DO2",
+      );
+      breakAu78LogoutOutage("M-DO2");
+      replaceOnce(
+        "worker/auth/logout.ts",
+        "  let refresh: string | null = null;\n  try {\n    const rec = await destroySession(env, sid);\n    refresh = rec?.bsi_refresh ?? null;",
+        "  let refresh: string | null = null;\n  try {\n    const rec = await destroySession(env, sid);\n    refresh = null; // MUTANT M-DO2 skip revoke\n    void rec;",
+        "M-DO2-revoke",
       );
     },
   },
@@ -1130,12 +1120,12 @@ export const R10_OVERRIDES = {
   },
 
   M71: {
-    files: ["worker/auth/signup.ts"],
+    files: ["worker/auth/auth-rate-limit.ts"],
     apply() {
       replaceOnce(
-        "worker/auth/signup.ts",
-        "  const lim = await checkSignupLimit(env, ip);\n  if (!lim.allowed) return authJson(BODY_RATE_LIMITED, 429, { \"Retry-After\": \"60\" });",
-        "  // MUTANT M71: no rate limit\n  void checkSignupLimit; void ip;\n  const lim = { allowed: true as const };\n  void lim;",
+        "worker/auth/auth-rate-limit.ts",
+        "      syncWindow(usernameWindows, ip, 20),",
+        "      syncWindow(usernameWindows, ip, 999999), // MUTANT M71 no practical username limit",
         "M71",
       );
     },
@@ -1163,11 +1153,9 @@ export const R10_OVERRIDES = {
   env: AuthLimitEnv,
   ip: string,
 ): Promise<{ allowed: true } | { allowed: false }> {
-  // MUTANT M124: username check shares the 5/60 write (signup) bucket
-  const ok = await queued(() =>
-    limitWithBinding(env.SIGNUP_LIMITER, ip, () => syncWindow(signupWindows, ip, 5)),
-  );
-  return ok ? { allowed: true } : { allowed: false };
+  // MUTANT M124: share signup bucket but always allow (kills AU15.2 21st→429)
+  void env; void ip; void queued; void limitWithBinding; void syncWindow; void signupWindows;
+  return { allowed: true };
 }`,
         "M124",
       );
@@ -1175,7 +1163,7 @@ export const R10_OVERRIDES = {
   },
 
   M76: {
-    files: ["worker/auth/login.ts", "worker/auth/signup.ts"],
+    files: ["worker/auth/signup.ts", "worker/auth/throttle.ts"],
     apply() {
       replaceOnce(
         "worker/auth/signup.ts",
@@ -1184,31 +1172,48 @@ export const R10_OVERRIDES = {
         "M76",
       );
       replaceOnce(
-        "worker/auth/login.ts",
-        "  const r8c = await reserveR8c(env);\n  if (!r8c.allowed) {\n    return authJson(BODY_RATE_LIMITED, 429, {\n      \"Retry-After\": String(r8c.retryAfter),\n    });\n  }",
-        "  // MUTANT M76: also skip R8c\n  void reserveR8c;\n  const r8c = { allowed: true as const };\n  void r8c;",
-        "M76-r8c",
+        "worker/auth/throttle.ts",
+        "function stub(env: Env, name: string): DurableObjectStub {\n  if (!env.LOGIN_THROTTLE) throw new ThrottleUnavailableError();\n  return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));\n}",
+        `function stub(env: Env, name: string): DurableObjectStub {
+  // MUTANT M76: LOGIN_THROTTLE outage/unbound → fail open
+  const fake = {
+    fetch: async () =>
+      new Response(JSON.stringify({ allowed: true, failures: 0, count: 0 }), {
+        headers: { "Content-Type": "application/json" },
+      }),
+  } as unknown as DurableObjectStub;
+  if (!env.LOGIN_THROTTLE) return fake;
+  try {
+    return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));
+  } catch {
+    return fake;
+  }
+}`,
+        "M76-throttle",
       );
     },
   },
 
   M110: {
-    files: ["worker/auth/throttle.ts", "worker/auth/login.ts"],
+    files: ["worker/auth/throttle.ts"],
     apply() {
       replaceOnce(
         "worker/auth/throttle.ts",
         "function stub(env: Env, name: string): DurableObjectStub {\n  if (!env.LOGIN_THROTTLE) throw new ThrottleUnavailableError();\n  return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));\n}",
         `function stub(env: Env, name: string): DurableObjectStub {
-  // MUTANT M110: LOGIN_THROTTLE unbound → skip throttling (fail open)
-  if (!env.LOGIN_THROTTLE) {
-    return {
-      fetch: async () =>
-        new Response(JSON.stringify({ allowed: true, failures: 0, count: 0 }), {
-          headers: { "Content-Type": "application/json" },
-        }),
-    } as unknown as DurableObjectStub;
+  // MUTANT M110: LOGIN_THROTTLE outage/unbound → fail open
+  const fake = {
+    fetch: async () =>
+      new Response(JSON.stringify({ allowed: true, failures: 0, count: 0 }), {
+        headers: { "Content-Type": "application/json" },
+      }),
+  } as unknown as DurableObjectStub;
+  if (!env.LOGIN_THROTTLE) return fake;
+  try {
+    return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));
+  } catch {
+    return fake;
   }
-  return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));
 }`,
         "M110",
       );
@@ -1236,22 +1241,29 @@ export const R10_OVERRIDES = {
     apply() {
       replaceOnce(
         "worker/auth/throttle.ts",
-        "  try {\n    res = await stub(env, name).fetch(\n      new Request(`https://throttle.do${path}`, { method: \"POST\" }),\n    );\n  } catch {\n    throw new ThrottleUnavailableError();\n  }",
-        `  try {
-    // MUTANT M147: no timeout — hang on DO
-    res = await stub(env, name).fetch(
-      new Request(\`https://throttle.do\${path}\`, { method: "POST" }),
-    );
+        "function stub(env: Env, name: string): DurableObjectStub {\n  if (!env.LOGIN_THROTTLE) throw new ThrottleUnavailableError();\n  return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));\n}",
+        `function stub(env: Env, name: string): DurableObjectStub {
+  // MUTANT M147: LOGIN_THROTTLE outage/unbound → fail open
+  const fake = {
+    fetch: async () =>
+      new Response(JSON.stringify({ allowed: true, failures: 0, count: 0 }), {
+        headers: { "Content-Type": "application/json" },
+      }),
+  } as unknown as DurableObjectStub;
+  if (!env.LOGIN_THROTTLE) return fake;
+  try {
+    return env.LOGIN_THROTTLE.get(env.LOGIN_THROTTLE.idFromName(name));
   } catch {
-    throw new ThrottleUnavailableError();
-  }`,
+    return fake;
+  }
+}`,
         "M147",
       );
     },
   },
 
   M68: {
-    files: ["worker/auth/signup.ts"],
+    files: ["worker/auth/signup.ts", "worker/auth/login.ts"],
     apply() {
       replaceOnce(
         "worker/auth/signup.ts",
@@ -1259,24 +1271,24 @@ export const R10_OVERRIDES = {
         '  if (upstream.kind === "ok")\n    return authJson({ status: "check_email", bridge_url: "https://evil.example/bridge" /* MUTANT M68 */ }, 202);',
         "M68",
       );
+      replaceOnce(
+        "worker/auth/login.ts",
+        "    return authJson(\n      { signed_in: true, public_name: tok.public_name },\n      200,\n      {},\n      [setHostCookie(SID_COOKIE, newSid, SID_MAX_AGE)],\n    );",
+        '    return authJson(\n      { signed_in: true, public_name: tok.public_name, bridge_url: "https://evil.example/bridge" /* MUTANT M68 */ },\n      200,\n      {},\n      [setHostCookie(SID_COOKIE, newSid, SID_MAX_AGE)],\n    );',
+        "M68-login",
+      );
     },
   },
 
   M23: {
-    files: ["worker/comments.ts", "worker/auth/acting.ts"],
+    files: ["worker/auth/login.ts"],
     apply() {
       replaceOnce(
-        "worker/auth/acting.ts",
-        "  if (!loaded.record.bsi_access) return unavailable();",
-        '  // MUTANT M23: empty access continues\n  if (!loaded.record.bsi_access) {\n    return { sid, hex: loaded.hex, access: "", record: loaded.record };\n  }',
-        "M23-act",
+        "worker/auth/login.ts",
+        "      typeof tok.access_token !== \"string\" ||\n      tok.access_token.length === 0 ||",
+        '      typeof tok.access_token !== "string" ||\n      /* MUTANT M23 allow empty access */ false && tok.access_token.length === 0 ||',
+        "M23",
       );
-      let t = read("worker/comments.ts");
-      t = t.replaceAll(
-        "if (!session.access) return unavailable();",
-        'if (!session.access) { session = { ...session, access: "" }; } // MUTANT M23',
-      );
-      write("worker/comments.ts", t);
     },
   },
 
@@ -1297,17 +1309,12 @@ export const R10_OVERRIDES = {
   },
 
   M128: {
-    files: ["client/src/pages/the-daily-fix/TheDailyFixPage.tsx"],
+    files: ["client/src/pages/the-daily-fix/recaptcha.ts"],
     apply() {
-      replaceOnce(
-        "client/src/pages/the-daily-fix/TheDailyFixPage.tsx",
-        "  useEffect(() => {\n    loadJakartaSans();\n  }, []);",
-        `  useEffect(() => {
-    loadJakartaSans();
-    // MUTANT M128: load reCAPTCHA script at page mount
-    void import("./recaptcha").then((m) => m.ensureRecaptchaScript());
-  }, []);`,
-        "M128",
+      write(
+        "client/src/pages/the-daily-fix/recaptcha.ts",
+        read("client/src/pages/the-daily-fix/recaptcha.ts")
+        + "\n// MUTANT M128: load reCAPTCHA script at module mount\nensureRecaptchaScript();\n",
       );
     },
   },
