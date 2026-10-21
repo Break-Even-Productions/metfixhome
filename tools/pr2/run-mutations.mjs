@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 /**
- * PR2 r1.23 §M mutation runner (BX2-style).
- * Reads docs/metfix-pr2-comments-login/r1.23-catalog.json, applies each sabotage
- * alone, runs red-set vitest (and check:worker when needed), restores with
- * `git checkout -- .` after every mutant.
+ * PR2 r1.24 §M mutation runner — full gate suites per mutant.
  *
  * Usage:
- *   node worker/auth/run-mutations.mjs
- *   node worker/auth/run-mutations.mjs --only M-RS2,M-WL14
- *   node worker/auth/run-mutations.mjs --out /path/to/results.json
- *   node worker/auth/run-mutations.mjs --baseline-only
+ *   node tools/pr2/run-mutations.mjs
+ *   node tools/pr2/run-mutations.mjs --only M-JL1,M-CW19
+ *   node tools/pr2/run-mutations.mjs --out tools/pr2/mutation-results.json
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -31,10 +27,12 @@ import { R7_OVERRIDES } from "./mutation-sabotages-r7.mjs";
 import { R8_OVERRIDES } from "./mutation-sabotages-r8.mjs";
 import { R9_OVERRIDES } from "./mutation-sabotages-r9.mjs";
 import { R10_OVERRIDES } from "./mutation-sabotages-r10.mjs";
+import { R11_OVERRIDES } from "./mutation-sabotages-r11.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
-const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.23-catalog.json");
+const CATALOG = path.join(REPO, "docs/metfix-pr2-comments-login/r1.24-catalog.json");
+const VITEST_JSON = path.join(REPO, "tools/pr2/.mutation-vitest-last.json");
 
 const args = process.argv.slice(2);
 function flag(name, fallback = null) {
@@ -43,9 +41,7 @@ function flag(name, fallback = null) {
   return args[i + 1] ?? true;
 }
 const ONLY = flag("--only");
-const OUT =
-  flag("--out") ||
-  "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal/pr2-mutation-results.json";
+const OUT = flag("--out") || path.join(REPO, "tools/pr2/mutation-results.json");
 const BASELINE_ONLY = args.includes("--baseline-only");
 const TIMEOUT_MS = Number(flag("--timeout-ms", "120000"));
 const WPJ = "/" + "wp-json"; // assembled; avoid contiguous scan needle
@@ -1423,18 +1419,9 @@ for (const [id, sab] of Object.entries(R9_OVERRIDES)) {
 for (const [id, sab] of Object.entries(R10_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
-
-const RUNNER_KEEP = new Set([
-  "worker/auth/run-mutations.mjs",
-  "worker/auth/mutation-sabotages.mjs",
-  "worker/auth/mutation-sabotages-r2.mjs",
-  "worker/auth/mutation-sabotages-r5.mjs",
-  "worker/auth/mutation-sabotages-r6.mjs",
-  "worker/auth/mutation-sabotages-r7.mjs",
-  "worker/auth/mutation-sabotages-r8.mjs",
-  "worker/auth/mutation-sabotages-r9.mjs",
-  "worker/auth/mutation-sabotages-r10.mjs",
-]);
+for (const [id, sab] of Object.entries(R11_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 function patchMd5FromGit() {
   const res = spawnSync("git", ["diff", "--", "."], {
@@ -1582,10 +1569,90 @@ function restoreTree() {
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)
-    .filter((f) => !RUNNER_KEEP.has(f));
+    .filter((f) => !f.startsWith("tools/pr2/"));
   if (files.length) {
     runCmd("git", ["checkout", "--", ...files]);
   }
+}
+
+function gateIdsFromFailedTitles(titles, gateIds) {
+  const failed = new Set();
+  for (const title of titles) {
+    for (const id of gateIds) {
+      if (titleHasGateId(title, id)) failed.add(id);
+    }
+  }
+  return [...failed].sort();
+}
+
+function runFullSuites(catalogGates, { typeCheck = false } = {}) {
+  mkdirSync(path.dirname(VITEST_JSON), { recursive: true });
+  writeFileSync(VITEST_JSON, "{}");
+  const vitest = runCmd(
+    "npx",
+    [
+      "vitest",
+      "run",
+      "--config",
+      "vitest.gate.config.ts",
+      "--reporter=verbose",
+      "--reporter=json",
+      "--outputFile",
+      VITEST_JSON,
+    ],
+    { timeout: TIMEOUT_MS * 3 },
+  );
+  const build = runCmd("npm", ["run", "build:cf"], { timeout: TIMEOUT_MS * 3 });
+  const workers = runCmd("npm", ["run", "test:workers"], { timeout: TIMEOUT_MS * 2 });
+  let typeRes = null;
+  if (typeCheck) typeRes = runCmd("npm", ["run", "check:worker"], { timeout: TIMEOUT_MS });
+  const combined = [
+    vitest.stdout,
+    vitest.stderr,
+    build.stdout,
+    build.stderr,
+    workers.stdout,
+    workers.stderr,
+    typeRes?.stdout,
+    typeRes?.stderr,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  let failedTitles = [];
+  let observed = [];
+  if (existsSync(VITEST_JSON)) {
+    try {
+      const raw = JSON.parse(readFileSync(VITEST_JSON, "utf8"));
+      for (const file of raw.testResults || []) {
+        for (const a of file.assertionResults || []) {
+          if (a.status === "failed") failedTitles.push(a.fullName || a.title || "");
+        }
+      }
+      observed = gateIdsFromFailedTitles(failedTitles, catalogGates);
+    } catch {
+      /* ignore */
+    }
+  }
+  return {
+    vitestStatus: vitest.status,
+    buildStatus: build.status,
+    workersStatus: workers.status,
+    typeCheckStatus: typeRes ? typeRes.status : null,
+    observedRed: observed,
+    failedTestTitles: failedTitles,
+    outputTail: combined.slice(-6000),
+    error: vitest.error || build.error || workers.error,
+  };
+}
+
+function classifyVerdict(expected, observedAll) {
+  const hit = observedAll.filter((id) => expected.includes(id));
+  const missing = expected.filter((x) => !hit.includes(x));
+  const extra = observedAll.filter((x) => !expected.includes(x));
+  if (missing.length === 0 && extra.length === 0 && hit.length === expected.length) return "exact";
+  if (hit.length === 0) return "survived";
+  if (missing.length === 0 && extra.length > 0) return "wider";
+  return "wider";
 }
 
 function parseFailedGateIds(output, expected) {
@@ -1716,22 +1783,20 @@ function main() {
   }
 
   console.log(`Catalog mutations: ${catalog.mutations.length}; selected: ${mutations.length}`);
-  const gateIndex = buildGateIndex();
-
-  // Ensure clean start
+  const catalogGates = catalog.gates;
   restoreTree();
 
-  // Baseline: for each unique red gate appearing in selected set, note pass/fail
-  const allRed = [...new Set(mutations.flatMap((m) => m.red))];
-  console.log(`Baseline: probing ${allRed.length} unique red-set gate IDs…`);
-  const baseline = runRedSet(allRed, gateIndex);
-  const baselineFailed = new Set(baseline.observedRed);
+  console.log("Baseline: full gate suite on clean tree…");
+  const baseline = runFullSuites(catalogGates);
+  const baselineFailed = new Set(
+    baseline.observedRed.filter((id) => mutations.some((m) => m.red.includes(id))),
+  );
   console.log(
-    `Baseline observed red among selected gates: ${baseline.observedRed.join(", ") || "(none)"} (vitest=${baseline.vitestStatus})`,
+    `Baseline red among selected expected sets: ${[...baselineFailed].join(", ") || "(none)"}`,
   );
 
   if (BASELINE_ONLY) {
-    const payload = { baseline, gateCount: allRed.length };
+    const payload = { baseline, gateCount: catalogGates.length };
     mkdirSync(path.dirname(OUT), { recursive: true });
     writeFileSync(OUT, JSON.stringify(payload, null, 2));
     console.log("Wrote", OUT);
@@ -1739,12 +1804,12 @@ function main() {
   }
 
   const results = [];
-  let nKilled = 0,
+  let nExact = 0,
+    nWider = 0,
     nSurvived = 0,
-    nMismatch = 0,
     nCant = 0,
-    nEthan = 0,
-    nNotRun = 0;
+    nEthan = 0;
+  const nNotRun = catalog.mutations.length - mutations.length;
 
   for (let i = 0; i < mutations.length; i++) {
     const m = mutations[i];
@@ -1752,172 +1817,122 @@ function main() {
     process.stdout.write(`[${i + 1}/${mutations.length}] ${m.id}… `);
 
     if (!sab) {
-      const row = {
+      results.push({
         id: m.id,
         verdict: "cant-run",
-        reason: "can't-auto: no sabotage mapping for this natural-language patch",
+        reason: "can't-auto: no sabotage mapping",
         expectedRed: m.red,
         observedRed: [],
-        patchMd5: null,
         target: m.target,
         sabotage: m.sabotage,
-      };
-      results.push(row);
+      });
       nCant++;
-      console.log("cant-run (unmapped)");
+      console.log("cant-run");
       continue;
     }
-
     if (sab.ethanBlocker) {
-      const row = {
+      results.push({
         id: m.id,
         verdict: "ethan-blocker",
         reason: sab.ethanBlocker,
         expectedRed: m.red,
         observedRed: [],
-        patchMd5: null,
-        vitestStatus: null,
-        typeCheckStatus: null,
         target: m.target,
         sabotage: m.sabotage,
-      };
-      results.push(row);
+      });
       nEthan++;
       console.log("ethan-blocker");
       continue;
     }
 
-    if (typeof sab.apply !== "function") {
-      const row = {
-        id: m.id,
-        verdict: "cant-run",
-        reason: "can't-auto: sabotage entry has no apply()",
-        expectedRed: m.red,
-        observedRed: [],
-        patchMd5: null,
-        target: m.target,
-        sabotage: m.sabotage,
-      };
-      results.push(row);
-      nCant++;
-      console.log("cant-run (no apply)");
-      continue;
-    }
-
-    const missingGates = m.red.filter((g) => !gateIndex.get(g)?.size);
-    if (missingGates.length === m.red.length) {
-      const row = {
-        id: m.id,
-        verdict: "cant-run",
-        reason: `can't-run: no test files for red gates ${missingGates.join(",")}`,
-        expectedRed: m.red,
-        observedRed: [],
-        patchMd5: null,
-        target: m.target,
-        sabotage: m.sabotage,
-      };
-      results.push(row);
-      nCant++;
-      console.log("cant-run (no tests)");
-      continue;
-    }
-
+    const variantIds =
+      Array.isArray(sab.variants) && sab.variants.length ? sab.variants : [m.id];
+    const variantRuns = [];
     let applyErr = null;
-    let patchMd5 = null;
-    try {
-      sab.apply();
-      patchMd5 = patchMd5FromGit();
-    } catch (e) {
-      applyErr = String(e?.message || e);
+
+    for (const vid of variantIds) {
+      const vsab = SABOTAGES[vid] || sab;
+      if (typeof vsab.apply !== "function") {
+        applyErr = `${vid}: no apply()`;
+        break;
+      }
+      let patchMd5 = null;
+      try {
+        vsab.apply();
+        patchMd5 = patchMd5FromGit();
+      } catch (e) {
+        applyErr = `${vid}: ${e?.message || e}`;
+        break;
+      }
+      let run;
+      try {
+        run = runFullSuites(catalogGates, { typeCheck: !!sab.typeCheck });
+      } catch (e) {
+        applyErr = `run ${vid}: ${e?.message || e}`;
+        restoreTree();
+        break;
+      }
+      restoreTree();
+      const verdict = classifyVerdict(m.red, run.observedRed);
+      variantRuns.push({
+        variant: vid,
+        verdict,
+        expectedRed: m.red,
+        observedRed: run.observedRed.filter((id) => m.red.includes(id)),
+        failedTestTitles: run.failedTestTitles,
+        patchMd5,
+        typeCheckStatus: run.typeCheckStatus,
+        vitestStatus: run.vitestStatus,
+        buildStatus: run.buildStatus,
+        workersStatus: run.workersStatus,
+      });
     }
 
     if (applyErr) {
       restoreTree();
-      const row = {
+      results.push({
         id: m.id,
         verdict: "cant-run",
-        reason: `can't-auto apply failed: ${applyErr}`,
+        reason: applyErr,
         expectedRed: m.red,
         observedRed: [],
-        patchMd5: null,
         target: m.target,
         sabotage: m.sabotage,
-      };
-      results.push(row);
+      });
       nCant++;
-      console.log("cant-run (apply)");
+      console.log("cant-run");
       continue;
     }
 
-    let run;
-    try {
-      run = runRedSet(m.red, gateIndex, { typeCheck: !!sab.typeCheck });
-    } catch (e) {
-      restoreTree();
-      const row = {
-        id: m.id,
-        verdict: "cant-run",
-        reason: `run error: ${e?.message || e}`,
-        expectedRed: m.red,
-        observedRed: [],
-        patchMd5,
-      };
-      results.push(row);
-      nCant++;
-      console.log("cant-run (exec)");
-      continue;
-    }
-
-    restoreTree();
-
-    const observed = run.observedRed.filter((id) => m.red.includes(id));
-    let verdict = classify(m.red, observed);
-
-    if (verdict === "survived" && run.vitestStatus !== 0 && run.error) {
-      verdict = "cant-run";
-    }
-
-    const row = {
+    const verdict = variantRuns.every((v) => v.verdict === "exact")
+      ? "exact"
+      : variantRuns.every((v) => v.verdict === "survived")
+        ? "survived"
+        : "wider";
+    const mergedObserved = [...new Set(variantRuns.flatMap((v) => v.observedRed))].sort();
+    results.push({
       id: m.id,
-      verdict: verdict === "cant-run" ? "cant-run" : verdict,
-      reason:
-        verdict === "cant-run"
-          ? run.error || "vitest failed without parsable red IDs"
-          : undefined,
+      verdict,
       expectedRed: m.red,
-      observedRed: observed,
-      patchMd5,
-      vitestStatus: run.vitestStatus,
-      typeCheckStatus: run.typeCheckStatus,
-      files: run.files,
+      observedRed: mergedObserved,
+      variants: variantRuns,
       target: m.target,
       sabotage: m.sabotage,
-      outputTail: verdict === "killed" ? undefined : run.outputTail?.slice(-1500),
-    };
-    results.push(row);
-    if (verdict === "killed") nKilled++;
+    });
+    if (verdict === "exact") nExact++;
+    else if (verdict === "wider") nWider++;
     else if (verdict === "survived") nSurvived++;
-    else if (verdict === "mismatch") nMismatch++;
-    else nCant++;
-    console.log(
-      `${verdict} observed=[${observed.join(",")}] md5=${patchMd5?.slice(0, 8) || "-"}`,
-    );
+    console.log(`${verdict} observed=[${mergedObserved.join(",")}]`);
   }
 
-  nNotRun = catalog.mutations.length - mutations.length;
-
   const summary = {
+    catalogRev: "r1.24",
     catalogTotal: catalog.mutations.length,
     selected: mutations.length,
-    mappedSabotages: Object.keys(SABOTAGES).filter(
-      (k) => typeof SABOTAGES[k].apply === "function",
-    ).length,
-    ethanBlockers: Object.keys(SABOTAGES).filter((k) => SABOTAGES[k].ethanBlocker)
-      .length,
     counts: {
-      killed: nKilled,
+      exact: nExact,
+      wider: nWider,
       survived: nSurvived,
-      mismatch: nMismatch,
       "ethan-blocker": nEthan,
       "cant-run": nCant,
       "not-run": nNotRun,
@@ -1928,11 +1943,16 @@ function main() {
 
   mkdirSync(path.dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(summary, null, 2));
+  const storeLog = "/cursor/stores/bc-50fbecee-a92e-4055-8145-a226456331d7/internal/pr2-mutation-r1.24.json";
+  try {
+    mkdirSync(path.dirname(storeLog), { recursive: true });
+    writeFileSync(storeLog, JSON.stringify(summary, null, 2));
+  } catch {
+    /* store optional */
+  }
   console.log("\n=== COUNTS ===");
   console.log(JSON.stringify(summary.counts, null, 2));
   console.log("Wrote", OUT);
-
-  // Final restore safety
   restoreTree();
 }
 

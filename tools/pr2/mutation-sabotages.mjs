@@ -779,15 +779,25 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M18": {
-    files: ["worker/leaderboard.ts"],
+    files: ["client/src/pages/the-daily-fix/Leaderboard.tsx"],
     apply() {
-        replaceOnce("worker/leaderboard.ts", "export async function handleLeaderboard", "/* MUTANT M18 */\nexport async function handleLeaderboard", "M18");
+        replaceOnce(
+          "client/src/pages/the-daily-fix/Leaderboard.tsx",
+          '<span className="df-leaderboard-name">{row.public_name}</span>',
+          '<span className="df-leaderboard-name" dangerouslySetInnerHTML={{ __html: row.public_name }} />',
+          "M18",
+        );
     },
   },
   "M19": {
-    files: ["worker/comments.ts"],
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
     apply() {
-        replaceOnce("worker/comments.ts", "export async function handleCommentsRequest", "/* MUTANT M19 */\nexport async function handleCommentsRequest", "M19");
+        replaceOnce(
+          "client/src/pages/the-daily-fix/CommentThread.tsx",
+          "{comment.content}",
+          '<span dangerouslySetInnerHTML={{ __html: comment.content }} />',
+          "M19",
+        );
     },
   },
   "M20": {
@@ -835,7 +845,12 @@ export const EXTRA_SABOTAGES = {
   "M27": {
     files: ["worker/comments.ts"],
     apply() {
-        replaceOnce("worker/comments.ts", "export async function handleCommentsRequest", "/* MUTANT M27 */\nexport async function handleCommentsRequest", "M27");
+        replaceAllExact(
+          "worker/comments.ts",
+          "  await purgeCommentsDate(cache, date);",
+          "  // MUTANT M27: skip cache purge after write\n  void date;",
+          "M27",
+        );
     },
   },
   "M28": {
@@ -851,9 +866,31 @@ export const EXTRA_SABOTAGES = {
     },
   },
   "M30": {
-    files: ["worker/auth/csrf.ts"],
+    files: ["worker/comments.ts"],
     apply() {
-        replaceOnce("worker/auth/csrf.ts", "export async function requireCsrf", "/* MUTANT M30 */\nexport async function requireCsrf", "M30");
+        replaceOnce(
+          "worker/comments.ts",
+          `  if (!ctx.access) return unavailable();
+  const csrf = await requireCsrf(request, env, ctx.sid);
+  if (csrf) return csrf;
+
+  const parsed = await readJsonBodyLimited(request);`,
+          `  if (!ctx.access) return unavailable();
+  const ipEarly = clientIp(request);
+  const limitedEarly = await checkCommentWriteLimit(
+    env as CommentLimitEnv,
+    ctx.record.bsi_user_id,
+    ipEarly,
+  );
+  if (!limitedEarly.allowed) {
+    return jsonNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+  }
+  const csrf = await requireCsrf(request, env, ctx.sid);
+  if (csrf) return csrf;
+
+  const parsed = await readJsonBodyLimited(request);`,
+          "M30",
+        );
     },
   },
   "M36": {

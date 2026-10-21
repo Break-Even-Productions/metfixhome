@@ -1,0 +1,55 @@
+{
+  "catalogRev": "r1.24",
+  "catalogTotal": 276,
+  "selected": 1,
+  "counts": {
+    "exact": 0,
+    "wider": 1,
+    "survived": 0,
+    "ethan-blocker": 0,
+    "cant-run": 0,
+    "not-run": 275
+  },
+  "baselineFailedAmongSelected": [],
+  "results": [
+    {
+      "id": "M19",
+      "verdict": "wider",
+      "expectedRed": [
+        "CT2",
+        "CI2"
+      ],
+      "observedRed": [
+        "CT2"
+      ],
+      "variants": [
+        {
+          "variant": "M19",
+          "verdict": "wider",
+          "expectedRed": [
+            "CT2",
+            "CI2"
+          ],
+          "observedRed": [
+            "CT2"
+          ],
+          "failedTestTitles": [
+            "AU26.8 AU26.8 worker non-upstream has no BSI fetch /wp-json literals",
+            "CommentThread composer lets the user change comment type from the current tab",
+            "C2 legacy hash C2: #brain shows Brain on first commit (Belly 0 renders), rewrites to ?tab=brain, 1 GET",
+            "C5/C6 df-initial C6: bare df-initial → 0 today calls + 2 prefetch",
+            "PR2 client gates C / CT / CC1 CT2 comment HTML renders as literal text without script execution",
+            "PR2 client gates C / CT / CC1 CC1 cloudflare-client.test.tsx matches main blob md5"
+          ],
+          "patchMd5": "8f5dd134b625c31d052838f0d84e1cdf",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "CommentThread.tsx",
+      "sabotage": "render content via `dangerouslySetInnerHTML`"
+    }
+  ]
+}

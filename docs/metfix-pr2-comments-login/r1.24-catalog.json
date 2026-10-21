@@ -1,0 +1,2880 @@
+{
+  "gates": [
+    "A1.1",
+    "A1.3",
+    "W1.1",
+    "W1.2",
+    "W2.1",
+    "W2.2",
+    "W3.1",
+    "W3.2",
+    "W3.5",
+    "W3.3",
+    "W3.4",
+    "W4.1",
+    "W4.2",
+    "W4.3",
+    "W5.1",
+    "W6.1",
+    "W6.2",
+    "W6.3",
+    "W6.4",
+    "W6.5",
+    "W6.6",
+    "W6.7",
+    "W6.8",
+    "W6.9",
+    "W7.1",
+    "W7.2",
+    "W7.3",
+    "W7.4",
+    "B4W.1",
+    "W8.1",
+    "W8.2",
+    "W8.3",
+    "W9.1",
+    "W9.2",
+    "W9.3",
+    "W9.4",
+    "W9.6",
+    "W9.5",
+    "L1.1",
+    "L1.2",
+    "L2.1",
+    "L2.2",
+    "L2.3",
+    "L3.1",
+    "L3.2",
+    "L4.1",
+    "L5.1",
+    "L5.2",
+    "L6.1",
+    "L6.3",
+    "L6.4",
+    "L6.2",
+    "L7.1",
+    "L7.2",
+    "L7.3",
+    "L7.4",
+    "LB.N9",
+    "LB.N10.1",
+    "LB.N10.2",
+    "LB.N7",
+    "C1.1",
+    "C2.1",
+    "C3.1",
+    "C4.1",
+    "C4.2",
+    "C4.3",
+    "C4.4",
+    "CT-P1",
+    "CT2",
+    "C5.1",
+    "C5.2",
+    "C5.3",
+    "C5.4",
+    "CI2",
+    "C6.1",
+    "C6.2",
+    "C6.3",
+    "C7.1",
+    "C7.2",
+    "CKL1.1",
+    "CKT1.1",
+    "TK1",
+    "TK1.g",
+    "TK1.r",
+    "TK2",
+    "TK2.m",
+    "TK2.m7",
+    "TK2.x",
+    "CKB1.1",
+    "CKCI1.1",
+    "CKCI1.2",
+    "P1.1",
+    "P1.2",
+    "P3.1",
+    "P3.2",
+    "P3.3",
+    "P3.4",
+    "P3.5",
+    "P4.1",
+    "P4.2",
+    "P4.3",
+    "P4.4",
+    "P4.5",
+    "P5.1",
+    "P7.2",
+    "P7.1",
+    "P8.1",
+    "P8.2",
+    "P9.1",
+    "P9.2",
+    "P9.3",
+    "AU1.1",
+    "AU1.2",
+    "AU1.3",
+    "AU1.4",
+    "AU1.6",
+    "AU1.5",
+    "AU2.1",
+    "AU2.2",
+    "AU2.3",
+    "AU2.4",
+    "AU3.1",
+    "AU3.2",
+    "AU4.1",
+    "AU4.2",
+    "AU5.1",
+    "AU5.2",
+    "AU5.3",
+    "AU5.4",
+    "AU5.6",
+    "ENC.T1",
+    "ENC.T2",
+    "ENC.T3",
+    "ENC.T4",
+    "AU5.5",
+    "AU5.x",
+    "AU5.y",
+    "AU5.k",
+    "AU5.z",
+    "AU6.1",
+    "AU6.2",
+    "AU6.3",
+    "AU7.1",
+    "AU7.2",
+    "AU7.3",
+    "AU7.4",
+    "AU7.6",
+    "AU7.8",
+    "AU7.7",
+    "AU7.5",
+    "AU8.1",
+    "AU8.2",
+    "AU8.3",
+    "AU8.4",
+    "AU9.1",
+    "AU9.2",
+    "AU9.3",
+    "AU9.4",
+    "AU9.5",
+    "AU10.1",
+    "AU10.2",
+    "AU10.3",
+    "AU10.4",
+    "AU10.5",
+    "AU10.6",
+    "AU10.7",
+    "AU10.8",
+    "AU10.9",
+    "AU11.1",
+    "AU11.2",
+    "AU11.4",
+    "AU11.3",
+    "AU12.1",
+    "AU12.2",
+    "AU12.3",
+    "AU12.4",
+    "AU12.5",
+    "AU12.6",
+    "AU12.7",
+    "AU12.8",
+    "AU12.9",
+    "AU12.10",
+    "AU12.11",
+    "AU12.12",
+    "AU13.1",
+    "AU13.2",
+    "AU14.1",
+    "AU14.2",
+    "AU14.3",
+    "AU15.1",
+    "AU15.2",
+    "AU15.3",
+    "AU15.4",
+    "AU16.1",
+    "AU17.1",
+    "AU17.2",
+    "AU17.3",
+    "AU17.4",
+    "AU17.5",
+    "AU17.6",
+    "AU17.7",
+    "AU17.8",
+    "AU17.9",
+    "AU17.13",
+    "AU17.14",
+    "AU17.10",
+    "AU17.11",
+    "AU17.12",
+    "AU18.1",
+    "AU18.2",
+    "AU18.3",
+    "AU18.4",
+    "AU18.5",
+    "AU19.1",
+    "AU19.2",
+    "AU19.5",
+    "AU19.3",
+    "AU19.4",
+    "AU20.1",
+    "AU21.1",
+    "AU21.3",
+    "AU21.2",
+    "AU22.1",
+    "AU22.2",
+    "AU23.2",
+    "AU24.1",
+    "AU26.1",
+    "AU26.2",
+    "AU26.3",
+    "AU26.5",
+    "AU26.6",
+    "AU26.7",
+    "AU26.8",
+    "AU26.9",
+    "AU26.10",
+    "AU26.11",
+    "AU12.c",
+    "AU12.v",
+    "AU12.u",
+    "AU12.e",
+    "AU18.h",
+    "AU25.1",
+    "AU25.2",
+    "CW1.1",
+    "CW2.1",
+    "CW3.1",
+    "CW4.1",
+    "CW5.1",
+    "CW5.2",
+    "CW5.3",
+    "CW6.1",
+    "CW6.2",
+    "CW7.1",
+    "CW8.1",
+    "CW9.1",
+    "CW10.1",
+    "CW11.1",
+    "CW11.2",
+    "CW12.1",
+    "CW12.2",
+    "CW12.3",
+    "CW13.1",
+    "CW13.2",
+    "CW14.1",
+    "CW14.2",
+    "CW15.1",
+    "CW13.3",
+    "CW16.1",
+    "CW16.2",
+    "CC1"
+  ],
+  "boxes": [
+    "PR0.1",
+    "PR0.2",
+    "PR0.3",
+    "A2.1",
+    "A3.1",
+    "AU16.2",
+    "R24.1",
+    "BX1",
+    "BX2",
+    "CK-P1",
+    "RA1",
+    "BX3"
+  ],
+  "post_deploy": [
+    "PD1",
+    "PD2",
+    "PD3",
+    "PD4",
+    "PD5",
+    "PD6",
+    "PD7",
+    "PD8",
+    "PD9",
+    "PD10",
+    "PD11",
+    "PD12",
+    "PD13",
+    "PD14"
+  ],
+  "mutations": [
+    {
+      "id": "M-GL1",
+      "target": "worker/auth Google verify",
+      "sabotage": "treat `email_verified:\"true\"` as verified",
+      "red": [
+        "AU12.v"
+      ]
+    },
+    {
+      "id": "M-GL2",
+      "target": "worker/auth Google verify",
+      "sabotage": "accept `aud` from a list of two client IDs",
+      "red": [
+        "AU12.c"
+      ]
+    },
+    {
+      "id": "M-GL3",
+      "target": "worker/auth Google callback",
+      "sabotage": "forward `login_hint`/`email` query into the BSI body",
+      "red": [
+        "AU12.e"
+      ]
+    },
+    {
+      "id": "M-GL4",
+      "target": "worker/auth Google callback",
+      "sabotage": "on 404 with unverified email retry intent=register",
+      "red": [
+        "AU12.u",
+        "AU12.v"
+      ]
+    },
+    {
+      "id": "M-RC1",
+      "target": "worker/auth reCAPTCHA",
+      "sabotage": "hostname accepts any of the key's three domains",
+      "red": [
+        "AU18.h"
+      ]
+    },
+    {
+      "id": "M-PV1",
+      "target": "worker/index.ts AUTH-HOST",
+      "sabotage": "`host.endsWith(\"metfix.org\")`",
+      "red": [
+        "AU25.1"
+      ]
+    },
+    {
+      "id": "M-PV2",
+      "target": "client auth UI",
+      "sabotage": "load reCAPTCHA unconditionally",
+      "red": [
+        "AU25.2"
+      ]
+    },
+    {
+      "id": "M-CW1",
+      "target": "worker/comments PATCH",
+      "sabotage": "skip session check",
+      "red": [
+        "CW1.1",
+        "CW9.1"
+      ]
+    },
+    {
+      "id": "M-CW2",
+      "target": "worker/comments DELETE",
+      "sabotage": "key only, no Bearer",
+      "red": [
+        "CW2.1",
+        "CW4.1"
+      ]
+    },
+    {
+      "id": "M-CW3",
+      "target": "worker/comments like",
+      "sabotage": "`:id` unvalidated",
+      "red": [
+        "CW3.1"
+      ]
+    },
+    {
+      "id": "M-CW4",
+      "target": "worker/comments",
+      "sabotage": "forward body `user_id`",
+      "red": [
+        "CW4.1"
+      ]
+    },
+    {
+      "id": "M-CW5",
+      "target": "worker/comments PATCH",
+      "sabotage": "map BSI 403 → 200",
+      "red": [
+        "CW5.1"
+      ]
+    },
+    {
+      "id": "M-CW6",
+      "target": "worker/comments like",
+      "sabotage": "remove like limiter",
+      "red": [
+        "CW6.1"
+      ]
+    },
+    {
+      "id": "M-CW7",
+      "target": "worker/comments signed-in read",
+      "sabotage": "keep `user.id`",
+      "red": [
+        "CW7.1"
+      ]
+    },
+    {
+      "id": "M-CW8",
+      "target": "worker/comments PATCH",
+      "sabotage": "skip W9 purge",
+      "red": [
+        "CW8.1"
+      ]
+    },
+    {
+      "id": "M-CW9",
+      "target": "worker/comments DELETE",
+      "sabotage": "no CSRF check",
+      "red": [
+        "CW9.1"
+      ]
+    },
+    {
+      "id": "M-CW10",
+      "target": "client comments",
+      "sabotage": "render edit/delete on `own:false`",
+      "red": [
+        "CW10.1"
+      ]
+    },
+    {
+      "id": "M-CW11",
+      "target": "worker/comments like",
+      "sabotage": "remove per-comment toggle cap",
+      "red": [
+        "CW6.2"
+      ]
+    },
+    {
+      "id": "M-CW12",
+      "target": "worker/comments DELETE",
+      "sabotage": "upstream id from body over URL",
+      "red": [
+        "CW5.2"
+      ]
+    },
+    {
+      "id": "M-CW13",
+      "target": "worker/comments like",
+      "sabotage": "key-only (no Bearer)",
+      "red": [
+        "CW5.3",
+        "CW3.1"
+      ]
+    },
+    {
+      "id": "M-CW14",
+      "target": "worker/comments PATCH/DELETE",
+      "sabotage": "Worker pre-checks `own` and refuses non-owners (moderator blocked)",
+      "red": [
+        "CW11.1"
+      ]
+    },
+    {
+      "id": "M-CW15",
+      "target": "worker/comments",
+      "sabotage": "forward `is_moderator` / allow on `X-Moderator`",
+      "red": [
+        "CW11.2"
+      ]
+    },
+    {
+      "id": "M-CW16",
+      "target": "client comments",
+      "sabotage": "moderator controls from localStorage or truthy `moderator`",
+      "red": [
+        "CW12.1"
+      ]
+    },
+    {
+      "id": "M-CW17",
+      "target": "worker/auth /me",
+      "sabotage": "`moderator` from a request header",
+      "red": [
+        "CW12.2"
+      ]
+    },
+    {
+      "id": "M-CW18",
+      "target": "worker/comments writes",
+      "sabotage": "map BSI 429 → 503",
+      "red": [
+        "CW13.1",
+        "AU26.11"
+      ]
+    },
+    {
+      "id": "M-CW19",
+      "target": "client comments",
+      "sabotage": "ignore `Retry-After`",
+      "red": [
+        "CW13.2"
+      ]
+    },
+    {
+      "id": "M-CW20",
+      "target": "client comments",
+      "sabotage": "render reply control on replies",
+      "red": [
+        "CW14.1"
+      ]
+    },
+    {
+      "id": "M-CW21",
+      "target": "client comments",
+      "sabotage": "render like on deleted rows",
+      "red": [
+        "CW14.2"
+      ]
+    },
+    {
+      "id": "M-CW22",
+      "target": "worker/comments like",
+      "sabotage": "omit `liked` when true",
+      "red": [
+        "CW15.1"
+      ]
+    },
+    {
+      "id": "M-CW23",
+      "target": "worker/auth /me",
+      "sabotage": "`/me` asks BSI for moderator on a KV miss",
+      "red": [
+        "CW12.2"
+      ]
+    },
+    {
+      "id": "M-CW24",
+      "target": "client comments",
+      "sabotage": "no Retry-After cap (honours 99999)",
+      "red": [
+        "CW13.3"
+      ]
+    },
+    {
+      "id": "M-CW25",
+      "target": "worker/comments PATCH",
+      "sabotage": "map BSI 409 `comment_deleted` → 403 `forbidden`",
+      "red": [
+        "CW16.1"
+      ]
+    },
+    {
+      "id": "M-CW26",
+      "target": "client comments",
+      "sabotage": "render edit on deleted rows for moderators",
+      "red": [
+        "CW16.1"
+      ]
+    },
+    {
+      "id": "M-CW27",
+      "target": "worker/comments DELETE",
+      "sabotage": "map repeat delete 204 → 404",
+      "red": [
+        "CW16.2"
+      ]
+    },
+    {
+      "id": "M-CW28",
+      "target": "worker/auth login/refresh",
+      "sabotage": "derive `moderator` from a BSI role field (`administrator`/Daily Fix admin → true, else `can_moderate`)",
+      "red": [
+        "CW12.2"
+      ]
+    },
+    {
+      "id": "M-CW29",
+      "target": "worker/auth login/refresh",
+      "sabotage": "absent `can_moderate` treated as `true` (CM6 fallback broken)",
+      "red": [
+        "CW12.2"
+      ]
+    },
+    {
+      "id": "M-CW30",
+      "target": "client comments",
+      "sabotage": "repeat-delete 204 not treated as `{deleted:true}` (row stays / error shown)",
+      "red": [
+        "CW16.2"
+      ]
+    },
+    {
+      "id": "M-CW31",
+      "target": "client comments",
+      "sabotage": "purge/invalidate the client comment cache on a 204",
+      "red": [
+        "CW16.2"
+      ]
+    },
+    {
+      "id": "M-CW32",
+      "target": "worker/auth refresh",
+      "sabotage": "refresh writes the new token pair to the `SESSION` DO but not the new `can_moderate` (old `true` kept); KV `/me` still rewritten",
+      "red": [
+        "CW12.3"
+      ]
+    },
+    {
+      "id": "M-CW33",
+      "target": "worker/auth refresh",
+      "sabotage": "refresh skips the KV `/me` write (DO updated)",
+      "red": [
+        "CW12.3",
+        "AU5.z"
+      ]
+    },
+    {
+      "id": "M-CC1",
+      "target": "client test",
+      "sabotage": "change C2's expected count `toHaveBeenCalledTimes(1)` → `(2)` in `cloudflare-client.test.tsx`",
+      "red": [
+        "CC1"
+      ]
+    },
+    {
+      "id": "M1",
+      "target": "worker/index.ts `handleRequest`",
+      "sabotage": "also match `/api/daily-fix/comments/`",
+      "red": [
+        "W1.2"
+      ]
+    },
+    {
+      "id": "M2",
+      "target": "`handleComments`",
+      "sabotage": "drop method allowlist (any method → GET path)",
+      "red": [
+        "W2.1"
+      ]
+    },
+    {
+      "id": "M3",
+      "target": "`handleComments`",
+      "sabotage": "`type` presence-only, forwarded raw",
+      "red": [
+        "W3.2"
+      ]
+    },
+    {
+      "id": "M4",
+      "target": "`fetchDailyFixComments`",
+      "sabotage": "append incoming `url.search` to upstream",
+      "red": [
+        "W3.3"
+      ]
+    },
+    {
+      "id": "M5",
+      "target": "`fetchDailyFixComments`",
+      "sabotage": "copy incoming `Cookie` and `X-Forwarded-For`",
+      "red": [
+        "W5.1"
+      ]
+    },
+    {
+      "id": "M6",
+      "target": "comments error mapping",
+      "sabotage": "relay upstream status+body on non-200",
+      "red": [
+        "W6.1",
+        "W6.3",
+        "W6.4",
+        "W6.5",
+        "W6.6",
+        "W6.9"
+      ]
+    },
+    {
+      "id": "M7",
+      "target": "comments shaping",
+      "sabotage": "keep `user.id` and `liked`",
+      "red": [
+        "W7.3"
+      ]
+    },
+    {
+      "id": "M8",
+      "target": "B4 helper",
+      "sabotage": "use `display_name` when no safe field (fail open)",
+      "red": [
+        "B4W.1",
+        "L5.2",
+        "AU21.2"
+      ]
+    },
+    {
+      "id": "M9",
+      "target": "W8 filter",
+      "sabotage": "keep `deleted==1` rows",
+      "red": [
+        "W8.1",
+        "W8.3"
+      ]
+    },
+    {
+      "id": "M10",
+      "target": "W9",
+      "sabotage": "read/write cache when `Authorization`/`Cookie` present",
+      "red": [
+        "W9.4"
+      ]
+    },
+    {
+      "id": "M11",
+      "target": "W9",
+      "sabotage": "cache 503 responses",
+      "red": [
+        "W9.3"
+      ]
+    },
+    {
+      "id": "M12",
+      "target": "W9",
+      "sabotage": "cache key = full request URL",
+      "red": [
+        "W9.2"
+      ]
+    },
+    {
+      "id": "M13",
+      "target": "leaderboard shaping",
+      "sabotage": "keep `user_id`, `workout_log_id`",
+      "red": [
+        "L5.1"
+      ]
+    },
+    {
+      "id": "M14",
+      "target": "leaderboard query",
+      "sabotage": "forward client `leaderboard_mode`/`scoring_direction`",
+      "red": [
+        "L2.2"
+      ]
+    },
+    {
+      "id": "M15",
+      "target": "leaderboard upstream",
+      "sabotage": "forward the browser's `Authorization` instead of the session token",
+      "red": [
+        "L3.1"
+      ]
+    },
+    {
+      "id": "M16",
+      "target": "leaderboard route",
+      "sabotage": "signed-out → call upstream with key only",
+      "red": [
+        "AU23.2"
+      ]
+    },
+    {
+      "id": "M17",
+      "target": "leaderboard",
+      "sabotage": "cache 200s in the Cache API",
+      "red": [
+        "L6.1"
+      ]
+    },
+    {
+      "id": "M18",
+      "target": "client leaderboard",
+      "sabotage": "render name via `dangerouslySetInnerHTML`",
+      "red": [
+        "L7.3",
+        "CI2"
+      ]
+    },
+    {
+      "id": "M19",
+      "target": "CommentThread.tsx",
+      "sabotage": "render content via `dangerouslySetInnerHTML`",
+      "red": [
+        "CT2",
+        "CI2"
+      ]
+    },
+    {
+      "id": "M20",
+      "target": "comment POST",
+      "sabotage": "remove the session check (no cookie → POST with key only)",
+      "red": [
+        "P4.1",
+        "P4.2"
+      ]
+    },
+    {
+      "id": "M21",
+      "target": "comment POST",
+      "sabotage": "trust client `user_id`: forward `body.user_id`",
+      "red": [
+        "P3.1",
+        "P4.3"
+      ]
+    },
+    {
+      "id": "M22",
+      "target": "session lookup (§0d B3: the `SESSION` DO decides)",
+      "sabotage": "DO storage empty for the cookie's id → treat the session as valid (forged or ended id accepted)",
+      "red": [
+        "P4.2",
+        "AU6.1",
+        "AU8.4"
+      ]
+    },
+    {
+      "id": "M23",
+      "target": "comment POST",
+      "sabotage": "omit `Authorization` when token empty instead of 503/401",
+      "red": [
+        "P4.5"
+      ]
+    },
+    {
+      "id": "M24",
+      "target": "P3",
+      "sabotage": "skip the 8 KB size check",
+      "red": [
+        "P3.3"
+      ]
+    },
+    {
+      "id": "M25",
+      "target": "P3",
+      "sabotage": "skip the Content-Type check",
+      "red": [
+        "P3.4"
+      ]
+    },
+    {
+      "id": "M26",
+      "target": "P3",
+      "sabotage": "skip `content` length bounds",
+      "red": [
+        "P3.2"
+      ]
+    },
+    {
+      "id": "M27",
+      "target": "P7",
+      "sabotage": "no cache purge after write",
+      "red": [
+        "P7.1"
+      ]
+    },
+    {
+      "id": "M28",
+      "target": "P8",
+      "sabotage": "remove the write rate limit",
+      "red": [
+        "P8.1",
+        "P9.1"
+      ]
+    },
+    {
+      "id": "M29",
+      "target": "P8",
+      "sabotage": "limiter key = IP only",
+      "red": [
+        "P8.1"
+      ]
+    },
+    {
+      "id": "M30",
+      "target": "P8",
+      "sabotage": "limiter before session/CSRF",
+      "red": [
+        "P8.2"
+      ]
+    },
+    {
+      "id": "M31",
+      "target": "CSRF",
+      "sabotage": "skip token compare (all POST routes)",
+      "red": [
+        "AU9.1",
+        "AU9.4",
+        "AU15.3"
+      ]
+    },
+    {
+      "id": "M32",
+      "target": "CSRF",
+      "sabotage": "skip Origin check",
+      "red": [
+        "AU9.2"
+      ]
+    },
+    {
+      "id": "M33",
+      "target": "CSRF",
+      "sabotage": "accept `Sec-Fetch-Site: cross-site`",
+      "red": [
+        "AU9.3"
+      ]
+    },
+    {
+      "id": "M34",
+      "target": "CSRF",
+      "sabotage": "compare against any live session's token (unbound)",
+      "red": [
+        "AU9.4"
+      ]
+    },
+    {
+      "id": "M35",
+      "target": "CSRF",
+      "sabotage": "`===` compare",
+      "red": [
+        "AU9.5"
+      ]
+    },
+    {
+      "id": "M36",
+      "target": "login",
+      "sabotage": "keep the incoming sid (no rotation)",
+      "red": [
+        "AU2.2",
+        "AU6.1"
+      ]
+    },
+    {
+      "id": "M37",
+      "target": "silent refresh",
+      "sabotage": "rotate the sid on refresh (R4 forbids)",
+      "red": [
+        "AU6.2"
+      ]
+    },
+    {
+      "id": "M38",
+      "target": "Google callback",
+      "sabotage": "no sid rotation",
+      "red": [
+        "AU6.3"
+      ]
+    },
+    {
+      "id": "M39",
+      "target": "session",
+      "sabotage": "ignore `access_exp` (accept expired access token)",
+      "red": [
+        "AU7.1"
+      ]
+    },
+    {
+      "id": "M40",
+      "target": "S4",
+      "sabotage": "retry until success (no single-retry cap)",
+      "red": [
+        "AU7.2"
+      ]
+    },
+    {
+      "id": "M41",
+      "target": "S4",
+      "sabotage": "refresh failure keeps session",
+      "red": [
+        "AU7.3"
+      ]
+    },
+    {
+      "id": "M42",
+      "target": "S4",
+      "sabotage": "refresh called from the Worker module, not the DO (no DO)",
+      "red": [
+        "AU7.4",
+        "AU7.6"
+      ]
+    },
+    {
+      "id": "M42c",
+      "target": "SESSION DO",
+      "sabotage": "non-serialised refresh: `await` BSI-C3 without holding the in-progress promise / `blockConcurrencyWhile`",
+      "red": [
+        "AU7.6"
+      ]
+    },
+    {
+      "id": "M42b",
+      "target": "S4",
+      "sabotage": "on a rotated-token 400, re-read the token from KV and retry (KV-only path)",
+      "red": [
+        "AU7.5"
+      ]
+    },
+    {
+      "id": "M42d",
+      "target": "SESSION DO",
+      "sabotage": "KV-only path: Worker refreshes from the KV `/me` entry when the DO's pair is near expiry",
+      "red": [
+        "AU7.5",
+        "AU7.6"
+      ]
+    },
+    {
+      "id": "M42e",
+      "target": "SESSION DO",
+      "sabotage": "second concurrent caller returns the pair it read before the refresh completed (old token)",
+      "red": [
+        "AU7.6"
+      ]
+    },
+    {
+      "id": "M42f",
+      "target": "SESSION DO",
+      "sabotage": "DO throw/unbound → fall back to anonymous POST with key only (fail open)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M42g",
+      "target": "SESSION DO",
+      "sabotage": "no 1 s timeout on DO calls (hang)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M42h",
+      "target": "SESSION DO",
+      "sabotage": "DO error → read tokens from KV and proceed (fail open via KV)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M42i",
+      "target": "logout, G9",
+      "sabotage": "`SESSION` DO error on logout → return 503 `{\"error\":\"unavailable\"}` (S-G18 applied to logout)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M42j",
+      "target": "logout, G9",
+      "sabotage": "`SESSION` DO error on logout → 204 but no `Set-Cookie` clearing `__Host-mfx_sid` (only in the outage branch)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M42k",
+      "target": "logout, G9",
+      "sabotage": "revoke-failure log line includes the session's refresh token (`console.error(\"revoke failed\", {refresh_token})`; only in the outage branch)",
+      "red": [
+        "AU7.8",
+        "AU20.1"
+      ]
+    },
+    {
+      "id": "M42l",
+      "target": "logout, G9",
+      "sabotage": "`SESSION` DO error on logout → skip the KV `sess:*` delete (only in the outage branch), so the next `/me` answers signed in from the cache (fails open)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M43",
+      "target": "session",
+      "sabotage": "AES-GCM decrypt error → empty session treated as valid",
+      "red": [
+        "AU5.5"
+      ]
+    },
+    {
+      "id": "M44",
+      "target": "session",
+      "sabotage": "store tokens plaintext in DO storage",
+      "red": [
+        "AU5.2"
+      ]
+    },
+    {
+      "id": "M45",
+      "target": "session",
+      "sabotage": "KV key = raw id",
+      "red": [
+        "AU5.1"
+      ]
+    },
+    {
+      "id": "M46",
+      "target": "session",
+      "sabotage": "omit `expirationTtl` on the `/me` put",
+      "red": [
+        "AU5.3",
+        "AU5.4",
+        "AU5.z",
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M47",
+      "target": "session",
+      "sabotage": "extend the DO alarm / `last_seen` and reissue the cookie on every request (not only >24 h)",
+      "red": [
+        "AU5.4"
+      ]
+    },
+    {
+      "id": "M48",
+      "target": "cookie",
+      "sabotage": "drop `HttpOnly`",
+      "red": [
+        "AU4.1"
+      ]
+    },
+    {
+      "id": "M49",
+      "target": "logout",
+      "sabotage": "send `Authorization: Bearer` to BSI-C4",
+      "red": [
+        "AU8.1"
+      ]
+    },
+    {
+      "id": "M50",
+      "target": "logout",
+      "sabotage": "return 503 when BSI-C4 fails",
+      "red": [
+        "AU8.2"
+      ]
+    },
+    {
+      "id": "M51",
+      "target": "logout",
+      "sabotage": "skip KV delete",
+      "red": [
+        "AU8.1",
+        "AU8.4"
+      ]
+    },
+    {
+      "id": "M52",
+      "target": "OAUTH_STATE `take()`",
+      "sabotage": "read without delete",
+      "red": [
+        "AU10.3",
+        "AU10.8"
+      ]
+    },
+    {
+      "id": "M53",
+      "target": "OAUTH_STATE",
+      "sabotage": "no alarm and no 600 s check in `take()`",
+      "red": [
+        "AU10.4"
+      ]
+    },
+    {
+      "id": "M54",
+      "target": "state",
+      "sabotage": "no pre-cookie binding",
+      "red": [
+        "AU10.5"
+      ]
+    },
+    {
+      "id": "M55",
+      "target": "state",
+      "sabotage": "ignore `flow`",
+      "red": [
+        "AU10.6"
+      ]
+    },
+    {
+      "id": "M56",
+      "target": "PKCE",
+      "sabotage": "`plain` method",
+      "red": [
+        "AU11.1"
+      ]
+    },
+    {
+      "id": "M57",
+      "target": "PKCE",
+      "sabotage": "omit `code_verifier` from the Google token call",
+      "red": [
+        "AU11.2"
+      ]
+    },
+    {
+      "id": "M58",
+      "target": "ID token",
+      "sabotage": "skip signature verification incl. alg/kid handling",
+      "red": [
+        "AU12.1",
+        "AU12.2",
+        "AU12.3"
+      ]
+    },
+    {
+      "id": "M59",
+      "target": "ID token",
+      "sabotage": "skip `iss`",
+      "red": [
+        "AU12.4"
+      ]
+    },
+    {
+      "id": "M60",
+      "target": "ID token",
+      "sabotage": "skip `aud`",
+      "red": [
+        "AU12.5"
+      ]
+    },
+    {
+      "id": "M61",
+      "target": "ID token",
+      "sabotage": "skip `exp` (accept expired token)",
+      "red": [
+        "AU12.6"
+      ]
+    },
+    {
+      "id": "M62",
+      "target": "ID token",
+      "sabotage": "skip `iat`",
+      "red": [
+        "AU12.7"
+      ]
+    },
+    {
+      "id": "M63",
+      "target": "ID token",
+      "sabotage": "skip `nonce`",
+      "red": [
+        "AU12.8"
+      ]
+    },
+    {
+      "id": "M64",
+      "target": "ID token",
+      "sabotage": "skip `email_verified`",
+      "red": [
+        "AU12.9"
+      ]
+    },
+    {
+      "id": "M65",
+      "target": "JWKS",
+      "sabotage": "no cache",
+      "red": [
+        "AU12.11"
+      ]
+    },
+    {
+      "id": "M66",
+      "target": "return",
+      "sabotage": "remove validation",
+      "red": [
+        "AU13.1"
+      ]
+    },
+    {
+      "id": "M67",
+      "target": "return",
+      "sabotage": "read from callback query",
+      "red": [
+        "AU13.2"
+      ]
+    },
+    {
+      "id": "M68",
+      "target": "signup",
+      "sabotage": "relay `bridge_url`",
+      "red": [
+        "AU14.1",
+        "AU3.1"
+      ]
+    },
+    {
+      "id": "M69",
+      "target": "signup",
+      "sabotage": "409 → 409 `{\"error\":\"exists\"}`",
+      "red": [
+        "AU14.1"
+      ]
+    },
+    {
+      "id": "M70",
+      "target": "username-check",
+      "sabotage": "relay BSI body",
+      "red": [
+        "AU15.1"
+      ]
+    },
+    {
+      "id": "M71",
+      "target": "username-check",
+      "sabotage": "no rate limit",
+      "red": [
+        "AU15.2"
+      ]
+    },
+    {
+      "id": "M72",
+      "target": "username-check",
+      "sabotage": "no `@` short-circuit",
+      "red": [
+        "AU15.4"
+      ]
+    },
+    {
+      "id": "M73",
+      "target": "login errors",
+      "sabotage": "`login_disabled` → 403 `{\"error\":\"disabled\"}`",
+      "red": [
+        "AU16.1"
+      ]
+    },
+    {
+      "id": "M74",
+      "target": "R8a",
+      "sabotage": "no backoff (lockout never set)",
+      "red": [
+        "AU17.1"
+      ]
+    },
+    {
+      "id": "M75",
+      "target": "R8b",
+      "sabotage": "remove per-IP 20/60 layer",
+      "red": [
+        "AU17.3"
+      ]
+    },
+    {
+      "id": "M76",
+      "target": "S-RL",
+      "sabotage": "remove signup limit",
+      "red": [
+        "AU17.4",
+        "AU17.6"
+      ]
+    },
+    {
+      "id": "M77",
+      "target": "S-RL",
+      "sabotage": "remove Google limit",
+      "red": [
+        "AU17.5"
+      ]
+    },
+    {
+      "id": "M78",
+      "target": "R8",
+      "sabotage": "`idFromName(\"id:\"+identifier)` raw",
+      "red": [
+        "AU17.7"
+      ]
+    },
+    {
+      "id": "M79",
+      "target": "reCAPTCHA",
+      "sabotage": "skip verify on comment POST",
+      "red": [
+        "AU18.1"
+      ]
+    },
+    {
+      "id": "M80",
+      "target": "reCAPTCHA",
+      "sabotage": "threshold `> 0.5`",
+      "red": [
+        "AU18.2"
+      ]
+    },
+    {
+      "id": "M81",
+      "target": "reCAPTCHA",
+      "sabotage": "no action check",
+      "red": [
+        "AU18.3"
+      ]
+    },
+    {
+      "id": "M82",
+      "target": "reCAPTCHA",
+      "sabotage": "no hostname check",
+      "red": [
+        "AU18.4"
+      ]
+    },
+    {
+      "id": "M83",
+      "target": "reCAPTCHA",
+      "sabotage": "fail open on siteverify error",
+      "red": [
+        "AU18.5"
+      ]
+    },
+    {
+      "id": "M84",
+      "target": "headers",
+      "sabotage": "drop `no-store` on auth 4xx",
+      "red": [
+        "AU19.1"
+      ]
+    },
+    {
+      "id": "M85",
+      "target": "CSP",
+      "sabotage": "add `'unsafe-inline'`",
+      "red": [
+        "AU19.2"
+      ]
+    },
+    {
+      "id": "M86",
+      "target": "logging",
+      "sabotage": "`console.log` the sid",
+      "red": [
+        "AU20.1"
+      ]
+    },
+    {
+      "id": "M87",
+      "target": "logging",
+      "sabotage": "log full identifier/email",
+      "red": [
+        "AU20.1"
+      ]
+    },
+    {
+      "id": "M88",
+      "target": "/me",
+      "sabotage": "include `email`",
+      "red": [
+        "AU21.1"
+      ]
+    },
+    {
+      "id": "M89",
+      "target": "client",
+      "sabotage": "store `signed_in` in `localStorage`",
+      "red": [
+        "AU22.1"
+      ]
+    },
+    {
+      "id": "M91",
+      "target": "login",
+      "sabotage": "302 to BSI `oauth/authorize` for password",
+      "red": [
+        "AU24.1"
+      ]
+    },
+    {
+      "id": "M92",
+      "target": "AUTH-HOST",
+      "sabotage": "remove host check",
+      "red": [
+        "AU1.5"
+      ]
+    },
+    {
+      "id": "M93",
+      "target": "auth routes",
+      "sabotage": "add OPTIONS with CORS",
+      "red": [
+        "AU1.4"
+      ]
+    },
+    {
+      "id": "M94",
+      "target": "auth routes",
+      "sabotage": "keep `/api/auth/session` alias",
+      "red": [
+        "AU1.2"
+      ]
+    },
+    {
+      "id": "M95",
+      "target": "login upstream",
+      "sabotage": "forward `CF-Connecting-IP`",
+      "red": [
+        "AU2.1"
+      ]
+    },
+    {
+      "id": "M96",
+      "target": "client",
+      "sabotage": "absolute BFF URL in comments.ts",
+      "red": [
+        "C1.1",
+        "C5.1",
+        "C5.2"
+      ]
+    },
+    {
+      "id": "M97",
+      "target": "client",
+      "sabotage": "show `No comments yet.` on 503",
+      "red": [
+        "C4.1"
+      ]
+    },
+    {
+      "id": "M98",
+      "target": "client",
+      "sabotage": "logged-out submit POSTs",
+      "red": [
+        "C4.2"
+      ]
+    },
+    {
+      "id": "M99",
+      "target": "leaderboard",
+      "sabotage": "second read to append own row outside the top 25",
+      "red": [
+        "LB.N10.2"
+      ]
+    },
+    {
+      "id": "M100",
+      "target": "leaderboard",
+      "sabotage": "`is_self` from a browser-supplied `?user_id=`/header",
+      "red": [
+        "LB.N10.1"
+      ]
+    },
+    {
+      "id": "M101",
+      "target": "P4",
+      "sabotage": "forward incoming `Authorization` on comment GET",
+      "red": [
+        "P4.4",
+        "W5.1"
+      ]
+    },
+    {
+      "id": "M102",
+      "target": "replay",
+      "sabotage": "logout leaves old sid accepted for writes (KV delete after response)",
+      "red": [
+        "AU8.4",
+        "P9.2"
+      ]
+    },
+    {
+      "id": "M103",
+      "target": "R8c",
+      "sabotage": "remove the global layer",
+      "red": [
+        "AU17.8",
+        "AU17.11",
+        "AU17.9",
+        "AU26.5",
+        "AU26.6",
+        "AU17.14"
+      ]
+    },
+    {
+      "id": "M104",
+      "target": "R8c",
+      "sabotage": "cap 30 instead of 25",
+      "red": [
+        "AU17.8",
+        "AU17.11",
+        "AU17.9",
+        "AU26.6",
+        "AU17.14"
+      ]
+    },
+    {
+      "id": "M105",
+      "target": "R8c",
+      "sabotage": "global counter in an in-isolate variable / KV instead of the DO",
+      "red": [
+        "AU17.11",
+        "AU26.5",
+        "AU26.6",
+        "AU17.14"
+      ]
+    },
+    {
+      "id": "M106",
+      "target": "R8 order",
+      "sabotage": "check R8c before R8a/R8b (rejected requests consume slots)",
+      "red": [
+        "AU17.9"
+      ]
+    },
+    {
+      "id": "M107",
+      "target": "R8",
+      "sabotage": "lock by awaiting `scheduler.wait(lockout)` then calling BSI",
+      "red": [
+        "AU17.10"
+      ]
+    },
+    {
+      "id": "M108",
+      "target": "R8c",
+      "sabotage": "fixed window reset each minute instead of sliding",
+      "red": [
+        "AU17.8"
+      ]
+    },
+    {
+      "id": "M109",
+      "target": "R8b",
+      "sabotage": "DO name `ip:`+raw IP",
+      "red": [
+        "AU17.7"
+      ]
+    },
+    {
+      "id": "M110",
+      "target": "R8",
+      "sabotage": "`LOGIN_THROTTLE` unbound → skip throttling (fail open)",
+      "red": [
+        "AU17.6"
+      ]
+    },
+    {
+      "id": "M111",
+      "target": "R7",
+      "sabotage": "constant IV",
+      "red": [
+        "ENC.T1"
+      ]
+    },
+    {
+      "id": "M112",
+      "target": "R7",
+      "sabotage": "no AAD",
+      "red": [
+        "ENC.T3"
+      ]
+    },
+    {
+      "id": "M113",
+      "target": "R7",
+      "sabotage": "encrypt with PREV key",
+      "red": [
+        "ENC.T2"
+      ]
+    },
+    {
+      "id": "M114",
+      "target": "R7",
+      "sabotage": "decrypt error throws (500)",
+      "red": [
+        "ENC.T3",
+        "ENC.T4"
+      ]
+    },
+    {
+      "id": "M115",
+      "target": "R5",
+      "sabotage": "`/me` triggers silent refresh near expiry",
+      "red": [
+        "AU21.3"
+      ]
+    },
+    {
+      "id": "M116",
+      "target": "R5",
+      "sabotage": "`/me` reads KV with no cookie",
+      "red": [
+        "AU21.3"
+      ]
+    },
+    {
+      "id": "M117",
+      "target": "R5",
+      "sabotage": "keep `/api/auth/refresh` route",
+      "red": [
+        "AU1.2"
+      ]
+    },
+    {
+      "id": "M118",
+      "target": "R6",
+      "sabotage": "CSRF compare against KV-stored token (stateful)",
+      "red": [
+        "AU9.4"
+      ]
+    },
+    {
+      "id": "M119",
+      "target": "R12",
+      "sabotage": "browser GET `/api/auth/callback` trades the code",
+      "red": [
+        "AU11.4"
+      ]
+    },
+    {
+      "id": "M120",
+      "target": "R13",
+      "sabotage": "skip `azp`",
+      "red": [
+        "AU12.12"
+      ]
+    },
+    {
+      "id": "M121",
+      "target": "R13",
+      "sabotage": "refetch JWKS on every `kid` miss",
+      "red": [
+        "AU12.11"
+      ]
+    },
+    {
+      "id": "M122",
+      "target": "R15",
+      "sabotage": "reissue cookie on every `/me`",
+      "red": [
+        "AU5.4"
+      ]
+    },
+    {
+      "id": "M123",
+      "target": "R15",
+      "sabotage": "no absolute cap",
+      "red": [
+        "AU5.6"
+      ]
+    },
+    {
+      "id": "M123b",
+      "target": "R15",
+      "sabotage": "cap 91 days",
+      "red": [
+        "AU5.6"
+      ]
+    },
+    {
+      "id": "M123c",
+      "target": "R15",
+      "sabotage": "`now > created+90d` (exclusive; valid at exactly 90d)",
+      "red": [
+        "AU5.6"
+      ]
+    },
+    {
+      "id": "M123d",
+      "target": "R15",
+      "sabotage": "cap measured from `last_seen` (or reset on refresh)",
+      "red": [
+        "AU5.6"
+      ]
+    },
+    {
+      "id": "M-KV1",
+      "target": "session `/me` cache write",
+      "sabotage": "also write `{bsi_access, bsi_refresh}` (plain) into the KV `sess:*` value",
+      "red": [
+        "AU5.x"
+      ]
+    },
+    {
+      "id": "M-KV1b",
+      "target": "same",
+      "sabotage": "write the R7-encrypted pair (`v1.…`) into the KV value",
+      "red": [
+        "AU5.x"
+      ]
+    },
+    {
+      "id": "M-KV1c",
+      "target": "same",
+      "sabotage": "write only `refresh_token` (plain)",
+      "red": [
+        "AU5.x"
+      ]
+    },
+    {
+      "id": "M-KV1d",
+      "target": "same",
+      "sabotage": "write a base64url copy of the access token under a neutral key name (`\"c\"`)",
+      "red": [
+        "AU5.x"
+      ]
+    },
+    {
+      "id": "M-KV1e",
+      "target": "same",
+      "sabotage": "put the access token in `metadata` (`{metadata:{t:ACCESS}}`) only",
+      "red": [
+        "AU5.x"
+      ]
+    },
+    {
+      "id": "M-KV1f",
+      "target": "same",
+      "sabotage": "cache the URL-encoded refresh token in a separate key `rt:<hex>`",
+      "red": [
+        "AU5.x"
+      ]
+    },
+    {
+      "id": "M124",
+      "target": "R16",
+      "sabotage": "username check shares the 5/60 write bucket",
+      "red": [
+        "AU15.2"
+      ]
+    },
+    {
+      "id": "M125",
+      "target": "R3",
+      "sabotage": "bypass cache when Cookie present",
+      "red": [
+        "W9.4"
+      ]
+    },
+    {
+      "id": "M126",
+      "target": "R2/W6",
+      "sabotage": "map 401 and 403 to one kind",
+      "red": [
+        "W6.3",
+        "W6.4"
+      ]
+    },
+    {
+      "id": "M127",
+      "target": "R2/W6",
+      "sabotage": "404 `public, max-age=60`",
+      "red": [
+        "W6.2"
+      ]
+    },
+    {
+      "id": "M128",
+      "target": "R18",
+      "sabotage": "load reCAPTCHA script at page mount",
+      "red": [
+        "AU19.5"
+      ]
+    },
+    {
+      "id": "M129",
+      "target": "R18",
+      "sabotage": "drop `frame-src` reCAPTCHA entries",
+      "red": [
+        "AU19.2"
+      ]
+    },
+    {
+      "id": "M130",
+      "target": "R5/C6",
+      "sabotage": "`/me` fetched per component mount",
+      "red": [
+        "C6.1"
+      ]
+    },
+    {
+      "id": "M131",
+      "target": "R23",
+      "sabotage": "comments fetch awaits day load",
+      "red": [
+        "C6.2"
+      ]
+    },
+    {
+      "id": "M132",
+      "target": "R23",
+      "sabotage": "remove the Map cache",
+      "red": [
+        "C6.2",
+        "C6.3"
+      ]
+    },
+    {
+      "id": "M133",
+      "target": "R22",
+      "sabotage": "restore the `name` input",
+      "red": [
+        "C7.1"
+      ]
+    },
+    {
+      "id": "M134",
+      "target": "R9",
+      "sabotage": "Google routes live with gate off",
+      "red": [
+        "AU1.6"
+      ]
+    },
+    {
+      "id": "M135",
+      "target": "R19",
+      "sabotage": "`workers_dev: true`",
+      "red": [
+        "CKB1.1"
+      ]
+    },
+    {
+      "id": "M136",
+      "target": "R17",
+      "sabotage": "refetch comments after POST instead of optimistic append",
+      "red": [
+        "P7.2"
+      ]
+    },
+    {
+      "id": "M139",
+      "target": "N5/Q5 (1.20)",
+      "sabotage": "BSI 403 `recaptcha_failed` not counted toward R8b",
+      "red": [
+        "AU17.13",
+        "AU26.5"
+      ]
+    },
+    {
+      "id": "M140",
+      "target": "N5/Q5 (1.20)",
+      "sabotage": "BSI 403 `recaptcha_failed` counted toward R8a",
+      "red": [
+        "AU17.13",
+        "AU26.5"
+      ]
+    },
+    {
+      "id": "M141",
+      "target": "Q17",
+      "sabotage": "success doesn't clear R8a",
+      "red": [
+        "AU17.2"
+      ]
+    },
+    {
+      "id": "M142",
+      "target": "OAUTH_STATE",
+      "sabotage": "non-atomic: callback does `get()` then a separate `delete()` DO request",
+      "red": [
+        "AU10.8",
+        "AU10.7"
+      ]
+    },
+    {
+      "id": "M143",
+      "target": "OAUTH_STATE",
+      "sabotage": "KV fallback when the DO throws",
+      "red": [
+        "AU10.9"
+      ]
+    },
+    {
+      "id": "M144",
+      "target": "OAUTH_STATE",
+      "sabotage": "store state in KV `oauth:*` instead of the DO",
+      "red": [
+        "AU10.7"
+      ]
+    },
+    {
+      "id": "M145",
+      "target": "OAUTH_STATE",
+      "sabotage": "DO error → skip state check (fail open)",
+      "red": [
+        "AU10.9"
+      ]
+    },
+    {
+      "id": "M146",
+      "target": "LOGIN_THROTTLE",
+      "sabotage": "DO throw at R8c → proceed to BSI (fail open)",
+      "red": [
+        "AU17.6"
+      ]
+    },
+    {
+      "id": "M147",
+      "target": "LOGIN_THROTTLE",
+      "sabotage": "no 1 s timeout on DO calls (hang)",
+      "red": [
+        "AU17.6"
+      ]
+    },
+    {
+      "id": "M148",
+      "target": "siteverify",
+      "sabotage": "outage (signup/comment) → 403 `try_again`",
+      "red": [
+        "AU18.5"
+      ]
+    },
+    {
+      "id": "M149",
+      "target": "S-G5",
+      "sabotage": "remove the 10/60 s per-user leaderboard limit",
+      "red": [
+        "L6.3"
+      ]
+    },
+    {
+      "id": "M150",
+      "target": "N7",
+      "sabotage": "forward client `scoring_field`/`daily_workout_id`",
+      "red": [
+        "L2.2"
+      ]
+    },
+    {
+      "id": "M151",
+      "target": "N9",
+      "sabotage": "forward client `limit`/`offset`",
+      "red": [
+        "L2.2"
+      ]
+    },
+    {
+      "id": "M152",
+      "target": "N7",
+      "sabotage": "no-`scoring_field` component → call upstream",
+      "red": [
+        "L6.2"
+      ]
+    },
+    {
+      "id": "M153",
+      "target": "S-G8",
+      "sabotage": "413 body `{\"error\":\"too_large\"}`",
+      "red": [
+        "P3.3"
+      ]
+    },
+    {
+      "id": "M154",
+      "target": "S-G8",
+      "sabotage": "2xx missing `id` passed through as 201",
+      "red": [
+        "P1.2"
+      ]
+    },
+    {
+      "id": "M155",
+      "target": "N12",
+      "sabotage": "relay BSI 403 body",
+      "red": [
+        "P9.3"
+      ]
+    },
+    {
+      "id": "M156",
+      "target": "Q2",
+      "sabotage": "duplicate params take the first value",
+      "red": [
+        "W3.5"
+      ]
+    },
+    {
+      "id": "M157",
+      "target": "Q12",
+      "sabotage": "HEAD on `/csrf` mints the pre cookie",
+      "red": [
+        "AU1.3"
+      ]
+    },
+    {
+      "id": "M158",
+      "target": "Q16",
+      "sabotage": "accept any `aud` array containing ours",
+      "red": [
+        "AU12.5"
+      ]
+    },
+    {
+      "id": "M159",
+      "target": "Q9",
+      "sabotage": "count UTF-16 units",
+      "red": [
+        "P3.2"
+      ]
+    },
+    {
+      "id": "M160",
+      "target": "S-G12",
+      "sabotage": "submit not disabled while in flight",
+      "red": [
+        "C4.4"
+      ]
+    },
+    {
+      "id": "M161",
+      "target": "S-G16",
+      "sabotage": "absent-entry cookie → 401 without clearing the cookie",
+      "red": [
+        "P4.2"
+      ]
+    },
+    {
+      "id": "M-DO1",
+      "target": "SESSION DO (1.4.9)",
+      "sabotage": "never call `setAlarm`",
+      "red": [
+        "AU5.y",
+        "AU5.3"
+      ]
+    },
+    {
+      "id": "M-DO2",
+      "target": "logout (1.4.9)",
+      "sabotage": "logout skips `storage.deleteAll()` (alarm still deleted, KV still deleted)",
+      "red": [
+        "AU5.y",
+        "AU7.8",
+        "AU8.1",
+        "AU8.2",
+        "AU8.4"
+      ]
+    },
+    {
+      "id": "M-DO3",
+      "target": "SESSION DO (1.4.9)",
+      "sabotage": "alarm set at `created+90d` only",
+      "red": [
+        "AU5.y",
+        "AU5.3"
+      ]
+    },
+    {
+      "id": "M-Q5a",
+      "target": "logout (1.4.10 Q5)",
+      "sabotage": "KV `/me` delete and DO clear in one `try`, KV first: when the KV delete throws, `deleteAll()` is skipped (writes then succeed after a failed delete)",
+      "red": [
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M-Q5b",
+      "target": "`/me` (1.4.10 Q5)",
+      "sabotage": "per-isolate memo of the KV `/me` read for 300 s (signed in beyond 60 s after a failed or late delete)",
+      "red": [
+        "AU7.8",
+        "AU8.4"
+      ]
+    },
+    {
+      "id": "M-TTL1",
+      "target": "`/me` KV put (G10)",
+      "sabotage": "`expirationTtl: 2592000` (30 d) on every `sess:*` put",
+      "red": [
+        "AU5.3",
+        "AU5.4",
+        "AU5.z",
+        "AU7.8"
+      ]
+    },
+    {
+      "id": "M-TTL3",
+      "target": "`/me` miss, DO down (G10 1.4.12)",
+      "sabotage": "return 200 `{\"signed_in\":false}` instead of 503",
+      "red": [
+        "AU5.z"
+      ]
+    },
+    {
+      "id": "M-TTL2",
+      "target": "`/me` miss (G10)",
+      "sabotage": "KV miss returns `{signed_in:false}` instead of rebuilding from the DO",
+      "red": [
+        "AU5.4",
+        "AU5.z"
+      ]
+    },
+    {
+      "id": "M-KVF1",
+      "target": "user-acting routes (§0d B3)",
+      "sabotage": "require a KV `sess:*` hit before consulting the DO (KV-first)",
+      "red": [
+        "AU5.k",
+        "AU5.4",
+        "AU5.6"
+      ]
+    },
+    {
+      "id": "M-TOK1",
+      "target": "client + vite.config (§0l B2)",
+      "sabotage": "`client/src/lib/sanity.ts` reads `import.meta.env.N` (passed as the client `token`) and `vite.config.ts` adds `define: { \"import.meta.env.N\": JSON.stringify(process.env.SANITY_API_READ_TOKEN) }`",
+      "red": [
+        "TK1",
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK2",
+      "target": "env file (§0e)",
+      "sabotage": "add `VITE_SANITY_API_READ_TOKEN=` to `.env.example` only",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK3",
+      "target": "TK2 (§0h)",
+      "sabotage": "revert TK2 to bare-name matching (any `VITE_SANITY_API_READ_TOKEN`)",
+      "red": [
+        "TK2.m"
+      ]
+    },
+    {
+      "id": "M-TOK4",
+      "target": "TK1 (§0h)",
+      "sabotage": "drop the `process.env` restore after TK1's build",
+      "red": [
+        "TK1.r"
+      ]
+    },
+    {
+      "id": "M-TOK5",
+      "target": "TK2 (§0j (d))",
+      "sabotage": "define-object scan dropped",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK6",
+      "target": "TK2 (§0j (e))",
+      "sabotage": "envPrefix check dropped",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK7",
+      "target": "TK2 (§0k (a))",
+      "sabotage": "optional chaining and whitespace dropped (literal `.` only, no spaces)",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK8",
+      "target": "TK2 (§0k (a2)/(a3))",
+      "sabotage": "destructuring and static alias dropped",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK9",
+      "target": "TK2 (§0k (c))",
+      "sabotage": "bracket forms of `secrets`/`vars` dropped",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK10",
+      "target": "TK2 (§0k)",
+      "sabotage": "lines containing `//` or `#` skipped",
+      "red": [
+        "TK2"
+      ]
+    },
+    {
+      "id": "M-TOK12",
+      "target": "TK2 (§0n 1, QA)",
+      "sabotage": "exclusion prefix widened to `worker/__fixtures__/`",
+      "red": [
+        "TK2.x"
+      ]
+    },
+    {
+      "id": "M-TOK13",
+      "target": "TK2 (§0n 1, QA)",
+      "sabotage": "exclusion prefix matched without the trailing slash (`worker/__fixtures__/tk2-m7`, so `tk2-m7x/` is skipped)",
+      "red": [
+        "TK2.x"
+      ]
+    },
+    {
+      "id": "M-TOK14",
+      "target": "TK2.m7 (§0n 1, QA)",
+      "sabotage": "fixture md5 assertion skipped",
+      "red": [
+        "TK2.m7"
+      ]
+    },
+    {
+      "id": "M-TOK15",
+      "target": "TK2 (§0o 3)",
+      "sabotage": "exclusion matched unanchored (`path.includes(\"worker/__fixtures__/tk2-m7/\")`)",
+      "red": [
+        "TK2.x"
+      ]
+    },
+    {
+      "id": "M-TOK11",
+      "target": "vite.config (§0l B2)",
+      "sabotage": "#10's guard removed from `vite.config.ts`",
+      "red": [
+        "TK1.g"
+      ]
+    },
+    {
+      "id": "M-RS2",
+      "target": "TK1 (§0l B2, §0n 3, §0r.7)",
+      "sabotage": "vacuity guard removed (empty outDir passes); killed by TK1's vacuity row under the (ii) setup (`N` unset); R-A evidence on Node 24 for the handoff SHA only",
+      "red": [
+        "TK1"
+      ]
+    },
+    {
+      "id": "M-CK1",
+      "target": "CK-P1",
+      "sabotage": "skip the header gate-count compare (pin compare only)",
+      "red": [
+        "CK-P1"
+      ]
+    },
+    {
+      "id": "M162",
+      "target": "S-G19",
+      "sabotage": "allowlist by line number only (shifted Home.tsx line or `removeItem(\"auth\")` at :494 passes)",
+      "red": [
+        "AU22.1"
+      ]
+    },
+    {
+      "id": "M-WL1",
+      "target": "worker/auth login",
+      "sabotage": "fallback to `/bsi/v1/auth/login` when web-login returns 5xx",
+      "red": [
+        "AU26.1"
+      ]
+    },
+    {
+      "id": "M-WL2",
+      "target": "worker/auth login",
+      "sabotage": "call siteverify on login before forwarding",
+      "red": [
+        "AU26.2"
+      ]
+    },
+    {
+      "id": "M-WL3",
+      "target": "worker/auth login",
+      "sabotage": "`trim()` the token",
+      "red": [
+        "AU26.2"
+      ]
+    },
+    {
+      "id": "M-WL4",
+      "target": "worker/auth login",
+      "sabotage": "`recaptcha_failed` → `{\"error\":\"recaptcha_failed\"}`",
+      "red": [
+        "AU26.3"
+      ]
+    },
+    {
+      "id": "M-WL5",
+      "target": "worker/auth login",
+      "sabotage": "`login_disabled` → 403",
+      "red": [
+        "AU26.3",
+        "AU16.1"
+      ]
+    },
+    {
+      "id": "M-WL6",
+      "target": "worker/auth login",
+      "sabotage": "replace BSI `Retry-After` with 60",
+      "red": [
+        "AU26.3",
+        "AU26.7",
+        "AU26.10",
+        "AU26.11"
+      ]
+    },
+    {
+      "id": "M-WL7",
+      "target": "worker/auth login",
+      "sabotage": "`client_not_allowed` → 403 `forbidden`",
+      "red": [
+        "AU26.3"
+      ]
+    },
+    {
+      "id": "M-WL11",
+      "target": "worker/auth login",
+      "sabotage": "count `recaptcha_failed` toward R8a",
+      "red": [
+        "AU26.5",
+        "AU17.13"
+      ]
+    },
+    {
+      "id": "M-WL13",
+      "target": "worker/auth login",
+      "sabotage": "key-ceiling 429 → 503 `unavailable`",
+      "red": [
+        "AU26.7"
+      ]
+    },
+    {
+      "id": "M-WL14",
+      "target": "worker/auth/login.ts",
+      "sabotage": "direct `` fetch(`${base}/wp-json/bsi/v1/auth/web-login`) `` bypassing `upstream.ts`",
+      "red": [
+        "AU26.8"
+      ]
+    },
+    {
+      "id": "M-WL15",
+      "target": "worker/auth login",
+      "sabotage": "map by status: every 401 → `invalid_login`",
+      "red": [
+        "AU26.9",
+        "AU26.3"
+      ]
+    },
+    {
+      "id": "M-WL16",
+      "target": "worker/auth login",
+      "sabotage": "map by status: every 401 → 503 `unavailable`",
+      "red": [
+        "AU26.9",
+        "AU26.3",
+        "AU16.1",
+        "AU17.1"
+      ]
+    },
+    {
+      "id": "M-RA1",
+      "target": "worker/auth login (QA, ruling 3)",
+      "sabotage": "pass BSI `Retry-After` through unclamped",
+      "red": [
+        "AU26.3",
+        "AU26.7",
+        "AU26.10",
+        "AU26.11"
+      ]
+    },
+    {
+      "id": "M-RA2",
+      "target": "worker/comments write + like (QA, 1.22)",
+      "sabotage": "pass BSI `Retry-After` through unclamped on comment POST/PATCH/DELETE/like (login path untouched)",
+      "red": [
+        "CW13.1",
+        "AU26.11"
+      ]
+    },
+    {
+      "id": "M-WL17",
+      "target": "worker/auth login (spec 1.6.4; alias QA M-LG1)",
+      "sabotage": "on BSI 5xx, log the upstream response/request body (`console.error(\"web-login failed\", await res.text(), body)`)",
+      "red": [
+        "AU20.1"
+      ]
+    },
+    {
+      "id": "M-RA3",
+      "target": "worker/comments (QA, 1.22)",
+      "sabotage": "comment routes use their own Retry-After parsing (`parseInt`, no clamp/grammar) instead of the shared parser",
+      "red": [
+        "AU26.11",
+        "CW13.1"
+      ]
+    },
+    {
+      "id": "M-WL14b",
+      "target": "any non-upstream worker file (spec 1.6.4 / CQ N4)",
+      "sabotage": "`globalThis.fetch(`${base}/wp-json/bsi/v1/auth/web-login`)`",
+      "red": [
+        "AU26.8"
+      ]
+    },
+    {
+      "id": "M-WL14c",
+      "target": "worker/auth/login.ts (CQ N4)",
+      "sabotage": "`const f = fetch; f(url)` with the URL built inline",
+      "red": [
+        "AU26.8"
+      ]
+    },
+    {
+      "id": "M-WL14d",
+      "target": "worker/auth/login.ts (CQ N4)",
+      "sabotage": "`fetch(new Request(url))` with `url` built in another non-upstream module",
+      "red": [
+        "AU26.8"
+      ]
+    },
+    {
+      "id": "M95b",
+      "target": "worker/auth login (spec 1.6.4; alias QA M-IP1)",
+      "sabotage": "forward the incoming `X-Forwarded-For` on web-login",
+      "red": [
+        "AU2.1"
+      ]
+    },
+    {
+      "id": "M-RA4",
+      "target": "`parseRetryAfter` (QA, 1.23)",
+      "sabotage": "all-digit value above `Number.MAX_SAFE_INTEGER` (or non-finite) → 60 instead of 600",
+      "red": [
+        "AU26.3",
+        "AU26.7",
+        "AU26.10",
+        "AU26.11",
+        "CW13.1"
+      ]
+    },
+    {
+      "id": "M-RA5",
+      "target": "`parseRetryAfter` (QA, 1.23)",
+      "sabotage": "return type widened to `number` (runtime unchanged)",
+      "red": [
+        "AU26.11"
+      ]
+    },
+    {
+      "id": "M-RA6",
+      "target": "`parseRetryAfter` (QA, 1.23)",
+      "sabotage": "no lower clamp: `0` → 0 (type kept via cast)",
+      "red": [
+        "AU26.3",
+        "AU26.10",
+        "AU26.11",
+        "CW13.1"
+      ]
+    },
+    {
+      "id": "M-SU1",
+      "target": "worker/auth signup (QA, 1.23)",
+      "sabotage": "a failed signup siteverify takes an R8c `login:global` slot",
+      "red": [
+        "AU17.14"
+      ]
+    },
+    {
+      "id": "M-SC1",
+      "target": "worker/auth login (QA, ruling 2)",
+      "sabotage": "token shape check after the R8c slot-take",
+      "red": [
+        "AU17.9",
+        "AU26.2"
+      ]
+    },
+    {
+      "id": "M-WL12",
+      "target": "worker/auth login",
+      "sabotage": "check R8c before R8b",
+      "red": [
+        "AU26.6"
+      ]
+    },
+    {
+      "id": "M-P1a",
+      "target": "client CommentThread POST",
+      "sabotage": "on 503/malformed 201/network error, immediately re-POST once",
+      "red": [
+        "CT-P1"
+      ]
+    },
+    {
+      "id": "M-P1b",
+      "target": "client CommentThread POST",
+      "sabotage": "`setTimeout(() => post(), 2000)` retry",
+      "red": [
+        "CT-P1"
+      ]
+    },
+    {
+      "id": "M-P1c",
+      "target": "client CommentThread POST",
+      "sabotage": "if the refetch GET fails, re-POST",
+      "red": [
+        "CT-P1"
+      ]
+    },
+    {
+      "id": "M-JL1",
+      "target": "built HTML / AU19.3 check",
+      "sabotage": "inject executable inline script variants (a/b/c) into built index.html",
+      "red": [
+        "AU19.3"
+      ]
+    }
+  ],
+  "descriptions": {
+    "A1.1": "`git merge-base --is-ancestor 9f7129d7 HEAD` exits 0, and `git diff 9f7129d7 HEAD -- client/src/pages/the-daily-fix/data.ts client/src/pages/the-daily-fix/data.test.ts` is empty except lines Spec lists. Proof: run on `3470e50c` → non-zero.",
+    "A1.3": "No surviving BFF assertions: `rg -n \"metfix-bff|wispy-mode-982d\" client/src` empty; `data.test.ts` \"asks the Worker for an ISO date, never a YYMMDD path segment\" asserts `/api/daily-fix?date=` (main's), not the BFF host.",
+    "W1.1": "`GET /api/daily-fix/comments?date=2025-02-10&type=all` with upstream 200 fixture → 200, and exactly 1 upstream call (WT1).",
+    "W1.2": "`/api/daily-fix/comments/`, `/api/daily-fix/commentsx`, `/api/comments`, `/api/daily-fix/Comments`, `/api/daily-fix/comments/1` → each 404, body exactly `{\"error\":\"not_found\"}`, 0 upstream calls (§7 sibling case).",
+    "W2.1": "PUT, PATCH, DELETE, OPTIONS, TRACE → 405, body exactly `{\"error\":\"method_not_allowed\"}`, `Allow: GET, HEAD, POST` exactly, no `Access-Control-*` header, 0 upstream (WT4 as corrected, Q2).",
+    "W2.2": "HEAD → same status and header set as GET (minus body), body length 0.",
+    "W3.1": "`date` missing, `2025-2-10`, `2025-02-30`, `250210`, `2025-02-10T00:00`, `2025-02-10%00` → 400 `{\"error\":\"invalid_date\"}`, 0 upstream (WT3).",
+    "W3.2": "`type` missing, `BELLY`, `x`, `all,belly`, `belly%00` → 400 `{\"error\":\"invalid_type\"}`, 0 upstream.",
+    "W3.5": "(Q2) Any duplicated param (`date` twice, `type` twice, even equal values) → 400 `{\"error\":\"invalid_request\"}`, 0 upstream; same rule asserted on `/api/daily-fix/leaderboard` and `/api/auth/username-check`.",
+    "W3.3": "Extra params `foo=1&key=x&api_key=y&user_id=5&_method=POST&type=all&date=2025-02-10` → upstream URL string equals exactly `https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2025-02-10&type=all`.",
+    "W3.4": "`type=belly` → upstream URL exactly `…/comments?date=2025-02-10&type=belly`.",
+    "W4.1": "No `DAILY_FIX_API_KEY` → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`, `Cache-Control: no-store`, 0 upstream.",
+    "W4.2": "Upstream never resolves (honours `signal`): fake timers; at 2999 ms the promise is pending, at 3000 ms → 503 `unavailable`, `Retry-After: 300`. The `signal` passed is aborted at 3000 ms.",
+    "W4.3": "`bsiBaseUrl=\"https://evil.example/wp-json/metfix/v1/daily-fix\"` and `\"https://brokenscience.org.evil.example/…\"` → 0 fetch calls, 503 (WT8, T3).",
+    "W5.1": "Incoming request carries `Cookie`, `Authorization: Bearer EVIL`, `X-WP-Nonce`, `X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`, `Forwarded`, `Origin`, `Referer`. Upstream header key set (lower-cased) `toStrictEqual([\"accept\",\"user-agent\",\"x-api-key\"])`; values `application/json`, `metfixhome",
+    "W6.1": "upstream 400 → 400 `{\"error\":\"invalid_request\"}`.",
+    "W6.2": "upstream 404 → 404 `{\"error\":\"not_found\"}`, `Cache-Control: no-store` (not `public, max-age=60` as at `index.ts:418-424`), 0 `cache.put`.",
+    "W6.3": "upstream 401 → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`; `fetchDailyFixComments` returns `{kind:\"unauthorized\"}` (direct unit call) and one log line naming kind `unauthorized` (R2/W6).",
+    "W6.4": "upstream 403 → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`; outcome `{kind:\"forbidden\"}` and a log line naming `forbidden` (distinct from W6.3).",
+    "W6.5": "upstream 429 → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 60`.",
+    "W6.6": "upstream 500 and 502 → 503 `unavailable`, `Retry-After: 300`.",
+    "W6.7": "upstream 200 with body `not json` and with `{\"comments\":\"x\"}` (wrong shape) → 503 `unavailable`, `Retry-After: 300`.",
+    "W6.8": "fetch throws `TypeError` → 503 `unavailable`, `Retry-After: 300`.",
+    "W6.9": "Common to W6.1–W6.8, asserted inside each: `Cache-Control: no-store`; the upstream body sentinel `UPSTREAM_LEAK_BODY` and upstream header `X-Upstream-Leak` are absent from the response; `KEY` absent from body and every header (WT5, T1b). This ID is the aggregate assertion over all eight upstream out",
+    "W7.1": "`type=all` response `toStrictEqual` the expected `{comments:{belly,body,brain}, meta}` built from the fixture.",
+    "W7.2": "`type=brain` response top-level keys exactly `[\"comments\",\"meta\"]` with `comments` an array.",
+    "W7.3": "Every comment and nested reply has key set exactly `id,user,content,timestamp,like_count,parent_id,deleted,edited,replies`, and `user` has key set exactly `[\"display_name\"]`. Fixture adds `user.id`, `liked`, `user.email`, `author_email`, `ip`: all absent (T5, T13-style).",
+    "W7.4": "200 `Content-Type: application/json; charset=utf-8` exactly.",
+    "B4W.1": "(S-G9, fail closed until D-NAME) Shared public-name helper used by W7, L5 and `/me`: a row carrying only `display_name` → `Member` for every value incl. `\"Jane\"`, `\"\"`, `\"Unknown\"`, `\"a@b.co\"`; `\"[Anonymous]\"` (deleted==2, comments only) kept. Positive control (fixture field name `public_name_safe` ",
+    "W8.1": "Fixture with a `deleted==1` top-level comment and a `deleted==1` reply under a live comment: neither id appears anywhere in the response; no string `removed`, `deleted`, `[Deleted]` in body; the remaining comments keep fixture order (WT9, T10).",
+    "W8.2": "`deleted==2` row → `user.display_name === \"[Anonymous]\"`, content kept.",
+    "W8.3": "Live replies under a `deleted==1` parent are absent (Q-BSI-2b default).",
+    "W9.1": "Two identical anonymous `type=all` GETs → exactly 1 upstream call; both bodies byte-equal; both `Cache-Control: public, max-age=0, s-maxage=60` (WT6).",
+    "W9.2": "`cache.put` key string equals exactly `https://cache.metfix.internal/daily-fix/comments?date=2025-02-10`, also when the request had extra params; `type=belly` GET → 0 `cache.put` and 0 `cache.match`.",
+    "W9.3": "For each W6 outcome → 0 `cache.put`; a following good request makes a fresh upstream call.",
+    "W9.4": "(R3, replaces 1.4's bypass) After an anonymous GET primes the cache, a GET with `Authorization: Bearer X` and a GET with a valid session `Cookie` → 0 upstream calls, served from the same key `…?date=2025-02-10`; a first request carrying Cookie stores under that same key; body byte-equal to the anony",
+    "W9.6": "Cache uses `caches.default` injectable as `deps.cachesDefault` (R2/W9): with an injected fake, `put` is called on it, not on a module-global; `handleComments` receives the cache (signature check in the test via the injected fake being hit).",
+    "W9.5": "HEAD first, then GET → the GET body is the full JSON (HEAD never stores an empty body).",
+    "L1.1": "Signed in: `GET /api/daily-fix/leaderboard?date=2025-02-10&type=brain` → 200; exactly 1 day-data read (via the day cache/fetch) and 1 leaderboard upstream call.",
+    "L1.2": "`/api/daily-fix/leaderboard/`, `/api/daily-fix/leaderboards` → 404 `{\"error\":\"not_found\"}`; POST, PUT, DELETE, OPTIONS → 405 `{\"error\":\"method_not_allowed\"}`, `Allow: GET, HEAD`; 0 upstream.",
+    "L2.1": "(0b.3 S-G8) Exact bodies, `no-store`, 0 upstream: bad `date` → 400 `{\"error\":\"invalid_date\"}`; `type` `all`, `x`, missing → 400 `{\"error\":\"invalid_type\"}`; `scaling_filter` `RX`, `x` → 400 `{\"error\":\"invalid_scaling_filter\"}`; duplicate param → 400 `{\"error\":\"invalid_request\"}`.",
+    "L2.2": "(N7, N9) Client extras `daily_workout_id=99&scoring_field=reps&scoring_direction=lower_better&order=asc&leaderboard_mode=all&limit=50&offset=100&user_id=5` → none forwarded: upstream `daily_workout_id`, `scoring_field`, `scoring_direction`, `order` equal the **day fixture's** values; `limit=25`, `of",
+    "L2.3": "Upstream path exactly `https://brokenscience.org/wp-json/metfix/v1/daily-fix/workouts/<day fixture id>/leaderboard`.",
+    "L3.1": "Signed-in upstream header set exactly `accept,authorization,user-agent,x-api-key`; `authorization === \"Bearer \" + ACCESS1` (the session's stored token); the incoming `Authorization: Bearer EVIL` and `Cookie` are not forwarded.",
+    "L3.2": "No key → 503 0 fetch; 3 s timeout → 503; foreign `bsiBaseUrl` → 0 fetch 503.",
+    "L4.1": "Upstream 401 → 503 `{\"error\":\"unavailable\"}` (`Retry-After: 300`, `no-store`); other W6 rows as W6.1–W6.8 (table-driven); no upstream body relayed.",
+    "L5.1": "(N10) Each row key set exactly `rank,public_name,score_value,scaling_mode,logged_at,is_self`; `user_id`, `workout_log_id`, `workout_title`, `within_official_window` absent. Top-level key set exactly the L5 keys.",
+    "L5.2": "`public_name` → `Member` for a row with only `display_name`/no safe field (S-G9); safe field `Jane` kept (B4 helper).",
+    "L6.1": "(S-G5) Every leaderboard response (200 and errors) `Cache-Control: no-store`; 0 `cache.put`, 0 `cache.match` (L6 cache text removed).",
+    "L6.3": "(S-G5) Same `bsi_user_id`, 11 reads in 60 s (any IP) → 11th 429 `{\"error\":\"rate_limited\"}`, `Retry-After: 60`, 0 BSI; another user → allowed; limiter key contains the `bsi_user_id`, not the IP.",
+    "L6.4": "(S-G5) Client: per-date Map cache + single-flight: two concurrent leaderboard renders for a date → 1 request; back-navigation → 0.",
+    "L6.2": "(N7) Day data whose component has no `scoring_field` → 404 `{\"error\":\"no_leaderboard\"}`, 0 leaderboard calls; day data unavailable → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`, 0 leaderboard calls.",
+    "L7.1": "Client requests exactly `/api/daily-fix/leaderboard?` + params (relative; `fetch` URL `startsWith(\"/api/\")`, no `http`).",
+    "L7.2": "Fetch 503 → the text `Leaderboard unavailable right now.` is the exact `textContent` of the status node; no `{`, `error`, `unavailable\"` JSON in the DOM.",
+    "L7.3": "`public_name` `<img src=x onerror=alert(1)>` → `querySelector(\"img\")` null within the leaderboard, and the row's text equals the literal string.",
+    "L7.4": "Client `Member` fallback for blank `public_name`.",
+    "LB.N9": "Upstream 30-row fixture → exactly 25 rows rendered; no paging control; upstream `limit=25`, `offset=0`.",
+    "LB.N10.1": "`is_self` is computed server-side from the session's `bsi_user_id`: session A → `is_self:true` on A's row only, every other row `false`; session B → B's row; a `?user_id=`, body or `X-User-Id` header naming another user changes nothing; a session without `bsi_user_id` → all `false`.",
+    "LB.N10.2": "Own row inside the top 25 → rendered once, highlighted; own row outside the top 25 → **not** appended, and exactly 1 leaderboard upstream call (no second read, until Q-BSI-10).",
+    "LB.N7": "One leaderboard per day component with a `scoring_field`; filter options exactly `all, rx, scaled`, default `all`; client UI sends only `date`, `type`, `scaling_filter` (fetch URL query key set exact).",
+    "C1.1": "`dailyFixCommentsRequestUrl(\"2025-02-10\") === \"/api/daily-fix/comments?date=2025-02-10&type=all\"`; `rg -n \"DAILY_FIX_BFF_URL\" client/src/pages/the-daily-fix/comments.ts` empty (CT1).",
+    "C2.1": "The comments `fetch` init: `method` `GET` (or absent), headers `toStrictEqual({Accept:\"application/json\"})`, no `credentials` key, no `Authorization`.",
+    "C3.1": "`mapDailyFixComments` on the W7 fixture returns the expected array exactly; author `\"\"`/`\"  \"` → `Member` (CT3).",
+    "C4.1": "UI states exact text: `Loading comments…` during pending; `Comments are unavailable right now.` on 503 and on 404; `No comments yet.` only on a 200 empty list (absent on 503/404).",
+    "C4.2": "Logged-out submit (`/me` → signed out) opens `JoinModal` (dialog role present) and makes 0 `POST` fetches.",
+    "C4.3": "Signed-in submit sends exactly one `POST /api/daily-fix/comments` with `X-CSRF-Token` from `/api/auth/csrf`, `Content-Type: application/json`, body key set `date,type,content` (+`parent_comment_id` on reply), and no `Authorization`.",
+    "C4.4": "(S-G12) While a POST is in flight the submit control is `disabled`; 3 further clicks and an Enter keypress send 0 more POSTs (spy count 1).",
+    "CT-P1": "(§0b.6 item 7) No auto-retry. Four cases, table-driven: (a) POST → 503 `unavailable`; (b) POST → 201 body missing `id`; (c) POST fetch rejects with `TypeError` (network error); (d) POST fetch throws synchronously. For each: exactly 1 `POST /api/daily-fix/comments`, then exactly 1 `GET /api/daily-fix",
+    "CT2": "Comment content `<img src=x onerror=alert(1)>` and `<script>window.__x=1</script>` render as text: `querySelector(\"img, script\")` null in the thread; `textContent` equals the literal; `window.__x` undefined (T6).",
+    "C5.1": "(= RS-C5, part 1) Scan `client/` and `shared/` for `metfix-bff|wispy-mode-982d|workers\\.dev` → `SCAN FAIL: bff-origin <file>:<line>` (CI1).",
+    "C5.2": "(RS-C5, part 2) The same patterns over TK1's in-test build output (every file as shipped; ~~incl. source maps~~ superseded by §0m/§0n 4: a `.map` only if produced) → `SCAN FAIL: bff-origin <file>:<line>`; zero output files → fail.",
+    "C5.3": "(RS-C5, part 3; §0e E2, after main is in) Full scan of `client/` for `VITE_[A-Z_]*(KEY|SECRET|TOKEN)` → `SCAN FAIL: vite-secret <file>:<line>`; no allowlist for the Sanity token.",
+    "C5.4": "(RS-C5 planted proof; replaces the ci.yml-step check, §0f R-B) `https://metfix-bff.wispy-mode-982d.workers.dev` planted at a known line in a client source file → C5.1 names that `<file>:<line>` and C5.2 names the built file; also a planted `VITE_FOO_TOKEN` read → C5.3 names it. Clean control: unplan",
+    "CI2": "(= RS-T6; vitest scan, `SCAN FAIL: html-sink <file>:<line>`, plant proof + clean control per the repo-scan rule) `rg -n \"dangerouslySetInnerHTML|innerHTML\\s*=|insertAdjacentHTML\" client/src/pages/the-daily-fix client/src/components/auth client/src/**/leaderboard*` → no output (stronger scope than sp",
+    "C6.1": "",
+    "C6.2": "",
+    "C6.3": "",
+    "C7.1": "",
+    "C7.2": "",
+    "CKL1.1": "",
+    "CKT1.1": "",
+    "TK1": "(§0e A-TOK1, §0f, §0l B2 (ii): canary leak scan; R-A evidence on **Node 24**, §0r.7) Vitest test. Precondition: `N` (= `VITE_SANITY_API_READ_TOKEN`, assembled at runtime) is absent from `process.env` and from `loadEnv(mode, envDir, \"\")`, else exactly `SCAN SETUP FAIL: N present`. Sets distinct per-r",
+    "TK1.g": "(§0l B2 (i), CI; R-A evidence on **Node 24**, §0r.7) Guard proof: programmatic `build()` with the repo config and `N` set to a per-run canary in `process.env` (snapshot and restore as in TK1.r) → the build must reject with a message equal exactly to `<N> must not be set; the browser client reads San",
+    "TK1.r": "(§0h; R-A evidence on **Node 24**, §0r.7) After TK1's build: `process.env.VITE_SANITY_API_READ_TOKEN` and `process.env.SANITY_API_READ_TOKEN` are restored to their pre-test state (absent stays absent, a preset value comes back byte-equal); `git status --porcelain --ignored -uall` byte-identical; bot",
+    "TK2": "(§0e A-TOK1b, §0j, §0k) File set: `git ls-files` over source (`client/`, `worker/`, `src/`, `scripts/`), env files (`.env*`, `.dev.vars*`, `wrangler.*`), `vite.config.*` and `.github/workflows/*`, excluding `**/*.test.ts`, `**/*.test.tsx`, `docs/**` and the exact path prefix `worker/__fixtures__/tk2",
+    "TK2.m": "(§0l B1, supersedes §0j/§0k fixture; R-A evidence on **Node 24**, §0r.7) Clean case. Fixture = temp git repo: check out #7 head `01f4a8ff059aaf2e7b4c100d6b8cca0453f70810` (base `9f7129d7`), `git merge --no-ff` #10 head `2fdecd342bcd9df2771ddf306b26c6495998d826` (base `9f7129d7`), plus PR2's scanner ",
+    "TK2.m7": "(§0l B1, §0m 1, §0n 1, §0o 1, CI) Committed fixtures (PR2-owned) under `worker/__fixtures__/tk2-m7/`, each stored as `<original name>.fixture` with repo-relative layout. The test copies them into a `mkdtemp(os.tmpdir())` git repo (removed in `finally`), strips the `.fixture` suffix, asserts each fil",
+    "TK2.x": "(§0n 1, §0o 3, CI) Exact, root-anchored exclusion proof, in a temp tree: plant `import.meta.env.N` (N assembled at runtime) at `worker/__fixtures__/tk2-m7x/a.ts` → exactly one `SCAN FAIL: TK2 worker/__fixtures__/tk2-m7x/a.ts:1`; at `worker/__fixtures__/a.ts` → exactly one `SCAN FAIL: TK2 worker/__fi",
+    "CKB1.1": "",
+    "CKCI1.1": "",
+    "CKCI1.2": "",
+    "P1.1": "`POST /api/daily-fix/comments` with `H_OK(S)` + B, reCAPTCHA ok, BSI 2xx → 201, body `toStrictEqual({comment:{id,user:{display_name:\"Member\"},content:\"hello\",timestamp,parent_id:null,like_count:0,deleted:0,edited:0,replies:[]}})` shaped from BSI's body; order: limiter → siteverify → BSI (spy).",
+    "P1.2": "BSI 2xx missing `id`, `content` or `timestamp` (each) → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`, 0 `cache.delete`.",
+    "P3.1": "Body B + `{\"user_id\":99,\"author\":\"admin\",\"id\":5,\"_method\":\"DELETE\",\"status\":\"approved\",\"url\":\"https://evil\"}` → upstream body key set exactly `content,date,type` (+`parent_comment_id`), values from B; content trimmed (`\"  hi  \"` → `\"hi\"`).",
+    "P3.2": "`content` `\"\"`, `\"   \"`, 2001 code points → 400 `{\"error\":\"invalid_request\"}`, NW; 2000 code points incl. astral (`\"😀\"`×2000, 4000 UTF-16 units) → accepted; trim happens before counting.",
+    "P3.3": "Body of 8193 bytes (valid JSON) → 413 `{\"error\":\"payload_too_large\"}`, NW; 8192 bytes → not 413; chunked body without `Content-Length` > 8 KB → 413.",
+    "P3.4": "`Content-Type` missing, `text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data` → 415 `{\"error\":\"unsupported_media_type\"}`, NW.",
+    "P3.5": "Malformed JSON, JSON array, `type:\"all\"`, bad `date`, `parent_comment_id` `0`, `-1`, `\"1 OR 1=1\"`, `1.5`, missing `content` → 400 `{\"error\":\"invalid_request\"}`, NW.",
+    "P4.1": "No cookie (logged out) → 401 `{\"error\":\"signed_out\"}`, NW incl. 0 siteverify and 0 rate-limit consumption (T12, F7).",
+    "P4.2": "(S-G16, 1.4.9 wording: the session is absent when its `SESSION` DO storage is empty or fails R7 decrypt, whatever the KV `/me` cache says) Tampered or absent-entry cookie, plus a cookie whose DO storage is empty while a KV `/me` entry still exists: one char flipped, truncated, 64-char random well-fo",
+    "P4.3": "Upstream write headers set exactly `accept,authorization,content-type,user-agent,x-api-key`; `authorization === \"Bearer \"+ACCESS1`; incoming `Authorization: Bearer EVIL` ignored; body `user_id:99` never reaches BSI (T1c).",
+    "P4.4": "Comment GET with a valid session cookie → upstream has no `authorization` (Bearer only on user-acting calls).",
+    "P4.5": "Session whose stored access token decrypts to `\"\"` (produced by a BSI-C1 fixture returning empty `access_token` at login → login must 503, so no such session exists): login → 503 `unavailable`, no `sess:*` put (F7: never post with key only).",
+    "P5.1": "Body/headers `{\"path\":\"/wp/v2/users\"}`, `X-Forwarded-Host: evil`, `X-HTTP-Method-Override: DELETE` → upstream URL exactly the fixed BSI comments POST path, method `POST`.",
+    "P7.2": "(R17) Client: a 201 POST appends the comment from the Worker's mapped 201 body (exact author/content in the DOM) with 0 additional comments GETs.",
+    "P7.1": "Successful POST → `cache.delete` called exactly once with `https://cache.metfix.internal/daily-fix/comments?date=2025-02-10`; response `Cache-Control: no-store`; 0 `cache.put`. Failed POST (BSI 500) → 0 `cache.delete`.",
+    "P8.1": "",
+    "P8.2": "Order: CSRF-failing and logged-out POSTs leave the limiter untouched (0 `limit()` calls); the limiter runs before siteverify (spy order).",
+    "P9.1": "Concurrent: 6 identical POSTs via `Promise.all` → exactly 5 reach BSI, exactly 1 is 429 `{\"error\":\"rate_limited\"}` (binding atomic). Server-side dedupe isn't required (Q-BSI-8); the client lock is C4.4.",
+    "P9.2": "Replay: a captured valid POST replayed after logout → 401 NW; replayed with the pre-rotation cookie after a refresh → 401 NW; replayed with a CSRF token from a previous session → 403 NW.",
+    "P9.3": "(N12) BSI 403 on POST (any reason/body) → 403 `{\"error\":\"cannot_post\"}`, message `You can't post comments right now.` in the UI; BSI body not relayed. BSI 401 on POST → exactly 1 refresh, 1 retry; a second 401 → 401 `signed_out`, session deleted, cookie cleared.",
+    "AU1.1": "Each §5.1 route/method returns a non-404 status from its handler (table of 10).",
+    "AU1.2": "`/api/auth/`, `/api/auth/login/`, `/api/auth/LOGIN`, `/api/auth/session` (1.3.1 name), `/api/auth/refresh` (removed, R5; GET and POST), `/api/auth/google/callback/` → 404 `{\"error\":\"not_found\"}`, NW.",
+    "AU1.3": "Wrong methods on each route → 405 `{\"error\":\"method_not_allowed\"}`, `Allow` exactly the route's method; HEAD on `/api/auth/csrf`, `/me`, `/username-check` → 405 `Allow: GET` and `/csrf` sets no cookie on HEAD (Q12); NW.",
+    "AU1.4": "OPTIONS on every auth route → 405, no `Access-Control-*` header.",
+    "AU1.6": "(R9) With the Google gate off (default until BSI-C5/C5a + E-A1): `/api/auth/google/start` and `/api/auth/google/callback` → 404 `{\"error\":\"not_found\"}`, 0 Google/BSI calls, and JoinModal renders no Google button (`queryByRole('button',{name:/google/i})` null). With the gate on, AU11/AU12 run.",
+    "AU1.5": "AUTH-HOST (Q22): hosts `metfixhome.x.workers.dev`, `www.metfix.org`, `preview.metfix.org`, `metfix.org.evil.com`, `localhost` → every auth route, `POST /api/daily-fix/comments` and `GET /api/daily-fix/leaderboard` → 404, NW; anonymous comment GET on those hosts is **not** host-gated (200 with fixtur",
+    "AU2.1": "(1.20, §0s.1/§0s.2) Login: exactly 1 fetch to `https://brokenscience.org/wp-json/bsi/v1/auth/web-login`, method POST, JSON body `toStrictEqual({username:\"jane\",password:PW,client_id:CID,recaptcha_token:TOK})`, header set exactly `accept,content-type,user-agent,x-api-key`; no `authorization`, `cookie",
+    "AU2.2": "Login 200: body exactly `{\"signed_in\":true,\"public_name\":\"Jane\"}`; `Set-Cookie` sid ≠ incoming sid; `AUTH_SESSIONS.get(\"sess:\"+h(old))` is null after; exactly 1 new `sess:*` put.",
+    "AU2.3": "Malformed login (non-JSON, missing field, non-string password, identifier > 254 chars, body > 8 KB → 413, wrong content type → 415) → 400 `{\"error\":\"invalid_request\"}` (or 413/415), 0 BSI, 0 `sess:*` put.",
+    "AU2.4": "Two concurrent logins with the same pre-session → each 200 has a distinct sid; `sess:*` put count == number of 200s; no sid shared.",
+    "AU3.1": "Leak corpus (dedicated test, not a global hook): replays login, me, refresh, logout, signup (new/existing), username-check, google start/callback (success and each error), WP callback, comment POST/GET, leaderboard, 401/403/429/503 paths. For every response: status line, every header incl. `Location",
+    "AU3.2": "After `npm run build:cf`: `rg -n \"access_token|refresh_token|bridge_url|client_secret|RECAPTCHA_SECRET|GOOGLE_WEB_CLIENT_SECRET|SESSION_ENC_KEY|DAILY_FIX_API_KEY\" dist/public` → no output (the reCAPTCHA **site** key is allowed).",
+    "AU4.1": "Login `Set-Cookie` parsed: name `__Host-mfx_sid`; value matches `^[A-Za-z0-9_-]{43}$` and decodes to 32 bytes; attribute set exactly `{Path=/, Secure, HttpOnly, SameSite=Lax, Max-Age=2592000}`; no `Domain`, no `Expires` conflict. 200 logins → 200 unique values.",
+    "AU4.2": "`/api/auth/csrf` with no pre cookie → `Set-Cookie: __Host-mfx_pre=…` attributes exactly `{Path=/, Secure, HttpOnly, SameSite=Lax, Max-Age=1800}`; with a valid pre cookie → no new `Set-Cookie`; body key set exactly `[\"csrf\"]`, `Cache-Control: no-store`.",
+    "AU5.1": "(Q13) KV key equals exactly `\"sess:\" + lowercase-hex sha256(rawId)` (64 chars, `^sess:[0-9a-f]{64}$`); no KV key or value contains the raw id.",
+    "AU5.2": "(G1, R7) Token storage is only the `SESSION` DO: after login, the DO instance `sess:<hex>`'s storage holds an R7 `v1.<kid>.<iv>.<ct>` value whose bytes contain none of `ACCESS1`/`REFRESH1` (raw, base64, hex); with `SESSION_ENC_KEY` swapped for another key, the same cookie → comment POST 401 `signed_",
+    "AU5.3": "(G10, 1.4.11) the `sess:*` put after login has `expirationTtl === 60` and no `expiration` option; and after the same write the `SESSION` DO's `storage.getAlarm()` equals `min(last_seen+30d, created+90d)` exactly (ms).",
+    "AU5.4": "(R15, G10) Rolling is held by the `SESSION` DO, not KV: a user-acting request and `/me` at `last_seen+23h` → `/me` is `{signed_in:true,…}` (KV entry long expired, rebuilt from the DO per G10: exactly 1 `sess:*` put, `expirationTtl === 60`, value's `last_seen` unchanged), DO `last_seen` and alarm unc",
+    "AU5.6": "(R15, §0c G6 as ruled inclusive in 1.4.8 by Web Lead: a session expires when `now - created >= 90d`) Absolute cap 90 days from `created`, with daily use so the rolling TTL never lapses: at `created+89d` → valid (comment POST 2xx); at `created+90d−1s` → valid; at exactly `created+90d` → signed out (c",
+    "ENC.T1": "",
+    "ENC.T2": "Entry written with `kid` of `SESSION_ENC_KEY_PREV`; after rotation the session reads fine; the next write uses the current `kid`; nothing is ever encrypted with PREV (spy on `encrypt` key handles).",
+    "ENC.T3": "(R7 AAD = `SESSION` instance name, 1.4.9) Ciphertext copied from instance `sess:A`'s DO storage into `sess:B`'s (real DO under Miniflare, named direct DO-storage seed) → B treated as absent: comment POST and leaderboard 401 `signed_out`, 0 BSI, HTTP status never 500. **Control (vacuity):** the same ",
+    "ENC.T4": "Ciphertext produced under an unrelated 32-byte key → absent, never 500. `importKey` called once per isolate across 20 requests.",
+    "AU5.5": "(named direct DO-storage seed) Flip one byte of the stored ciphertext / IV in the `SESSION` DO → next comment POST 401 `signed_out`, 0 BSI.",
+    "AU5.x": "(1.4.7 §5a, R7; re-checked against the 1.4.9 DO storage model: KV is the token-free `/me` cache, so the scan is unchanged and still applies to every KV write incl. after alarm and logout) KV never holds token material. A recording KV fake (`AUTH_SESSIONS`) logs every `put(key, value, options)` (incl",
+    "AU5.y": "(1.4.9, CQ; real `SESSION` DO class under Miniflare, fake clock) Storage and alarm lifecycle, each its own case with a session created by real login: (a) logout; (b) refresh failure (BSI-C3 400 and 401); (c) 30 days idle — advance the clock to `last_seen+30d` and run the alarm (`runDurableObjectAlar",
+    "AU5.k": "(§0d B3, S-G16: the `SESSION` DO is the source of truth for writes) Login; advance the fake clock to +61 s. **Control (KV entry really gone):** the recording KV fake's `get(\"sess:<hex>\")` returns `null` and its TTL bookkeeping shows the entry expired at +60 s. Then comment POST (`H_OK`) → **201** an",
+    "AU5.z": "(1.4.11 §0c G10) KV `/me` TTL is always 60 s. Recording KV fake (as AU5.x: every `put(key, value, options)`, honouring `expirationTtl` on the fake clock) over the real routes, each flow its own case: (a) password login; (b) `/me` hit (within 60 s of a put) → 0 puts in this flow is **expected** for (",
+    "AU6.1": "Fixation: request login with `Cookie: __Host-mfx_sid=attackerChosenValueAAAA…` → new sid ≠ it; no KV key for `h(attackerChosen)`; afterwards the attacker value → comment POST 401 NW (A-T1).",
+    "AU6.2": "(R4) A silent refresh keeps the sid: no `Set-Cookie: __Host-mfx_sid`, the same `sess:<h(sid)>` key is rewritten (1 put, 0 delete), and the next comment POST with the same cookie succeeds with `Bearer ACCESS2`.",
+    "AU6.3": "Google callback with a pre-existing sid → the old `SESSION` DO instance is cleared and its KV `/me` entry deleted; a new sid and a new DO instance are issued.",
+    "AU7.1": "`access_exp − now = 59 s` → comment POST makes exactly 1 BSI-C3 call, body `toStrictEqual({grant_type:\"refresh_token\",client_id:CID,refresh_token:REFRESH1})`, then the BSI write carries `Bearer ACCESS2`; the `SESSION` DO storage now decrypts to `ACCESS2/REFRESH2` and the KV `/me` entry holds no toke",
+    "AU7.2": "(Q15) BSI 401 on the user call → call, 1 refresh, 1 retry (exactly 3 BSI calls); a second 401 → 401 `{\"error\":\"signed_out\"}`, `SESSION` DO storage empty with no alarm (`deleteAll()` + `deleteAlarm()`), KV `/me` entry deleted, cookie cleared, no 4th call (S-G16, §5.2 S4).",
+    "AU7.3": "Refresh 400 and 401 → `SESSION` DO storage empty and no alarm, KV `/me` entry deleted, response 401 `{\"error\":\"signed_out\"}`, `Set-Cookie` clears sid.",
+    "AU7.4": "(G1) Two concurrent near-expiry user-acting calls for one session in one isolate → exactly 1 BSI-C3 call, made from inside the `SESSION` DO (spy on the DO's fetch, 0 refresh calls from the Worker module).",
+    "AU7.6": "(re-added 1.22 per CQ B1; §0c G1; refresh serialisation, no rotation premise) Runs against the **real `SESSION` DO class under Miniflare or `unstable_dev`** (a hand-written stand-in fails the item). KV fake stale (previous value for 60 s after each `put`, per isolate). Two isolates make concurrent u",
+    "AU7.8": "(S-G18, §0c G1, §0c G9 1.4.8) `SESSION` unbound, its DO call throwing, or not answering within 1 s (fake timers); each of the three outage forms is its own case. (i) **User-acting calls:** comment POST and leaderboard GET → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`, 0 siteverify, 0 BSI; no t",
+    "AU7.7": "",
+    "AU7.5": "(G1) No KV re-read fallback: the KV `/me` entry is never read on the refresh path (0 KV `get` during refresh), and a BSI-C3 400 `invalid_grant` for the current token → session ends 401 `signed_out` (no second refresh attempt, no KV-sourced token).",
+    "AU8.1": "Logout: 204, empty body; `Set-Cookie` `__Host-mfx_sid=` with `Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`; the `SESSION` DO state is cleared (storage empty) **and** the KV `sess:*` entry deleted; exactly 1 BSI-C4 call, body `toStrictEqual({client_id:CID,refresh_token:REFRESH1})`, no `authoriz",
+    "AU8.2": "BSI-C4 500, timeout, throw → still 204, `SESSION` DO storage empty with no alarm, and KV `/me` entry deleted. (`SESSION` DO outage on logout: AU7.8(ii)–(iii); KV delete failure: AU7.8(iv).)",
+    "AU8.3": "Logout with no session (valid pre + CSRF) → 204, 0 BSI calls.",
+    "AU8.4": "After logout the old sid → comment POST 401 NW, `/me` signed out.",
+    "AU9.1": "CSRF token missing, empty, wrong, 1-char-off → 403 `{\"error\":\"forbidden\"}`, NW, on **each** POST route: login, signup, logout, comment POST (table, 4 routes × 4).",
+    "AU9.2": "Origin missing, `null`, `http://metfix.org`, `https://www.metfix.org`, `https://metfix.org.evil.com`, `https://metfix.org:443x` with a correct token → 403 NW on each POST route.",
+    "AU9.3": "`Sec-Fetch-Site: cross-site` and `same-site` with correct token + Origin → 403 NW; header absent → allowed (positive control).",
+    "AU9.4": "(R6 stateless HMAC) Session A's CSRF token with session B's cookie; a pre-session token (`v1.` form) with a signed-in cookie for comment POST; a `v1.sid.` token computed with a different `CSRF_SECRET` → 403 NW. Positive: token computed in-test as `base64url(HMAC-SHA256(CSRF_SECRET,\"v1.\"+pre))` / `\"v",
+    "AU9.5": "Static: the CSRF comparison uses a constant-time compare (`rg -n \"timingSafeEqual|constantTimeEqual\" worker/`), and no `===`/`!==` compare of the csrf value (`rg -n \"csrf[^\\n]*[!=]==\" worker/ --glob '!*.test.ts'` empty).",
+    "AU10.1": "Google callback with no `state` → 302 `Location: /?auth_error=state`, 0 Google token calls, 0 BSI calls, no sid.",
+    "AU10.2": "Unknown state (well-formed, never issued) → same as AU10.1.",
+    "AU10.3": "(DO) Same state used twice in sequence → first proceeds, second → `/?auth_error=state`; Google token endpoint called exactly once in total. Runs against the real `OAUTH_STATE` class (Miniflare/`unstable_dev`, or the class over an in-memory storage that implements the same `take()` transaction); a pl",
+    "AU10.4": "(DO) Unclaimed state: at `created+600 s` the alarm has run (fake/Miniflare alarm fired) and storage is empty; `take()` at 601 s returns empty even if the alarm didn't fire → `/?auth_error=state`, 0 token calls.",
+    "AU10.5": "Callback with a different `__Host-mfx_pre` than the one that started the flow, and with none → `/?auth_error=state`, 0 token calls.",
+    "AU10.6": "A Google-flow state presented at `/api/auth/callback`, and a WP-flow state at `/api/auth/google/callback` → rejected, 0 token calls (A-T12).",
+    "AU10.7": "(DO, Q13) `start` calls `OAUTH_STATE.idFromName(\"oauth:\" + lowercase-hex sha256(state))` once and `put`s `{flow, nonce, verifier, intent, return, pre_hash, created}` (key set exact); 0 KV `put`/`get` with an `oauth:` prefix anywhere in the suite; the raw state isn't in any name or storage key; the c",
+    "AU10.8": "(DO concurrent replay) Two callbacks with the same valid state fired simultaneously (`Promise.all`, same and different isolates sharing the DO) → exactly 1 succeeds with a session; the other → `/?auth_error=state`; Google token endpoint called exactly once; 100 repeats, 0 double successes.",
+    "AU10.9": "(S-G18) `OAUTH_STATE` unbound, `take()`/`put` throwing, or not answering within 1 s (fake timers) → start and callback → 302 `/?auth_error=unavailable`, 0 Google token calls, 0 BSI calls, no session; never falls back to KV or skips the state check.",
+    "AU11.1": "`/api/auth/google/start` 302 `Location` parsed: host `accounts.google.com`, `response_type=code`, `scope=openid email profile`, `code_challenge_method=S256`, `redirect_uri=https://metfix.org/api/auth/google/callback`, `code_challenge === b64url(sha256(verifier))` where verifier comes from the Google",
+    "AU11.2": "Google token request body includes `code_verifier` equal to the stored verifier and `client_secret` only in that server-to-server body.",
+    "AU11.4": "(R12) A browser `GET /api/auth/callback?code=CODE&state=<valid wp state>` → 400 `{\"error\":\"invalid_request\"}`, `no-store`, 0 BSI-C3 calls, state record not consumed; the in-Worker bridge follow is the only path that trades a code; spoofing any request header (`X-MFX-Internal: 1`, `CF-Worker: metfix.",
+    "AU11.3": "WP leg (bridge → `/api/auth/callback`): BSI-C3 `authorization_code` body has `redirect_uri` exactly `https://metfix.org/api/auth/callback` and no `code_verifier` key (1.20: BSI-side PKCE deferred, §0s.10); body key set exactly `{grant_type,code,client_id,redirect_uri}` (Web Lead ruling 2026-10-20: 4",
+    "AU12.1": "ID token signed by a different RSA key (same `kid`) → 302 `/?auth_error=google`, 0 BSI, no sid.",
+    "AU12.2": "`alg:none` and `alg:HS256` (HMAC with the public key bytes) → same.",
+    "AU12.3": "Unknown `kid` → same (JWKS refetched at most once).",
+    "AU12.4": "`iss` `https://evil.example`, `https://accounts.google.com.evil` → same.",
+    "AU12.5": "(Q16) `aud` another client id → reject; `aud` `[ours]` (one element) → accepted; `[ours, other]`, `[other, ours]`, `[]` → reject; `azp` present ≠ ours → reject (AU12.12). Reject = `/?auth_error=google`, 0 BSI.",
+    "AU12.6": "`exp = now − 61 s` → same; `now − 59 s` → accepted (boundary).",
+    "AU12.7": "`iat = now + 61 s` → same.",
+    "AU12.8": "`nonce` missing / different → same.",
+    "AU12.9": "`email_verified` `false` and `\"true\"` (string) on any email-based linking path → same (E-A2 never-link default: `register` on existing → generic error).",
+    "AU12.10": "Valid token → exactly 1 BSI-C5 call; positive control.",
+    "AU12.11": "(R13) JWKS cached in the Cache API (injected fake hit); second callback within 3600 s → 0 JWKS fetches; at 3601 s → 1. A `kid` miss refetches once; a second `kid` miss within 300 s → 0 further fetches (and fails closed); at 301 s → 1.",
+    "AU12.12": "(R13) `azp` present and ≠ the web client id → `/?auth_error=google`, 0 BSI; `azp` absent → not rejected for that reason; `azp` == ours → accepted.",
+    "AU13.1": "`return` values `//evil.com`, `https://evil.com`, `/\\evil.com`, `\\/evil.com`, `javascript:alert(1)`, `/%2F%2Fevil.com`, `/x\\r\\nSet-Cookie:a=b`, `%09//evil`, 513-char path → final callback `Location` exactly `/`; `/the-daily-fix/250210#brain` kept exactly.",
+    "AU13.2": "Callback query `?code&state&return=https://evil.com` → `Location` is the stored value, never the query's.",
+    "AU14.1": "Signup with BSI 200 (new), 409 existing email, 409 existing username, 200 with `bridge_url: BRIDGE` → responses byte-identical (status 202, body `{\"status\":\"check_email\"}`, identical header set ignoring `Date`); no `__Host-mfx_sid` cookie; 0 `sess:*` puts; `BRIDGE`/`QA_SENT_OTT` absent (A-T8, A-T13)",
+    "AU14.2": "BSI-C2 body `toStrictEqual({username,email,client_id:CID,redirect_uri:\"https://metfix.org/api/auth/callback\"})` (+`state` if used); W5 + content-type headers.",
+    "AU14.3": "Bad username format → 400 `{\"error\":\"invalid_username\"}`; BSI 5xx/timeout → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300` (R21).",
+    "AU15.1": "Username check responses `toStrictEqual({available:true})`, `({available:false})`, `({valid:false})`; BSI extra fields (`email_exists`, `user_id`) not relayed.",
+    "AU15.2": "(R16) 21st check in 60 s from one IP → 429 (20th allowed); the username bucket is separate: 20 checks then a signup still succeeds, and 5 signups don't block a check → `{\"error\":\"rate_limited\"}`, `Retry-After: 60`, 0 BSI on the 6th.",
+    "AU15.3": "Without `__Host-mfx_pre`, or without/with wrong `X-CSRF-Token` → 403 NW.",
+    "AU15.4": "Input containing `@` → `{valid:false}`, 0 BSI (never says anything about emails).",
+    "AU16.1": "(§0c G5) BSI 401 `invalid_credentials`, 403 `login_disabled`, 404 → Worker responses byte-identical: 401 `{\"error\":\"invalid_login\"}` + the fixed message, same header set; exactly 1 BSI call each. Early returns that don't depend on user existence (R8a/R8b/R8c, reCAPTCHA, CSRF) are allowed and are not",
+    "AU17.1": "",
+    "AU17.2": "(Q17) 4 failures then a success for the same identifier → R8a counter and lockout cleared (next 5 failures free again); the success doesn't reset R8b or R8c counts (asserted via DO storage).",
+    "AU17.3": "",
+    "AU17.4": "Signup: 6th in 60 s per IP → 429 `Retry-After: 60`, 0 BSI, 0 siteverify.",
+    "AU17.5": "Google start and callback: 21st in 60 s per IP → 429, 0 Google/BSI calls.",
+    "AU17.6": "(S-G18) Fallback counter for binding limits: binding absent → same results for AU17.4 and P8.1. Login layers: `LOGIN_THROTTLE` unbound, a DO call throwing, or not answering within 1 s (fake timers) at R8a, R8b or R8c, each case separately → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`, 0 siteve",
+    "AU17.7": "",
+    "AU17.8": "",
+    "AU17.9": "(R25, CK-W7d; 1.20 §0s.1; order per Web Lead ruling 2026-10-20) Order: call-order spy on one accepted login records exactly R8a → R8b → token shape check → R8c slot-take → BSI-C10, and 0 siteverify. R8c is never touched when R8a, R8b or the shape check reject: 10 R8a-locked, 10 R8b-limited and 10 ma",
+    "AU17.13": "(N5/Q5, Q18; 1.20 §0s.3) Login reCAPTCHA accounting: on one IP, 20 logins each answered by BSI-C10 403 `recaptcha_failed` (10) or 400 `recaptcha_missing` (10) → each 403 `{\"error\":\"try_again\"}`; the 21st (any identifier, any token) → R8b 429, 0 BSI; R8a counters for those identifiers stay 0. BSI-C10",
+    "AU17.14": "(QA, 1.23) Signup reCAPTCHA failure takes 0 R8c slots. Mocked `LOGIN_THROTTLE` DO with real per-instance storage, fake timers. Pre-fill R8c with 24 accepted logins (distinct identifiers/IPs). Then signups failing siteverify (score 0.1, wrong action, `success:false`; 5 each from distinct IPs, under t",
+    "AU17.10": "",
+    "AU17.11": "",
+    "AU17.12": "",
+    "AU18.1": "(1.20: signup and comment POST each; login asserted 0 siteverify in AU26.2) exactly 1 POST to `https://www.google.com/recaptcha/api/siteverify` with form body containing `secret=RSECRET` and `response=<token>`, before the BSI call (call-order spy); missing `recaptcha` field → 403 `{\"error\":\"try_agai",
+    "AU18.2": "Score `0.49` → 403 `try_again`, 0 BSI; `0.5` → proceeds (threshold inclusive, N4).",
+    "AU18.3": "`action` mismatch (`login` token on comment, `comment` on signup, missing) → 403, 0 BSI.",
+    "AU18.4": "`hostname` `metfix.org.evil.com`, `localhost`, missing → 403, 0 BSI.",
+    "AU18.5": "(Q18, N5) siteverify `success:false` and `timeout-or-duplicate` → 403 `{\"error\":\"try_again\"}`, 0 BSI; siteverify HTTP 500, no answer within 3 s (fake timers), non-JSON → 503 `{\"error\":\"unavailable\"}`, `Retry-After: 300`, 0 BSI. The score never appears in any response body or log line (`0.1` sentinel",
+    "AU19.1": "Every `/api/auth/*` response (every status incl. 302/403/404/405/429/503) has exactly `Cache-Control: no-store`, `Pragma: no-cache`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`.",
+    "AU19.2": "(R18) Worker HTML responses for `/the-daily-fix*`: CSP parsed; `script-src` set exactly `{'self', https://www.google.com/recaptcha/, https://www.gstatic.com/recaptcha/}`; `frame-src` ⊇ `{https://www.google.com/recaptcha/, https://recaptcha.google.com/recaptcha/}`; `connect-src` ⊇ `{'self', https://w",
+    "AU19.5": "(R18) Mount: plain page load of `/the-daily-fix` → 0 `<script src*=\"recaptcha\">` elements and 0 requests to `google.com`/`gstatic.com`; opening JoinModal or focusing the signed-in composer → exactly 1 reCAPTCHA script element.",
+    "AU19.3": "Built `dist/public/**/*.html` has no `<script>` without `src` and no `on*=` attributes (parser check).",
+    "AU19.4": "Every 302 `Location` from auth routes has no `code`, `state`, `token`, `access_token` param and no fragment containing them.",
+    "AU20.1": "`console.*` captured across the auth and comment-write test files (incl. error paths): none of `PW`, `ACCESS*`, `REFRESH*`, `CODE`, any issued state/nonce/verifier/sid, `BRIDGE`, `EMAIL`, `KEY`, `RSECRET`; identifiers appear only as 12-hex prefixes (`/\\b[0-9a-f]{12}\\b/`). **Web-login (1.22, spec 1.6",
+    "AU21.1": "`/me` signed in → `toStrictEqual({signed_in:true,public_name:\"Jane\"})` (no `csrf`, R6a), `no-store`; no email/login/user id/token.",
+    "AU21.3": "",
+    "AU21.2": "`/me` with BSI public name `\"jane@x.co\"` → `public_name: \"Member\"`; unknown/garbage cookie → `{\"signed_in\":false}` exactly.",
+    "AU22.1": "(= RS-AU22 part 1; vitest scan, `SCAN FAIL: storage <file>:<line>`) (R20, S-G19) Scoped grep `rg -n \"localStorage|sessionStorage|document\\.cookie\" client/src/**/auth* client/src/lib/session* client/src/pages/the-daily-fix/CommentThread.tsx client/src/pages/the-daily-fix/JoinModal.tsx` → no output. R",
+    "AU22.2": "(RS-AU22 part 2) `brokenscience\\.org` in `client/` and in TK1's build output → `SCAN FAIL: bsi-host <file>:<line>`; plant one in a client file → named at its line.",
+    "AU23.2": "Signed-out `GET /api/daily-fix/leaderboard?…` → 401 `{\"error\":\"signed_out\"}`, 0 upstream, 0 cache; UI shows exactly `Sign in to see the leaderboard.` and makes no leaderboard fetch when `/me` says signed out (P11).",
+    "AU24.1": "No fetch during login hits any `/oauth/authorize` URL; no auth response `Location` points at `brokenscience.org` (`rg -n \"oauth/authorize\" worker --glob '!*.test.ts'` only in bridge-following code, line-pinned in round 1).",
+    "AU26.1": "(§0s.6) (a) vitest repo scan of `worker/**` excluding `*.test.ts` and `*.fixture*`: any BSI path ending `auth/login` without `web-` before it (literal `/bsi/v1/auth/login`, `'/auth/login'` joined to `bsi/v1`, template/concat ending `auth/login`) → `SCAN FAIL: auth-login <file>:<line>`, 0 hits requir",
+    "AU26.2": "(§0s.3, §0s.6) Tokens ` a `, `a+b/c=`, `-_`, `é✓`, a 2,000-char value → BSI body `recaptcha_token` byte-equal to the browser JSON-decoded value (compare UTF-8 bytes, not trimmed strings); body key set exactly `{username,password,client_id,recaptcha_token}`; `client_id === CID` from config when the b",
+    "AU26.3": "(§0s.4) One case per table row: exact status, exact body bytes, `Retry-After` and counter effects. `recaptcha_missing` and `recaptcha_failed` bodies byte-equal to each other and to the signup/comment `try_again` body; `invalid_credentials` and `login_disabled` byte-equal (status 401, same header set",
+    "AU26.5": "(§0s.3, §0s.6) Mocked `LOGIN_THROTTLE` DO, one IP, 20 requests each BSI 403 `recaptcha_failed` → R8b 20, R8a 0, R8c 20 (DO storage counts); 21st → 429 from R8b, 0 BSI, R8c still 20.",
+    "AU26.6": "(A-T38, §0s.6) One IP, 30 requests in 60 s, each BSI 403 `recaptcha_failed` → exactly 20 BSI calls and 20 R8c slots; requests 21–30 → 429 `rate_limited` from R8b, 0 R8c slots, 0 BSI; then a second IP: 5 more proceed (R8c 25), its 6th → 429 from R8c. Threshold boundary: the 20th request from the IP r",
+    "AU26.7": "(1.6.2 §0s.11 (b)) BSI-C10 mock 429 `rate_limited` as the key ceiling and as the per-username limit (differing only in mock labels and BSI message text, both `Retry-After: 17`) → for **each** BSI `Retry-After` case the two Worker responses (key ceiling vs per-username) are byte-identical (status 429",
+    "AU26.8": "(1.6.2 §0s.11 (e)) vitest scan of `worker/**/*.ts` excluding `*.test.ts`, `__fixtures__/**` and `worker/upstream.ts`: 0 `fetch(` whose URL references the BSI base (`${base}` as used in `upstream.ts`, `brokenscience.org`, `brokenstaging.wpengine.com`) or any `/wp-json` path, and 0 `/wp-json` string l",
+    "AU26.9": "(1.6.2 §0s.11 (d)) Map by BSI code, not status: 401 `{code:\"forbidden\",…}` → 503 `unavailable`, `Retry-After: 300`, R8a +0; 401 `{code:\"invalid_credentials\"}` → 401 `invalid_login`, R8a +1; 401 unknown code (`\"nope\"`, missing code) → 503 `unavailable`, R8a +0.",
+    "AU26.10": "(QA ID; Web Lead ruling 2026-10-20 on Retry-After) Worker clamp of BSI-C10 429 `Retry-After`: `1` → 1; `0` → 1 (1.23; was 60); `600` → 600; `601` → 600; `99999` → 600; `999999` → 600; `1000000` → 600; a 30-digit integer (`123456789012345678901234567890`, beyond `Number.MAX_SAFE_INTEGER`) → 600; a 40",
+    "AU26.11": "(QA, CQ N2; spec 1.6.4 §0s.13 (5) `parseRetryAfter`) One shared parser for login (AU26.3/AU26.7/AU26.10) and every comment write/like route (CW13.1): `rg` finds exactly one `parseRetryAfter` definition in `worker/**` (excl. tests) and every BSI-429 branch on login, POST, PATCH, DELETE and like calls",
+    "AU12.c": "ID token `aud` = configured app web client ID → proceeds; `aud` = any other ID (incl. a second \"metfix\" ID, an Android/iOS ID), `aud` array of 2, `azp` ≠ ID → 302 `/?auth_error=google`, 0 BSI. (D-1)",
+    "AU12.v": "`email_verified:true` + intent=register → 1 `/auth/social` call; `false` / `\"true\"` / missing → 0 calls with intent=register, ≤1 with intent=login, no link. (D-2)",
+    "AU12.u": "Unverified token, intent=login → BSI 404 → 302 `/?auth_error=google`, 0 register calls, no session, no `sess:*` put. (D-2)",
+    "AU12.e": "Upstream `/auth/social` body key set exactly `provider,intent,access_token,client_id,redirect_uri,state`; browser `email`/`login_hint`/`sub`/`user_id` (query, body, cookie) never reach BSI; no `login_hint` to Google. (D-2)",
+    "AU18.h": "siteverify `hostname` `brokenscience.org`, `brokenstaging.wpengine.com`, `www.metfix.org`, `evilmetfix.org` → 403 `try_again`, 0 BSI; `metfix.org` → proceeds. (D-3)",
+    "AU25.1": "Host `www.metfix.org`, `pr-2.metfixhome.pages.dev`, `metfixhome.x.workers.dev`, `metfix.org.evil.com`, `localhost` → every `/api/auth/*` route, comment POST/PATCH/DELETE, like → 404, 0 DO, 0 BSI. (D-3)",
+    "AU25.2": "Client with a preview `location.hostname`: no sign-in/sign-up/composer DOM, text \"Sign in on metfix.org to comment.\", no `script[src*=\"recaptcha\"]`, 0 `/api/auth/` fetches. (D-3)",
+    "CW1.1": "PATCH `/api/daily-fix/comments/101` as A, `{\"content\":\"  edit  \"}` → upstream `PATCH …/daily-fix/comments/101`, body exactly `{\"content\":\"edit\"}`, headers exactly `accept,authorization,content-type,user-agent,x-api-key`; 200 `{comment}` W7+B4-W; P3-style 400/413/415; no session → 401, 0 BSI.",
+    "CW2.1": "DELETE `/api/daily-fix/comments/101` as A → upstream DELETE exact path, no body, `authorization === \"Bearer \"+A_ACCESS`; 200 `{\"deleted\":true}`; no session → 401, 0 BSI.",
+    "CW3.1": "`:id` `abc`, `0`, `0101`, `12345678901` → 404, 0 BSI. ~~Like with desired `{liked:true}` when already liked → 0 toggles, 200; when not liked → exactly 1 toggle.~~ (1.16: replaced by CW15.1, idempotent set.)",
+    "CW4.1": "POST/PATCH/DELETE/like with `user_id`, `author`, `owner`, `comment_id`, `id` in body/query and `Authorization: Bearer EVIL` → none reach BSI; Bearer is the session's.",
+    "CW5.1": "B PATCHes 101 → BSI mock 403 → Worker 403 `{\"error\":\"forbidden\"}` fixed body (message \"You can't change this comment.\", 1.16), mock comment unchanged, 0 `cache.delete`, no retry.",
+    "CW5.2": "B DELETEs 101 (also with body `comment_id` = B's own comment) → upstream path `/101`, 403 `{\"error\":\"forbidden\"}`, comment not deleted.",
+    "CW5.3": "B likes 101 → upstream `authorization === \"Bearer \"+B_ACCESS`, mock records the like for B only; no session → 401, never key-only.",
+    "CW6.1": "Likes 1–30 for B on IP → proceed; 31st in 60 s → 429 `rate_limited`, `Retry-After: 60`, 0 BSI; other user/IP allowed. Limiter before siteverify/BSI.",
+    "CW6.2": "5th toggle by B on 101 within 60 s → 429, 0 BSI.",
+    "CW7.1": "Signed-in GET: `no-store`, Bearer sent, `own` true on A's 2 rows and false on the 3rd, no `user.id` at any depth; anonymous GET: no `own`, no `liked`, cached per W9.",
+    "CW8.1": "Successful PATCH, DELETE, like → exactly 1 `cache.delete` for the date key each; BSI 403/500 → 0.",
+    "CW9.1": "PATCH/DELETE/like with missing CSRF, wrong Origin, `Sec-Fetch-Site: cross-site` → 403, 0 BSI, 0 limiter calls.",
+    "CW10.1": "Client: edit/delete only on `own:true`; delete asks to confirm; like rollback on 429/403/503; one in-flight request per comment per action.",
+    "CW11.1": "(D-6, relayed by MetFix Web Lead from Ethan via MetFix CEO, 2026-10-20) BSI mock: owner-or-moderator from the Bearer. Non-moderator B PATCHes and DELETEs 101 → 403 `{\"error\":\"forbidden\"}` fixed body, comment unchanged, 0 `cache.delete`, no retry. Moderator M PATCHes and DELETEs 101 → 200 (BSI allows",
+    "CW11.2": "B with `X-Moderator: 1`, `X-Role: moderator`, body/query `is_moderator:true`, `role:\"moderator\"`, `moderator:true`, cookie `mfx_mod=1` → upstream headers exactly `accept,authorization,content-type,user-agent,x-api-key` (DELETE: no content-type), body key set exactly `content` (PATCH) / no body (DELE",
+    "CW12.1": "Client: `/me` `moderator:true` → edit/delete on others' comments; `moderator` absent / `false` / `\"true\"` / `1`, each with `localStorage.mfx_mod=\"1\"` → none on others' comments; own controls still on `own:true`.",
+    "CW12.2": "(spec §0r.1, §0r.8, §0r.4) `/me` `moderator` equals `can_moderate` stored in the `SESSION` DO at login (password or Google code exchange) and token refresh (true and false cases); non-boolean `can_moderate` (`\"true\"`, `1`, absent) → `false`; request header `X-Moderator: 1` / cookie `mfx_mod=1` doesn",
+    "CW12.3": "(Web Lead addition for 1.19; spec §0r.1, §0r.3) Refresh flip. Start: session whose `SESSION` DO holds `can_moderate:true` and a warm KV `/me` entry with `moderator:true`. A token refresh (user-acting call at `access_exp − now = 59 s`) returns BSI-C3 `can_moderate:false`. Asserts: the refresh rewrite",
+    "CW13.1": "(1.22: Worker clamp per spec 1.6.3) BSI 429 on POST, PATCH, DELETE and like, each case on each of the four routes → 429 `{\"error\":\"rate_limited\"}` with exactly: `Retry-After: 17` → `17`; `600` → `600`; `99999` → `600`; `999999` → `600`; `1000000` → `600`; 30-digit integer → `600`; 400-digit integer ",
+    "CW13.2": "(spec §0r.2, §0r.8) Client: 429 `Retry-After: 17` on post, reply, edit, delete and like → rollback; 0 requests for that action for 17 s (fake timers); re-enabled at 17 s.",
+    "CW14.1": "Client: no reply control on any reply row (top-level rows have one). Worker: BSI nested-reply refusal → 400 `{\"error\":\"invalid_parent\"}`, 1 BSI call, 0 retries.",
+    "CW14.2": "Client: no like control on `deleted != 0` rows (incl. `[Anonymous]`). Worker: BSI like refusal on a deleted comment → 409 `{\"error\":\"comment_deleted\"}`, 0 `cache.delete`.",
+    "CW15.1": "Upstream like body exactly `{\"liked\":true}` / `{\"liked\":false}`; client body with `liked` missing, `\"true\"`, `1`, `null` → 400, 0 BSI; 0 comment reads before the set; every client like request carries boolean `liked`.",
+    "CW13.3": "(spec §0r.2, §0r.8) Client Retry-After cap: 429 `Retry-After: 99999` → control disabled for exactly 600 s, 0 requests, re-enabled at 600 s; remaining time is shown and decreases with the fake clock (`Retry-After: 17` shows 17, then 16 after 1 s).",
+    "CW16.1": "(spec §0r.5, §0r.8) No edit on deleted. Worker: owner and moderator PATCH on a deleted comment, BSI refusal → 409 `{\"error\":\"comment_deleted\"}` (fixed body), 1 BSI call, 0 retries, 0 purges (0 `cache.delete`). Client: no edit control on `deleted != 0` rows, incl. for `/me` `moderator:true` and `own:",
+    "CW16.2": "(spec §0r.5, §0r.8; 1.5.4 wording) Idempotent delete. Worker: DELETE of an already-deleted comment, BSI 204 → Worker 204, 1 BSI call, 0 retries; a second DELETE also → 204. **Client 204 rows (1.5.4):** (a) a repeat-delete 204 is handled exactly like a 200 `{deleted:true}` (same rendered row state, s",
+    "CC1": "(QA; A2.1 box finding, CI) `client/src/pages/the-daily-fix/cloudflare-client.test.tsx` C2, C5 and C6 pass on PR2 merged with main, and the file is byte-identical to main's (blob `dad2dbb24ddfc27b8b98c9eb292ec7fccd9a85f8`, md5 `6e22cfa939ef3c068606e62ad0eedc7f` at main `0bb1ca75`), so the expected co"
+  }
+}

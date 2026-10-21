@@ -1448,6 +1448,18 @@ export const R10_OVERRIDES = {
       );
     },
   },
+
+  M19: {
+    files: ["client/src/pages/the-daily-fix/CommentThread.tsx"],
+    apply() {
+      replaceOnce(
+        "client/src/pages/the-daily-fix/CommentThread.tsx",
+        "{comment.content}",
+        '<span dangerouslySetInnerHTML={{ __html: comment.content }} />',
+        "M19",
+      );
+    },
+  },
 };
 
 export default R10_OVERRIDES;
