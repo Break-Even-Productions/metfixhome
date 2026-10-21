@@ -11,6 +11,8 @@ import {
   bsiFollowBridge,
   bsiSocialAuth,
   normalizeCanModerate,
+  oauthClientId,
+  oauthClientSecret,
   parseRetryAfter,
 } from "../upstream";
 import { PRE_COOKIE, SID_COOKIE, getPre, getSid, setHostCookie } from "./cookies";
@@ -27,6 +29,7 @@ import {
   BODY_INVALID_REQUEST,
   BODY_NOT_FOUND,
   BODY_RATE_LIMITED,
+  BODY_UNAVAILABLE,
   authJson,
   methodNotAllowed,
 } from "./responses";
@@ -412,7 +415,13 @@ export async function handleGoogleCallback(
   const verified = payload.email_verified === true;
   const intent = verified ? rec.intent : "login";
 
-  if (!env.BSI_OAUTH_CLIENT_ID) return authErrorRedirect("google");
+  const oauthClient = oauthClientId(env);
+  const oauthSecret = oauthClientSecret(env);
+  if (!oauthClient || !oauthSecret) {
+    if (!oauthClient) console.log("auth_config_missing", "BSI_OAUTH_CLIENT_ID");
+    else console.log("auth_config_missing", "METFIX_ORG_OAUTH_CLIENT_SECRET");
+    return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
+  }
 
   const bridgeState = randomId32();
   try {
@@ -434,7 +443,7 @@ export async function handleGoogleCallback(
       provider: "google",
       intent,
       access_token: idToken,
-      client_id: env.BSI_OAUTH_CLIENT_ID,
+      client_id: oauthClient,
       redirect_uri: METFIX_CALLBACK_URI,
       state: bridgeState,
     },
@@ -464,7 +473,7 @@ export async function handleGoogleCallback(
     {
       grant_type: "authorization_code",
       code: wpCode,
-      client_id: env.BSI_OAUTH_CLIENT_ID,
+      client_id: oauthClient,
       redirect_uri: METFIX_CALLBACK_URI,
     },
     env,

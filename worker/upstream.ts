@@ -64,6 +64,8 @@ export type Env = {
   OAUTH_STATE: DurableObjectNamespace;
   /** Dedicated metfix.org WP OAuth client id (non-secret). */
   BSI_OAUTH_CLIENT_ID?: string;
+  /** WP OAuth confidential client secret (Worker-only). */
+  METFIX_ORG_OAUTH_CLIENT_SECRET?: string;
   SESSION_ENC_KEY?: string;
   SESSION_ENC_KEY_PREV?: string;
   CSRF_SECRET?: string;
@@ -143,6 +145,193 @@ function readBsiCode(json: unknown): string | null {
     return (json as { code: string }).code;
   }
   return null;
+}
+
+function readOAuthError(json: unknown): string | null {
+  if (json && typeof json === "object" && typeof (json as { error?: unknown }).error === "string") {
+    return (json as { error: string }).error;
+  }
+  return null;
+}
+
+export function oauthClientId(env: Env): string | null {
+  const v = env.BSI_OAUTH_CLIENT_ID;
+  return v && v.length > 0 ? v : null;
+}
+
+export function oauthClientSecret(env: Env): string | null {
+  const v = env.METFIX_ORG_OAUTH_CLIENT_SECRET;
+  return v && v.length > 0 ? v : null;
+}
+
+export function dailyFixApiKey(env: Env): string | null {
+  const v = env.DAILY_FIX_API_KEY;
+  return v && v.length > 0 ? v : null;
+}
+
+export function recaptchaSecret(env: Env): string | null {
+  const v = env.RECAPTCHA_SECRET;
+  return v && v.length > 0 ? v : null;
+}
+
+export type AuthConfig = {
+  clientId: string;
+  clientSecret: string;
+  recaptchaSecret: string;
+  apiKey: string;
+  origin: string;
+};
+
+export type RequireAuthConfigOpts = {
+  /** When true, require non-empty RECAPTCHA_SECRET (login). */
+  needRecaptcha?: boolean;
+  /** When true, require non-empty DAILY_FIX_API_KEY (/me and BSI routes). */
+  needApiKey?: boolean;
+  /** Test/prod BSI base URL; `""` is treated as missing (`BSI_BASE_URL`). */
+  baseUrl?: string;
+};
+
+function logAuthConfigMissing(field: string): void {
+  console.log("auth_config_missing", field);
+}
+
+function resolveAuthOrigin(baseUrl?: string): { origin: string } | { missing: "BSI_BASE_URL" } {
+  if (baseUrl === "") return { missing: "BSI_BASE_URL" };
+  return { origin: originFromOpts({ baseUrl }) };
+}
+
+/**
+ * Validates auth-related bindings. Logs `auth_config_missing` with the field name only.
+ * Returns null when any required value is missing or empty.
+ */
+export function requireAuthConfig(env: Env, opts?: RequireAuthConfigOpts): AuthConfig | null {
+  const originRes = resolveAuthOrigin(opts?.baseUrl);
+  if ("missing" in originRes) {
+    logAuthConfigMissing(originRes.missing);
+    return null;
+  }
+  const clientId = oauthClientId(env);
+  if (!clientId) {
+    logAuthConfigMissing("BSI_OAUTH_CLIENT_ID");
+    return null;
+  }
+  const clientSecret = oauthClientSecret(env);
+  if (!clientSecret) {
+    logAuthConfigMissing("METFIX_ORG_OAUTH_CLIENT_SECRET");
+    return null;
+  }
+  if (opts?.needRecaptcha) {
+    const rs = recaptchaSecret(env);
+    if (!rs) {
+      logAuthConfigMissing("RECAPTCHA_SECRET");
+      return null;
+    }
+  }
+  if (opts?.needApiKey) {
+    const apiKey = dailyFixApiKey(env);
+    if (!apiKey) {
+      logAuthConfigMissing("DAILY_FIX_API_KEY");
+      return null;
+    }
+  }
+  return {
+    clientId,
+    clientSecret,
+    recaptchaSecret: recaptchaSecret(env) ?? "",
+    apiKey: dailyFixApiKey(env) ?? "",
+    origin: originRes.origin,
+  };
+}
+
+/** W5 OAuth token POST (no X-API-Key, no Authorization). */
+function oauthFormHeaders(): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+}
+
+/** GET /wp-json/bsi/v1/me headers (§0u.3). */
+function bsiMeHeaders(apiKey: string, accessToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+    "X-API-Key": apiKey,
+  };
+}
+
+async function oauthTokenFetch(
+  url: string,
+  body: URLSearchParams,
+  fetchImpl: FetchImpl,
+  timeoutMs: number,
+): Promise<BsiHttpResult> {
+  try {
+    assertBsiHost(url);
+  } catch {
+    return { kind: "throw" };
+  }
+  try {
+    const response = await fetchImpl(url, {
+      method: "POST",
+      headers: oauthFormHeaders(),
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const bodyText = await response.text();
+    const raRaw = response.headers.get("Retry-After");
+    const retryAfter = raRaw != null ? parseRetryAfter(raRaw) : null;
+    let json: unknown = null;
+    try {
+      json = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      return { kind: "bad_json", status: response.status, bodyText, retryAfter };
+    }
+    if (response.ok) {
+      return { kind: "ok", status: response.status, json, bodyText, retryAfter };
+    }
+    const oauthErr = readOAuthError(json);
+    const bsiCode = readBsiCode(json);
+    return {
+      kind: "http",
+      status: response.status,
+      json,
+      bodyText,
+      code: oauthErr ?? bsiCode,
+      retryAfter,
+    };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") return { kind: "timeout" };
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      return { kind: "timeout" };
+    }
+    return { kind: "throw" };
+  }
+}
+
+export type BsiMeProfile = {
+  id: number;
+  display_name: string;
+  avatar_url?: string;
+  can_moderate: boolean;
+};
+
+export function parseBsiMeProfile(json: unknown): BsiMeProfile | null {
+  if (!json || typeof json !== "object") return null;
+  const id = (json as { id?: unknown }).id;
+  if (typeof id !== "number" || !Number.isInteger(id)) return null;
+  const display_name = (json as { display_name?: unknown }).display_name;
+  if (typeof display_name !== "string") return null;
+  const avatar_url = (json as { avatar_url?: unknown }).avatar_url;
+  const can_moderate = normalizeCanModerate((json as { can_moderate?: unknown }).can_moderate);
+  return {
+    id,
+    display_name,
+    avatar_url: typeof avatar_url === "string" ? avatar_url : undefined,
+    can_moderate,
+  };
 }
 
 async function bsiFetch(
@@ -404,7 +593,67 @@ export type TokenPairBody = {
   can_moderate?: unknown;
 };
 
-/** BSI-C10: POST /wp-json/bsi/v1/auth/web-login */
+/** Pro OAuth: POST {origin}/oauth/token, grant_type=password (§0u.3). */
+export async function oauthPasswordGrant(
+  body: { username: string; password: string },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/oauth/token`;
+  const form = new URLSearchParams({
+    grant_type: "password",
+    username: body.username,
+    password: body.password,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000);
+}
+
+/** Pro OAuth: POST {origin}/oauth/token, grant_type=refresh_token (§0u.3). */
+export async function oauthRefreshGrant(
+  body: { refresh_token: string },
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/oauth/token`;
+  const form = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: body.refresh_token,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+  });
+  return oauthTokenFetch(url, form, fetchImpl, opts?.timeoutMs ?? 5000);
+}
+
+/** BSI-C11: GET {origin}/wp-json/bsi/v1/me */
+export async function bsiFetchMe(
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: true, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/wp-json/bsi/v1/me`;
+  return bsiFetch(
+    url,
+    {
+      method: "GET",
+      headers: bsiMeHeaders(cfg.apiKey, accessToken),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
+    },
+    fetchImpl,
+  );
+}
+
+/** @deprecated BSI-C10 web-login — use oauthPasswordGrant + bsiFetchMe */
 export async function bsiWebLogin(
   body: WebLoginBody,
   env: Env,

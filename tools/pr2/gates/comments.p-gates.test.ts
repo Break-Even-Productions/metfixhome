@@ -68,8 +68,6 @@ describe("PR2 gates P — comment POST", () => {
       },
     });
     expect(order).toEqual(["limiter", "siteverify", "bsi"]);
-    expect(order.indexOf("limiter")).toBeLessThan(order.indexOf("siteverify"));
-    expect(order.indexOf("siteverify")).toBeLessThan(order.indexOf("bsi"));
     expect(g.writeLimiter.calls.some((k) => k.startsWith("write:"))).toBe(true);
   });
 

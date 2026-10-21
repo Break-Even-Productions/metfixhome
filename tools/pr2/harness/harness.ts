@@ -118,6 +118,7 @@ export function makeEnv(overrides: Partial<Env> & { ASSETS?: Fetcher } = {}): En
     LOGIN_THROTTLE: stubNamespace(),
     OAUTH_STATE: stubNamespace(),
     BSI_OAUTH_CLIENT_ID: "cid_QA",
+    METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
     SESSION_ENC_KEY: "0123456789abcdef0123456789abcdef",
     CSRF_SECRET: "csrf_QA_SECRET_32_bytes_minimum!!",
     RECAPTCHA_SECRET: "RSECRET",

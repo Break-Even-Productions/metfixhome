@@ -1,5 +1,5 @@
 import type { Env, FetchImpl } from "../upstream";
-import { bsiRevokeToken } from "../upstream";
+import { bsiRevokeToken, oauthClientId } from "../upstream";
 import { requireCsrf } from "./csrf";
 import { SID_COOKIE, clearHostCookie, getSid } from "./cookies";
 import { sha256Prefix12 } from "./crypto";
@@ -50,10 +50,11 @@ export async function handleLogout(
     }
   }
 
-  if (refresh && env.BSI_OAUTH_CLIENT_ID) {
+  const clientId = oauthClientId(env);
+  if (refresh && clientId) {
     try {
       await bsiRevokeToken(
-        { client_id: env.BSI_OAUTH_CLIENT_ID, refresh_token: refresh },
+        { client_id: clientId, refresh_token: refresh },
         env,
         fetchImpl,
         { baseUrl: opts?.bsiBaseUrl ?? opts?.baseUrl },

@@ -178,6 +178,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
     SESSION_ENC_KEY: ENCKEY,
     DAILY_FIX_API_KEY: KEY,
     BSI_OAUTH_CLIENT_ID: CID,
+    METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
     fetchImpl: sessionFetch,
   });
   const throttleNs = makeNamespace(LoginThrottleDO, {});
@@ -299,6 +300,7 @@ export function setupGate(opts?: { useWriteBinding?: boolean }): GateCtx {
     LOGIN_THROTTLE: throttleNs as unknown as DurableObjectNamespace,
     OAUTH_STATE: oauthNs as unknown as DurableObjectNamespace,
     BSI_OAUTH_CLIENT_ID: CID,
+    METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",
     SESSION_ENC_KEY: ENCKEY,
     CSRF_SECRET: "csrf_secret_QA_32bytes___________",
     RECAPTCHA_SECRET: RSECRET,

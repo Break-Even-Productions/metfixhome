@@ -3,7 +3,15 @@
  * Instance name / AAD: sess:<sha256hex(id)>.
  */
 import { decryptSessionPayload, encryptSessionPayload } from "../auth/crypto";
-import { bsiRefreshToken, type Env, type FetchImpl } from "../upstream";
+import {
+  bsiFetchMe,
+  oauthRefreshGrant,
+  parseBsiMeProfile,
+  parseRetryAfter,
+  requireAuthConfig,
+  type Env,
+  type FetchImpl,
+} from "../upstream";
 
 export type SessionRecord = {
   bsi_access: string;
@@ -23,11 +31,15 @@ const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Optional injected outbound fetch (tests); production uses platform `fetch`. */
-export type SessionDoEnv = {
-  SESSION_ENC_KEY?: string;
-  SESSION_ENC_KEY_PREV?: string;
-  DAILY_FIX_API_KEY?: string;
-  BSI_OAUTH_CLIENT_ID?: string;
+export type SessionDoEnv = Pick<
+  Env,
+  | "SESSION_ENC_KEY"
+  | "SESSION_ENC_KEY_PREV"
+  | "DAILY_FIX_API_KEY"
+  | "BSI_OAUTH_CLIENT_ID"
+  | "METFIX_ORG_OAUTH_CLIENT_SECRET"
+  | "RECAPTCHA_SECRET"
+> & {
   /** Direct FetchImpl, or a mutable `{ current }` box filled after harness build. */
   fetchImpl?: FetchImpl | { current: FetchImpl };
 };
@@ -183,56 +195,68 @@ export class SessionDO {
     const needsRefresh =
       opts.force === true || record.access_exp - now <= REFRESH_WINDOW_MS;
     if (!needsRefresh) return json({ status: "ok", record });
-    const clientId = this.env.BSI_OAUTH_CLIENT_ID;
-    if (!clientId || !this.env.DAILY_FIX_API_KEY) {
-      return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
+    const cfg = requireAuthConfig(this.env as Env, {
+      needApiKey: true,
+      baseUrl: opts.baseUrl,
+    });
+    if (!cfg) {
+      return json({ status: "unavailable" }, 503, { "Retry-After": "60" });
     }
     const fetchImpl = this.resolveFetch();
-    const upstream = await bsiRefreshToken(
-      {
-        grant_type: "refresh_token",
-        client_id: clientId,
-        refresh_token: record.bsi_refresh,
-      },
+    const upstream = await oauthRefreshGrant(
+      { refresh_token: record.bsi_refresh },
       this.env as Env,
       fetchImpl,
       { baseUrl: opts.baseUrl, timeoutMs: 5000 },
     );
-    if (upstream.kind === "ok") {
-      const tok = upstream.json as {
-        access_token?: string;
-        refresh_token?: string;
-        expires_in?: number;
-        public_name?: string;
-        user_id?: string | number;
-        can_moderate?: unknown;
-      };
-      if (typeof tok.access_token !== "string") {
-        await this.state.storage.deleteAll();
-        return json({ status: "expired" }, 401);
-      }
-      record.bsi_access = tok.access_token;
-      if (typeof tok.refresh_token === "string" && tok.refresh_token) {
-        record.bsi_refresh = tok.refresh_token;
-      }
-      record.access_exp =
-        now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
-      record.last_seen = now;
-      if (typeof tok.public_name === "string" && tok.public_name.trim()) {
-        record.user_public_name = tok.public_name.trim();
-      }
-      if (tok.user_id != null) record.bsi_user_id = String(tok.user_id);
-      if (tok.can_moderate !== undefined) {
-        record.can_moderate = tok.can_moderate === true;
-      }
-      await this.put(aad, record);
-      return json({ status: "ok", record, refreshed: true });
-    }
-    if (upstream.kind === "http" && (upstream.status === 400 || upstream.status === 401)) {
+    if (upstream.kind === "http" && upstream.code === "invalid_grant") {
       await this.state.storage.deleteAll();
       return json({ status: "expired" }, 401);
     }
-    return json({ status: "unavailable" }, 503, { "Retry-After": "300" });
+    if (upstream.kind !== "ok") {
+      const ra =
+        upstream.kind === "http" || upstream.kind === "bad_json"
+          ? (upstream.retryAfter ?? parseRetryAfter(null))
+          : parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    const tok = upstream.json as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+    if (typeof tok.access_token !== "string" || tok.access_token.length === 0) {
+      const ra = parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    const meRes = await bsiFetchMe(tok.access_token, this.env as Env, fetchImpl, {
+      baseUrl: opts.baseUrl,
+      timeoutMs: 5000,
+    });
+    if (meRes.kind !== "ok") {
+      const ra =
+        meRes.kind === "http" || meRes.kind === "bad_json"
+          ? (meRes.retryAfter ?? parseRetryAfter(null))
+          : parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    const profile = parseBsiMeProfile(meRes.json);
+    if (!profile) {
+      const ra = parseRetryAfter(null);
+      return json({ status: "unavailable" }, 503, { "Retry-After": String(ra) });
+    }
+    record.bsi_access = tok.access_token;
+    if (typeof tok.refresh_token === "string" && tok.refresh_token) {
+      record.bsi_refresh = tok.refresh_token;
+    }
+    record.access_exp =
+      now + (typeof tok.expires_in === "number" ? tok.expires_in * 1000 : 3600_000);
+    record.last_seen = now;
+    record.user_public_name = profile.display_name;
+    record.bsi_user_id = String(profile.id);
+    record.can_moderate = profile.can_moderate;
+    await this.put(aad, record);
+    return json({ status: "ok", record, refreshed: true });
   }
 
   private async applyRefresh(

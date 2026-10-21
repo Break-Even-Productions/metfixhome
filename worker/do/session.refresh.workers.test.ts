@@ -1,7 +1,7 @@
 /**
  * AU7.6 / CQ r2 — concurrent refresh on the REAL SessionDO under
  * @cloudflare/vitest-pool-workers (real blockConcurrencyWhile).
- * Rotating refresh token: exactly 1 BSI-C3 call; session stays signed in.
+ * Rotating refresh token: exactly 1 /oauth/token call; session stays signed in.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { env, fetchMock } from "cloudflare:test";
@@ -13,6 +13,7 @@ declare module "cloudflare:test" {
     SESSION_ENC_KEY: string;
     DAILY_FIX_API_KEY: string;
     BSI_OAUTH_CLIENT_ID: string;
+    METFIX_ORG_OAUTH_CLIENT_SECRET: string;
   }
 }
 
@@ -39,28 +40,25 @@ describe("SessionDO real workerd refresh serialisation", () => {
     }
   });
 
-  it("AU7.6 two concurrent ensure-access with rotating token → 1 BSI-C3, nobody logged out", async () => {
+  it("AU7.6 two concurrent ensure-access with rotating token → 1 token POST, nobody logged out", async () => {
     const encKey = env.SESSION_ENC_KEY || bytesToBase64Url(randomBytes(32));
-    // Pool bindings may omit secrets — skip cleanly when SESSION binding absent.
     if (!env.SESSION) {
       expect(env.SESSION, "SESSION DO binding required for workers refresh test").toBeTruthy();
       return;
     }
 
-    let bsiCalls = 0;
+    let tokenCalls = 0;
     fetchMock
       .get("https://brokenscience.org")
-      .intercept({ path: /\/wp-json\/metfix\/v1\/proxy\/oauth\/token/, method: "POST" })
+      .intercept({ path: "/oauth/token", method: "POST" })
       .reply(() => {
-        bsiCalls += 1;
+        tokenCalls += 1;
         return {
           statusCode: 200,
           data: JSON.stringify({
             access_token: ACCESS2,
             refresh_token: REFRESH2,
             expires_in: 3600,
-            public_name: "Jane",
-            user_id: 42,
           }),
           responseOptions: {
             headers: { "Content-Type": "application/json" },
@@ -69,12 +67,27 @@ describe("SessionDO real workerd refresh serialisation", () => {
       })
       .times(1);
 
+    fetchMock
+      .get("https://brokenscience.org")
+      .intercept({ path: "/wp-json/bsi/v1/me", method: "GET" })
+      .reply(() => ({
+        statusCode: 200,
+        data: JSON.stringify({
+          id: 42,
+          display_name: "Jane",
+          avatar_url: null,
+          can_moderate: false,
+        }),
+        responseOptions: {
+          headers: { "Content-Type": "application/json" },
+        },
+      }))
+      .times(1);
+
     const rawSid = bytesToBase64Url(randomBytes(32));
     const hex = await sha256Hex(rawSid);
     const aad = `sess:${hex}`;
     const now = Date.now();
-    // Expiry inside the 60s refresh window (not force) so the second serialized
-    // ensure-access sees the updated access_exp and skips BSI-C3.
     const record = {
       bsi_access: ACCESS1,
       bsi_refresh: REFRESH1,
@@ -97,11 +110,8 @@ describe("SessionDO real workerd refresh serialisation", () => {
         body: JSON.stringify(record),
       }),
     );
-    // If put fails because enc key mismatch with wrangler binding, seed via storage path used by DO.
     expect([200, 503].includes(put.status)).toBe(true);
     if (put.status !== 200) {
-      // Binding may not have SESSION_ENC_KEY — still assert DO code path uses blockConcurrencyWhile
-      // by dual-calling ensure-access and requiring ≤1 token POST when put succeeded elsewhere.
       void blob;
       return;
     }
@@ -133,6 +143,6 @@ describe("SessionDO real workerd refresh serialisation", () => {
     expect(jb.record?.bsi_access).toBe(ACCESS2);
     expect(ja.record?.bsi_refresh).toBe(REFRESH2);
     expect(jb.record?.bsi_refresh).toBe(REFRESH2);
-    expect(bsiCalls).toBe(1);
+    expect(tokenCalls).toBe(1);
   });
 });
