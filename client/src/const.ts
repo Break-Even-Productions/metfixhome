@@ -1,8 +1,19 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
+/** Legacy BSI WordPress login (site chrome that still points off-site). */
 export const LOGIN_URL = "https://brokenscience.org/login/";
 
+/** In-app MetFix member login (Worker session). */
+export const METFIX_LOGIN_PATH = "/login";
+
 export const getLoginUrl = () => LOGIN_URL;
+
+export function getMetfixLoginUrl(next?: string): string {
+  const path = basePath(METFIX_LOGIN_PATH);
+  if (!next) return path;
+  const params = new URLSearchParams({ next });
+  return `${path}?${params.toString()}`;
+}
 
 const KNOWN_ROUTES = new Set([
   "classes",
@@ -10,6 +21,7 @@ const KNOWN_ROUTES = new Set([
   "become-an-affiliate",
   "affiliate-seminars",
   "the-daily-fix",
+  "login",
   "404",
 ]);
 

@@ -9,7 +9,9 @@ describe("B1/B5/B6/B7 build config", () => {
     );
     expect(pkg.scripts["build:cf"]).toBe("vite build");
     const vite = readFileSync(fileURLToPath(new URL("../vite.config.ts", import.meta.url)), "utf8");
-    expect(vite).toMatch(/base:\s*isPagesBuild\s*\?\s*"\.\/"\s*:\s*"\/"/);
+    expect(vite).toMatch(/base:\s*"\/"/);
+    expect(vite).not.toMatch(/GITHUB_PAGES/);
+    expect(vite).not.toMatch(/isPagesBuild/);
   });
 
   it("B5 CI has dry-run only", () => {
@@ -33,4 +35,22 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(sm).toContain("https://metfix.org/sitemap-daily-fix.xml");
     expect((sm.match(/<url>/g) || []).length).toBe(6);
   });
+
+  it("R19 workers_dev is false", () => {
+    const wrangler = readFileSync(
+      fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),
+      "utf8",
+    );
+    expect(wrangler).toMatch(/"workers_dev"\s*:\s*false/);
+  });
+
+  it("LOCAL_AUTH is never enabled in wrangler.jsonc (dev-only via .dev.vars)", () => {
+    const wrangler = readFileSync(
+      fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),
+      "utf8",
+    );
+    expect(wrangler).not.toMatch(/LOCAL_AUTH/);
+    expect(wrangler).not.toMatch(/BSI_ORIGIN/);
+  });
 });
+

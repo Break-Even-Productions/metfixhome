@@ -1,0 +1,3 @@
+# R18 / AU19.2 — Report-Only CSP on non-Worker HTML routes (PR4).
+/*
+  Content-Security-Policy-Report-Only: script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; connect-src 'self' https://www.google.com/recaptcha/; frame-ancestors 'none'

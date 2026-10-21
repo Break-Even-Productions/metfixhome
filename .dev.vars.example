@@ -1,1 +1,29 @@
+# Copy to `.dev.vars` for `wrangler dev`. Never commit real secrets.
+# Do NOT put LOCAL_AUTH or these overrides in production wrangler vars.
+
 DAILY_FIX_API_KEY=
+BSI_OAUTH_CLIENT_ID=
+SESSION_ENC_KEY=
+CSRF_SECRET=
+RECAPTCHA_SECRET=
+
+# --- Local auth (optional) ---
+# Prefer: local MetFix UI → production BSI (leave BSI_ORIGIN unset).
+#   1. Set LOCAL_AUTH=1
+#   2. Fill secrets above (same API key / client id as prod or staging)
+#   3. pnpm dev + wrangler dev; open http://localhost:3000/login
+#   Note: production BSI reCAPTCHA expects hostname metfix.org, so password
+#   login against prod BSI may still fail from localhost. Use hosts+HTTPS as
+#   metfix.org, or point BSI_ORIGIN at a local BSI that accepts local tokens.
+#
+# Alternate: local MetFix → local brokenscience.org checkout
+#   LOCAL_AUTH=1
+#   BSI_ORIGIN=http://127.0.0.1:8080
+#   (API key must match that local WP install; host pin allows only this origin)
+LOCAL_AUTH=
+# BSI_ORIGIN=http://127.0.0.1:8080
+
+# Google (optional; still needs Host metfix.org or LOCAL_AUTH + secrets)
+# GOOGLE_AUTH_ENABLED=1
+# GOOGLE_WEB_CLIENT_ID=
+# GOOGLE_WEB_CLIENT_SECRET=

@@ -220,7 +220,7 @@ Notation: `fetchMock` is the upstream fetch, `ASSETS` is `env.ASSETS.fetch`, and
 
 ## B: build and CI
 
-- **B1.** `vite.config` base is `"/"` for `build:cf`. `build:cf` is `vite build` (identical to `build:pages`).
+- **B1.** `vite.config` base is `"/"` for `build:cf`. `build:cf` is `vite build` (`build:pages` is removed).
 - **B2.** After the build, `rg -n "DAILY_FIX_API_KEY|X-API-Key|<test key value>" dist/public` returns 0 hits.
 - **B3.** `assert:liquidglass-chunk` passes with base `"/"`. This needs the leading-slash fix above.
 - **B4.** CI workflow steps, in order:
@@ -231,7 +231,7 @@ Notation: `fetchMock` is the upstream fetch, `ASSETS` is `env.ASSETS.fetch`, and
   5. `wrangler deploy --dry-run`
 
   The run is green.
-- **B5.** The Actions workflows contain no `wrangler deploy` (except `--dry-run`), no `CLOUDFLARE_API_TOKEN`, and no `cloudflare/wrangler-action` deploy. The Pages workflow is still present until the post-cutover commit.
+- **B5.** The Actions workflows contain no `wrangler deploy` (except `--dry-run`), no `CLOUDFLARE_API_TOKEN`, and no `cloudflare/wrangler-action` deploy. The Pages workflow is removed (`build:pages` gone).
 - **B6.** `worker/tsconfig.json` has Workers types and no DOM. The client tsconfig has no Workers types. `tsc --noEmit` passes for both.
 - **B7.** `client/public/sitemap.xml` still has its 6 URLs and references `https://metfix.org/sitemap-daily-fix.xml`.
 - **B8.** No Daily Fix rule in `_redirects`.

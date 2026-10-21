@@ -4,7 +4,7 @@
  * Colors: #0A0A0A bg | #C9A96E gold | #EFEFEF text
  * Fonts: DM Sans (links) · DM Mono (labels)
  */
-import { assetUrl, requestHomeScroll, scrollToHomeSection } from "@/const";
+import { assetUrl, getMetfixLoginUrl, requestHomeScroll, scrollToHomeSection } from "@/const";
 import { useSiteSettings } from "@/hooks/useSanityContent";
 import type { NavLink } from "@/lib/contentTypes";
 import { ArrowRight, Menu, Search, X } from "lucide-react";
@@ -242,6 +242,22 @@ export default function GlobalNav() {
             >
               <Search size={18} />
             </button>
+            <Link
+              href={getMetfixLoginUrl()}
+              className="nav-link"
+              style={{
+                display: isDesktop ? "inline-flex" : "none",
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "rgba(239,239,239,0.85)",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Login
+            </Link>
             <a
               href="https://whatis.metfix.org/"
               target="_blank"

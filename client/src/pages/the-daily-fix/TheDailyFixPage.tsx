@@ -2,8 +2,10 @@ import { ArrowRight, BookOpen, Dumbbell, UtensilsCrossed, X } from "lucide-react
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearch } from "wouter";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { loadMe, type MeState } from "@/lib/session";
 import { ArchiveBrowser } from "./ArchiveBrowser";
-import { CommentThread } from "./CommentThread";
+import { isAuthUiHost } from "./authHost";
+import { CommunityPanel } from "./CommunityPanel";
 import { DayPanel } from "./DayPanel";
 import { HeroMark, useHeroGlass } from "./HeroGlass";
 import {
@@ -125,6 +127,8 @@ export default function TheDailyFixPage({
   const [commentsLoad, setCommentsLoad] = useState<CommentsLoadState>(() =>
     route.kind === "invalid" ? { status: "unavailable" } : { status: "loading" },
   );
+  // Start signed_out so the `/me` miss does not re-render and cancel day nav (CC1 C5).
+  const [me, setMe] = useState<MeState>({ status: "signed_out" });
   const heroRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
@@ -143,20 +147,59 @@ export default function TheDailyFixPage({
     loadJakartaSans();
   }, []);
 
+  // R5 / C6.1: one `/me` per app load. Skip setState when still signed_out (CC1 C5).
+  // AU25.2: preview hosts never hit /api/auth/*.
+  useEffect(() => {
+    if (!isAuthUiHost()) return;
+    let active = true;
+    void loadMe().then((next) => {
+      if (!active) return;
+      setMe((prev) => {
+        if (prev.status === "signed_out" && next.status === "signed_out") return prev;
+        if (
+          prev.status === "signed_in" &&
+          next.status === "signed_in" &&
+          prev.public_name === next.public_name &&
+          prev.moderator === next.moderator
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Normalize path/query (date forms, path pillars, bad tabs) via shared normalizer.
+  // Canonicalize from the address bar (not stale `route` params) so in-app Link
+  // navigations are not reverted when comments/`/me` re-render (CC1/C5).
+  // Out-of-range days still rewrite the bar (2a-iv) before that pass.
   useEffect(() => {
     if (route.kind === "invalid") return;
-    const normalized = normalizeDailyFixPath(window.location.pathname, window.location.search);
+    if (outOfRange) {
+      const current = `${window.location.pathname}${window.location.search}`;
+      if (current !== outOfRange) {
+        setLocation(outOfRange, { replace: true });
+      }
+      return;
+    }
+    const pathname = window.location.pathname;
+    const searchNow = window.location.search;
+    const normalized = normalizeDailyFixPath(pathname, searchNow);
     if (normalized.kind === "redirect") {
       setLocation(normalized.location, { replace: true });
       return;
     }
-    const next = dailyFixCanonicalUrl(route, window.location.search);
-    const current = `${window.location.pathname}${window.location.search}`;
+    const fromBar = parseDailyFixLocation(`${pathname}${searchNow}`);
+    if (fromBar.kind === "invalid") return;
+    const next = dailyFixCanonicalUrl(fromBar, searchNow);
+    const current = `${pathname}${searchNow}`;
     if (next !== current) {
       setLocation(next, { replace: true });
     }
-  }, [route, location, search, setLocation]);
+  }, [route, location, search, setLocation, outOfRange]);
 
   useEffect(() => {
     if (route.kind === "invalid" || !fetchIso) {
@@ -185,16 +228,19 @@ export default function TheDailyFixPage({
     };
   }, [fetchIso, route.kind, allowCloser]);
 
-  // Comments key on the loaded response date (closer-day), not the requested today ISO.
-  // Failures stay in the comment panel and never replace the day load state.
-  const commentIso = load.status === "loaded" ? load.day.date : null;
+  // R23 / C6.2: start comments in parallel when the date is known (dated routes).
+  // Bare today with closer-day resolution waits for the loaded day so we never
+  // GET comments for TODAY when the day remaps (page.mount: not.toContain(TODAY)).
+  const loadedCommentIso = load.status === "loaded" ? load.day.date : null;
+  const commentIso =
+    route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable"
+      ? null
+      : route.kind === "today" && allowCloser
+        ? loadedCommentIso
+        : (loadedCommentIso ?? fetchIso);
   useEffect(() => {
-    if (route.kind === "invalid" || load.status === "invalid" || load.status === "unavailable") {
-      setCommentsLoad({ status: "unavailable" });
-      return;
-    }
     if (!commentIso) {
-      setCommentsLoad({ status: "loading" });
+      setCommentsLoad({ status: "unavailable" });
       return;
     }
     const controller = new AbortController();
@@ -207,7 +253,7 @@ export default function TheDailyFixPage({
         if (!controller.signal.aborted) setCommentsLoad({ status: "unavailable" });
       });
     return () => controller.abort();
-  }, [commentIso, load.status, route.kind]);
+  }, [commentIso]);
 
   // Prefetch −1/−2 only on bare today route (Q1), after today's load is kicked off.
   useEffect(() => {
@@ -345,7 +391,15 @@ export default function TheDailyFixPage({
               }
             />
             {route.kind !== "invalid" ? (
-              <CommentThread load={commentsLoad} pillar={route.pillar} />
+              <CommunityPanel
+                load={commentsLoad}
+                pillar={route.pillar}
+                dateIso={commentIso}
+                viewerDisplayName={me.status === "signed_in" ? me.public_name : null}
+                moderator={me.status === "signed_in" ? me.moderator : false}
+                signedIn={me.status === "signed_in"}
+                onCommentsChanged={setCommentsLoad}
+              />
             ) : null}
           </div>
         </section>

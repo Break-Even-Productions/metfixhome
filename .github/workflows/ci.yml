@@ -34,10 +34,12 @@ jobs:
       - name: Build static site
         run: npm run build:cf
         env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
           VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
+
+      - name: Social preview asset present
+        run: test -s dist/public/social-preview.jpg
 
       - name: B2 — no API key strings in client bundle
         run: |

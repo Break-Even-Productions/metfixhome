@@ -10,12 +10,15 @@ import Home from "./pages/Home";
 import BecomeAnAffiliate from "./pages/BecomeAnAffiliate";
 import Classes from "./pages/Classes";
 import AffiliateSeminars from "./pages/AffiliateSeminars";
+import Login from "./pages/Login";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
+import { useLocation } from "wouter";
 
 function AppRoutes() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/login"} component={Login} />
       <Route path={"/become-an-affiliate"} component={BecomeAnAffiliate} />
       <Route path={"/classes"} component={Classes} />
       <Route path={"/courses"} component={Classes} />
@@ -30,6 +33,17 @@ function AppRoutes() {
   );
 }
 
+function AppShell() {
+  const [location] = useLocation();
+  const hideGlobalNav = location === "/login" || location.startsWith("/login?");
+  return (
+    <>
+      {hideGlobalNav ? null : <GlobalNav />}
+      <AppRoutes />
+    </>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -37,8 +51,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router base={getRouterBase()}>
-            <GlobalNav />
-            <AppRoutes />
+            <AppShell />
           </Router>
         </TooltipProvider>
       </ThemeProvider>

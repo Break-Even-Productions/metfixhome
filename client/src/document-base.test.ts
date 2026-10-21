@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const indexHtml = readFileSync(fileURLToPath(new URL("../index.html", import.meta.url)), "utf8");
 
-function pagesAssetPath(pagePath: string) {
+function assetPathFor(pagePath: string) {
   const origin = "https://metfix.org";
   const base = indexHtml.match(/<base\s+href="([^"]+)"\s*\/?>/i)?.[1];
   expect(base, "document base must be the site root").toBe("/");
@@ -12,7 +12,7 @@ function pagesAssetPath(pagePath: string) {
   return new URL("./assets/index.js", new URL(base, documentUrl)).pathname;
 }
 
-describe("GitHub Pages document base", () => {
+describe("Document base", () => {
   it("pins the document base to the site root with no first-segment heuristic", () => {
     expect(indexHtml).toMatch(/<base\s+href="\/"\s*\/?>/i);
     expect(indexHtml).not.toMatch(/known\[first\]/);
@@ -21,7 +21,7 @@ describe("GitHub Pages document base", () => {
     expect(indexHtml).toContain('rel="canonical" href="https://metfix.org/"');
   });
 
-  it("resolves Pages relative assets from the site root on nested Daily Fix and unknown paths", () => {
+  it("resolves relative assets from the site root on nested Daily Fix and unknown paths", () => {
     const pages = [
       "/",
       "/classes",
@@ -38,10 +38,10 @@ describe("GitHub Pages document base", () => {
       "/not-a-route",
     ];
     for (const path of pages) {
-      expect(pagesAssetPath(path), path).toBe("/assets/index.js");
-      expect(pagesAssetPath(path)).not.toMatch(/^\/the-daily-fix\//);
-      expect(pagesAssetPath(path)).not.toMatch(/^\/not-a-route\//);
-      expect(pagesAssetPath(path)).not.toMatch(/^\/25\//);
+      expect(assetPathFor(path), path).toBe("/assets/index.js");
+      expect(assetPathFor(path)).not.toMatch(/^\/the-daily-fix\//);
+      expect(assetPathFor(path)).not.toMatch(/^\/not-a-route\//);
+      expect(assetPathFor(path)).not.toMatch(/^\/25\//);
     }
   });
 });
