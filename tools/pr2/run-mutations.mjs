@@ -1588,6 +1588,8 @@ function gateIdsFromFailedTitles(titles, gateIds) {
 function runFullSuites(catalogGates, { typeCheck = false } = {}) {
   mkdirSync(path.dirname(VITEST_JSON), { recursive: true });
   writeFileSync(VITEST_JSON, "{}");
+  // Build BEFORE vitest so AU19.3 / M-JL1 see sabotaged client/index.html in dist.
+  const build = runCmd("npm", ["run", "build:cf"], { timeout: TIMEOUT_MS * 3 });
   const vitest = runCmd(
     "npx",
     [
@@ -1602,7 +1604,6 @@ function runFullSuites(catalogGates, { typeCheck = false } = {}) {
     ],
     { timeout: TIMEOUT_MS * 3 },
   );
-  const build = runCmd("npm", ["run", "build:cf"], { timeout: TIMEOUT_MS * 3 });
   const workers = runCmd("npm", ["run", "test:workers"], { timeout: TIMEOUT_MS * 2 });
   let typeRes = null;
   if (typeCheck) typeRes = runCmd("npm", ["run", "check:worker"], { timeout: TIMEOUT_MS });
