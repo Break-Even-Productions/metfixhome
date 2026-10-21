@@ -1338,13 +1338,15 @@ describe("AU26.8", () => {
     );
 
     const hits: string[] = [];
+    // 1.31: also ban fetch/globalThis.fetch to /oauth/token (direct-token path).
     const bad =
-      /(?:fetch\s*\([^;]{0,200}(?:brokenscience\.org|brokenstaging\.wpengine\.com|\/wp-json)|["'`][^"'`]*\/wp-json)/;
+      /(?:(?:globalThis\.)?fetch\s*\([^;]{0,200}(?:brokenscience\.org|brokenstaging\.wpengine\.com|\/wp-json|\/oauth\/token)|["'`][^"'`]*\/wp-json)/;
+    const lineBad = (line: string) => bad.test(line) || /\/wp-json/.test(line);
     for (const abs of files) {
       const rel = relPosix(REPO_ROOT, abs);
       const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
       for (let i = 0; i < lines.length; i++) {
-        if (bad.test(lines[i]!) || /\/wp-json/.test(lines[i]!)) {
+        if (lineBad(lines[i]!)) {
           hits.push(`SCAN FAIL: bsi-client ${rel}:${i + 1}`);
         }
       }
@@ -1359,8 +1361,7 @@ describe("AU26.8", () => {
     try {
       writeFileSync(
         login,
-        loginBefore +
-          `\nvoid fetch(\`\${base}/wp-json/bsi/v1/auth/web-login\`);\n`,
+        loginBefore + `\nvoid fetch(\`\${base}/oauth/token\`);\n`,
       );
       writeFileSync(
         comments,
@@ -1373,7 +1374,7 @@ describe("AU26.8", () => {
       ] as const) {
         const lines = normalizeLf(readFileSync(abs, "utf8")).split("\n");
         for (let i = 0; i < lines.length; i++) {
-          if (bad.test(lines[i]!) || /\/wp-json/.test(lines[i]!)) {
+          if (lineBad(lines[i]!)) {
             plantHits.push(`SCAN FAIL: bsi-client ${rel}:${i + 1}`);
           }
         }
