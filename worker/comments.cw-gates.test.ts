@@ -748,19 +748,40 @@ describe("PR2 gates CW — comment write/like", () => {
   it("CW16.2 DELETE already-deleted BSI 204 → Worker 204; second DELETE also 204", async () => {
     const g = setupGate();
     const s = await seedSession(g);
+    const CACHE_KEY = "https://cache.metfix.internal/daily-fix/comments?date=2025-02-10";
+    await g.cache.put(CACHE_KEY, new Response(JSON.stringify({ comments: { belly: [{ id: 101 }] } })));
     g.fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
+    g.cache.deletes.length = 0;
     const a = await callComments(g, `/api/daily-fix/comments/101${DATE_Q}`, {
       method: "DELETE",
       headers: H_OK(s),
     });
     expect(a?.status).toBe(204);
+    expect(g.cache.deletes).toStrictEqual([CACHE_KEY]);
+    expect(await g.cache.match(CACHE_KEY)).toBeUndefined();
+
+    g.cache.deletes.length = 0;
     const b = await callComments(g, `/api/daily-fix/comments/101${DATE_Q}`, {
       method: "DELETE",
       headers: H_OK(s),
     });
     expect(b?.status).toBe(204);
+    expect(g.cache.deletes).toStrictEqual([CACHE_KEY]);
     expect(g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("brokenscience")).length).toBe(
       2,
+    );
+
+    // 204 delete followed by fresh list: next anonymous GET is a cache miss → upstream.
+    g.fetchMock.mockClear();
+    g.fetchMock.mockResolvedValue(
+      Response.json({ comments: { belly: [], body: [], brain: [] }, meta: {} }),
+    );
+    const list = await callComments(g, `/api/daily-fix/comments?date=2025-02-10&type=all`, {
+      method: "GET",
+    });
+    expect(list?.status).toBe(200);
+    expect(g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("brokenscience")).length).toBe(
+      1,
     );
   });
 });

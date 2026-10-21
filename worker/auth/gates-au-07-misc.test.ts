@@ -49,13 +49,19 @@ function lineAt(html: string, index: number): number {
   return html.slice(0, index).split("\n").length;
 }
 
-/** AU19.3: parser-based inline script / handler audit (JSON-LD exception on index.html only). */
+/**
+ * AU19.3: parser-based inline script / handler audit.
+ * JSON-LD exemption only for the exact built root `dist/public/index.html`
+ * (1.25 / Web Lead 2026-10-21) — not any basename `index.html`.
+ */
 export function auditBuiltHtmlDocument(
   html: string,
-  basename: string,
-  fileLabel = basename,
+  _basename: string,
+  fileLabel = _basename,
 ): BuiltHtmlViolation[] {
   const violations: BuiltHtmlViolation[] = [];
+  const rel = fileLabel.replace(/\\/g, "/");
+  const isRootIndex = rel === "dist/public/index.html" || rel.endsWith("/dist/public/index.html");
   const dom = new JSDOM(html);
   const doc = dom.window.document;
   const all = doc.querySelectorAll("*");
@@ -76,8 +82,7 @@ export function auditBuiltHtmlDocument(
     const src = script.getAttribute("src");
     if (src != null && src.trim() !== "") continue;
     const type = script.getAttribute("type");
-    const allowedJsonLd =
-      basename === "index.html" && type === "application/ld+json";
+    const allowedJsonLd = isRootIndex && type === "application/ld+json";
     if (allowedJsonLd) continue;
     const snippet = script.outerHTML.slice(0, 80);
     const idx = html.indexOf(snippet.slice(0, Math.min(40, snippet.length)));
@@ -91,6 +96,11 @@ export function auditBuiltHtmlDocument(
     });
   }
   return violations;
+}
+
+/** Format AU19.3 hits exactly as the list requires. */
+export function formatAu193Fail(v: BuiltHtmlViolation): string {
+  return `SCAN FAIL: AU19.3 ${v.file}:${v.line}`;
 }
 
 async function loginPost(h: ReturnType<typeof createHarness>) {
@@ -775,66 +785,79 @@ describe("AU19", () => {
     for (const abs of htmlFiles) {
       const html = readFileSync(abs, "utf8");
       const base = abs.split("/").pop() ?? abs;
-      const violations = auditBuiltHtmlDocument(html, base, abs);
-      expect(violations).toEqual([]);
+      const rel = abs.slice(REPO.length + 1).replace(/\\/g, "/");
+      const violations = auditBuiltHtmlDocument(html, base, rel);
+      expect(violations.map(formatAu193Fail)).toEqual([]);
     }
     const indexHtml = join(dist, "index.html");
     expect(existsSync(indexHtml), "built dist/public/index.html required").toBe(true);
     const indexContents = readFileSync(indexHtml, "utf8");
     expect(indexContents).toContain('type="application/ld+json"');
-    expect(auditBuiltHtmlDocument(indexContents, "index.html", indexHtml)).toEqual([]);
+    expect(
+      auditBuiltHtmlDocument(indexContents, "index.html", "dist/public/index.html"),
+    ).toEqual([]);
 
     const jsonLdBody = '{"@context":"https://schema.org","@type":"Thing","name":"x"}';
-    const variants: { name: string; basename: string; html: string }[] = [
+    const variants: { name: string; file: string; html: string }[] = [
       {
         name: "plain inline script",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script>alert(1)</script></body></html>`,
       },
       {
         name: "no type",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script>${jsonLdBody}</script></body></html>`,
       },
       {
         name: "text/javascript",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script type="text/javascript">${jsonLdBody}</script></body></html>`,
       },
       {
         name: "module without src",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script type="module">${jsonLdBody}</script></body></html>`,
       },
       {
         name: "empty type",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script type="">${jsonLdBody}</script></body></html>`,
       },
       {
         name: "case variant Application/LD+JSON",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script type="Application/LD+JSON">${jsonLdBody}</script></body></html>`,
       },
       {
         name: "trailing space on type",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script type="application/ld+json ">${jsonLdBody}</script></body></html>`,
       },
       {
         name: "leading space on type",
-        basename: "index.html",
+        file: "dist/public/index.html",
         html: `<!doctype html><html><body><script type=" application/ld+json">${jsonLdBody}</script></body></html>`,
       },
       {
         name: "ld+json on non-index",
-        basename: "other.html",
+        file: "dist/public/other.html",
+        html: `<!doctype html><html><body><script type="application/ld+json">${jsonLdBody}</script></body></html>`,
+      },
+      {
+        name: "ld+json in nested index.html (M-JL1d)",
+        file: "dist/public/x/index.html",
         html: `<!doctype html><html><body><script type="application/ld+json">${jsonLdBody}</script></body></html>`,
       },
     ];
     for (const v of variants) {
-      const violations = auditBuiltHtmlDocument(v.html, v.basename, v.name);
+      const base = v.file.split("/").pop() ?? v.file;
+      const violations = auditBuiltHtmlDocument(v.html, base, v.file);
       expect(violations.length, `${v.name} should fail AU19.3`).toBeGreaterThan(0);
+      const formatted = violations.map(formatAu193Fail);
+      expect(formatted[0]).toMatch(/^SCAN FAIL: AU19\.3 /);
+      expect(formatted[0]).toContain(v.file);
+      expect(formatted[0]).toMatch(/:\d+$/);
     }
   });
 

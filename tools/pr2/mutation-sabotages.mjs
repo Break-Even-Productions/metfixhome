@@ -41,7 +41,7 @@ function appendLine(rel, line, label) {
 export const EXTRA_SABOTAGES = {
 
   "M-TOK3": {
-    ethanBlocker: "TK2.m is skipIf(!hasMergedMainForTk2m()); requires #7+#10 merge on main \u2014 external to this branch",
+    ethanBlocker: "TK2.m is skipIf(!hasPr10SanityGuard()); requires #10 Vite guard on main \u2014 external to this branch",
   },
   "M-TOK11": {
     ethanBlocker: "#10 not merged: vite.config.ts lacks the Sanity token guard that M-TOK11 would remove",

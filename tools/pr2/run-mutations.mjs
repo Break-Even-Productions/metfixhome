@@ -31,6 +31,7 @@ import { R10_OVERRIDES } from "./mutation-sabotages-r10.mjs";
 import { R11_OVERRIDES } from "./mutation-sabotages-r11.mjs";
 import { R12_OVERRIDES } from "./mutation-sabotages-r12.mjs";
 import { R13_OVERRIDES } from "./mutation-sabotages-r13.mjs";
+import { R14_OVERRIDES } from "./mutation-sabotages-r14.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "../..");
@@ -1467,6 +1468,9 @@ for (const [id, sab] of Object.entries(R12_OVERRIDES)) {
 for (const [id, sab] of Object.entries(R13_OVERRIDES)) {
   SABOTAGES[id] = sab;
 }
+for (const [id, sab] of Object.entries(R14_OVERRIDES)) {
+  SABOTAGES[id] = sab;
+}
 
 function patchMd5FromGit() {
   const res = spawnSync("git", ["diff", "--", "."], {
@@ -1657,7 +1661,13 @@ function sabotageNeedsClientBuild(files) {
 
 function runFullSuites(
   catalogGates,
-  { typeCheck = false, forceBuild = false, files = null, namePattern = null } = {},
+  {
+    typeCheck = false,
+    forceBuild = false,
+    files = null,
+    namePattern = null,
+    countAu2611OnTsc = false,
+  } = {},
 ) {
   mkdirSync(path.dirname(VITEST_JSON), { recursive: true });
   writeFileSync(VITEST_JSON, "{}");
@@ -1716,9 +1726,8 @@ function runFullSuites(
       /* ignore */
     }
   }
-  // AU26.11 type gate: branded RetryAfterSeconds asserted via *.test-d.ts under
-  // `npm run check:worker`. When typeCheck is requested and tsc fails, count AU26.11.
-  if (typeCheck && typeRes && typeRes.status !== 0) {
+  // tsc failure ≠ automatic AU26.11 unless the mutant targets AU26.11.
+  if (typeCheck && typeRes && typeRes.status !== 0 && countAu2611OnTsc) {
     observed = [...new Set([...observed, "AU26.11"])].sort();
     failedTitles.push("AU26.11 parseRetryAfter branded return type (tsc --noEmit)");
   }
@@ -1740,8 +1749,10 @@ function classifyVerdict(expected, observedAll) {
   const extra = observedAll.filter((x) => !expected.includes(x));
   if (missing.length === 0 && extra.length === 0 && hit.length === expected.length) return "exact";
   if (hit.length === 0) return "survived";
-  if (missing.length === 0 && extra.length > 0) return "wider";
-  return "wider";
+  // Expected reds missing → missing-red (never call that "wider").
+  if (missing.length > 0) return "missing-red";
+  if (extra.length > 0) return "wider";
+  return "missing-red";
 }
 
 function parseFailedGateIds(output, expected) {
@@ -1896,7 +1907,9 @@ function main() {
 
   const results = [];
   const doneIds = new Set();
-  if (RESUME && existsSync(OUT)) {
+  const selectedOnly = Boolean(ONLY && ONLY !== true);
+  // No resume-from-logs for fresh evidence rows when running selected IDs.
+  if (RESUME && !selectedOnly && existsSync(OUT)) {
     try {
       const prev = JSON.parse(readFileSync(OUT, "utf8"));
       for (const r of prev.results || []) {
@@ -1909,16 +1922,20 @@ function main() {
     } catch (e) {
       console.warn("Resume: could not load prior results:", e?.message || e);
     }
+  } else if (RESUME && selectedOnly) {
+    console.log("Resume: ignored for --only (fresh evidence rows)");
   }
 
   let nExact = 0,
     nWider = 0,
+    nMissingRed = 0,
     nSurvived = 0,
     nCant = 0,
     nEthan = 0;
   for (const r of results) {
     if (r.verdict === "exact") nExact++;
     else if (r.verdict === "wider") nWider++;
+    else if (r.verdict === "missing-red") nMissingRed++;
     else if (r.verdict === "survived") nSurvived++;
     else if (r.verdict === "cant-run") nCant++;
     else if (r.verdict === "ethan-blocker") nEthan++;
@@ -1933,6 +1950,7 @@ function main() {
       counts: {
         exact: nExact,
         wider: nWider,
+        "missing-red": nMissingRed,
         survived: nSurvived,
         "ethan-blocker": nEthan,
         "cant-run": nCant,
@@ -2021,6 +2039,7 @@ function main() {
         run = runFullSuites(catalogGates, {
           typeCheck: !!sab.typeCheck,
           files: touchFiles,
+          countAu2611OnTsc: !!sab.typeCheck && m.red.includes("AU26.11"),
         });
       } catch (e) {
         applyErr = `run ${vid}: ${e?.message || e}`;
@@ -2065,7 +2084,9 @@ function main() {
       ? "exact"
       : variantRuns.every((v) => v.verdict === "survived")
         ? "survived"
-        : "wider";
+        : variantRuns.some((v) => v.verdict === "missing-red")
+          ? "missing-red"
+          : "wider";
     const mergedObserved = [...new Set(variantRuns.flatMap((v) => v.observedRed))].sort();
     results.push({
       id: m.id,
@@ -2078,6 +2099,7 @@ function main() {
     });
     if (verdict === "exact") nExact++;
     else if (verdict === "wider") nWider++;
+    else if (verdict === "missing-red") nMissingRed++;
     else if (verdict === "survived") nSurvived++;
     console.log(`${verdict} observed=[${mergedObserved.join(",")}]`);
     writeCheckpoint();
@@ -2091,6 +2113,7 @@ function main() {
     counts: {
       exact: nExact,
       wider: nWider,
+      "missing-red": nMissingRed,
       survived: nSurvived,
       "ethan-blocker": nEthan,
       "cant-run": nCant,

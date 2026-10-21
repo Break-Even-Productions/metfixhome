@@ -495,11 +495,17 @@ describe("Daily Fix page mount — bare /the-daily-fix", () => {
     await waitFor(() => {
       expect(commentsSpy).toHaveBeenCalled();
       const isos = commentsSpy.mock.calls.map((c) => c[0]);
-      // C6.2: comments may start on fetchIso (TODAY) in parallel with the day
-      // load; closer-day resolution must still fetch/re-key to MINUS2.
+      // C6.2 closer-day: wait for loaded day — never GET comments for TODAY.
+      expect(isos).not.toContain(TODAY);
       expect(isos).toContain(MINUS2);
-      expect(isos.at(-1)).toBe(MINUS2);
+      expect(isos.filter((d) => d === MINUS2)).toHaveLength(1);
     });
+    // Exactly one comments GET per distinct date in this mount.
+    const byDate = new Map<string, number>();
+    for (const [iso] of commentsSpy.mock.calls) {
+      byDate.set(iso, (byDate.get(iso) ?? 0) + 1);
+    }
+    for (const [, n] of byDate) expect(n).toBe(1);
     commentsSpy.mockRestore();
   });
 
@@ -1788,6 +1794,71 @@ describe("Daily Fix comments", () => {
       expect(setItemSpy).not.toHaveBeenCalledWith(key, expect.anything());
     }
     expect(window.location.href).not.toMatch(/accounts\.google|oauth|openid/i);
+  });
+});
+
+describe("C6.1 /me single-flight on mount", () => {
+  it("C6.1 mount/navigate/focus/10min → exactly 1 /api/auth/me; +1 after auth refresh", async () => {
+    // Bind session moduleFetch to the stub: resetModules then stub then import.
+    vi.resetModules();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({ signed_in: true, public_name: "Jane", moderator: false }),
+          { status: 200 },
+        );
+      }
+      if (isCommentsRequest(url)) {
+        return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
+          status: 200,
+        });
+      }
+      const date = new URL(url, "https://metfix.org").searchParams.get("date") ?? TODAY;
+      return new Response(JSON.stringify(dayPayload(date)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    TheDailyFixPage = (await import("./TheDailyFixPage")).default;
+    NotFound = (await import("@/pages/NotFound")).default;
+    commentsApi = await import("./comments");
+    invalidateCommentsCache = commentsApi.invalidateCommentsCache;
+    const data = await import("./data");
+    resetDailyFixDayCache = data.resetDailyFixDayCache;
+    const { refreshMeAfterAuthChange } = await import("@/lib/session");
+    stubBrowserApis();
+    resetDailyFixDayCache();
+    invalidateCommentsCache();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(FROZEN);
+
+    cleanup();
+    renderShell("/the-daily-fix/250210#brain");
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/auth/me"))).toBe(true),
+    );
+    expect(await screen.findByText(/Signed in as Jane/i)).toBeTruthy();
+
+    // Switch pillar, navigate to another date and back, focus, advance 10 min.
+    const brainTab = screen.getByRole("tab", { name: /Brain/i });
+    fireEvent.click(brainTab);
+    const bellyTab = screen.getByRole("tab", { name: /Belly/i });
+    fireEvent.click(bellyTab);
+    openAddressBar("/the-daily-fix/250209");
+    await waitFor(() => expect(window.location.pathname).toMatch(/250209|2025-02-09/));
+    openAddressBar("/the-daily-fix/250210");
+    window.dispatchEvent(new Event("focus"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    });
+
+    const meCalls = () =>
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/auth/me"));
+    expect(meCalls()).toHaveLength(1);
+    await refreshMeAfterAuthChange();
+    expect(meCalls()).toHaveLength(2);
   });
 });
 

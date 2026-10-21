@@ -26,6 +26,11 @@ describe("PR2 gates P — comment POST", () => {
     const s = await seedSession(g);
     mockSiteverifyPass(g);
     const order: string[] = [];
+    const origLimit = g.writeLimiter.limit.bind(g.writeLimiter);
+    g.writeLimiter.limit = async (opts) => {
+      order.push("limiter");
+      return origLimit(opts);
+    };
     g.fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       const u = String(url);
       if (u.includes("siteverify")) {
@@ -62,9 +67,10 @@ describe("PR2 gates P — comment POST", () => {
         replies: [],
       },
     });
-    expect(g.writeLimiter.calls.some((k) => k.startsWith("write:"))).toBe(true);
+    expect(order).toEqual(["limiter", "siteverify", "bsi"]);
+    expect(order.indexOf("limiter")).toBeLessThan(order.indexOf("siteverify"));
     expect(order.indexOf("siteverify")).toBeLessThan(order.indexOf("bsi"));
-    expect(g.writeLimiter.calls.length).toBeGreaterThan(0);
+    expect(g.writeLimiter.calls.some((k) => k.startsWith("write:"))).toBe(true);
   });
 
   it("P1.2 BSI 201 missing id → 503 unavailable Retry-After 300, 0 cache.delete", async () => {
@@ -254,15 +260,39 @@ describe("PR2 gates P — comment POST", () => {
   it("P4.1 logged out POST → 401 signed_out, 0 upstream siteverify and limiter", async () => {
     const g = setupGate();
     g.writeLimiter.calls.length = 0;
-    const res = await callComments(g, "/api/daily-fix/comments", {
+    g.likeLimiter.calls.length = 0;
+    g.toggleLimiter.calls.length = 0;
+    const headers = { "Content-Type": "application/json", Origin: "https://metfix.org" };
+
+    const write = await callComments(g, "/api/daily-fix/comments", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Origin: "https://metfix.org" },
+      headers,
       body: JSON.stringify(POST_BODY),
     });
-    expect(res?.status).toBe(401);
-    expect(await res?.json()).toStrictEqual({ error: "signed_out" });
+    expect(write?.status).toBe(401);
+    expect(await write?.json()).toStrictEqual({ error: "signed_out" });
+
+    const like = await callComments(g, "/api/daily-fix/comments/101/like?date=2025-02-10", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ liked: true, date: "2025-02-10" }),
+    });
+    expect(like?.status).toBe(401);
+    expect(await like?.json()).toStrictEqual({ error: "signed_out" });
+
+    // Toggle uses the same like route with liked:false (COMMENT_LIKE_TOGGLE_LIMITER).
+    const toggle = await callComments(g, "/api/daily-fix/comments/101/like?date=2025-02-10", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ liked: false, date: "2025-02-10" }),
+    });
+    expect(toggle?.status).toBe(401);
+    expect(await toggle?.json()).toStrictEqual({ error: "signed_out" });
+
     expect(g.fetchMock).toHaveBeenCalledTimes(0);
     expect(g.writeLimiter.calls.length).toBe(0);
+    expect(g.likeLimiter.calls.length).toBe(0);
+    expect(g.toggleLimiter.calls.length).toBe(0);
   });
 
   it("P4.2 bad session cookie → 401 signed_out clears cookie", async () => {

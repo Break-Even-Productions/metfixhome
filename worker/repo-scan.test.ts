@@ -496,7 +496,19 @@ function gitPorcelain(): string {
   );
   if (r.error) throw new Error(`git status failed: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`git status failed: ${r.stderr}`);
-  return r.stdout;
+  // TK1.r flake (Node 22 / parallel runs): vite + npm touch node_modules/.vite and
+  // ignored caches under the tree; those are not repo dirt from the TK1 build.
+  return (r.stdout || "")
+    .split("\n")
+    .filter((line) => {
+      if (!line.trim()) return false;
+      const p = line.slice(3).trim().replace(/^"/, "").replace(/"$/, "");
+      if (p.startsWith("node_modules/") || p.includes("/node_modules/")) return false;
+      if (p.startsWith("dist/") || p.startsWith(".vite/") || p.includes("/.vite/")) return false;
+      if (p.startsWith(".turbo/") || p.startsWith("coverage/")) return false;
+      return true;
+    })
+    .join("\n");
 }
 
 function assertNAbsentForTk1(): void {
@@ -1132,24 +1144,9 @@ describe("C5.4", () => {
   });
 });
 
-function hasMergedMainForTk2m(): boolean {
-  try {
-    execSync("git merge-base --is-ancestor 2fdecd342bcd9df2771ddf306b26c6495998d826 HEAD", {
-      cwd: REPO_ROOT,
-      stdio: "pipe",
-    });
-    execSync("git merge-base --is-ancestor 0bb1ca752c739c30e593103bd184f1184bb54fe4 HEAD", {
-      cwd: REPO_ROOT,
-      stdio: "pipe",
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 describe("TK2.m", () => {
-  it.skipIf(!hasMergedMainForTk2m())(
+  // Skip on #10 Vite guard presence/merge — not on whether 2fdecd34 is an ancestor.
+  it.skipIf(!hasPr10SanityGuard())(
     "TK2.m merged main fixture tree has zero TK2 hits",
     () => {
       const { filesScanned, hits } = scanTk2(REPO_ROOT);

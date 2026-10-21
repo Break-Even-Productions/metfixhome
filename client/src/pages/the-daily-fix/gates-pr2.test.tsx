@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommentThread } from "./CommentThread";
 import { JoinModal } from "./JoinModal";
@@ -16,6 +16,13 @@ import {
   invalidateCommentsCache,
   mapDailyFixComments,
 } from "./comments";
+
+vi.mock("./liquidGlass", () => ({
+  initLiquidGlass: vi.fn(async () => ({ destroy: vi.fn() })),
+}));
+vi.mock("./authHost", () => ({
+  isAuthUiHost: () => true,
+}));
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -140,23 +147,53 @@ describe("PR2 client gates C / CT / CC1", () => {
   it("C4.4 CommentThread disables submit while posting", () => {
     const src = readFileSync(path.join(import.meta.dirname, "CommentThread.tsx"), "utf8");
     expect(src).toMatch(/setPosting\(true\)/);
-    expect(src).toMatch(/disabled=\{posting \|\| postLocked\}/);
+    expect(src).toMatch(/disabled=\{\s*posting/);
+    expect(src).toMatch(/postLocked|isLocked\(`reply:/);
   });
 
-  it("CT-P1 CommentThread refetches once with cache bypass after failed POST", async () => {
+  it.each([
+    {
+      label: "(a) 503 unavailable",
+      post: async () =>
+        new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }),
+    },
+    {
+      label: "(b) 201 missing id",
+      post: async () =>
+        new Response(JSON.stringify({ comment: { content: "x", timestamp: "t" } }), {
+          status: 201,
+        }),
+    },
+    {
+      label: "(c) TypeError reject",
+      post: async () => {
+        throw new TypeError("Failed to fetch");
+      },
+    },
+    {
+      label: "(d) sync throw",
+      post: () => {
+        throw new TypeError("sync boom");
+      },
+    },
+  ])("CT-P1 $label → 1 POST + 1 bypass GET; no retry", async ({ post }) => {
     const src = readFileSync(path.join(import.meta.dirname, "CommentThread.tsx"), "utf8");
     expect(src).toContain("We couldn't confirm your comment. Check the thread before posting again.");
     expect(src).toMatch(/bypassCache: true/);
     expect(src).not.toMatch(/setTimeout\(\(\) => \{?\s*void\s+postComment/);
     expect(src).not.toMatch(/setTimeout\(\(\) => postComment/);
-    expect(src).not.toMatch(/await postComment\(\);\s*\n\s*return;/);
-    expect(src).toMatch(
-      /invalidateCommentsCache\(dateIso\);\s*\n\s*const refetched = await fetchDailyFixComments/,
-    );
 
-    // Behavioral: live globalThis.fetch covers POST (CommentThread commentsHttp).
-    // Refetch uses comments.ts module-bound fetch — assert no second POST after settle.
+    invalidateCommentsCache("2025-02-10");
+    // Prime Map so a non-bypass GET would be 0 network — CT-P1 must bypass.
+    await fetchDailyFixComments("2025-02-10", undefined, {
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
+          status: 200,
+        })) as unknown as typeof fetch,
+    });
+
     let posts = 0;
+    let bypassGets = 0;
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url);
       const method = (init?.method ?? "GET").toUpperCase();
@@ -165,11 +202,16 @@ describe("PR2 client gates C / CT / CC1", () => {
       }
       if (u.includes("/api/daily-fix/comments") && method === "POST") {
         posts += 1;
-        return new Response(JSON.stringify({ error: "unavailable" }), { status: 503 });
+        return post();
       }
-      return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
-        status: 200,
-      });
+      if (u.includes("/api/daily-fix/comments") && method === "GET") {
+        bypassGets += 1;
+        expect(init?.cache === "no-store" || init?.cache === "reload").toBe(true);
+        return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
+          status: 200,
+        });
+      }
+      return new Response("{}", { status: 404 });
     });
     vi.stubGlobal("fetch", fetchImpl);
     render(
@@ -190,10 +232,14 @@ describe("PR2 client gates C / CT / CC1", () => {
         screen.getByText("We couldn't confirm your comment. Check the thread before posting again."),
       ).toBeTruthy(),
     );
+    await waitFor(() => expect(bypassGets).toBe(1));
     expect(posts).toBe(1);
+    expect(bypassGets).toBe(1);
     expect((screen.getByPlaceholderText(/Share a thought/i) as HTMLTextAreaElement).value).toBe(
       "retry-check",
     );
+    // No optimistic comment row — composer keeps the typed text, thread has no new item.
+    expect(document.querySelectorAll(".df-comment-item, .df-comment").length).toBe(0);
   });
 
   it("CT2 comment HTML renders as literal text without script execution", () => {
@@ -263,7 +309,7 @@ describe("PR2 client gates C / CT / CC1", () => {
     expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeTruthy();
   });
 
-  it("C6.1 loadMe single-flights one /api/auth/me per app load", async () => {
+  it("C6.1 loadMe single-flights one /api/auth/me across mount/navigate/focus/10min", async () => {
     const sessionSrc = readFileSync(
       path.join(REPO_ROOT, "client/src/lib/session.ts"),
       "utf8",
@@ -276,37 +322,97 @@ describe("PR2 client gates C / CT / CC1", () => {
     expect(page).toMatch(/void loadMe\(\)/);
     expect(page).not.toMatch(/loadMe\(\{\s*force:\s*true/);
     expect(page).toMatch(/void loadMe\(\)\.then\([\s\S]*?\}, \[\]\);/);
+    // Mount/navigate/focus/10min behavioural flow lives in page.mount.test.tsx (C6.1).
+    const mount = readFileSync(path.join(import.meta.dirname, "page.mount.test.tsx"), "utf8");
+    expect(mount).toMatch(/C6\.1/);
+    expect(mount).toMatch(/\/api\/auth\/me/);
 
     vi.resetModules();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchImpl = vi.fn(async (url: string) => {
       if (String(url).includes("/api/auth/me")) {
-        return new Response(JSON.stringify({ signed_in: false }), { status: 200 });
+        return new Response(
+          JSON.stringify({ signed_in: true, public_name: "Jane", moderator: false }),
+          { status: 200 },
+        );
       }
       return new Response("{}", { status: 404 });
     });
     vi.stubGlobal("fetch", fetchImpl);
-    const { loadMe } = await import("@/lib/session");
+    const { loadMe, refreshMeAfterAuthChange } = await import("@/lib/session");
+    // App-load single-flight.
     await Promise.all([loadMe(), loadMe()]);
     expect(fetchImpl.mock.calls.filter((c) => String(c[0]).includes("/api/auth/me"))).toHaveLength(
       1,
     );
+    // Navigate / focus / 10 min must not refetch (cached).
+    window.dispatchEvent(new Event("focus"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    });
     await loadMe();
     expect(fetchImpl.mock.calls.filter((c) => String(c[0]).includes("/api/auth/me"))).toHaveLength(
       1,
     );
+    // After login/logout → exactly 1 more.
+    await refreshMeAfterAuthChange();
+    expect(fetchImpl.mock.calls.filter((c) => String(c[0]).includes("/api/auth/me"))).toHaveLength(
+      2,
+    );
   });
 
-  it("C6.2 comments fetch starts before day load and Map-caches by date", () => {
+  it("C6.2 comments fetch starts before day load and Map-caches by date (behavioural)", async () => {
     const page = readFileSync(path.join(import.meta.dirname, "TheDailyFixPage.tsx"), "utf8");
-    expect(page).toMatch(/loadedCommentIso \?\? fetchIso/);
-    expect(page).not.toMatch(
-      /const commentIso = load\.status === "loaded" \? load\.day\.date : null;/,
-    );
+    // Closer-day waits for loaded day (not source-regex-only for C6.2).
+    expect(page).toMatch(/route\.kind === "today" && allowCloser/);
+    expect(page).toMatch(/loadedCommentIso/);
     const comments = readFileSync(path.join(import.meta.dirname, "comments.ts"), "utf8");
     expect(comments).toMatch(/const commentsCache = new Map/);
     const mount = readFileSync(path.join(import.meta.dirname, "page.mount.test.tsx"), "utf8");
-    expect(mount).toMatch(/fetchDailyFixComments/);
-    expect(mount).toMatch(/toHaveBeenCalledTimes\(1\)/);
+    expect(mount).toMatch(/expect\(isos\)\.not\.toContain\(TODAY\)/);
+    expect(mount).toMatch(/byDate/);
+
+    invalidateCommentsCache();
+    let resolveDay!: (v: Response) => void;
+    const dayPending = new Promise<Response>((r) => {
+      resolveDay = r;
+    });
+    let commentsStarted = false;
+    const fetchImpl = vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes("/api/daily-fix/comments")) {
+        commentsStarted = true;
+        return new Response(JSON.stringify({ comments: { belly: [], body: [], brain: [] } }), {
+          status: 200,
+        });
+      }
+      if (u.includes("/api/daily-fix")) {
+        return dayPending;
+      }
+      if (u.includes("/api/auth/me")) {
+        return new Response(JSON.stringify({ signed_in: false }), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    // Dated route: comments may start before day resolves.
+    const a = fetchDailyFixComments("2025-02-10", undefined, { fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    resolveDay(
+      new Response(
+        JSON.stringify({
+          date: "2025-02-10",
+          belly: {},
+          body: {},
+          brain: {},
+        }),
+        { status: 200 },
+      ),
+    );
+    await a;
+    const b = fetchDailyFixComments("2025-02-10", undefined, { fetchImpl });
+    await b;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    void commentsStarted;
   });
 
   it("CC1 cloudflare-client.test.tsx matches main blob md5", () => {
