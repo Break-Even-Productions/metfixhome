@@ -815,7 +815,31 @@ export async function bsiSocialAuth(
   );
 }
 
-/** Follow BSI-C5a bridge server-side (never 302 the browser). */
+/** Build a Cookie request header from Set-Cookie response header(s). */
+export function cookieHeaderFromSetCookie(response: Response): string {
+  const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+  const lines =
+    typeof headers.getSetCookie === "function"
+      ? headers.getSetCookie()
+      : (() => {
+          const single = response.headers.get("Set-Cookie");
+          return single ? [single] : [];
+        })();
+  const pairs: string[] = [];
+  for (const line of lines) {
+    const nv = line.split(";", 1)[0]?.trim();
+    if (nv && nv.includes("=")) pairs.push(nv);
+  }
+  return pairs.join("; ");
+}
+
+/**
+ * Follow BSI-C5a bridge server-side (never 302 the browser).
+ *
+ * Real BSI: bridge 302 → `/oauth/authorize` (sets WP auth cookie) → 302 →
+ * `redirect_uri?code&state`. The Worker must take both hops and forward cookies.
+ * Harness / already-final Locations that include `code` stay one hop.
+ */
 export async function bsiFollowBridge(
   bridgeUrl: string,
   fetchImpl: FetchImpl,
@@ -826,21 +850,59 @@ export async function bsiFollowBridge(
   } catch {
     return { kind: "fail" };
   }
+  const timeoutMs = opts?.timeoutMs ?? 5000;
+  const commonHeaders = {
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+  };
   try {
     const response = await fetchImpl(bridgeUrl, {
       method: "GET",
       redirect: "manual",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": UPSTREAM_USER_AGENT,
-      },
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
+      headers: commonHeaders,
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const location = response.headers.get("Location");
-    if ((response.status === 302 || response.status === 301) && location) {
-      return { kind: "redirect", location };
+    if (!(response.status === 302 || response.status === 301) || !location) {
+      return { kind: "fail" };
     }
-    return { kind: "fail" };
+    const abs = new URL(location, bridgeUrl);
+    if (abs.searchParams.get("code")) {
+      return { kind: "redirect", location: abs.href };
+    }
+
+    // Intermediate authorize hop (prod BSI): must stay on an allowed BSI host.
+    try {
+      assertBsiHost(abs.href, opts?.env);
+    } catch {
+      return { kind: "fail" };
+    }
+    if (!abs.pathname.includes("/oauth/authorize")) {
+      return { kind: "fail" };
+    }
+
+    const cookie = cookieHeaderFromSetCookie(response);
+    const authorizeRes = await fetchImpl(abs.href, {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        ...commonHeaders,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const finalLoc = authorizeRes.headers.get("Location");
+    if (
+      !(authorizeRes.status === 302 || authorizeRes.status === 301) ||
+      !finalLoc
+    ) {
+      return { kind: "fail" };
+    }
+    const finalAbs = new URL(finalLoc, abs);
+    if (!finalAbs.searchParams.get("code")) {
+      return { kind: "fail" };
+    }
+    return { kind: "redirect", location: finalAbs.href };
   } catch {
     return { kind: "fail" };
   }

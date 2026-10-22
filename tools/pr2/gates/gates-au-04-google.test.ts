@@ -273,6 +273,41 @@ describe("AU11", () => {
     expect(codeTok!.bodyText).not.toContain("code_verifier");
   });
 
+  it("AU11.3b real bridge: authorize hop + Cookie → callback code", async () => {
+    const h = createHarness({ googleEnabled: true });
+    let authorizeSawCookie = false;
+    h.edges.bridge = async () =>
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location:
+            "https://brokenscience.org/oauth/authorize?response_type=code&client_id=x",
+          "Set-Cookie": "wordpress_logged_in_test=1; Path=/; HttpOnly; Secure",
+        },
+      });
+    h.edges.authorize = async (req) => {
+      authorizeSawCookie = (req.headers.get("Cookie") ?? "").includes(
+        "wordpress_logged_in_test=1",
+      );
+      const social = h.fetches.find((f) => f.url.includes("/auth/social"));
+      const st =
+        social != null
+          ? ((JSON.parse(social.bodyText) as { state?: string }).state ?? "bridge")
+          : "bridge";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=${encodeURIComponent(st)}`,
+        },
+      });
+    };
+    const { res } = await signedCallback(h);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(authorizeSawCookie).toBe(true);
+    expect(h.fetches.some((f) => f.url.includes("/oauth/authorize"))).toBe(true);
+  });
+
   it("AU11.4 browser GET /api/auth/callback rejects", async () => {
     const h = createHarness({ googleEnabled: true });
     const res = await h.call(`/api/auth/callback?code=${CODE}&state=valid_wp_state__________`, {
@@ -638,6 +673,12 @@ describe("AU12", () => {
     expect(body.provider).toBe("google");
     expect(body.client_id).toBe(CID);
     expect(body.redirect_uri).toBe("https://metfix.org/api/auth/callback");
+    // Nextend shape (app parity): access_token is a JSON *string*, not a bare JWT.
+    expect(typeof body.access_token).toBe("string");
+    const nsl = JSON.parse(body.access_token as string) as Record<string, unknown>;
+    expect(typeof nsl.access_token).toBe("string");
+    expect(typeof nsl.id_token).toBe("string");
+    expect(nsl.token_type).toBe("Bearer");
     const blob = JSON.stringify(body);
     expect(blob).not.toContain("evil@x.test");
     expect(blob).not.toContain("browser@x.test");
