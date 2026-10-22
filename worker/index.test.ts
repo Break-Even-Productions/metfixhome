@@ -629,6 +629,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(() => assertBsiHost("https://evil.example/x")).toThrow();
     expect(() => assertBsiHost("https://brokenscience.org.evil.example/x")).toThrow();
     expect(() => assertBsiHost("https://brokenscience.org/x")).not.toThrow();
+    expect(() => assertBsiHost("https://api.brokenscience.org/wp-json/x")).not.toThrow();
 
     fetchMock.mockReset();
     cache.store.clear();

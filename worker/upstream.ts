@@ -9,10 +9,14 @@ import { parseLocalBsiOrigin, type LocalAuthEnv } from "./dev-auth";
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_ORIGIN = "https://brokenscience.org";
 export const BSI_HOST = "brokenscience.org";
+/** Mobile API host (App readiness `bsi_app_api_base_url`); mint bridge_url here. */
+export const BSI_API_HOST = "api.brokenscience.org";
 /** Spec 1.6.12 §0w.2 — staging BSI base (same paths as prod). */
 export const BSI_STAGING_ORIGIN = "https://brokenstaging.wpengine.com";
 export const BSI_STAGING_HOST = "brokenstaging.wpengine.com";
-const ALLOWED_BSI_HOSTS = new Set([BSI_HOST, BSI_STAGING_HOST]);
+const ALLOWED_BSI_HOSTS = new Set([BSI_HOST, BSI_API_HOST, BSI_STAGING_HOST]);
+/** Max redirects when following BSI bridge → authorize → code (trailing-slash 301s count). */
+const BSI_BRIDGE_MAX_HOPS = 5;
 /** brokenscience.org's Cloudflare bot rules challenge requests with no User-Agent. */
 export const UPSTREAM_USER_AGENT = "metfixhome-worker/1.0";
 
@@ -833,12 +837,30 @@ export function cookieHeaderFromSetCookie(response: Response): string {
   return pairs.join("; ");
 }
 
+/** Merge Set-Cookie into an existing Cookie header (later names win). */
+export function mergeCookieHeader(existing: string, response: Response): string {
+  const map = new Map<string, string>();
+  for (const part of existing.split(";")) {
+    const nv = part.trim();
+    const eq = nv.indexOf("=");
+    if (eq > 0) map.set(nv.slice(0, eq), nv.slice(eq + 1));
+  }
+  const more = cookieHeaderFromSetCookie(response);
+  for (const part of more.split(";")) {
+    const nv = part.trim();
+    const eq = nv.indexOf("=");
+    if (eq > 0) map.set(nv.slice(0, eq), nv.slice(eq + 1));
+  }
+  return [...map.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
 /**
  * Follow BSI-C5a bridge server-side (never 302 the browser).
  *
- * Real BSI: bridge 302 → `/oauth/authorize` (sets WP auth cookie) → 302 →
- * `redirect_uri?code&state`. The Worker must take both hops and forward cookies.
- * Harness / already-final Locations that include `code` stay one hop.
+ * Prod BSI: bridge 302 → `/oauth/authorize` (auth cookie) → often **301** to
+ * `/oauth/authorize/` (trailing slash) → 302 → `redirect_uri?code&state`.
+ * Follow up to BSI_BRIDGE_MAX_HOPS redirects on allowed BSI hosts, forwarding
+ * cookies; stop when Location carries `code` (may be metfix.org).
  */
 export async function bsiFollowBridge(
   bridgeUrl: string,
@@ -855,54 +877,44 @@ export async function bsiFollowBridge(
     Accept: "application/json",
     "User-Agent": UPSTREAM_USER_AGENT,
   };
+  let url = bridgeUrl;
+  let cookie = "";
   try {
-    const response = await fetchImpl(bridgeUrl, {
-      method: "GET",
-      redirect: "manual",
-      headers: commonHeaders,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const location = response.headers.get("Location");
-    if (!(response.status === 302 || response.status === 301) || !location) {
-      return { kind: "fail" };
+    for (let hop = 0; hop < BSI_BRIDGE_MAX_HOPS; hop++) {
+      const response = await fetchImpl(url, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          ...commonHeaders,
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      cookie = mergeCookieHeader(cookie, response);
+      const location = response.headers.get("Location");
+      if (
+        !(
+          response.status === 301 ||
+          response.status === 302 ||
+          response.status === 303
+        ) ||
+        !location
+      ) {
+        return { kind: "fail" };
+      }
+      const abs = new URL(location, url);
+      if (abs.searchParams.get("code")) {
+        return { kind: "redirect", location: abs.href };
+      }
+      // Intermediate hop must stay on an allowed BSI host (no open redirect).
+      try {
+        assertBsiHost(abs.href, opts?.env);
+      } catch {
+        return { kind: "fail" };
+      }
+      url = abs.href;
     }
-    const abs = new URL(location, bridgeUrl);
-    if (abs.searchParams.get("code")) {
-      return { kind: "redirect", location: abs.href };
-    }
-
-    // Intermediate authorize hop (prod BSI): must stay on an allowed BSI host.
-    try {
-      assertBsiHost(abs.href, opts?.env);
-    } catch {
-      return { kind: "fail" };
-    }
-    if (!abs.pathname.includes("/oauth/authorize")) {
-      return { kind: "fail" };
-    }
-
-    const cookie = cookieHeaderFromSetCookie(response);
-    const authorizeRes = await fetchImpl(abs.href, {
-      method: "GET",
-      redirect: "manual",
-      headers: {
-        ...commonHeaders,
-        ...(cookie ? { Cookie: cookie } : {}),
-      },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const finalLoc = authorizeRes.headers.get("Location");
-    if (
-      !(authorizeRes.status === 302 || authorizeRes.status === 301) ||
-      !finalLoc
-    ) {
-      return { kind: "fail" };
-    }
-    const finalAbs = new URL(finalLoc, abs);
-    if (!finalAbs.searchParams.get("code")) {
-      return { kind: "fail" };
-    }
-    return { kind: "redirect", location: finalAbs.href };
+    return { kind: "fail" };
   } catch {
     return { kind: "fail" };
   }
