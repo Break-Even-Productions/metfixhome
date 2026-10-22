@@ -383,6 +383,8 @@ export function createHarness(opts?: {
     googleToken: null as EdgeHandler | null,
     social: null as EdgeHandler | null,
     bridge: null as EdgeHandler | null,
+    /** Optional second hop after real bridge → /oauth/authorize. */
+    authorize: null as EdgeHandler | null,
   };
 
   const fetchImpl: FetchImpl = async (input, init) => {
@@ -565,6 +567,12 @@ export function createHarness(opts?: {
           Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=${encodeURIComponent(st)}`,
         },
       });
+    }
+    if (url.includes("/oauth/authorize")) {
+      if (edges.authorize) {
+        return edges.authorize(new Request(url, { method, headers }));
+      }
+      return new Response("authorize hop not mocked", { status: 502 });
     }
     if (url.includes("/proxy/oauth/token")) {
       if (opts?.refresh) return opts.refresh(new Request(url, { method, headers, body: bodyText }));

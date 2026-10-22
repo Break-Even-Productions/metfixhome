@@ -396,7 +396,9 @@ export async function handleGoogleCallback(
   }
   if (rec.flow !== "google") return authErrorRedirect("state");
 
+  /** Nextend expects a JSON *string* (same shape as the MetFix app), not a bare JWT. */
   let idToken: string;
+  let socialAccessTokenJson: string;
   try {
     const tokenRes = await fetchImpl(GOOGLE_TOKEN, {
       method: "POST",
@@ -412,9 +414,25 @@ export async function handleGoogleCallback(
       signal: AbortSignal.timeout(5000),
     });
     if (!tokenRes.ok) throw new Error("google_token");
-    const tj = (await tokenRes.json()) as { id_token?: string };
-    if (typeof tj.id_token !== "string") throw new Error("no_id_token");
+    const tj = (await tokenRes.json()) as {
+      id_token?: string;
+      access_token?: string;
+      expires_in?: number;
+      token_type?: string;
+    };
+    if (typeof tj.id_token !== "string" || tj.id_token.length === 0) {
+      throw new Error("no_id_token");
+    }
+    if (typeof tj.access_token !== "string" || tj.access_token.length === 0) {
+      throw new Error("no_access_token");
+    }
     idToken = tj.id_token;
+    socialAccessTokenJson = JSON.stringify({
+      access_token: tj.access_token,
+      id_token: tj.id_token,
+      token_type: typeof tj.token_type === "string" && tj.token_type ? tj.token_type : "Bearer",
+      expires_in: typeof tj.expires_in === "number" ? tj.expires_in : 3600,
+    });
   } catch {
     return authErrorRedirect("google");
   }
@@ -444,7 +462,7 @@ export async function handleGoogleCallback(
     {
       provider: "google",
       intent,
-      access_token: idToken,
+      access_token: socialAccessTokenJson,
       client_id: cfg.clientId,
       redirect_uri: METFIX_CALLBACK_URI,
       state: bridgeState,
