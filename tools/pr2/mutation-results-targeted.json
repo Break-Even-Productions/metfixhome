@@ -1,0 +1,140 @@
+{
+  "catalogRev": "r1.35",
+  "selected": [
+    "M-CW16",
+    "M-CW19",
+    "M-CW20",
+    "M-CW24",
+    "M-CW32",
+    "M19",
+    "M27",
+    "M95",
+    "M130",
+    "M-WL14b",
+    "M-JL1",
+    "M-P1a",
+    "M-P4L1",
+    "M-C62",
+    "M-P1O1",
+    "M137",
+    "M-DT3",
+    "M-DT6",
+    "M-DT7",
+    "M-DT11",
+    "M-DT12"
+  ],
+  "counts": {
+    "exact": 19,
+    "wider": 2,
+    "missing-red": 0,
+    "survived": 0,
+    "cant-run": 0
+  },
+  "results": [
+    {
+      "id": "M-CW16",
+      "verdict": "exact",
+      "observed": "[AU22.1,CW12.1]"
+    },
+    {
+      "id": "M-CW19",
+      "verdict": "exact",
+      "observed": "[CW13.2,CW13.3]"
+    },
+    {
+      "id": "M-CW20",
+      "verdict": "exact",
+      "observed": "[CW14.1]"
+    },
+    {
+      "id": "M-CW24",
+      "verdict": "exact",
+      "observed": "[CW13.3]"
+    },
+    {
+      "id": "M-CW32",
+      "verdict": "exact",
+      "observed": "[CW12.3]"
+    },
+    {
+      "id": "M19",
+      "verdict": "exact",
+      "observed": "[CI2,CT2]"
+    },
+    {
+      "id": "M27",
+      "verdict": "exact",
+      "observed": "[P7.1]"
+    },
+    {
+      "id": "M95",
+      "verdict": "exact",
+      "observed": "[AU2.1,AU27.1]"
+    },
+    {
+      "id": "M130",
+      "verdict": "exact",
+      "observed": "[C6.1]"
+    },
+    {
+      "id": "M-WL14b",
+      "verdict": "exact",
+      "observed": "[AU26.8]"
+    },
+    {
+      "id": "M-JL1",
+      "verdict": "exact",
+      "observed": "[AU19.3]"
+    },
+    {
+      "id": "M-P1a",
+      "verdict": "exact",
+      "observed": "[CT-P1]"
+    },
+    {
+      "id": "M-P4L1",
+      "verdict": "exact",
+      "observed": "[CW9.1,P4.1]"
+    },
+    {
+      "id": "M-C62",
+      "verdict": "exact",
+      "observed": "[C6.2]"
+    },
+    {
+      "id": "M-P1O1",
+      "verdict": "exact",
+      "observed": "[P1.1,P8.1,P8.2]"
+    },
+    {
+      "id": "M137",
+      "verdict": "exact",
+      "observed": "[AU17.9,AU27.4]"
+    },
+    {
+      "id": "M-DT3",
+      "verdict": "exact",
+      "observed": "[AU27.2,CW7.1,LB.N10.1,P8.1]"
+    },
+    {
+      "id": "M-DT6",
+      "verdict": "exact",
+      "observed": "[AU20.1,AU27.6]"
+    },
+    {
+      "id": "M-DT7",
+      "verdict": "wider",
+      "observed": "[AU27.10,AU27.7,AU27.8,AU27.9,AU7.1,AU7.6]"
+    },
+    {
+      "id": "M-DT11",
+      "verdict": "wider",
+      "observed": "[AU27.3,AU7.6]"
+    },
+    {
+      "id": "M-DT12",
+      "verdict": "exact",
+      "observed": "[AU27.10,AU27.3]"
+    }
+  ]
+}

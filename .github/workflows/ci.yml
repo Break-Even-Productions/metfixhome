@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # A1.1 needs MAIN_BASE (9f7129d7) as a reachable ancestor for
+          # `git merge-base --is-ancestor` + `git diff` against that pin.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -23,7 +27,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Typecheck worker
         run: npm run check:worker
@@ -52,8 +56,31 @@ jobs:
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk
 
-      - name: Pool-workers HTMLRewriter tests (built dist)
-        run: npm run test:workers
-
       - name: Wrangler deploy dry-run
         run: npx wrangler deploy --dry-run
+
+  # Required check name: test-workers (AU7.6 real DO + HTMLRewriter pool).
+  test-workers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site (HTMLRewriter pool needs dist)
+        run: npm run build:cf
+        env:
+          VITE_SANITY_PROJECT_ID: etg9lezr
+          VITE_SANITY_DATASET: production
+          VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
+
+      - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
+        run: npm run test:workers

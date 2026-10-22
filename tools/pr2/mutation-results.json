@@ -1,0 +1,142 @@
+{
+  "catalogRev": "r1.35",
+  "catalogTotal": 286,
+  "selected": 3,
+  "counts": {
+    "exact": 1,
+    "wider": 2,
+    "missing-red": 0,
+    "survived": 0,
+    "ethan-blocker": 0,
+    "cant-run": 0,
+    "not-run": 283
+  },
+  "baselineFailedAmongSelected": [],
+  "results": [
+    {
+      "id": "M-DT7",
+      "verdict": "wider",
+      "expectedRed": [
+        "AU7.6",
+        "AU27.7"
+      ],
+      "observedRed": [
+        "AU27.10",
+        "AU27.7",
+        "AU27.8",
+        "AU27.9",
+        "AU7.1",
+        "AU7.6"
+      ],
+      "variants": [
+        {
+          "variant": "M-DT7",
+          "verdict": "wider",
+          "expectedRed": [
+            "AU7.6",
+            "AU27.7"
+          ],
+          "observedRed": [
+            "AU27.10",
+            "AU27.7",
+            "AU27.8",
+            "AU27.9",
+            "AU7.1",
+            "AU7.6"
+          ],
+          "failedTestTitles": [
+            "AU7.1 proactive refresh at 59s window",
+            "AU7.6 50 concurrent refresh → 1 token, 1 KV /me put (leader); throttled KV ok",
+            "AU27.7 (a) [password] rotating mock stores ACCESS2/R1; next refresh sends R1; R0 once",
+            "AU27.7 (e) [password] token 200 then /me 500 → 503; DO holds R1; next sends R1",
+            "AU27.7 (a) [google] rotating mock stores ACCESS2/R1; next refresh sends R1; R0 once",
+            "AU27.7 (e) [google] token 200 then /me 500 → 503; DO holds R1; next sends R1",
+            "AU27.8 single-flight: 20 concurrent refreshes → 1 token + 1 /me; all ACCESS2",
+            "AU27.9 store-before-/me: DO already holds R1 when /me runs; keep vs end",
+            "AU27.10 (c) Google session refresh: rotating R0→ACCESS2/R1; in-handler DO has R1; 0 proxy"
+          ],
+          "patchMd5": "573f04f7bb5428893643f103f331efaa",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "SESSION DO refresh (1.32)",
+      "sabotage": "after a successful refresh, write only the access token and keep the old refresh token"
+    },
+    {
+      "id": "M-DT11",
+      "verdict": "wider",
+      "expectedRed": [
+        "AU7.6"
+      ],
+      "observedRed": [
+        "AU27.3",
+        "AU7.6"
+      ],
+      "variants": [
+        {
+          "variant": "M-DT11",
+          "verdict": "wider",
+          "expectedRed": [
+            "AU7.6"
+          ],
+          "observedRed": [
+            "AU27.3",
+            "AU7.6"
+          ],
+          "failedTestTitles": [
+            "AU7.6 50 concurrent refresh → 1 token, 1 KV /me put (leader); throttled KV ok",
+            "AU27.3 invalid_grant → 401; non-grant Retry-After 17/600 → 60 on all grants"
+          ],
+          "patchMd5": "e19089aacb828ebf637fec72c26a7dae",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "SESSION refresh (1.35, CQ B1)",
+      "sabotage": "every coalesced caller (not only the leader) writes the KV `/me` key after a shared refresh"
+    },
+    {
+      "id": "M-DT12",
+      "verdict": "exact",
+      "expectedRed": [
+        "AU27.3",
+        "AU27.10"
+      ],
+      "observedRed": [
+        "AU27.10",
+        "AU27.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-DT12",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU27.3",
+            "AU27.10"
+          ],
+          "observedRed": [
+            "AU27.10",
+            "AU27.3"
+          ],
+          "failedTestTitles": [
+            "AU27.3 invalid_grant → 401; non-grant Retry-After 17/600 → 60 on all grants",
+            "AU27.10 (b) authorization_code invalid_grant → 401 invalid_login (byte-identical to password)"
+          ],
+          "patchMd5": "9964d55d4d9c28b1af2d318af0d38948",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 1
+        }
+      ],
+      "target": "error map (1.35, CQ B2)",
+      "sabotage": "non-grant 4xx codes (`invalid_client`, `unauthorized_client`, `unsupported_grant_type`, `invalid_request`, unknown) return upstream Retry-After instead of fixed 60"
+    }
+  ],
+  "partial": false
+}

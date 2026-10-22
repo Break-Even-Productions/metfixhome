@@ -1,0 +1,391 @@
+{
+  "catalogRev": "r1.24",
+  "catalogTotal": 276,
+  "selected": 10,
+  "counts": {
+    "exact": 4,
+    "wider": 6,
+    "survived": 0,
+    "ethan-blocker": 0,
+    "cant-run": 0,
+    "not-run": 266
+  },
+  "baselineFailedAmongSelected": [],
+  "results": [
+    {
+      "id": "M-CW16",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW12.1"
+      ],
+      "observedRed": [
+        "CW12.1"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW16",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW12.1"
+          ],
+          "observedRed": [
+            "CW12.1"
+          ],
+          "failedTestTitles": [
+            "PR2 client P7 / CW10 / CW12 / CW13 CW12.1 moderator true shows controls on others; non-boolean localStorage ignored"
+          ],
+          "patchMd5": "e317338b3745e0357026ca6c466031b3",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "moderator controls from localStorage or truthy `moderator`"
+    },
+    {
+      "id": "M-CW19",
+      "verdict": "wider",
+      "expectedRed": [
+        "CW13.2"
+      ],
+      "observedRed": [
+        "CW13.2"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW19",
+          "verdict": "wider",
+          "expectedRed": [
+            "CW13.2"
+          ],
+          "observedRed": [
+            "CW13.2"
+          ],
+          "failedTestTitles": [
+            "PR2 client P7 / CW10 / CW12 / CW13 CW13.2 429 Retry-After 17 disables action for 17s then re-enables",
+            "PR2 client P7 / CW10 / CW12 / CW13 CW13.3 Retry-After 99999 clamps client disable to 600s with countdown"
+          ],
+          "patchMd5": "9f0db8764d9f570b3e285602c3f04858",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "ignore `Retry-After`"
+    },
+    {
+      "id": "M-CW24",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW13.3"
+      ],
+      "observedRed": [
+        "CW13.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW24",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW13.3"
+          ],
+          "observedRed": [
+            "CW13.3"
+          ],
+          "failedTestTitles": [
+            "PR2 client P7 / CW10 / CW12 / CW13 CW13.3 Retry-After 99999 clamps client disable to 600s with countdown"
+          ],
+          "patchMd5": "ea761879f1c87c1e5bf2a342ca9e8369",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client comments",
+      "sabotage": "no Retry-After cap (honours 99999)"
+    },
+    {
+      "id": "M-CW32",
+      "verdict": "exact",
+      "expectedRed": [
+        "CW12.3"
+      ],
+      "observedRed": [
+        "CW12.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW32",
+          "verdict": "exact",
+          "expectedRed": [
+            "CW12.3"
+          ],
+          "observedRed": [
+            "CW12.3"
+          ],
+          "failedTestTitles": [
+            "CW12 CW12.3 refresh true→false rewrites SESSION DO and KV /me; purge rebuild stays false"
+          ],
+          "patchMd5": "4736c73f609102c1feb9cbca86c3854e",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/auth refresh",
+      "sabotage": "refresh writes the new token pair to the `SESSION` DO but not the new `can_moderate` (old `true` kept); KV `/me` still rewritten"
+    },
+    {
+      "id": "M-CW33",
+      "verdict": "wider",
+      "expectedRed": [
+        "CW12.3",
+        "AU5.z"
+      ],
+      "observedRed": [
+        "AU5.z",
+        "CW12.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-CW33",
+          "verdict": "wider",
+          "expectedRed": [
+            "CW12.3",
+            "AU5.z"
+          ],
+          "observedRed": [
+            "AU5.z",
+            "CW12.3"
+          ],
+          "failedTestTitles": [
+            "AU5 AU5.4 rolling held by SESSION DO not KV",
+            "AU5 AU5.z KV /me TTL always 60",
+            "AU5 AU5.k DO source of truth after KV TTL expiry",
+            "CW12 CW12.3 refresh true→false rewrites SESSION DO and KV /me; purge rebuild stays false",
+            "AU5 AU5.3 TTL 60 alarm"
+          ],
+          "patchMd5": "ccb70e53e7cb7fb8cb130843411be961",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "worker/auth refresh",
+      "sabotage": "refresh skips the KV `/me` write (DO updated)"
+    },
+    {
+      "id": "M18",
+      "verdict": "exact",
+      "expectedRed": [
+        "L7.3",
+        "CI2"
+      ],
+      "observedRed": [
+        "CI2",
+        "L7.3"
+      ],
+      "variants": [
+        {
+          "variant": "M18",
+          "verdict": "exact",
+          "expectedRed": [
+            "L7.3",
+            "CI2"
+          ],
+          "observedRed": [
+            "CI2",
+            "L7.3"
+          ],
+          "failedTestTitles": [
+            "PR2 leaderboard gates L / LB L7.3 XSS name renders as text without img nodes",
+            "CI2 CI2 scans daily-fix / auth / leaderboard for html sinks"
+          ],
+          "patchMd5": "4847220d5eb6751da6a349d3315a2a42",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "client leaderboard",
+      "sabotage": "render name via `dangerouslySetInnerHTML`"
+    },
+    {
+      "id": "M19",
+      "verdict": "wider",
+      "expectedRed": [
+        "CT2",
+        "CI2"
+      ],
+      "observedRed": [
+        "CI2",
+        "CT2"
+      ],
+      "variants": [
+        {
+          "variant": "M19",
+          "verdict": "wider",
+          "expectedRed": [
+            "CT2",
+            "CI2"
+          ],
+          "observedRed": [
+            "CI2",
+            "CT2"
+          ],
+          "failedTestTitles": [
+            "CI2 CI2 scans daily-fix / auth / leaderboard for html sinks",
+            "PR2 client gates C / CT / CC1 CT2 comment HTML renders as literal text without script execution"
+          ],
+          "patchMd5": "a8778f20ce4131ab74bbb0922bd8a380",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "CommentThread.tsx",
+      "sabotage": "render content via `dangerouslySetInnerHTML`"
+    },
+    {
+      "id": "M27",
+      "verdict": "wider",
+      "expectedRed": [
+        "P7.1"
+      ],
+      "observedRed": [
+        "P7.1"
+      ],
+      "variants": [
+        {
+          "variant": "M27",
+          "verdict": "wider",
+          "expectedRed": [
+            "P7.1"
+          ],
+          "observedRed": [
+            "P7.1"
+          ],
+          "failedTestTitles": [
+            "PR2 gates CW — comment write/like CW8.1 successful PATCH/DELETE/like each purge date key once; failures 0",
+            "PR2 gates P — comment POST P7.1 successful POST cache.delete once; failed POST no delete"
+          ],
+          "patchMd5": "b814f60b668a3e2cbcaa12231040798e",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "P7",
+      "sabotage": "no cache purge after write"
+    },
+    {
+      "id": "M30",
+      "verdict": "wider",
+      "expectedRed": [
+        "P8.2"
+      ],
+      "observedRed": [
+        "P8.2"
+      ],
+      "variants": [
+        {
+          "variant": "M30",
+          "verdict": "wider",
+          "expectedRed": [
+            "P8.2"
+          ],
+          "observedRed": [
+            "P8.2"
+          ],
+          "failedTestTitles": [
+            "PR2 gates P — comment POST P3.5 malformed JSON and invalid fields → 400 invalid_request",
+            "PR2 gates P — comment POST P8.1 sixth POST in 60s → 429 rate_limited, limiter key user:ip",
+            "PR2 gates P — comment POST P8.2 CSRF fail and logged out skip limiter",
+            "PR2 gates P — comment POST P9.1 six concurrent POSTs → five BSI, one 429"
+          ],
+          "patchMd5": "a4d023ead75a114ba33a39061a9f9e36",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "P8",
+      "sabotage": "limiter before session/CSRF"
+    },
+    {
+      "id": "M-JL1",
+      "verdict": "wider",
+      "expectedRed": [
+        "AU19.3"
+      ],
+      "observedRed": [
+        "AU19.3"
+      ],
+      "variants": [
+        {
+          "variant": "M-JL1a",
+          "verdict": "survived",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [],
+          "failedTestTitles": [],
+          "patchMd5": "d3b6ecd642d235b744e654665b9dd5dc",
+          "typeCheckStatus": null,
+          "vitestStatus": 0,
+          "buildStatus": 0,
+          "workersStatus": 0
+        },
+        {
+          "variant": "M-JL1b",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19 AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "7277af7d167a8d8763e95c83e716edc8",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        },
+        {
+          "variant": "M-JL1c",
+          "verdict": "exact",
+          "expectedRed": [
+            "AU19.3"
+          ],
+          "observedRed": [
+            "AU19.3"
+          ],
+          "failedTestTitles": [
+            "AU19 AU19.3 built HTML no inline script/handlers"
+          ],
+          "patchMd5": "eb7fce30d7308d1426967a34f1e2c7dd",
+          "typeCheckStatus": null,
+          "vitestStatus": 1,
+          "buildStatus": 0,
+          "workersStatus": 0
+        }
+      ],
+      "target": "built HTML / AU19.3 check",
+      "sabotage": "inject executable inline script variants (a/b/c) into built index.html"
+    }
+  ]
+}
