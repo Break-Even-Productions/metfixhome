@@ -6,6 +6,10 @@ BSI_POSTS_API_KEY=
 BSI_OAUTH_CLIENT_ID=
 SESSION_ENC_KEY=
 CSRF_SECRET=
+# Public reCAPTCHA v3 site key (Worker plain var — not a secret). Same value as
+# Cloudflare Variables `RECAPTCHA_SITE_KEY`. Injected as window.__MFX_RECAPTCHA_SITE_KEY__.
+RECAPTCHA_SITE_KEY=
+# Google siteverify secret — `wrangler secret put RECAPTCHA_SECRET` / dashboard Secrets only.
 RECAPTCHA_SECRET=
 
 # --- Local auth (optional) ---

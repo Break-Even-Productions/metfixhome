@@ -98,6 +98,12 @@ export async function handleRequest(
     if (authRes) return authRes;
   }
 
+  // Public reCAPTCHA site key bootstrap (SPA sets window.__MFX_RECAPTCHA_SITE_KEY__).
+  // Plain Worker var RECAPTCHA_SITE_KEY — not a secret. Siteverify uses RECAPTCHA_SECRET.
+  if (path === "/api/recaptcha-site-key.js") {
+    return handleRecaptchaSiteKeyJs(request, env);
+  }
+
   // /api/* — worker-owned
   if (path === "/api/daily-fix" || path === "/api/daily-fix/") {
     return handleApi(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
@@ -175,6 +181,30 @@ function redirectResponse(location: string): Response {
     headers: {
       Location: location,
       "Cache-Control": "max-age=3600",
+    },
+  });
+}
+
+/**
+ * Same-origin classic script for the SPA shell (`client/index.html`).
+ * Sets `window.__MFX_RECAPTCHA_SITE_KEY__` from Worker var `RECAPTCHA_SITE_KEY`
+ * (public; set in Cloudflare Variables / wrangler vars — not `wrangler secret`).
+ * Missing/empty → empty string; client falls back to its test token locally.
+ */
+function handleRecaptchaSiteKeyJs(request: Request, env: Env): Response {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    return new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } });
+  }
+  const raw = typeof env.RECAPTCHA_SITE_KEY === "string" ? env.RECAPTCHA_SITE_KEY.trim() : "";
+  // Google site keys are [A-Za-z0-9_-]; reject anything else rather than emit it.
+  const siteKey = /^[A-Za-z0-9_-]*$/.test(raw) ? raw : "";
+  const body = `window.__MFX_RECAPTCHA_SITE_KEY__=${JSON.stringify(siteKey)};\n`;
+  return new Response(method === "HEAD" ? null : body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/javascript; charset=utf-8",
+      "Cache-Control": "public, max-age=300",
     },
   });
 }
