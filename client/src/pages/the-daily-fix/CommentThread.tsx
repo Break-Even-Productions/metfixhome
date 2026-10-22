@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Heart, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -415,6 +415,19 @@ export function CommentThread({
     return `${base} (${count})`;
   }
 
+  function likeCount(comment: DailyFixComment): number {
+    return typeof comment.like_count === "number" ? comment.like_count : 0;
+  }
+
+  /** Same gate as Post comment: join modal on AUTH-HOST, login URL elsewhere. */
+  function promptSignIn() {
+    if (!authHost) {
+      window.location.assign(getMetfixLoginUrl("/the-daily-fix"));
+      return;
+    }
+    setJoinOpen(true);
+  }
+
   const Shell = showHeader ? "section" : "div";
 
   return (
@@ -469,58 +482,103 @@ export function CommentThread({
                 <span className="df-comment-pillar">{pillarLabel(comment.pillar)}</span>
               </div>
               <p className="df-comment-body">{comment.content}</p>
-              {loggedIn && comment.deleted === 0 && canModerate(comment) ? (
-                <div className="df-comment-controls">
-                  <button
-                    type="button"
-                    className="df-comment-control"
-                    disabled={isLocked(`edit:${comment.id}`)}
-                    onClick={() => void editComment(comment)}
-                  >
-                    {isLocked(`edit:${comment.id}`)
-                      ? `Try again in ${retryLeft(`edit:${comment.id}`)}s`
-                      : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    className="df-comment-control"
-                    disabled={isLocked(`delete:${comment.id}`)}
-                    onClick={() => void deleteComment(comment)}
-                  >
-                    {isLocked(`delete:${comment.id}`)
-                      ? `Try again in ${retryLeft(`delete:${comment.id}`)}s`
-                      : "Delete"}
-                  </button>
+              {comment.deleted === 0 ? (
+                <div className="df-comment-actions">
+                  <div className="df-comment-actions-main">
+                    {comment.parent_id == null || comment.parent_id === 0 ? (
+                      <button
+                        type="button"
+                        className="df-comment-action"
+                        disabled={loggedIn && isLocked(`reply:${comment.id}`)}
+                        onClick={() => {
+                          if (!loggedIn) {
+                            promptSignIn();
+                            return;
+                          }
+                          setReplyTo(comment);
+                          setCommentType(comment.pillar);
+                        }}
+                      >
+                        {loggedIn && isLocked(`reply:${comment.id}`) ? (
+                          `Try again in ${retryLeft(`reply:${comment.id}`)}s`
+                        ) : (
+                          <>
+                            <MessageCircle className="df-comment-action-icon" aria-hidden="true" />
+                            Reply
+                          </>
+                        )}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={
+                        loggedIn && comment.liked === true
+                          ? "df-comment-action df-comment-action-liked"
+                          : "df-comment-action"
+                      }
+                      disabled={loggedIn && isLocked(`like:${comment.id}`)}
+                      aria-label={
+                        loggedIn && isLocked(`like:${comment.id}`)
+                          ? undefined
+                          : likeLabel(comment)
+                      }
+                      onClick={() => {
+                        if (!loggedIn) {
+                          promptSignIn();
+                          return;
+                        }
+                        void toggleLike(comment);
+                      }}
+                    >
+                      {loggedIn && isLocked(`like:${comment.id}`) ? (
+                        `Try again in ${retryLeft(`like:${comment.id}`)}s`
+                      ) : (
+                        <>
+                          <Heart
+                            className="df-comment-action-icon"
+                            aria-hidden="true"
+                            fill={loggedIn && comment.liked === true ? "currentColor" : "none"}
+                          />
+                          <span aria-hidden="true">{likeCount(comment)}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {loggedIn && canModerate(comment) ? (
+                    <div className="df-comment-actions-mod">
+                      <button
+                        type="button"
+                        className="df-comment-action"
+                        disabled={isLocked(`edit:${comment.id}`)}
+                        onClick={() => void editComment(comment)}
+                      >
+                        {isLocked(`edit:${comment.id}`) ? (
+                          `Try again in ${retryLeft(`edit:${comment.id}`)}s`
+                        ) : (
+                          <>
+                            <Pencil className="df-comment-action-icon" aria-hidden="true" />
+                            Edit
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="df-comment-action df-comment-action-danger"
+                        disabled={isLocked(`delete:${comment.id}`)}
+                        onClick={() => void deleteComment(comment)}
+                      >
+                        {isLocked(`delete:${comment.id}`) ? (
+                          `Try again in ${retryLeft(`delete:${comment.id}`)}s`
+                        ) : (
+                          <>
+                            <Trash2 className="df-comment-action-icon" aria-hidden="true" />
+                            Delete
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-              {loggedIn &&
-              comment.deleted === 0 &&
-              (comment.parent_id == null || comment.parent_id === 0) ? (
-                <button
-                  type="button"
-                  className="df-comment-control"
-                  disabled={isLocked(`reply:${comment.id}`)}
-                  onClick={() => {
-                    setReplyTo(comment);
-                    setCommentType(comment.pillar);
-                  }}
-                >
-                  {isLocked(`reply:${comment.id}`)
-                    ? `Try again in ${retryLeft(`reply:${comment.id}`)}s`
-                    : "Reply"}
-                </button>
-              ) : null}
-              {loggedIn && comment.deleted === 0 ? (
-                <button
-                  type="button"
-                  className="df-comment-control"
-                  disabled={isLocked(`like:${comment.id}`)}
-                  onClick={() => void toggleLike(comment)}
-                >
-                  {isLocked(`like:${comment.id}`)
-                    ? `Try again in ${retryLeft(`like:${comment.id}`)}s`
-                    : likeLabel(comment)}
-                </button>
               ) : null}
             </li>
           ))}
@@ -582,7 +640,7 @@ export function CommentThread({
                   Replying to {replyTo.author}{" "}
                   <button
                     type="button"
-                    className="df-comment-control"
+                    className="df-comment-action df-comment-action-inline"
                     onClick={() => setReplyTo(null)}
                   >
                     Cancel reply
