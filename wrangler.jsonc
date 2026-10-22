@@ -25,6 +25,13 @@
 			"remote": true
 		}
 	],
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": true
+		}
+	},
 	// Six Rate Limiting bindings (S-RL / P8). namespace_id is an account-unique
 	// integer you choose (not created in the dashboard). 27101–27106 are reserved
 	// for metfixhome on account 84da09b9… so they do not collide with other Workers.
@@ -109,6 +116,7 @@
 	"vars": {
 		"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
 		"GOOGLE_AUTH_ENABLED": "1",
-		"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com"
+		"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com",
+    "RECAPTCHA_SITE_KEY": "6LfUFO0mAAAAAKxrVeYxZ9p3vMWNtvJzCKhqBs1R"
 	}
 }
