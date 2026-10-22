@@ -77,6 +77,12 @@ export type Env = {
   SESSION_ENC_KEY_PREV?: string;
   CSRF_SECRET?: string;
   RECAPTCHA_SECRET?: string;
+  /**
+   * Public reCAPTCHA v3 site key (Worker plain var — not a secret).
+   * Injected into the SPA as `window.__MFX_RECAPTCHA_SITE_KEY__` via
+   * `/api/recaptcha-site-key.js`. Pair with secret `RECAPTCHA_SECRET` (siteverify).
+   */
+  RECAPTCHA_SITE_KEY?: string;
   GOOGLE_WEB_CLIENT_ID?: string;
   GOOGLE_WEB_CLIENT_SECRET?: string;
   /** When "1"/"true", Google auth routes are live (R9 gate). */
