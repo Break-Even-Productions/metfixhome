@@ -12,11 +12,12 @@ import {
   mkdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { build } from "vite";
+import { makeIsolatedViteProject } from "../tools/pr2/isolated-vite-project";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -91,10 +92,11 @@ describe("RS1/PX1 bundle patterns", () => {
     async () => {
       const outDir = mkdtempSync(join(tmpdir(), "posts-px1-out-"));
       const cacheDir = mkdtempSync(join(tmpdir(), "posts-px1-cache-"));
+      const proj = makeIsolatedViteProject(REPO_ROOT, "posts-px1-proj-");
       try {
         await build({
-          configFile: resolve(REPO_ROOT, "vite.config.ts"),
-          root: resolve(REPO_ROOT, "client"),
+          configFile: proj.configFile,
+          root: proj.clientRoot,
           build: {
             outDir,
             emptyOutDir: true,
@@ -109,6 +111,7 @@ describe("RS1/PX1 bundle patterns", () => {
       } finally {
         rmSync(outDir, { recursive: true, force: true });
         rmSync(cacheDir, { recursive: true, force: true });
+        proj.cleanup();
       }
     },
   );
@@ -149,13 +152,15 @@ describe("PX1.r porcelain / temp cleanup", () => {
       const before = porcelain();
       const outDir = mkdtempSync(join(tmpdir(), "posts-px1r-out-"));
       const cacheDir = mkdtempSync(join(tmpdir(), "posts-px1r-cache-"));
+      const proj = makeIsolatedViteProject(REPO_ROOT, "posts-px1r-proj-");
       expect(outDir.startsWith(REPO_ROOT)).toBe(false);
       expect(cacheDir.startsWith(REPO_ROOT)).toBe(false);
+      expect(proj.root.startsWith(REPO_ROOT)).toBe(false);
 
       try {
         await build({
-          configFile: resolve(REPO_ROOT, "vite.config.ts"),
-          root: resolve(REPO_ROOT, "client"),
+          configFile: proj.configFile,
+          root: proj.clientRoot,
           build: { outDir, emptyOutDir: true },
           cacheDir,
           logLevel: "error",
@@ -163,10 +168,12 @@ describe("PX1.r porcelain / temp cleanup", () => {
       } finally {
         rmSync(outDir, { recursive: true, force: true });
         rmSync(cacheDir, { recursive: true, force: true });
+        proj.cleanup();
       }
 
       expect(existsSync(outDir)).toBe(false);
       expect(existsSync(cacheDir)).toBe(false);
+      expect(existsSync(proj.root)).toBe(false);
       const after = porcelain();
       expect(after).toBe(before);
     },

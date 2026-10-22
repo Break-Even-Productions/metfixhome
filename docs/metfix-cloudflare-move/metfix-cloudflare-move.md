@@ -205,7 +205,9 @@ The hash-pillar lock is superseded by `?tab=`, because Ethan wants per-tab share
 - The Pages workflow is removed in the post-cutover commit. Done in PR #7 (2026-10-15).
 
 **Ethan's checklist (dashboard steps, in order):**
-1. In Workers Builds, connect `Break-Even-Productions/metfixhome`. Worker name `metfixhome`, production branch `main`, build command `npm ci --legacy-peer-deps && npm run build:cf`, deploy command `npx wrangler deploy`. Assets come from `./dist/public`, which `wrangler.jsonc` sets.
+1. In Workers Builds, connect `Break-Even-Productions/metfixhome`. Worker name `metfixhome`, production branch `main`, build command `npm ci --legacy-peer-deps && npm run build:cf`, **Deploy command** `npx wrangler deploy` (or `npm run deploy:cf` — in-repo script). Assets come from `./dist/public`, which `wrangler.jsonc` sets.
+   - **Do not** set Deploy command to `npx wrangler preview`. That is not a valid Wrangler 4.45 command and fails Builds with `Unknown argument: preview`.
+   - **Preview command** (non-`main` branches, Settings → Builds): pin to `npx wrangler versions upload` while Wrangler is below 4.135, or upgrade Wrangler before using the default `npx wrangler preview`. Deploy command stays `npx wrangler deploy` for production.
 2. Add the secret `DAILY_FIX_API_KEY` on the Worker, in the dashboard or with `wrangler secret put DAILY_FIX_API_KEY`.
 3. Check the workers.dev or preview URL against section 9.
 4. Add the custom domain `metfix.org` to the Worker.

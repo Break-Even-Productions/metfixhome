@@ -20,6 +20,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { build, loadEnv } from "vite";
+import { makeIsolatedViteProject } from "../isolated-vite-project";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -60,13 +61,22 @@ function lineOfIndex(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
 }
 
+/**
+ * AU22.2 used to plant `_au222_plant_*` into live client/src; parallel AU22.1
+ * walks raced to ENOENT. AU22.2 now plants in a temp dir — still skip any
+ * leftover `_au*_plant_*` names so a mid-unlink cannot break this walker.
+ * Do not skip `__repo_scan_plant_*` (C5/CI2 planted proofs rely on walkFiles).
+ */
 function walkFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, ent.name);
     if (ent.isDirectory()) out.push(...walkFiles(p));
-    else if (ent.isFile()) out.push(p);
+    else if (ent.isFile()) {
+      if (/^_au\d+_plant_/.test(ent.name)) continue;
+      out.push(p);
+    }
   }
   return out;
 }
@@ -911,6 +921,8 @@ describe("TK1", () => {
       const keys = [N, ...CANARY_KEYS, "SANITY_API_READ_TOKEN"];
       const snap = snapshotEnv(keys);
       const outDir = trackTemp(mkdtempSync(path.join(tmpdir(), "tk1-out-")));
+      const proj = makeIsolatedViteProject(REPO_ROOT, "tk1-proj-");
+      trackTemp(proj.root);
       const canaries: string[] = [];
       try {
         for (const k of CANARY_KEYS) {
@@ -919,8 +931,8 @@ describe("TK1", () => {
           process.env[k] = v;
         }
         await build({
-          configFile: path.join(REPO_ROOT, "vite.config.ts"),
-          root: path.join(REPO_ROOT, "client"),
+          configFile: proj.configFile,
+          root: proj.clientRoot,
           logLevel: "error",
           build: {
             outDir,
@@ -931,6 +943,7 @@ describe("TK1", () => {
         expect(hits).toEqual([]);
       } finally {
         restoreEnv(snap);
+        proj.cleanup();
       }
     },
     120_000,
@@ -945,14 +958,16 @@ describe("TK1.g", () => {
     const canary = `guard-canary-${randomBytes(8).toString("hex")}`;
     const snap = snapshotEnv([N]);
     const outDir = trackTemp(mkdtempSync(path.join(tmpdir(), "tk1g-out-")));
+    const proj = makeIsolatedViteProject(REPO_ROOT, "tk1g-proj-");
+    trackTemp(proj.root);
     const expected = `${N} must not be set; the browser client reads Sanity over the public CDN without a token.`;
     try {
       process.env[N] = canary;
       let err: unknown;
       try {
         await build({
-          configFile: path.join(REPO_ROOT, "vite.config.ts"),
-          root: path.join(REPO_ROOT, "client"),
+          configFile: proj.configFile,
+          root: proj.clientRoot,
           logLevel: "silent",
           build: { outDir, emptyOutDir: true },
         });
@@ -965,6 +980,7 @@ describe("TK1.g", () => {
       expect(msg).not.toContain(canary);
     } finally {
       restoreEnv(snap);
+      proj.cleanup();
     }
   }, 120_000);
 });
@@ -979,20 +995,22 @@ describe("TK1.r", () => {
     const snap = snapshotEnv(keys);
     const beforePorcelain = gitPorcelain();
     // Absolute dirs under os.tmpdir() — never the repo `dist/` (TK1.r / CQ e290ffc1).
-    // No porcelain filter: isolation alone must keep git status unchanged.
+    // Isolated project so Vite config bundling cannot write repo node_modules/.vite-temp.
     const outDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-out-")));
     const otherDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-other-")));
     const cacheDir = path.join(otherDir, "vite-cache");
+    const proj = makeIsolatedViteProject(REPO_ROOT, "tk1r-proj-");
     expect(outDir.startsWith(REPO_ROOT)).toBe(false);
     expect(cacheDir.startsWith(REPO_ROOT)).toBe(false);
+    expect(proj.root.startsWith(REPO_ROOT)).toBe(false);
     try {
       for (const k of CANARY_KEYS) {
         process.env[k] = `r-${randomBytes(6).toString("hex")}`;
       }
       delete process.env[N];
       await build({
-        configFile: path.join(REPO_ROOT, "vite.config.ts"),
-        root: path.join(REPO_ROOT, "client"),
+        configFile: proj.configFile,
+        root: proj.clientRoot,
         logLevel: "error",
         cacheDir,
         build: { outDir, emptyOutDir: true },
@@ -1006,12 +1024,14 @@ describe("TK1.r", () => {
       restoreEnv(snap);
       rmSync(outDir, { recursive: true, force: true });
       rmSync(otherDir, { recursive: true, force: true });
+      proj.cleanup();
     }
     expect(process.env[N]).toBeUndefined();
     expect(process.env.SANITY_API_READ_TOKEN).toBe(preset);
     expect(gitPorcelain()).toBe(beforePorcelain);
     expect(existsSync(outDir)).toBe(false);
     expect(existsSync(otherDir)).toBe(false);
+    expect(existsSync(proj.root)).toBe(false);
     delete process.env.SANITY_API_READ_TOKEN;
   }, 120_000);
 });
@@ -1086,13 +1106,15 @@ describe("C5.2", () => {
       assertNAbsentForTk1();
       const snap = snapshotEnv([tokenName(), ...CANARY_KEYS]);
       const outDir = trackTemp(mkdtempSync(path.join(tmpdir(), "c52-out-")));
+      const proj = makeIsolatedViteProject(REPO_ROOT, "c52-proj-");
+      trackTemp(proj.root);
       try {
         for (const k of CANARY_KEYS) {
           process.env[k] = `c52-${randomBytes(6).toString("hex")}`;
         }
         await build({
-          configFile: path.join(REPO_ROOT, "vite.config.ts"),
-          root: path.join(REPO_ROOT, "client"),
+          configFile: proj.configFile,
+          root: proj.clientRoot,
           logLevel: "error",
           build: { outDir, emptyOutDir: true },
         });
@@ -1110,6 +1132,7 @@ describe("C5.2", () => {
         expect(hits).toEqual([]);
       } finally {
         restoreEnv(snap);
+        proj.cleanup();
       }
     },
     120_000,
