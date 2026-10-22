@@ -33,14 +33,23 @@ jobs:
         run: npm run check:worker
 
       - name: Unit and mount tests
-        run: npm test
+        run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
       - name: Build static site
         run: npm run build:cf
         env:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
-          VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
+
+      - name: No Sanity token in dist
+        run: |
+          test -d dist/public
+          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' '\bsk[A-Za-z0-9]{40,}\b' dist/public; then
+            exit 1
+          fi
+          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'VITE_SANITY_API_READ_TOKEN' dist/public; then
+            exit 1
+          fi
 
       - name: Social preview asset present
         run: test -s dist/public/social-preview.jpg
@@ -80,7 +89,6 @@ jobs:
         env:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
-          VITE_SANITY_API_READ_TOKEN: ${{ secrets.VITE_SANITY_API_READ_TOKEN }}
 
       - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
-        run: npm run test:workers
+        run: before=$(git status --porcelain --ignored --untracked-files=all); npm run test:workers; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi

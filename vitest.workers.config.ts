@@ -8,6 +8,16 @@ import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
  */
 export default defineWorkersConfig({
   test: {
+    // V12(b): do not write node_modules/.vite/vitest/*/results.json during test:workers.
+    cache: false,
+    // V12(b): pool defaults ssr optimizer on; that still writes node_modules/.vite/vitest/deps*
+    // even when cache is false (Vitest resolves cacheDir to that path for the optimizer).
+    deps: {
+      optimizer: {
+        ssr: { enabled: false },
+        web: { enabled: false },
+      },
+    },
     include: ["worker/**/*.workers.test.ts"],
     exclude: ["worker/do/session.refresh.workers.test.ts"],
     poolOptions: {

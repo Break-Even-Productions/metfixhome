@@ -3,8 +3,18 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
-import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  unlinkSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import {
   ACCESS1,
   BRIDGE,
@@ -41,6 +51,27 @@ function walk(dir: string, out: string[] = []): string[] {
     } else out.push(p);
   }
   return out;
+}
+
+/**
+ * Production vite build into an isolated outDir (never repo `dist/`).
+ * Keeps V12(b) CI porcelain clean when AU3.2 / AU19.3 need a built tree.
+ */
+function buildCfToTemp(): string {
+  const outDir = mkdtempSync(join(tmpdir(), "au-dist-"));
+  const build = spawnSync(
+    "npx",
+    ["vite", "build", "--outDir", outDir, "--emptyOutDir"],
+    { cwd: REPO, encoding: "utf8", stdio: "pipe" },
+  );
+  expect(build.status, build.stderr || build.stdout).toBe(0);
+  expect(existsSync(outDir), "temp build outDir missing").toBe(true);
+  return outDir;
+}
+
+function distPublicLabel(outDir: string, abs: string): string {
+  const rel = abs.slice(outDir.length).replace(/^[/\\]/, "").replace(/\\/g, "/");
+  return `dist/public/${rel}`;
 }
 
 export type BuiltHtmlViolation = { file: string; line: number; message: string };
@@ -182,28 +213,19 @@ describe("AU3", () => {
   });
 
   it("AU3.2 dist/public scan after build:cf", async () => {
-    const dist = join(REPO, "dist/public");
-    if (!existsSync(dist)) {
-      const { spawnSync } = await import("node:child_process");
-      const build = spawnSync("npm", ["run", "build:cf"], {
-        cwd: REPO,
-        encoding: "utf8",
-        stdio: "pipe",
-      });
-      expect(build.status, build.stderr || build.stdout).toBe(0);
+    const dist = buildCfToTemp();
+    try {
+      const re =
+        /access_token|refresh_token|bridge_url|client_secret|RECAPTCHA_SECRET|GOOGLE_WEB_CLIENT_SECRET|SESSION_ENC_KEY|DAILY_FIX_API_KEY/;
+      const hits: string[] = [];
+      for (const abs of walk(dist)) {
+        const text = readFileSync(abs, "utf8");
+        if (re.test(text)) hits.push(abs);
+      }
+      expect(hits).toEqual([]);
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
     }
-    if (!existsSync(dist)) {
-      expect(false, "AU3.2 requires dist/public after build:cf").toBe(true);
-      return;
-    }
-    const re =
-      /access_token|refresh_token|bridge_url|client_secret|RECAPTCHA_SECRET|GOOGLE_WEB_CLIENT_SECRET|SESSION_ENC_KEY|DAILY_FIX_API_KEY/;
-    const hits: string[] = [];
-    for (const abs of walk(dist)) {
-      const text = readFileSync(abs, "utf8");
-      if (re.test(text)) hits.push(abs);
-    }
-    expect(hits).toEqual([]);
   });
 });
 
@@ -768,26 +790,14 @@ describe("AU19", () => {
 
 
   it("AU19.3 built HTML no inline script/handlers", async () => {
-    const dist = join(REPO, "dist/public");
-    if (!existsSync(dist)) {
-      const { spawnSync } = await import("node:child_process");
-      const build = spawnSync("npm", ["run", "build:cf"], {
-        cwd: REPO,
-        encoding: "utf8",
-        stdio: "pipe",
-      });
-      expect(build.status, build.stderr || build.stdout).toBe(0);
-    }
-    if (!existsSync(dist)) {
-      expect(false, "AU19.3 needs dist/public after build:cf").toBe(true);
-      return;
-    }
+    const dist = buildCfToTemp();
+    try {
     const htmlFiles = walk(dist).filter((f) => f.endsWith(".html"));
     expect(htmlFiles.length).toBeGreaterThan(0);
     for (const abs of htmlFiles) {
       const html = readFileSync(abs, "utf8");
       const base = abs.split("/").pop() ?? abs;
-      const rel = abs.slice(REPO.length + 1).replace(/\\/g, "/");
+      const rel = distPublicLabel(dist, abs);
       const violations = auditBuiltHtmlDocument(html, base, rel);
       expect(violations.map(formatAu193Fail)).toEqual([]);
     }
@@ -860,6 +870,9 @@ describe("AU19", () => {
       expect(formatted[0]).toMatch(/^SCAN FAIL: AU19\.3 /);
       expect(formatted[0]).toContain(v.file);
       expect(formatted[0]).toMatch(/:\d+$/);
+    }
+    } finally {
+      rmSync(dist, { recursive: true, force: true });
     }
   });
 
