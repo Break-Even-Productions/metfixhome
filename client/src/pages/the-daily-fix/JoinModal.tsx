@@ -6,8 +6,6 @@ import { refreshMeAfterAuthChange } from "@/lib/session";
 type JoinModalProps = {
   open: boolean;
   onClose: () => void;
-  /** When true, render Continue with Google (R9 gate; default off). */
-  googleEnabled?: boolean;
   onSignedIn?: () => void;
   /** Optional fetch (inject for tests); defaults to module-bound CC1-safe fetch. */
   fetchImpl?: typeof fetch;
@@ -92,12 +90,11 @@ function GoogleLogo({ className }: { className?: string }) {
 
 /**
  * Sign-in modal for comment compose (and membership).
- * Password login via same-origin Worker; Google only when gate on (R9).
+ * Password login + Continue with Google via same-origin Worker.
  */
 export function JoinModal({
   open,
   onClose,
-  googleEnabled = false,
   onSignedIn,
   fetchImpl,
 }: JoinModalProps) {
@@ -263,18 +260,16 @@ export function JoinModal({
             {locked ? `Try again in ${retryLeft}s` : busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        {googleEnabled ? (
-          <button
-            type="button"
-            className="df-btn df-btn-ink df-join-google"
-            onClick={() => {
-              window.location.assign("/api/auth/google/start");
-            }}
-          >
-            <GoogleLogo className="df-join-google-logo" />
-            Continue with Google
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="df-btn df-btn-ink df-join-google"
+          onClick={() => {
+            window.location.assign("/api/auth/google/start");
+          }}
+        >
+          <GoogleLogo className="df-join-google-logo" />
+          Continue with Google
+        </button>
       </div>
     </div>
   );

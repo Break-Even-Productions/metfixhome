@@ -371,8 +371,7 @@ describe("PR2 leaderboard gates L / LB", () => {
             workout_log_id: 9,
             workout_title: "x",
             within_official_window: true,
-            display_name: "x@y.com",
-            public_name_safe: "Jane",
+            display_name: "Jane",
             score_value: 10,
             scaling_mode: "rx",
             logged_at: "t",
@@ -411,9 +410,9 @@ describe("PR2 leaderboard gates L / LB", () => {
     expect(row).not.toHaveProperty("within_official_window");
   });
 
-  it("L5.2 public_name Member fallback via B4 helper", async () => {
-    expect(publicDisplayName({ display_name: "OnlyDisplay" })).toBe("Member");
-    expect(publicDisplayName({ public_name_safe: "Jane" })).toBe("Jane");
+  it("L5.2 public_name uses display_name via B4 helper", async () => {
+    expect(publicDisplayName({ display_name: "OnlyDisplay" })).toBe("OnlyDisplay");
+    expect(publicDisplayName({ display_name: "Jane" })).toBe("Jane");
     const g = setupGate();
     const s = await seedSession(g);
     mockDayAndLb(g, {
@@ -422,8 +421,7 @@ describe("PR2 leaderboard gates L / LB", () => {
           { rank: 1, display_name: "OnlyDisplay", score_value: 1, scaling_mode: "rx", logged_at: "t" },
           {
             rank: 2,
-            public_name_safe: "Jane",
-            display_name: "ignored",
+            display_name: "Jane",
             score_value: 2,
             scaling_mode: "rx",
             logged_at: "t",
@@ -436,7 +434,7 @@ describe("PR2 leaderboard gates L / LB", () => {
       headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(s.sid)}` },
     });
     const body = (await res.json()) as { leaderboard: Array<{ public_name: string }> };
-    expect(body.leaderboard[0]!.public_name).toBe("Member");
+    expect(body.leaderboard[0]!.public_name).toBe("OnlyDisplay");
     expect(body.leaderboard[1]!.public_name).toBe("Jane");
   });
 
@@ -706,7 +704,7 @@ describe("PR2 leaderboard gates L / LB", () => {
     const s = await seedSession(g);
     const rows = Array.from({ length: 30 }, (_, i) => ({
       rank: i + 1,
-      public_name_safe: `U${i}`,
+      display_name: `U${i}`,
       score_value: 100 - i,
       scaling_mode: "rx",
       logged_at: "t",
@@ -732,8 +730,8 @@ describe("PR2 leaderboard gates L / LB", () => {
 
   it("LB.N10.1 is_self computed server-side from session bsi_user_id", async () => {
     const rows = [
-      { rank: 1, user_id: 1, public_name_safe: "A", score_value: 9, scaling_mode: "rx", logged_at: "t" },
-      { rank: 2, user_id: 2, public_name_safe: "B", score_value: 8, scaling_mode: "rx", logged_at: "t" },
+      { rank: 1, user_id: 1, display_name: "A", score_value: 9, scaling_mode: "rx", logged_at: "t" },
+      { rank: 2, user_id: 2, display_name: "B", score_value: 8, scaling_mode: "rx", logged_at: "t" },
     ];
     const gA = setupGate();
     const a = await seedSession(gA, { user_id: 1 });
@@ -764,7 +762,7 @@ describe("PR2 leaderboard gates L / LB", () => {
     const rows = Array.from({ length: 25 }, (_, i) => ({
       rank: i + 1,
       user_id: i + 1,
-      public_name_safe: `U${i}`,
+      display_name: `U${i}`,
       score_value: 100 - i,
       scaling_mode: "rx",
       logged_at: "t",

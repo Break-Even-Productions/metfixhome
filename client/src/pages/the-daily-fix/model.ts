@@ -399,9 +399,23 @@ export function isoFromDate(date: Date): string {
   return `${date.getFullYear()}-${m}-${d}`;
 }
 
-export function recentDateStrip(anchorIso: string, days = 21) {
-  const start = addCalendarDays(anchorIso, -(days - 1));
-  return Array.from({ length: days }, (_, index) => addCalendarDays(start, index));
+/**
+ * Date-strip chips for the calendar month of `panelIso`.
+ * From the 1st of that month through month-end, capped at `todayIso` (no future days).
+ * Rebuilds only when the displayed month changes (same month → same list).
+ */
+export function monthDateStrip(panelIso: string, todayIso: string): string[] {
+  const panel = dateFromIso(panelIso);
+  const startIso = isoFromDate(new Date(panel.getFullYear(), panel.getMonth(), 1));
+  const monthEndIso = isoFromDate(new Date(panel.getFullYear(), panel.getMonth() + 1, 0));
+  const endIso = monthEndIso < todayIso ? monthEndIso : todayIso;
+  const first = startIso < FIRST_FIX_ISO ? FIRST_FIX_ISO : startIso;
+  if (first > endIso) return [];
+  const out: string[] = [];
+  for (let iso = first; iso <= endIso; iso = addCalendarDays(iso, 1)) {
+    out.push(iso);
+  }
+  return out;
 }
 
 export function brainButtonText(brain: DailyFixBrain) {

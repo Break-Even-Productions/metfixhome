@@ -105,10 +105,7 @@ function shapeLeaderboard(
     const is_self = Boolean(selfUserId && uid && uid === selfUserId);
     return {
       rank: typeof r.rank === "number" ? r.rank : i + 1,
-      public_name: publicDisplayName({
-        display_name: r.display_name,
-        public_name_safe: r.public_name_safe ?? r.public_name,
-      }),
+      public_name: publicDisplayName({ display_name: r.display_name }),
       score_value: r.score_value ?? null,
       scaling_mode: r.scaling_mode ?? null,
       logged_at: r.logged_at ?? null,

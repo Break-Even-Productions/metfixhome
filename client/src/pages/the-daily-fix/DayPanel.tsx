@@ -12,7 +12,7 @@ import {
   isCloserScheduledDay,
   pillarLabel,
   plainText,
-  recentDateStrip,
+  monthDateStrip,
   type DailyFixDay,
   type DailyFixRouteKind,
   type Pillar,
@@ -144,7 +144,7 @@ export function DayPanel({
   const older = addCalendarDays(panelIso, -1);
   const newer = addCalendarDays(panelIso, 1);
   const newerDisabled = newer > todayIso;
-  const strip = recentDateStrip(todayIso);
+  const strip = monthDateStrip(panelIso, todayIso);
   // Closer-day disclaimer only on bare /the-daily-fix — never on dated URLs.
   const closer =
     routeKind === "today" && day != null && isCloserScheduledDay(day, requestedIso);

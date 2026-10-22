@@ -11,6 +11,7 @@ import {
   isoFromYymmdd,
   isCloserScheduledDay,
   mapHttpsPhotoUrl,
+  monthDateStrip,
   parseDailyFixRoute,
   plainText,
   yymmddFromIso,
@@ -20,6 +21,31 @@ import {
   type DailyFixBrain,
   type DailyFixDay,
 } from "./model";
+
+describe("monthDateStrip", () => {
+  it("shows the displayed month through today when in the current month", () => {
+    expect(monthDateStrip("2026-10-10", "2026-10-22")).toEqual(
+      Array.from({ length: 22 }, (_, i) => `2026-10-${String(i + 1).padStart(2, "0")}`),
+    );
+  });
+
+  it("shows the full past month when the panel day is in a prior month", () => {
+    expect(monthDateStrip("2026-09-30", "2026-10-22")).toEqual(
+      Array.from({ length: 30 }, (_, i) => `2026-09-${String(i + 1).padStart(2, "0")}`),
+    );
+  });
+
+  it("keeps the same list for any day in the same month", () => {
+    expect(monthDateStrip("2026-10-01", "2026-10-22")).toEqual(
+      monthDateStrip("2026-10-22", "2026-10-22"),
+    );
+  });
+
+  it("clamps the launch month to FIRST_FIX_ISO", () => {
+    expect(monthDateStrip("2025-02-15", "2026-10-22")[0]).toBe("2025-02-10");
+    expect(monthDateStrip("2025-02-15", "2026-10-22").at(-1)).toBe("2025-02-28");
+  });
+});
 
 describe("tab preview text", () => {
   it("plainText strips tags, decodes entities once, and splits <br>/<p> into spaces", () => {

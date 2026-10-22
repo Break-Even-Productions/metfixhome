@@ -21,7 +21,7 @@ import {
 useGateHooks();
 
 describe("PR2 gates P — comment POST", () => {
-  it("P1.1 POST with session + recaptcha + BSI 201 → shaped 201 Member; limiter→siteverify→BSI", async () => {
+  it("P1.1 POST with session + recaptcha + BSI 201 → shaped 201 with display_name; limiter→siteverify→BSI", async () => {
     const g = setupGate();
     const s = await seedSession(g);
     mockSiteverifyPass(g);
@@ -57,7 +57,7 @@ describe("PR2 gates P — comment POST", () => {
     expect(await res?.json()).toStrictEqual({
       comment: {
         id: 9,
-        user: { display_name: "Member" },
+        user: { display_name: "Jane" },
         content: "hello",
         timestamp: "2025-02-10T12:00:00Z",
         parent_id: null,

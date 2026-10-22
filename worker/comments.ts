@@ -75,7 +75,7 @@ function isJsonContentType(ct: string | null): boolean {
   return base === "application/json";
 }
 
-/** W7 whitelist + W8 soft-delete + B4-W Member fail-closed. */
+/** W7 whitelist + W8 soft-delete + B4-W public display name. */
 export function shapeCommentsPayload(
   raw: unknown,
   type: CommentType = "all",
@@ -133,7 +133,6 @@ function shapeThread(
     t.user && typeof t.user === "object" && !Array.isArray(t.user)
       ? (t.user as {
           display_name?: unknown;
-          public_name_safe?: unknown;
           id?: unknown;
         })
       : null;

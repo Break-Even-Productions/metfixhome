@@ -1,7 +1,7 @@
 /**
- * B4-W / S-G9 public-name helper shared by comments (W7), leaderboards (L5) and `/me`.
- * Fail closed until D-NAME: without `public_name_safe`, every display_name → Member
- * (except the deliberate `[Anonymous]` marker for deleted==2 comments).
+ * B4-W public-name helper shared by comments (W7), leaderboards (L5) and `/me`.
+ * Uses the passed `display_name`. Blank / "Unknown" / email-like → `Member`.
+ * `[Anonymous]` is kept for deleted==2 comments when `allowAnonymous` is set.
  */
 
 const EMAIL_LIKE = /@/;
@@ -20,22 +20,18 @@ function isMemberFallback(value: string): boolean {
 
 /**
  * Resolve a public display name for comments / leaderboards /me.
- * - Prefer BSI safe field `public_name_safe` when present (positive control until D-NAME).
+ * - Use `display_name` when it is a usable public name.
  * - `[Anonymous]` kept only when `allowAnonymous` (comments deleted==2).
- * - Otherwise fail closed to `Member` when only `display_name` is available.
+ * - Blank / Unknown / email-like → `Member`.
  */
 export function publicDisplayName(
-  row: { display_name?: unknown; public_name_safe?: unknown } | null | undefined,
+  row: { display_name?: unknown } | null | undefined,
   opts?: { allowAnonymous?: boolean },
 ): string {
   const allowAnonymous = opts?.allowAnonymous === true;
-  if (row && typeof row.public_name_safe === "string") {
-    const safe = row.public_name_safe.trim();
-    if (!safe || isMemberFallback(safe)) return "Member";
-    return safe;
-  }
   const raw = row && typeof row.display_name === "string" ? row.display_name : "";
-  if (allowAnonymous && raw.trim() === "[Anonymous]") return "[Anonymous]";
-  // Fail closed: display_name alone is never trusted (B4W.1 / S-G9).
-  return "Member";
+  const trimmed = raw.trim();
+  if (allowAnonymous && trimmed === "[Anonymous]") return "[Anonymous]";
+  if (isMemberFallback(trimmed)) return "Member";
+  return trimmed;
 }

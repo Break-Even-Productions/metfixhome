@@ -40,13 +40,8 @@ describe("JoinModal", () => {
     expect(submit.className).toMatch(/df-join-shake/);
   });
 
-  it("hides Google when the gate is off (R9)", () => {
+  it("shows Continue with Google", () => {
     render(<JoinModal open onClose={() => {}} fetchImpl={mockAuthFetch()} />);
-    expect(screen.queryByRole("button", { name: /Continue with Google/i })).toBeNull();
-  });
-
-  it("shows Google when googleEnabled", () => {
-    render(<JoinModal open onClose={() => {}} googleEnabled fetchImpl={mockAuthFetch()} />);
     expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeTruthy();
   });
 

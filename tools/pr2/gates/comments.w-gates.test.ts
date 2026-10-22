@@ -491,17 +491,14 @@ describe("PR2 W gates — comments read", () => {
     expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
   });
 
-  it("B4W.1 publicDisplayName fail-closed Member; safe field positive control", async () => {
-    for (const v of ["Jane", "", "Unknown", "a@b.co"]) {
+  it("B4W.1 publicDisplayName uses display_name; Member for unsafe", async () => {
+    expect(publicDisplayName({ display_name: "Jane" })).toBe("Jane");
+    for (const v of ["", "Unknown", "a@b.co"]) {
       expect(publicDisplayName({ display_name: v })).toBe("Member");
     }
     expect(publicDisplayName({ display_name: "[Anonymous]" }, { allowAnonymous: true })).toBe(
       "[Anonymous]",
     );
-    expect(publicDisplayName({ public_name_safe: "Jane", display_name: "x" })).toBe("Jane");
-    expect(publicDisplayName({ public_name_safe: "", display_name: "Jane" })).toBe("Member");
-    expect(publicDisplayName({ public_name_safe: "Unknown", display_name: "Jane" })).toBe("Member");
-    expect(publicDisplayName({ public_name_safe: "a@b.co", display_name: "Jane" })).toBe("Member");
   });
 
   it("W8.1 deleted==1 top-level and reply omitted; order preserved; no deleted markers", async () => {

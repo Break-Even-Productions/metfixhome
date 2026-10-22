@@ -1069,7 +1069,7 @@ describe("Worker HTML / API / sitemap", () => {
         belly: [
           {
             id: 1,
-            user: { display_name: "Member" },
+            user: { display_name: "Jane" },
             content: "hi",
             timestamp: "2026-10-04T12:00:00Z",
             like_count: 0,
@@ -1087,6 +1087,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(JSON.stringify(body)).not.toContain("test-secret-key");
     expect(JSON.stringify(body)).not.toContain('"liked"');
     expect(JSON.stringify(body)).not.toContain('"id":9');
+    expect(JSON.stringify(body)).not.toContain("a@b.co");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [upstream, init] = fetchMock.mock.calls[0];
     expect(String(upstream)).toBe(

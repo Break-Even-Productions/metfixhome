@@ -331,11 +331,11 @@ describe("PR2 client gates C / CT / CC1", () => {
     expect(screen.getByText(/Signed in as Jane/i)).toBeTruthy();
   });
 
-  it("C7.2 Google start uses location.assign when enabled", () => {
+  it("C7.2 Google start uses location.assign", () => {
     const join = readFileSync(path.join(import.meta.dirname, "JoinModal.tsx"), "utf8");
     expect(join).toMatch(/\/api\/auth\/google\/start/);
     expect(join).toMatch(/window\.location\.assign/);
-    render(<JoinModal open onClose={() => {}} googleEnabled />);
+    render(<JoinModal open onClose={() => {}} />);
     expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeTruthy();
   });
 

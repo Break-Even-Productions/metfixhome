@@ -345,6 +345,41 @@ describe("Daily Fix page mount — rest day / mapBody", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix/260305"));
     expect(window.location.search).toBe("?tab=body");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Same month as today → strip stays Mar 1–11 (capped at today); selected chip moves.
+    // Today's chip uses the bare /the-daily-fix path (no YYMMDD).
+    let updated = screen.getByLabelText("Recent days");
+    expect(within(updated).getByRole("link", { current: "date" }).getAttribute("href")).toMatch(
+      /260305/,
+    );
+    let chipHrefs = within(updated)
+      .getAllByRole("link")
+      .map((el) => el.getAttribute("href") ?? "");
+    expect(chipHrefs.some((h) => h.includes("260301"))).toBe(true);
+    expect(chipHrefs.some((h) => h === "/the-daily-fix?tab=body" || h.endsWith("/the-daily-fix?tab=body"))).toBe(
+      true,
+    );
+    expect(chipHrefs).toHaveLength(11);
+
+    // Prev from Mar 1 → Feb 28 rebuilds strip to that past month (Feb 1–28).
+    const mar1Link = within(updated)
+      .getAllByRole("link")
+      .find((el) => (el.getAttribute("href") ?? "").includes("260301"));
+    expect(mar1Link).toBeTruthy();
+    fireEvent.click(mar1Link!);
+    await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix/260301"));
+    fireEvent.click(screen.getByRole("link", { name: /Previous/i }));
+    await waitFor(() => expect(window.location.pathname).toBe("/the-daily-fix/260228"));
+    updated = screen.getByLabelText("Recent days");
+    expect(within(updated).getByRole("link", { current: "date" }).getAttribute("href")).toMatch(
+      /260228/,
+    );
+    chipHrefs = within(updated)
+      .getAllByRole("link")
+      .map((el) => el.getAttribute("href") ?? "");
+    expect(chipHrefs.some((h) => h.includes("260201"))).toBe(true);
+    expect(chipHrefs.some((h) => h.includes("260228"))).toBe(true);
+    expect(chipHrefs).toHaveLength(28);
+    expect(chipHrefs.every((h) => h.includes("/2602"))).toBe(true);
   });
 
   it("2a-iv. unpublished days land on today and pre-launch days on 250210, each with a notice", async () => {
@@ -1780,7 +1815,7 @@ describe("Daily Fix comments", () => {
 
     const joinDialog = screen.getByRole("dialog", { name: /Sign in to MetFix/i });
     expect(within(joinDialog).getByText(/Sign in to leave a comment/i)).toBeTruthy();
-    expect(within(joinDialog).queryByRole("button", { name: /Continue with Google/i })).toBeNull();
+    expect(within(joinDialog).getByRole("button", { name: /Continue with Google/i })).toBeTruthy();
 
     const postsAfterOpen = fetchMock.mock.calls.filter(
       (c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === "POST",
