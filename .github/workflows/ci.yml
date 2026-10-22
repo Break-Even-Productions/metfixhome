@@ -91,4 +91,4 @@ jobs:
           VITE_SANITY_DATASET: production
 
       - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
-        run: npm run test:workers
+        run: before=$(git status --porcelain --ignored --untracked-files=all); npm run test:workers; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
