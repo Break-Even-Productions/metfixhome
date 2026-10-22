@@ -117,5 +117,8 @@
 		"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
 		"GOOGLE_AUTH_ENABLED": "1",
 		"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com"
-	}
+	},
+	// Required for Worker Previews (`npx wrangler preview`, Wrangler ≥4.135).
+	// Empty: Previews reuse top-level bindings/vars (no separate env split).
+	"previews": {}
 }
