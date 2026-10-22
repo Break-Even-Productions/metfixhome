@@ -81,6 +81,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Blocking: sets window.__MFX_RECAPTCHA_SITE_KEY__ from Worker var RECAPTCHA_SITE_KEY before the module runs. -->
+    <script src="/api/recaptcha-site-key.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

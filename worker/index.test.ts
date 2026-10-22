@@ -893,6 +893,61 @@ describe("Worker HTML / API / sitemap", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
+  it("/api/recaptcha-site-key.js injects window.__MFX_RECAPTCHA_SITE_KEY__", async () => {
+    const withKey = {
+      ...makeEnv(assetsFetch),
+      RECAPTCHA_SITE_KEY: "6LeTestSiteKey_abc-123",
+    };
+    const res = await handleRequest(
+      new Request("https://metfix.org/api/recaptcha-site-key.js"),
+      withKey,
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/javascript; charset=utf-8");
+    expect(await res.text()).toBe(
+      'window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    const empty = await handleRequest(
+      new Request("https://metfix.org/api/recaptcha-site-key.js"),
+      makeEnv(assetsFetch),
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(await empty.text()).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+
+    const rejected = await handleRequest(
+      new Request("https://metfix.org/api/recaptcha-site-key.js"),
+      { ...makeEnv(assetsFetch), RECAPTCHA_SITE_KEY: 'evil";alert(1)//' },
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(await rejected.text()).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+
+    const head = await handleRequest(
+      new Request("https://metfix.org/api/recaptcha-site-key.js", { method: "HEAD" }),
+      withKey,
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+  });
+
+  it("SPA shell loads /api/recaptcha-site-key.js before the module", () => {
+    const html = readFileSync(
+      fileURLToPath(new URL("../client/index.html", import.meta.url)),
+      "utf8",
+    );
+    const siteKeyIdx = html.indexOf('src="/api/recaptcha-site-key.js"');
+    const moduleIdx = html.indexOf('type="module"');
+    expect(siteKeyIdx).toBeGreaterThan(-1);
+    expect(moduleIdx).toBeGreaterThan(siteKeyIdx);
+  });
+
   it("W38–W44 API contract", async () => {
     const raw = JSON.stringify(DAY);
     fetchMock.mockResolvedValue(new Response(raw, { status: 200 }));

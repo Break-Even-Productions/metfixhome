@@ -677,7 +677,9 @@ describe("Posts page mount", () => {
     openAddressBar("/posts");
     render(<MountedApp />);
     await screen.findByText(SAMPLE_TITLES[0]);
-    expect(document.title).toBe("Posts — MetFix");
+    await waitFor(() => {
+      expect(document.title).toBe("Posts — MetFix");
+    });
     expect(document.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
       "Articles from Broken Science.",
     );
@@ -713,7 +715,10 @@ describe("Posts page mount", () => {
     openAddressBar("/posts/11");
     render(<MountedApp />);
     await screen.findByRole("heading", { name: "Canon Post" });
-    expect(document.title).toBe("Canon Post — MetFix");
+    // usePageMeta can lag the heading by a tick under parallel CI load.
+    await waitFor(() => {
+      expect(document.title).toBe("Canon Post — MetFix");
+    });
     expect(document.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe(
       "index, follow",
     );

@@ -101,10 +101,14 @@
 			}
 		]
 	},
+	// Free plan (and accounts without an existing KV-backed DO namespace) require
+	// SQLite-backed classes via `new_sqlite_classes`. KV storage API still works.
+	// Rewriting the never-applied `v1-auth-dos` tag in place (deploy failed on
+	// `new_classes` with Cloudflare API code 10097) — do not add a second tag.
 	"migrations": [
 		{
 			"tag": "v1-auth-dos",
-			"new_classes": [
+			"new_sqlite_classes": [
 				"SessionDO",
 				"LoginThrottleDO",
 				"OauthStateDO"
@@ -113,10 +117,16 @@
 	],
 	// Non-secret: dedicated metfix.org WP OAuth client_id for BSI-C10 web-login (§0s.2).
 	// Never from the browser; Worker never holds/sends METFIX_ORG_OAUTH_CLIENT_SECRET.
+	// RECAPTCHA_SITE_KEY (public v3 site key) is intentionally omitted here — set it as a
+	// plain Worker Variable in the Cloudflare dashboard (or wrangler vars) for prod/preview.
+	// Do not put RECAPTCHA_SECRET in vars; use `wrangler secret put RECAPTCHA_SECRET`.
 	"vars": {
 		"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
 		"GOOGLE_AUTH_ENABLED": "1",
 		"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com",
     "RECAPTCHA_SITE_KEY": "6LfUFO0mAAAAAKxrVeYxZ9p3vMWNtvJzCKhqBs1R"
-	}
+	},
+	// Required for Worker Previews (`npx wrangler preview`, Wrangler ≥4.135).
+	// Empty: Previews reuse top-level bindings/vars (no separate env split).
+	"previews": {}
 }

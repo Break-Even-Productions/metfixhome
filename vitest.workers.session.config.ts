@@ -7,6 +7,15 @@ import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
  */
 export default defineWorkersConfig({
   test: {
+    // V12(b): same cache/optimizer isolation as vitest.workers.config.ts —
+    // session suite otherwise writes node_modules/.vite/vitest/* under porcelain.
+    cache: false,
+    deps: {
+      optimizer: {
+        ssr: { enabled: false },
+        web: { enabled: false },
+      },
+    },
     include: ["worker/do/session.refresh.workers.test.ts"],
     poolOptions: {
       workers: {
