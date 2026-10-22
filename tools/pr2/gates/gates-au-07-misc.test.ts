@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -1001,21 +1002,33 @@ describe("AU22", () => {
     }
     const { hits, scanned } = scan();
     if (scanned === 0) throw new Error("SCAN FAIL: bsi-host zero files scanned");
-
-    const plantRel = `client/src/pages/the-daily-fix/_au222_plant_${Date.now()}.ts`;
-    const plant = join(REPO, plantRel);
-    try {
-      writeFileSync(plant, 'const x = "https://brokenscience.org";\n');
-      const planted = scan();
-      expect(planted.hits).toContain(`SCAN FAIL: bsi-host ${plantRel}:1`);
-    } finally {
-      try {
-        unlinkSync(plant);
-      } catch {
-        /* */
-      }
-    }
     expect(hits).toEqual([]);
+
+    // Plant proof in an isolated temp tree — never write into live client/src
+    // (parallel AU22.1 / other walkers raced on `_au222_plant_*` → ENOENT).
+    const plantRoot = mkdtempSync(join(tmpdir(), "au222-plant-"));
+    try {
+      const plantRel = "client/src/pages/the-daily-fix/_au222_plant.ts";
+      const plantAbs = join(plantRoot, plantRel);
+      mkdirSync(join(plantRoot, "client/src/pages/the-daily-fix"), {
+        recursive: true,
+      });
+      writeFileSync(plantAbs, 'const x = "https://brokenscience.org";\n');
+      const plantedHits: string[] = [];
+      for (const abs of walk(join(plantRoot, "client"))) {
+        const rel = abs.replace(plantRoot + "/", "").split("\\").join("/");
+        if (!inScanScope(rel) || isTestFile(rel)) continue;
+        const lines = readFileSync(abs, "utf8").split("\n");
+        lines.forEach((line, i) => {
+          if (/brokenscience\.org/.test(line)) {
+            plantedHits.push(`SCAN FAIL: bsi-host ${rel}:${i + 1}`);
+          }
+        });
+      }
+      expect(plantedHits).toContain(`SCAN FAIL: bsi-host ${plantRel}:1`);
+    } finally {
+      rmSync(plantRoot, { recursive: true, force: true });
+    }
   });
 });
 

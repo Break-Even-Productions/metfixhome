@@ -60,13 +60,22 @@ function lineOfIndex(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
 }
 
+/**
+ * AU22.2 used to plant `_au222_plant_*` into live client/src; parallel AU22.1
+ * walks raced to ENOENT. AU22.2 now plants in a temp dir — still skip any
+ * leftover `_au*_plant_*` names so a mid-unlink cannot break this walker.
+ * Do not skip `__repo_scan_plant_*` (C5/CI2 planted proofs rely on walkFiles).
+ */
 function walkFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, ent.name);
     if (ent.isDirectory()) out.push(...walkFiles(p));
-    else if (ent.isFile()) out.push(p);
+    else if (ent.isFile()) {
+      if (/^_au\d+_plant_/.test(ent.name)) continue;
+      out.push(p);
+    }
   }
   return out;
 }
