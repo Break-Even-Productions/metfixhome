@@ -92,7 +92,7 @@ afterEach(() => {
 describe("PH posts HTML (pool-workers)", () => {
   it("PH1 bindings include BSI_POSTS_API_KEY (wrangler assert in build.config.test)", () => {
     expect(env.BSI_POSTS_API_KEY).toBe("test-posts-key");
-    expect(env.DAILY_FIX_API_KEY).toBe("test-secret-key");
+    expect(env.DAILY_FIX_API_KEY).toBe("k_QA_SENT_KEY");
   });
 
   it("PH2 non-html Accept → ASSETS, no upstream", async () => {
