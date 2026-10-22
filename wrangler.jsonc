@@ -94,10 +94,14 @@
 			}
 		]
 	},
+	// Free plan (and accounts without an existing KV-backed DO namespace) require
+	// SQLite-backed classes via `new_sqlite_classes`. KV storage API still works.
+	// Rewriting the never-applied `v1-auth-dos` tag in place (deploy failed on
+	// `new_classes` with Cloudflare API code 10097) — do not add a second tag.
 	"migrations": [
 		{
 			"tag": "v1-auth-dos",
-			"new_classes": [
+			"new_sqlite_classes": [
 				"SessionDO",
 				"LoginThrottleDO",
 				"OauthStateDO"
