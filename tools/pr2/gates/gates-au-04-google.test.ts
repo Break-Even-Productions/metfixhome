@@ -308,6 +308,82 @@ describe("AU11", () => {
     expect(h.fetches.some((f) => f.url.includes("/oauth/authorize"))).toBe(true);
   });
 
+  it("AU11.3c authorize trailing-slash 301 then code (prod WP)", async () => {
+    const h = createHarness({ googleEnabled: true });
+    h.edges.bridge = async () =>
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location:
+            "https://brokenscience.org/oauth/authorize?response_type=code&client_id=x",
+          "Set-Cookie": "wordpress_logged_in_test=1; Path=/; HttpOnly; Secure",
+        },
+      });
+    let authorizeHits = 0;
+    h.edges.authorize = async (req) => {
+      authorizeHits += 1;
+      const u = new URL(req.url);
+      if (!u.pathname.endsWith("/")) {
+        // Live prod: 301 /oauth/authorize → /oauth/authorize/?…
+        u.pathname = `${u.pathname}/`;
+        return new Response(null, { status: 301, headers: { Location: u.href } });
+      }
+      expect((req.headers.get("Cookie") ?? "").includes("wordpress_logged_in_test=1")).toBe(
+        true,
+      );
+      const social = h.fetches.find((f) => f.url.includes("/auth/social"));
+      const st =
+        social != null
+          ? ((JSON.parse(social.bodyText) as { state?: string }).state ?? "bridge")
+          : "bridge";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=${encodeURIComponent(st)}`,
+        },
+      });
+    };
+    const { res } = await signedCallback(h);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(authorizeHits).toBe(2);
+  });
+
+  it("AU11.3d bridge_url on api.brokenscience.org is allowed", async () => {
+    const h = createHarness({ googleEnabled: true });
+    h.edges.social = async () =>
+      Response.json({
+        bridge_url:
+          "https://api.brokenscience.org/wp-json/bsi/v1/auth/app-oauth-bridge?ott=QA_SENT_OTT",
+      });
+    h.edges.bridge = async () =>
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location:
+            "https://brokenscience.org/oauth/authorize?response_type=code&client_id=x",
+          "Set-Cookie": "wordpress_logged_in_test=1; Path=/; HttpOnly; Secure",
+        },
+      });
+    h.edges.authorize = async () => {
+      const social = h.fetches.find((f) => f.url.includes("/auth/social"));
+      const st =
+        social != null
+          ? ((JSON.parse(social.bodyText) as { state?: string }).state ?? "bridge")
+          : "bridge";
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: `https://metfix.org/api/auth/callback?code=${WP_BRIDGE_CODE}&state=${encodeURIComponent(st)}`,
+        },
+      });
+    };
+    const { res } = await signedCallback(h);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/the-daily-fix");
+    expect(h.fetches.some((f) => f.url.includes("api.brokenscience.org"))).toBe(true);
+  });
+
   it("AU11.4 browser GET /api/auth/callback rejects", async () => {
     const h = createHarness({ googleEnabled: true });
     const res = await h.call(`/api/auth/callback?code=${CODE}&state=valid_wp_state__________`, {
