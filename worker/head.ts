@@ -8,6 +8,7 @@ import {
   prepareTitle,
   yymmddFromIso,
 } from "../shared/daily-fix";
+import type { PostsHead } from "../shared/posts";
 
 export type FullHead = {
   title: string;
@@ -115,6 +116,7 @@ const FULL_REPLACE_SELECTORS = [
 
 export type HeadMode =
   | { mode: "full"; head: FullHead; dfInitialJson: string | null }
+  | { mode: "posts"; head: PostsHead }
   | { mode: "generic" }
   | { mode: "generic_noindex" };
 
@@ -139,6 +141,29 @@ export function buildFullHeadSnippet(head: FullHead): string {
   parts.push(`<meta name="twitter:title" content="${escapeAttr(h.title)}">`);
   parts.push(`<meta name="twitter:description" content="${escapeAttr(h.description)}">`);
   parts.push(`<meta name="twitter:image" content="${escapeAttr(h.imageUrl)}">`);
+  return parts.join("");
+}
+
+/** Posts list/detail head snippet (A18 / PH15 — values from buildPostsHead). */
+export function buildPostsHeadSnippet(head: PostsHead): string {
+  const h = head;
+  const parts = [
+    `<title>${escapeAttr(h.title)}</title>`,
+    `<meta name="description" content="${escapeAttr(h.description)}">`,
+    `<meta name="robots" content="${escapeAttr(h.robots)}">`,
+  ];
+  if (h.canonical) {
+    parts.push(`<link rel="canonical" href="${escapeAttr(h.canonical)}">`);
+  }
+  parts.push(`<meta property="og:type" content="${escapeAttr(h.ogType)}">`);
+  parts.push(`<meta property="og:title" content="${escapeAttr(h.ogTitle)}">`);
+  parts.push(`<meta property="og:description" content="${escapeAttr(h.ogDescription)}">`);
+  parts.push(`<meta property="og:url" content="${escapeAttr(h.ogUrl)}">`);
+  parts.push(`<meta property="og:image" content="${escapeAttr(h.ogImage)}">`);
+  parts.push(`<meta name="twitter:card" content="summary_large_image">`);
+  parts.push(`<meta name="twitter:title" content="${escapeAttr(h.ogTitle)}">`);
+  parts.push(`<meta name="twitter:description" content="${escapeAttr(h.ogDescription)}">`);
+  parts.push(`<meta name="twitter:image" content="${escapeAttr(h.ogImage)}">`);
   return parts.join("");
 }
 
@@ -174,6 +199,20 @@ class FullHeadRewriter {
   }
 }
 
+class PostsHeadRewriter {
+  private injected = false;
+  constructor(private readonly head: PostsHead) {}
+
+  element(element: Element) {
+    if (this.injected) {
+      element.remove();
+      return;
+    }
+    this.injected = true;
+    element.replace(buildPostsHeadSnippet(this.head), { html: true });
+  }
+}
+
 class DfInitialInjector {
   constructor(private readonly json: string | null) {}
   element(element: Element) {
@@ -184,10 +223,32 @@ class DfInitialInjector {
   }
 }
 
+/** Selectors replaced for posts mode (includes robots; optional canonical via snippet). */
+const POSTS_REPLACE_SELECTORS = [
+  "title",
+  'meta[name="description"]',
+  'meta[name="robots"]',
+  'link[rel="canonical"]',
+  'meta[property="og:type"]',
+  'meta[property="og:title"]',
+  'meta[property="og:description"]',
+  'meta[property="og:url"]',
+  'meta[property="og:image"]',
+  'meta[property="og:image:width"]',
+  'meta[property="og:image:height"]',
+  'meta[property="og:image:alt"]',
+  'meta[name="twitter:card"]',
+  'meta[name="twitter:title"]',
+  'meta[name="twitter:description"]',
+  'meta[name="twitter:image"]',
+  'meta[name="twitter:image:alt"]',
+];
+
 /**
  * Spec §6: HTMLRewriter on the Worker (workerd always provides HTMLRewriter).
  *
  * - full: replace title/description/canonical/og/twitter; leave site robots alone; inject df-initial
+ * - posts: replace title/description/robots/canonical/og/twitter from buildPostsHead (PH15)
  * - generic: remove only canonical + og:url (keep site title/description/robots)
  * - generic_noindex: same as generic, plus swap robots → noindex
  */
@@ -204,6 +265,16 @@ export function rewriteHtml(response: Response, plan: HeadMode): Response {
     rewriter.on('link[rel="canonical"]', new RemoveElement());
     rewriter.on('meta[property="og:url"]', new RemoveElement());
     rewriter.on('meta[name="robots"]', new ReplaceRobotsNoindex());
+    return rewriter.transform(response);
+  }
+
+  if (plan.mode === "posts") {
+    const postsRewriter = new PostsHeadRewriter(plan.head);
+    for (const sel of POSTS_REPLACE_SELECTORS) {
+      // When snippet has no canonical, still match the site's link so the
+      // rewriter removes it after the first inject (same as other selectors).
+      rewriter.on(sel, postsRewriter);
+    }
     return rewriter.transform(response);
   }
 

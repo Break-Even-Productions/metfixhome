@@ -2,6 +2,7 @@
 # Do NOT put LOCAL_AUTH or these overrides in production wrangler vars.
 
 DAILY_FIX_API_KEY=
+BSI_POSTS_API_KEY=
 BSI_OAUTH_CLIENT_ID=
 SESSION_ENC_KEY=
 CSRF_SECRET=

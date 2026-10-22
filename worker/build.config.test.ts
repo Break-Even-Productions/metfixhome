@@ -2,6 +2,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+/** Main's run_worker_first before PR3 posts entries (A16 / PH1). */
+const MAIN_RUN_WORKER_FIRST = [
+  "/the-daily-fix",
+  "/the-daily-fix/*",
+  "/api/*",
+  "/sitemap-daily-fix.xml",
+] as const;
+
 describe("B1/B5/B6/B7 build config", () => {
   it("B1 build:cf is vite build and base is /", () => {
     const pkg = JSON.parse(
@@ -34,6 +42,22 @@ describe("B1/B5/B6/B7 build config", () => {
     );
     expect(sm).toContain("https://metfix.org/sitemap-daily-fix.xml");
     expect((sm.match(/<url>/g) || []).length).toBe(6);
+  });
+
+  it("A16/PH1 run_worker_first = main + /posts + /posts/*; no sitemap-posts", () => {
+    const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
+    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    expect(json.assets.run_worker_first).toEqual([
+      ...MAIN_RUN_WORKER_FIRST,
+      "/posts",
+      "/posts/*",
+    ]);
+    expect(json.assets.run_worker_first).not.toContain("/sitemap-posts.xml");
+    const workerSrc = readFileSync(
+      fileURLToPath(new URL("./index.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(workerSrc).not.toMatch(/sitemap-posts/);
   });
 
   it("R19 workers_dev is false", () => {

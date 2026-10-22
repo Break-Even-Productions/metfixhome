@@ -224,6 +224,8 @@ describe("W1 wrangler.jsonc", () => {
       "/the-daily-fix/*",
       "/api/*",
       "/sitemap-daily-fix.xml",
+      "/posts",
+      "/posts/*",
     ]);
     const pkg = JSON.parse(
       readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),

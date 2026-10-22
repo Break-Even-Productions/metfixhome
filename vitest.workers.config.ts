@@ -19,6 +19,7 @@ export default defineWorkersConfig({
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
           bindings: {
+            BSI_POSTS_API_KEY: "test-posts-key",
             DAILY_FIX_API_KEY: "k_QA_SENT_KEY",
             BSI_OAUTH_CLIENT_ID: "cid_QA_SENT_CLIENT",
             METFIX_ORG_OAUTH_CLIENT_SECRET: "secret_QA_CANARY",

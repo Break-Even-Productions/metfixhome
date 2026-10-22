@@ -25,6 +25,7 @@ import { LoginThrottleDO } from "./do/login-throttle";
 import { OauthStateDO } from "./do/oauth-state";
 import { SessionDO } from "./do/session";
 import { DAILY_FIX_CSP } from "./csp";
+import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
@@ -91,6 +92,17 @@ export async function handleRequest(
     });
     if (commentsRes) return commentsRes;
   }
+  // Posts API before /api/* catch-all (A1)
+  if (path === "/api/posts" || path === "/api/posts/") {
+    return handlePostsApi(request, env, ctx, null, { fetchImpl, cachesDefault: cache });
+  }
+  if (path.startsWith("/api/posts/")) {
+    const idPart = path.slice("/api/posts/".length);
+    // Valid id only — anything else falls through to catch-all 404 (A3 / CQ2)
+    if (idPart && !idPart.includes("/") && isValidPostId(idPart)) {
+      return handlePostsApi(request, env, ctx, idPart, { fetchImpl, cachesDefault: cache });
+    }
+  }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
   }
@@ -98,6 +110,20 @@ export async function handleRequest(
   // Sitemap
   if (path === "/sitemap-daily-fix.xml") {
     return handleSitemap(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
+  }
+
+  // Posts HTML routes — only GET/HEAD with Accept: text/html (like Daily Fix)
+  if (path === "/posts" || path.startsWith("/posts/")) {
+    const method = request.method.toUpperCase();
+    const accept = request.headers.get("Accept") ?? "";
+    const wantsHtml = accept.includes("text/html");
+    if (method !== "GET" && method !== "HEAD") {
+      return env.ASSETS.fetch(request);
+    }
+    if (!wantsHtml) {
+      return env.ASSETS.fetch(request);
+    }
+    return handlePostsHtml(request, env, ctx, { fetchImpl, cachesDefault: cache });
   }
 
   // Daily Fix HTML routes — only GET/HEAD with Accept: text/html

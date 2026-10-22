@@ -35,11 +35,15 @@ describe("Document base", () => {
       "/the-daily-fix/2025-02-10",
       "/the-daily-fix/20250210",
       "/the-daily-fix/25/02/10/belly",
+      "/posts",
+      "/posts/1",
+      "/posts/some-slug",
       "/not-a-route",
     ];
     for (const path of pages) {
       expect(assetPathFor(path), path).toBe("/assets/index.js");
       expect(assetPathFor(path)).not.toMatch(/^\/the-daily-fix\//);
+      expect(assetPathFor(path)).not.toMatch(/^\/posts\//);
       expect(assetPathFor(path)).not.toMatch(/^\/not-a-route\//);
       expect(assetPathFor(path)).not.toMatch(/^\/25\//);
     }

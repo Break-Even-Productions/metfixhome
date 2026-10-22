@@ -63,6 +63,8 @@ export type RateLimitBinding = {
 export type Env = {
   ASSETS: Fetcher;
   DAILY_FIX_API_KEY?: string;
+  /** Posts proxy secret — read only from worker/posts.ts (never DAILY_FIX_API_KEY). */
+  BSI_POSTS_API_KEY?: string;
   AUTH_SESSIONS: KVNamespace;
   SESSION: DurableObjectNamespace;
   LOGIN_THROTTLE: DurableObjectNamespace;
