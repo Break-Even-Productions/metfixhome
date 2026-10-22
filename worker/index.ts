@@ -26,6 +26,7 @@ import { LoginThrottleDO } from "./do/login-throttle";
 import { OauthStateDO } from "./do/oauth-state";
 import { SessionDO } from "./do/session";
 import { DAILY_FIX_CSP } from "./csp";
+import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import {
   fetchDailyFixDay,
@@ -134,6 +135,14 @@ export async function handleRequest(
       return handlePostsApi(request, env, ctx, idPart, { fetchImpl, cachesDefault: cache });
     }
   }
+  // Resource Library API
+  if (path === "/api/library" || path.startsWith("/api/library/")) {
+    return handleLibraryApi(request, env, ctx, {
+      fetchImpl,
+      cachesDefault: cache,
+      bsiBaseUrl,
+    });
+  }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
   }
@@ -155,6 +164,24 @@ export async function handleRequest(
       return env.ASSETS.fetch(request);
     }
     return handlePostsHtml(request, env, ctx, { fetchImpl, cachesDefault: cache });
+  }
+
+  // Resource Library HTML
+  if (path === "/library" || path.startsWith("/library/")) {
+    const method = request.method.toUpperCase();
+    const accept = request.headers.get("Accept") ?? "";
+    const wantsHtml = accept.includes("text/html");
+    if (method !== "GET" && method !== "HEAD") {
+      return env.ASSETS.fetch(request);
+    }
+    if (!wantsHtml) {
+      return env.ASSETS.fetch(request);
+    }
+    return handleLibraryHtml(request, env, ctx, {
+      fetchImpl,
+      cachesDefault: cache,
+      bsiBaseUrl,
+    });
   }
 
   // Daily Fix HTML routes — only GET/HEAD with Accept: text/html

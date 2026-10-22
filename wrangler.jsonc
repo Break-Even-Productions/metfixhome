@@ -14,7 +14,9 @@
 			"/api/*",
 			"/sitemap-daily-fix.xml",
 			"/posts",
-			"/posts/*"
+			"/posts/*",
+			"/library",
+			"/library/*"
 		]
 	},
 	"kv_namespaces": [

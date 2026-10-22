@@ -1005,7 +1005,7 @@ export default function Home() {
                 </p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1.5rem" }}>
                   {home.resourceLibrary.categoryTags.map(tag => (
-                    <a key={tag.label} href={tag.href} target="_blank" rel="noopener noreferrer"
+                    <a key={tag.label} href="/library"
                       style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.12em", color: "rgba(239,239,239,0.5)", border: "1px solid rgba(255,255,255,0.1)", padding: "0.3rem 0.75rem", textTransform: "uppercase", textDecoration: "none", transition: "all 0.2s" }}
                       onMouseEnter={e => { e.currentTarget.style.color = "#C9A96E"; e.currentTarget.style.borderColor = "rgba(201,169,110,0.4)"; }}
                       onMouseLeave={e => { e.currentTarget.style.color = "rgba(239,239,239,0.5)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}>
@@ -1014,7 +1014,7 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              <CmsLink cta={home.resourceLibrary.fullLibraryCta}
+              <CmsLink cta={{ ...home.resourceLibrary.fullLibraryCta, href: "/library" }}
                 style={{ display: "inline-flex", alignItems: "center", gap: "0.7rem", fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.12em", color: "rgba(239,239,239,0.6)", textDecoration: "none", textTransform: "uppercase", transition: "color 0.2s", whiteSpace: "nowrap" }}
                 onMouseEnter={e => (e.currentTarget.style.color = "#C9A96E")}
                 onMouseLeave={e => (e.currentTarget.style.color = "rgba(239,239,239,0.6)")}>
@@ -1029,9 +1029,7 @@ export default function Home() {
             <Reveal direction="left">
               {(() => {
                 const featured = home.resourceLibrary.featured;
-                const mediaHref = featured.mediaType === "video" && featured.videoUrl
-                  ? featured.videoUrl
-                  : featured.href;
+                const libraryHref = "/library";
                 const showMedia = featured.mediaType !== "none" && Boolean(featured.imageUrl);
                 const showPlay =
                   featured.showPlayButton || featured.mediaType === "video";
@@ -1048,7 +1046,7 @@ export default function Home() {
                   }}>{featured.badge}</span>
                 </div>
                 {showMedia ? (
-                <a href={mediaHref} target="_blank" rel="noopener noreferrer"
+                <a href={libraryHref}
                   style={{ display: "block", position: "relative", aspectRatio: "16/9", background: "#111", marginBottom: "1.5rem", overflow: "hidden", textDecoration: "none" }}>
                   <img src={featured.imageUrl} alt={featured.title} style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.85 }} />
                   {showPlay && (
@@ -1063,7 +1061,7 @@ export default function Home() {
                   )}
                 </a>
                 ) : null}
-                <a href={featured.href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
+                <a href={libraryHref} style={{ textDecoration: "none", color: "inherit" }}>
                 <h3 style={{ fontFamily: "'Playfair Display'", fontWeight: 700, fontSize: "1.35rem", color: "#fdf6f6", marginBottom: "0.875rem", lineHeight: 1.35 }}>
                   {featured.title}
                 </h3>
@@ -1081,7 +1079,7 @@ export default function Home() {
             <div style={{ display: "grid", gridTemplateRows: "1fr 1fr 1fr", gap: "1px", background: "rgba(255,255,255,0.06)" }}>
               {home.resourceLibrary.items.map((item, i) => (
                 <Reveal key={`${item.title}-${i}`} delay={i * 80} direction="right">
-                  <a href={item.href} target="_blank" rel="noopener noreferrer"
+                  <a href="/library"
                     style={{ background: "#080808", padding: "1.75rem 2rem", display: "flex", flexDirection: "column", height: "100%", textDecoration: "none", transition: "background 0.2s" }}
                     onMouseEnter={e => (e.currentTarget.style.background = "rgba(201,169,110,0.04)")}
                     onMouseLeave={e => (e.currentTarget.style.background = "#080808")}>
@@ -1111,7 +1109,7 @@ export default function Home() {
 
           <Reveal delay={200}>
             <div style={{ marginTop: "2.5rem", textAlign: "center" }}>
-              <CmsLink cta={home.resourceLibrary.bottomCta} className="btn-outline">
+              <CmsLink cta={{ ...home.resourceLibrary.bottomCta, href: "/library" }} className="btn-outline">
                 {home.resourceLibrary.bottomCta.label} <ArrowRight size={14} />
               </CmsLink>
             </div>

@@ -77,13 +77,15 @@ describe("B1/B5/B6/B7 build config", () => {
     ]);
   });
 
-  it("A16/PH1 run_worker_first = main + /posts + /posts/*; no sitemap-posts", () => {
+  it("A16/PH1 run_worker_first = main + /posts + /library; no sitemap-posts", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
     const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
     expect(json.assets.run_worker_first).toEqual([
       ...MAIN_RUN_WORKER_FIRST,
       "/posts",
       "/posts/*",
+      "/library",
+      "/library/*",
     ]);
     expect(json.assets.run_worker_first).not.toContain("/sitemap-posts.xml");
     const workerSrc = readFileSync(
