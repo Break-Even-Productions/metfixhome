@@ -10,6 +10,19 @@ export const BSI_ORIGIN = "https://brokenscience.org";
 export const IMAGE_HOST = "brokenscience.org";
 export const METFIX_ORIGIN = "https://metfix.org";
 
+/** Build REST bases for a non-prod BSI origin (LOCAL_AUTH / tests). Keep /wp-json here — not in worker/. */
+export function resourcesBaseFromOrigin(origin: string): string {
+  return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/resources`;
+}
+
+export function postsDetailBaseFromOrigin(origin: string): string {
+  return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/posts`;
+}
+
+export function exclusiveBaseFromOrigin(origin: string): string {
+  return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/exclusive-resources`;
+}
+
 export const MAX_UPSTREAM_BYTES = 1_500_000;
 export const DEFAULT_LIMIT = 12;
 export const MAX_LIMIT = 48;

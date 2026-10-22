@@ -15,6 +15,7 @@ import {
   RESOURCE_ID_MAX,
   RESOURCE_ID_RE,
   buildLibraryHead,
+  exclusiveBaseFromOrigin,
   isLibraryDetailBody,
   isLibraryFiltersBody,
   isLibrarySearchBody,
@@ -26,6 +27,8 @@ import {
   mapDetailBody,
   mapFiltersPayload,
   mapSearchResponse,
+  postsDetailBaseFromOrigin,
+  resourcesBaseFromOrigin,
   type LibraryDetailBody,
   type LibraryFiltersBody,
   type LibraryHead,
@@ -69,13 +72,16 @@ function readApiKey(env: Env): string | null {
 }
 
 function postsBase(env: Env, opts?: { baseUrl?: string }): string {
-  const origin = resolveBsiOrigin(env, opts);
-  return `${origin}/wp-json/bsi/v1/posts`;
+  return postsDetailBaseFromOrigin(resolveBsiOrigin(env, opts));
 }
 
 function exclusiveBase(env: Env, opts?: { baseUrl?: string }): string {
-  const origin = resolveBsiOrigin(env, opts);
-  return `${origin}/wp-json/bsi/v1/exclusive-resources`;
+  return exclusiveBaseFromOrigin(resolveBsiOrigin(env, opts));
+}
+
+function resourcesBase(env: Env, opts?: { baseUrl?: string }): string {
+  if (!opts?.baseUrl) return BSI_RESOURCES_BASE;
+  return resourcesBaseFromOrigin(resolveBsiOrigin(env, opts));
 }
 
 function apiOkHeaders(privateCache: boolean): HeadersInit {
@@ -473,10 +479,7 @@ async function getSearch(
     }
   }
 
-  const base = opts?.baseUrl
-    ? `${resolveBsiOrigin(env, opts)}/wp-json/bsi/v1/resources`
-    : BSI_RESOURCES_BASE;
-  const url = `${base}/search?${queryString}`;
+  const url = `${resourcesBase(env, opts)}/search?${queryString}`;
 
   const call = (access: string | null) =>
     fetchBsi(url, key, access, fetchImpl, env);
@@ -557,9 +560,7 @@ async function getFilters(
     }
   }
 
-  const base = opts?.baseUrl
-    ? `${resolveBsiOrigin(env, opts)}/wp-json/bsi/v1/resources`
-    : BSI_RESOURCES_BASE;
+  const base = resourcesBase(env, opts);
   const paths = [
     `${base}/topics`,
     `${base}/content-type-terms`,
