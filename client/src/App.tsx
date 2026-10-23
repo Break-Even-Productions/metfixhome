@@ -19,6 +19,7 @@ import LibraryPage from "./pages/library/LibraryPage";
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
 const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
+const SearchPage = lazy(() => import("./pages/search/SearchPage"));
 import { useLocation } from "wouter";
 
 function AppRoutes() {
@@ -42,6 +43,13 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/posts"} component={PostsPage} />
+      <Route path={"/library/search"}>
+        {() => (
+          <Suspense fallback={null}>
+            <SearchPage />
+          </Suspense>
+        )}
+      </Route>
       <Route path={"/library/:type/:id"}>
         {() => (
           <Suspense fallback={null}>

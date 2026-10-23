@@ -34,6 +34,14 @@ export {
 } from "./access";
 
 export {
+  SEARCH_TYPE_PILLS,
+  isSearchTypePillSlug,
+  resolveSearchTabs,
+  type SearchTab,
+  type SearchTopicRow,
+} from "./searchTopics";
+
+export {
   libraryDetailCacheKey,
   libraryFiltersCacheKey,
   libraryPopularCacheKey,

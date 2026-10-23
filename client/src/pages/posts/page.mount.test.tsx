@@ -303,6 +303,11 @@ describe("Posts page mount", () => {
     expect(
       document.querySelector('img[src="https://brokenscience.org/wp-content/uploads/a.jpg"]'),
     ).toBeTruthy();
+    // PL13 author-right: grid + aside when author is present
+    expect(document.querySelector(".post-reader-grid")).toBeTruthy();
+    expect(document.querySelector(".post-reader-main")).toBeTruthy();
+    expect(screen.getByLabelText("About the author")).toBeTruthy();
+    expect(document.querySelector(".posts-shell--wide")).toBeTruthy();
     unmount();
 
     const notFoundMock = vi.fn(async () =>
@@ -317,6 +322,30 @@ describe("Posts page mount", () => {
     expect(await screen.findByText("Error 404")).toBeTruthy();
     expect(window.location.pathname).toBe("/posts/1");
     expect(notFoundMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("PL13: author-right aside omitted when author is null", async () => {
+    const post = detailPost({
+      id: 2,
+      title: "No Author Post",
+      author: null,
+      content: "<p>Body</p>",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ post }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    openAddressBar("/posts/2");
+    render(<MountedApp />);
+    expect(await screen.findByRole("heading", { name: "No Author Post" })).toBeTruthy();
+    expect(document.querySelector(".post-reader-grid")).toBeTruthy();
+    expect(document.querySelector(".post-reader-main")).toBeTruthy();
+    expect(screen.queryByLabelText("About the author")).toBeNull();
   });
 
   it.each(["/posts/some-slug", "/posts/0", "/posts/2147483648", "/posts/01"])(

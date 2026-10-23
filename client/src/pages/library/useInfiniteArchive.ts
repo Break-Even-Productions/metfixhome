@@ -17,6 +17,8 @@ export type ArchiveKind =
 export type InfiniteArchiveState = {
   status: "loading" | "error" | "data";
   items: LibraryResource[];
+  /** Upstream `meta.total` from the latest completed page (0 while loading). */
+  total: number;
   hasMore: boolean;
   loadingMore: boolean;
   loadMore: () => void;
@@ -58,6 +60,7 @@ export function useInfiniteArchive(
 ): InfiniteArchiveState {
   const [status, setStatus] = useState<"loading" | "error" | "data">("loading");
   const [items, setItems] = useState<LibraryResource[]>([]);
+  const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const offsetRef = useRef(0);
@@ -71,6 +74,7 @@ export function useInfiniteArchive(
     if (!active || !archive) {
       setStatus("loading");
       setItems([]);
+      setTotal(0);
       setHasMore(false);
       return;
     }
@@ -78,6 +82,7 @@ export function useInfiniteArchive(
     const signal = controller.signal;
     setStatus("loading");
     setItems([]);
+    setTotal(0);
     setHasMore(false);
     offsetRef.current = 0;
     busyRef.current = true;
@@ -91,6 +96,7 @@ export function useInfiniteArchive(
           );
           if (signal.aborted) return;
           setItems(body.resources);
+          setTotal(body.meta.total);
           offsetRef.current = PAGE;
           setHasMore(body.meta.has_more);
           setStatus("data");
@@ -103,6 +109,7 @@ export function useInfiniteArchive(
         );
         if (signal.aborted) return;
         setItems(filterPage(archive.kind, body.resources));
+        setTotal(body.meta.total);
         offsetRef.current = PAGE;
         setHasMore(body.meta.has_more);
         setStatus("data");
@@ -182,5 +189,5 @@ export function useInfiniteArchive(
     })();
   }, [hasMore, status]);
 
-  return { status, items, hasMore, loadingMore, loadMore };
+  return { status, items, total, hasMore, loadingMore, loadMore };
 }

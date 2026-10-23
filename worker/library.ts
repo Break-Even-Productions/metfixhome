@@ -1041,6 +1041,12 @@ export async function handleLibraryHtml(
     return htmlOk(request, env, libraryHeadPlan(head), isHead);
   }
 
+  // SR18 / E1: SPA search page (not a resource type/id). Same shell as hub.
+  if (path === "/library/search") {
+    const head = buildLibraryHead({ kind: "hub" });
+    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+  }
+
   const detail = path.match(/^\/library\/([^/]+)\/([^/]+)$/);
   if (detail) {
     const typePart = detail[1]!;

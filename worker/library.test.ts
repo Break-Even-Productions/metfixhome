@@ -1,9 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("./head", async () => {
+  const actual = await vi.importActual<typeof import("./head")>("./head");
+  return {
+    ...actual,
+    // Node vitest has no HTMLRewriter; pass SPA shell through unchanged.
+    rewriteHtml: (response: Response) => response,
+  };
+});
+
 import {
   buildPopularUpstreamQuery,
   buildSearchUpstreamQuery,
+  handleLibraryHtml,
   isValidLibraryId,
 } from "./library";
+import type { Env } from "./upstream";
 
 describe("library search query builder", () => {
   it("allows query + content_type_terms and rejects content_access", () => {
@@ -63,9 +75,89 @@ describe("library source scan", () => {
     const { fileURLToPath } = await import("node:url");
     const src = readFileSync(fileURLToPath(new URL("./library.ts", import.meta.url)), "utf8");
     expect(src.toLowerCase()).not.toMatch(/manus/);
-    // Must not build an upstream content_access[] filter for the main catalog.
     expect(src).not.toMatch(/out\.append\(\s*["']content_access/);
     expect(src).toMatch(/Bearer/);
     expect(src).toMatch(/X-API-Key/);
+  });
+});
+
+describe("SS20a handleLibraryHtml /library/search (SR18)", () => {
+  const SPA_SHELL = `<!doctype html><html><head><title>MetFix</title></head><body><div id="root"></div></body></html>`;
+
+  function makeEnv(assetsFetch: ReturnType<typeof vi.fn>): Env {
+    return {
+      ASSETS: { fetch: assetsFetch } as unknown as Fetcher,
+      BSI_POSTS_API_KEY: "test-key",
+    } as Env;
+  }
+
+  function makeCtx(): ExecutionContext {
+    return {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+  }
+
+  it("GET /library/search and ?query=x → 200 text/html SPA shell (not 404)", async () => {
+    const assetsFetch = vi.fn(async () => {
+      return new Response(SPA_SHELL, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    });
+    const env = makeEnv(assetsFetch);
+    const ctx = makeCtx();
+    const deps = {
+      cachesDefault: {
+        match: async () => undefined,
+        put: async () => {},
+      } as unknown as Cache,
+      fetchImpl: vi.fn(async () => new Response("{}", { status: 404 })),
+    };
+
+    const hub = await handleLibraryHtml(
+      new Request("https://metfix.org/library", { headers: { Accept: "text/html" } }),
+      env,
+      ctx,
+      deps,
+    );
+    const search = await handleLibraryHtml(
+      new Request("https://metfix.org/library/search", {
+        headers: { Accept: "text/html" },
+      }),
+      env,
+      ctx,
+      deps,
+    );
+    const withQ = await handleLibraryHtml(
+      new Request("https://metfix.org/library/search?query=x", {
+        headers: { Accept: "text/html" },
+      }),
+      env,
+      ctx,
+      deps,
+    );
+    const notFound = await handleLibraryHtml(
+      new Request("https://metfix.org/library/not-a-real-type/1", {
+        headers: { Accept: "text/html" },
+      }),
+      env,
+      ctx,
+      deps,
+    );
+
+    expect(hub.status).toBe(200);
+    expect(search.status).toBe(200);
+    expect(withQ.status).toBe(200);
+    expect(search.headers.get("content-type") ?? "").toMatch(/text\/html/);
+    const hubBody = await hub.text();
+    const searchBody = await search.text();
+    const qBody = await withQ.text();
+    // Same SPA shell bytes as hub (rewriter may inject head; bodies still share root shell).
+    expect(searchBody).toContain('id="root"');
+    expect(qBody).toContain('id="root"');
+    expect(hubBody).toContain('id="root"');
+    expect(notFound.status).toBe(404);
   });
 });

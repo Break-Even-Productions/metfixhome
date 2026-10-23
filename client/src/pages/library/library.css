@@ -489,17 +489,27 @@
   margin: 0 auto;
 }
 
+/* Detail + author-right rail (mockup ~1280px). */
+.library-reader--wide {
+  max-width: 80rem;
+  --post-aside-bg: var(--lib-paper);
+  --post-aside-border: var(--lib-line);
+  --post-aside-label: var(--lib-accent);
+  --post-aside-ink: var(--lib-ink);
+}
+
 .library-reader-back {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   color: var(--lib-muted);
   text-decoration: none;
-  font-size: 0.8rem;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;
-  margin-bottom: 1.5rem;
+  margin-bottom: 24px;
 }
 
 .library-reader-back:hover {
@@ -508,25 +518,27 @@
 
 .library-reader-title {
   font-family: var(--lib-font-serif);
-  font-size: clamp(1.85rem, 4.5vw, 2.6rem);
-  line-height: 1.2;
-  margin: 0 0 0.75rem;
+  font-size: 36px;
+  line-height: 1.25;
+  font-weight: 700;
+  margin: 0 0 16px;
 }
 
 .library-reader-meta {
   color: var(--lib-muted);
-  font-size: 0.85rem;
-  margin-bottom: 1.5rem;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  margin-bottom: 24px;
 }
 
-.library-reader-body {
-  font-size: 1.05rem;
-  line-height: 1.7;
+.library-reader-body ul,
+.library-reader-body ol,
+.library-reader-body blockquote,
+.library-reader-body pre {
+  margin: 0 0 16px;
 }
 
 .library-reader-body img {
-  max-width: 100%;
-  height: auto;
   border-radius: 0.25rem;
 }
 
