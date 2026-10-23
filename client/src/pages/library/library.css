@@ -1,9 +1,8 @@
 /* Resource Library — mia-metfix cream/ink/gold + Emily IA structure */
-@import "../../styles/post-prose.css";
 
 .library-page {
   --lib-font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
-  --lib-font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --lib-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --lib-cream: #f3eee4;
   --lib-cream-2: #e9e1d2;
   --lib-paper: #faf7f1;
@@ -496,7 +495,7 @@
   gap: 0.4rem;
   color: var(--lib-muted);
   text-decoration: none;
-  font-family: var(--lib-font-sans);
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -518,7 +517,7 @@
 
 .library-reader-meta {
   color: var(--lib-muted);
-  font-family: var(--lib-font-sans);
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
   margin-bottom: 24px;
 }

@@ -1,14 +1,15 @@
-# QA test list: metfixhome draft PR, post body layout + Search page + Sanity topics, rev 1.3 (pre-round-1)
+# QA test list: metfixhome draft PR, post body layout + Search page + Sanity topics, rev 1.4 (round 1)
 
 - Author: MetFix Web QA. Box-only file; no repo changes, no PR, no comments.
-- **Spec pin (one-way): acceptance rev 1.0.4, md5 `1c59b4217164c39851aaa82dcc514731`** (verified on the box 2026-10-22 ~10:50 PM PT, `metfix-pr-post-layout-search-acceptance.rev1.0.4.md`; 57 IDs; §0b E1–E4 wins over everything earlier). Base main `5465f0d8`, read-only. CQ pre-build `94f99437…` folded in (r1.1).
-- **Ethan confirmation pending (QA chat).** E1 (route `/library/search` + handoff), E2 (tabs from the filters route + Sanity, no defaults) and E4 (locked items shown with a lock, an exception to the standing hide rule) reached QA as Ethan's answers **relayed** via MetFix CEO and Web Lead. Rows are written to the spec. Ethan's direct confirmation of the lock, route and topics rulings is pending in QA's chat; E4 in particular must be confirmed by Ethan directly before merge (spec SEC3).
+- **Spec pin (one-way): acceptance rev 1.0.6, md5 `1809c3bc747e4af8f6dc5e0bd51ef16a`** (verified on the box 2026-10-22 ~11:22 PM PT; 59 IDs, PL6 retired; §0d D1–D6 over §0c over §0b). Base main `5465f0d8`, read-only.
+- Rev 1.4, 2026-10-22 ~11:25 PM PT (QA). Re-pin 1.0.4 → 1.0.6 (1.0.5 C1–C5 and 1.0.6 D1–D6, relayed from Web Lead). r1.3 (`69be384b09b81b1624007db328925a07`) kept at `metfix-pr-post-layout-search-tests.r1.3.md`. LB6 retired (PL6, D3). New LB11 (PL12), SS21 (SR19), LM30. CQ-T2 rewritten to D6 (no hide/visibility module may exist; the r1.3 'filter is identity' unit is no longer required). SS6/SS13 already followed C1. KNOWN_ROUTES: verified SS16 already allowed exactly the one `"library"` line; SS21 now asserts it positively. No other row asserted `const.ts` unchanged. Nothing else loosened.
+- **Approval status (relayed).** E4 lock-not-hide is recorded as **ruled** on QA's list: Web Lead reports Ethan told MetFix CEO "Yes they still see a lock" (relayed, spec C5). E1 route and E2 topics likewise relayed. Not confirmed to QA directly; merge still needs Ethan's direct go.
 - Rev 1.3, 2026-10-22 ~10:55 PM PT (QA). Re-pin 1.0.3 → 1.0.4. r1.2 (`f098c197f45e5edafc22128ac79125a8`) kept at `metfix-pr-post-layout-search-tests.r1.2.md`. Route renamed `/search` → `/library/search` in every row. Rewritten to the rulings: SS5–SS10, SS13, SS16, SS18, SS19, SN-T1, SN-T3–SN-T7, SC-T3, CQ-T2, TC-T1, TC-T2, TC-T3, PD-T1, PD-T3, PD-T4. New: SS20 (SR18), SC-T7 (SEC7), TC-T8 (TC8). Relaxed **only where a ruling requires it**: the hide assertions (E4), the 8-default fallback (E2), the type-tab rows (E3), the `KNOWN_ROUTES` no-change check (Web Lead's OQ-13 pick, relayed). Mutants retired: LM1, LM13, LM14, LM15, LM19, LM20, LM21. New: LM23–LM29.
 - Rev 1.2, 2026-10-22 ~10:50 PM PT (QA). Re-pin 1.0.1 → 1.0.3; applies R10–R13 (Web Lead rulings, relayed; not Ethan's approvals). r1.1 (`204cf8df18a6327b7469fb638c7d7ebe`) kept at `metfix-pr-post-layout-search-tests.r1.1.md`. Rows changed to the new behaviour: SS5, SS8, SS9, SS10, SS13, SN-T1, SN-T3, SN-T6, SN-T7, TC-T2, PD-T3. New: SS18 (active tab / pill lighting), SS19 (one type value). Mutants: LM15 re-cut; new LM19–LM22. No assertion loosened; the only removal is SS5's two-value check, which R11 made wrong behaviour (it is now inverted into SS19).
 - Rev 1.1, 2026-10-22 ~10:45 PM PT (QA). Re-pin 1.0 → 1.0.1; applies §0a R1–R9 (Web Lead rulings, relayed; not Ethan's approvals). r1.0 (`96d21c849dfe833027626568961d0b8c`) kept at `metfix-pr-post-layout-search-tests.r1.0.md`. No assertion loosened; rows changed only where the spec changed the behaviour (SS4, SS5, SS8, SS13, SS16, SN-T1, SN-T2, SN-T3, SN-T5, SN-T6, SC-T2, SC-T3, TC-T1, TC-T3, PD-T3, PD-T4). New: SS17, SN-T7, TC-T1b, CQ-T1, CQ-T2, CQ-T3; mutants LM13–LM18; LM12 retired.
-- **SEC3 (r1.3):** E4 lock-not-hide, relayed. SC-T3, TC-T3, CQ-T2, SC-T7 and PD-T4 are written to the lock ruling; if Ethan doesn't confirm it directly, they revert to the r1.2 hide rows (kept in `.r1.2.md`).
-- Counts: **gate 57 [CI]**, **box 6 [BOX]**, **post-deploy 5 [POST]**, **mutation catalogue 20 live (+8 retired)**, **targeted 10 (advisory)**, **gating mutations 0**.
-- Spec coverage: 57/57 IDs (map at the end).
+- **SEC3 (r1.4):** lock-not-hide, ruled (relayed). SC-T3, TC-T3, CQ-T2, SC-T7, PD-T4 are written to it.
+- Counts: **gate 58 [CI]**, **box 6 [BOX]**, **post-deploy 5 [POST]**, **mutation catalogue 21 live (+8 retired)**, **targeted 10 (advisory)**, **gating mutations 0**.
+- Spec coverage: 59/59 IDs (PL6 retired: mapped to its retired row LB6, no gate).
 - Bar (Ethan, 2026-10-22, in this chat): lean and practical. Block only on real breakage, security problems and weakened tests. Pixel nits are follow-ups, not blockers. Test-list sign-off only; merge needs Ethan's go.
 - Rules: never weaken an assertion. Each row states exact values, call counts or text. "Renders" is not a pass. Existing posts and library tests must pass **unchanged** (a diff to an existing assertion is a blocker unless Web Lead rules it in).
 
@@ -25,7 +26,8 @@ Style rows run as a headless computed-style test (TC5) on a fixture post with: 6
 - **LB3** (PL3) Second `p` marginTop+previous marginBottom gap = 16px (measured as rect.top(p2) − rect.bottom(p1) = 16±1); first child marginTop `0px`.
 - **LB4** (PL4) H1: fontFamily starts `"Playfair Display"`, 36px, lineHeight 45px, weight 700, marginBottom 16px at 1440px.
 - **LB5** (PL5, PL9) Meta line fontSize 13px DM Sans, marginBottom 24px; breadcrumb (when present) 13px DM Sans, marginBottom 24px. If the page has no breadcrumb, the row asserts it is absent on main too (no new element required).
-- **LB6** (PL6) Hero img: rendered width = body width (680 at 1440), height/width = 0.5625 (±0.01), objectFit `cover`, borderRadius > 0, marginBottom 32px.
+- **LB6** (PL6) **Retired r1.4 (D3: hero out of scope).** ID not reused; not in a gate block.
+- **LB11** (PL12, D2) If `post-prose.css` exists: repo grep (`rg -l "post-prose\.css" client/`) lists exactly two importers, `client/src/pages/posts/PostDetailPage.tsx` and `client/src/pages/library/LibraryDetailPage.tsx` (no `main.tsx`, `App.tsx`, `index.css`, `LibraryPage`, `SearchPage` or `ResourceCard`). Every selector in it is scoped under `.posts-detail-content` or `.library-reader-body` (no bare `p`, `h1`, `body`, `img`). Mount `/library` list: `ResourceCard` title/excerpt computed `fontFamily` equal to main's values.
 - **LB7** (PL7) Inline 2000px image: rendered width ≤ body width (680 at 1440, 358 at 390), computed height `auto` ratio preserved (h/w equals natural ratio ±0.01).
 - **LB8** (PL11) At 390px, `document.documentElement.scrollWidth <= 390`; the 300-char URL's container width ≤ body width; body `overflowWrap === "anywhere"`.
 - **LB9** (PL8) Body h2/h3/blockquote/figcaption/ul computed fontFamily/weight equal main's values (snapshot from `5465f0d8` run of the same fixture); no new hard-coded size appears for them in the diff (grep the CSS diff for `blockquote|figcaption|h2|h3` under the two body selectors: any new px value = FAIL unless OQ-1 is ruled).
@@ -49,6 +51,7 @@ Mount tests render `/library/search` with `fetchMock` returning `{items:[3 cards
 - **SS18** (SR5, SR6, SR8, E3) Pills and tabs independent: tab 11 then pill Articles → tab 11 still selected, URL `type=articles&topic=11`, fetch has both. Pill Infographics then tab 12 → Infographics still pressed. Pill All Types → topic unchanged. At every step exactly 1 pill pressed and (except `topic=555`) exactly 1 tab selected.
 - **SS19** (SR5, TC2) One type value: across every action sequence in SS8, SS13, SS16 and SS18 (recorded fetch log), no `/api/library/search` request has more than 1 `content_type_terms[]` entry or more than 1 `topics[]` entry.
 - **SS20** (SR18, E1) Direct load: (a) Workers runtime test: `GET /library/search` and `/library/search?query=x` → 200, `content-type` text/html, body is the SPA shell (same bytes as `GET /library`'s shell), not the Worker 404 body. (b) Mount at that URL → the search page's h1 `Search All Resources` renders; `LibraryDetailPage` and NotFound are not mounted (route order: `/library/search` matched before `/library/:type/:id`). (c) With router base set via `getRouterBase()` for `/library/search`, the base is `""` (or main's root value), not `/library`.
+- **SS21** (SR19, C3) `git diff 5465f0d8 -- client/src/const.ts` is exactly one added line `"library",` inside `KNOWN_ROUTES` and nothing else. Unit: `getRouterBase()` returns `""` for `/library`, `/library/search` and `/library/post/1` at the root; the existing const/router tests unchanged and green; one added case for `/library/search`.
 - **SS14** (SR14, PL11) At 390px: `documentElement.scrollWidth <= 390`; tab bar `scrollWidth > clientWidth` allowed; pill container `flexWrap === "wrap"`.
 - **SS15** (SR15) Pills are `<button>` with `aria-pressed`; tabs are `<button role="tab">` with `aria-selected` inside `role="tablist"`; keyboard Tab reaches pills and tabs; focused element has a non-`none` outline or box-shadow (`:focus-visible`).
 - **SS16** (SR16, E1) Mount `/library`, Videos chip active, type `  keto  ` in its search form, submit → SPA navigation (no `location.assign`/reload; `window.location` spy 0 calls) to exactly `/library/search?query=keto&type=videos`; then the search page's first fetch has `query=keto` and `content_type_terms[]=videos`. Chip not one of the 4 pill slugs (e.g. `journal-clubs`) → `type=` absent. Empty submit → `/library/search` with no `query=`. `/library`'s existing tests stay green unchanged. Diff vs `5465f0d8`: in `client/src/const.ts` the only change allowed is adding `"library"` to `KNOWN_ROUTES` (one line; Web Lead's OQ-13 pick, relayed); no change to `Map.tsx` or header/footer/nav; the search module graph does not import `Map` (built chunk grep for `VITE_FRONTEND_FORGE` = 0).
@@ -79,7 +82,7 @@ Mount tests render `/library/search` with `fetchMock` returning `{items:[3 cards
 - **TC-T2** (TC2, E3) Unit on the state→params/URL reducer: All/All/no query → no filter params; each of 4 pills × {All, tab 11} → exact param sets (8 cases), and changing the pill keeps the tab / changing the tab keeps the pill; invalid URL `topic`/`type` values per SS13 → All; `topic=555` kept; count-line cases per SS9. Every output has ≤ 1 type value and ≤ 1 topic (SS19).
 - **TC-T3** (TC3, E4) = SC-T3 + SC-T7 (mount, mirrors /library's card test). Pending Ethan's direct E4 confirmation.
 - **TC-T4** (TC4) Mount: DOM order of breadcrumb, h1, input, SEARCH button, pills, tab bar, count line, Clear filters, grid (`compareDocumentPosition` chain) + SS10.
-- **TC-T5** (TC5) The headless computed-style test exists in CI (or a ci.yml step) covering LB1, LB2, LB4, LB6, SS2, SS5, SS6 at 1440 and 390, ±1px. If the Project makes it box-only, it moves to BX-1 and is not dropped.
+- **TC-T5** (TC5) The headless computed-style test exists in CI (or a ci.yml step) covering LB1, LB2, LB4, SS2, SS5, SS6 at 1440 and 390 (LB6 dropped with PL6), ±1px. If the Project makes it box-only, it moves to BX-1 and is not dropped.
 - **TC-T6** (TC6) `npm test`, `tsc --noEmit`, `npm run check:worker` exit 0; skip count not higher than main's (no new `.skip`/`.todo`/`it.only`).
 - **TC-T7** (TC7) Bundle scan step exists in CI and fails on a planted `wp-json` string (proved once by BX-4).
 - **TC-T8** (TC-mutation note) The mutation set exists as patches under `docs/<feature>/mutations/` or QA box only; never in a gate block.
@@ -87,7 +90,7 @@ Mount tests render `/library/search` with `fetchMock` returning `{items:[3 cards
 
 ### CQ pre-build checks folded in [CI]
 - **CQ-T1** (call counts; SN3, SN5, SR4, SR17) One /library/search page load with nav+footer: exactly 1 Sanity settings read, ≤ 1 `/api/library/filters`, exactly 1 `/api/library/search`. A tab click, a pill click and a submit each add exactly 1 search and 0 Sanity / 0 filters. Load-more adds exactly 1 search per page.
-- **CQ-T2** (filter unit; retired by E4 as a hide filter) **Rewritten:** no access filter on this page. Unit: the results passed to the card grid are deep-equal to the upstream `items` (same length, order, ids) for logged-out and signed-in fixtures; locked state comes only from `isLockedCard`. If the hide ruling is not confirmed by Ethan, revert to the r1.2 CQ-T2.
+- **CQ-T2** (SEC3, D6) No hide filter remains: the diff adds no file matching `*isibility*` or `*hide*` under `shared/` or `client/`, and no exported function that filters results by access; `isFreeOpen` is not imported by any search module; the array handed to the card grid is the hook's `items` (grep: no `.filter(` over results in `SearchPage.tsx` keyed on `access`). Mount: logged-out and signed-in fixtures render the same card count and order as upstream `items`.
 - **CQ-T3** (dist grep; SEC1, SEC2, TC7) A CI step after `npm run build` greps `dist/` and fails on any hit for `wp-json`, `brokenscience.org/wp-json`, `VITE_SANITY_API_READ_TOKEN`, `/sk[A-Za-z0-9]{20,}/`. No `|| true` on the step; proved by BX-4.
 
 ## Box-only [BOX]
@@ -103,14 +106,14 @@ Mount tests render `/library/search` with `fetchMock` returning `{items:[3 cards
 - **PD-T2** (PD2) DevTools network on preview: request hosts only the metfix origin (`/api/library/*`) and `*.apicdn.sanity.io`; 0 requests to `brokenscience.org/wp-json`; Sanity requests carry no `Authorization` header.
 - **PD-T3** (PD3, SN2) Studio on a **preview dataset only**, never prod: add one `searchTopics` entry with an existing API topic id and a custom label → within ~60s, no deploy, it is first in the bar with the custom label and the API's copy of that id is gone (no duplicate). Remove it → API order returns exactly.
 - **PD-T4** (PD4, E4) Logged out on preview: search a known exclusive title → it appears with the lock badge; click opens the join modal; DevTools network shows no body/media URL for it. Ethan's direct OK on E4 must be on record before merge.
-- **PD-T5** (PD5) Long BSI post at 1440 and 390 vs reference, screenshots on the PR (Web Lead posts them; QA does not).
+- **PD-T5** (PD5) Long BSI post at 1440 and 390 vs reference, PL1–PL5 and PL7, screenshots on the PR (Web Lead posts them; QA does not).
 
 ## Mutation catalogue [BOX] (reference; exact red sets) with advisory targeted set
 Gating 0. Run each alone against only the files holding its red set. Targeted marked ★.
 | ID | Patch (realistic mistake) | Red set (exact) |
 |---|---|---|
 | LM1 | Retired 1.3 (no defaults under E2); ID not reused | — |
-| ★LM2 | `isFreeOpen` hide filter left in (pre-E4 code) — locked items dropped | SC-T3, CQ-T2, PD-T4† |
+| ★LM2 | Hide filter left in (`items.filter(isFreeOpen)` before the grid) — locked items dropped | SC-T3, CQ-T2, PD-T4† |
 | ★LM3 | Count line always plural (`resources`) | SS9, TC-T2 |
 | ★LM4 | Live Streams maps to `videos` instead of `webinars` | SS5, TC-T2 |
 | LM5 | Resolver drops all Sanity rows if any row is invalid (instead of skipping that row) | SN-T3 |
@@ -126,7 +129,8 @@ Gating 0. Run each alone against only the files holding its red set. Targeted ma
 | LM18 | Search fires on each keystroke (input bound straight to the URL) | SS4, TC-T1b |
 | LM6 | Clear filters resets query and pill but not the tab | SS10, TC-T4 |
 | LM7 | Count uses `items.length` instead of `meta.total` | SS9 |
-| LM8 | Body `max-width` set on the page container not the body (body becomes 797px at lg) | LB1, LB6, TC-T5 |
+| LM8 | Body `max-width` set on the page container not the body (body becomes 797px at lg) | LB1, TC-T5 |
+| LM30 | `post-prose.css` imported globally (in `main.tsx`) instead of by the two detail pages | LB11 |
 | LM9 | Unknown `?type=` passed through to the fetch | SS13 |
 | LM10 | Tabs sorted alphabetically instead of source order | SS7, SN-T3 |
 | LM11 | `maxLength` removed from the input and no slice on submit | SS3, SC-T5 |
@@ -139,12 +143,12 @@ Gating 0. Run each alone against only the files holding its red set. Targeted ma
 | ★LM28 | Selecting a tab resets the pill to All Types (old R11 reset kept) | SS8, SS18, TC-T2 |
 | LM29 | Dedupe keeps the API `name` over the Sanity label (spec mutant) | SS7, SS9, SN-T3 |
 
-Targeted 10: LM2, LM3, LM4, LM17, LM23, LM24, LM25, LM26, LM27, LM28. † = [POST] row, not run in BX-5 (red set for BX-5 excludes it). LM5 and LM8 moved to catalogue-only (r1.3), rows unchanged. Spec's 5 = LM27, LM29, LM3, LM4, LM26. Catalogue 20 live (LM2–LM11, LM16–LM18, LM22–LM29 minus none = 20), 8 retired (LM1, LM12–LM15, LM19–LM21). LM2/LM23 follow the pending E4 confirmation. Red sets re-checked against r1.3 rows. A surviving targeted mutant is a finding to Web Lead, not a gate.
+Targeted 10: LM2, LM3, LM4, LM17, LM23, LM24, LM25, LM26, LM27, LM28. † = [POST] row, not run in BX-5 (red set for BX-5 excludes it). LM5 and LM8 moved to catalogue-only (r1.3), rows unchanged. Spec's 5 = LM27, LM29, LM3, LM4, LM26. Catalogue 21 live (LM2–LM11, LM16–LM18, LM22–LM30), 8 retired (LM1, LM12–LM15, LM19–LM21). LM2/LM23 follow the pending E4 confirmation. Red sets re-checked against r1.3 rows. A surviving targeted mutant is a finding to Web Lead, not a gate.
 
 ## Open questions (not guessed; rows stay as written until ruled)
 - **OQ-Q14 (new, SR13 vs SR6)** SR6 says "exactly one tab is active"; SR13 says `topic=555` (not in the list) lights no tab, so zero are active. Rows follow SR13 for that one case. Confirm.
 - **OQ-Q15 (new, SR9/SR10 leftovers)** SR9 still says "or a type tab matching `type`" and SR10 "a type tab counts as both" (R11 text), though E3 retired type tabs. Rows ignore those clauses. Spec cleanup only.
-- **OQ-Q16 (new, KNOWN_ROUTES)** E1 and SR16 still say `KNOWN_ROUTES` is out of scope; OQ-13 is open in the spec. SS16 allows the one-line `"library"` add per Web Lead's pick (relayed in QA's brief). Spec should record it.
+- ~~OQ-Q16~~ closed by C3/SR19 (KNOWN_ROUTES in scope). ~~OQ-Q14~~ closed by C1. ~~OQ-Q15~~ closed by C2. ~~OQ-Q17~~ closed by C4.
 - **OQ-Q17 (new, TC1b wording)** TC1b still mounts "/search"; rows use `/library/search`.
 - **Pending Ethan directly (QA chat):** E1 route + handoff, E2 topic source, E4 lock-not-hide (security exception; must be confirmed before merge).
 - **OQ-Q1 (spec OQ-1)** Body H2/H3/blockquote/figcaption/list values: LB9 holds them to main's values until ruled.
@@ -162,9 +166,9 @@ Targeted 10: LM2, LM3, LM4, LM17, LM23, LM24, LM25, LM26, LM27, LM28. † = [POS
 - **OQ-Q13 (CQ rule 4 vs SN-T5)** Testing "shared with LibraryPage" needs both in one module instance; QA uses `vi.resetModules()` only between tests, no prod reset export.
 - **OQ-Q8 (TC5)** Is the computed-style test a CI test (needs a headless browser in CI) or box-only? TC-T5 accepts either, but it must exist somewhere.
 
-## Spec ID coverage map (57/57)
-PL1 LB1 · PL2 LB2 · PL3 LB3 · PL4 LB4 · PL5 LB5 · PL6 LB6 · PL7 LB7 · PL8 LB9 · PL9 LB5 · PL10 LB10 · PL11 LB8, SS14
-SR1 SS1 · SR2 SS2 · SR3 SS3 · SR4 SS4 · SR5 SS5, SS18, SS19 · SR6 SS6, SS18 · SR7 SS7 · SR8 SS8, SS19 · SR9 SS9 · SR10 SS10 · SR11 SS11 · SR12 SS12 · SR13 SS13 · SR14 SS14 · SR15 SS15 · SR16 SS16, TC-T9 · SR17 SS17, TC-T1b, CQ-T1 · SR18 SS20, TC-T9
+## Spec ID coverage map (59/59)
+PL1 LB1 · PL2 LB2 · PL3 LB3 · PL4 LB4 · PL5 LB5 · PL6 LB6 (retired) · PL7 LB7 · PL8 LB9 · PL9 LB5 · PL10 LB10 · PL11 LB8, SS14 · PL12 LB11
+SR1 SS1 · SR2 SS2 · SR3 SS3 · SR4 SS4 · SR5 SS5, SS18, SS19 · SR6 SS6, SS18 · SR7 SS7 · SR8 SS8, SS19 · SR9 SS9 · SR10 SS10 · SR11 SS11 · SR12 SS12 · SR13 SS13 · SR14 SS14 · SR15 SS15 · SR16 SS16, TC-T9 · SR19 SS21 · SR17 SS17, TC-T1b, CQ-T1 · SR18 SS20, TC-T9
 SN1 SN-T1 · SN2 PD-T3 · SN3 SN-T2 · SN4 SN-T3, SN-T4 · SN5 SN-T5, CQ-T1 · SN6 SN-T6 · SN7 SN-T7
 SEC1 SC-T1, CQ-T3 · SEC2 SC-T2, CQ-T3 · SEC3 SC-T3, CQ-T2, PD-T4 · SEC7 SC-T7, TC-T3 · SEC4 SC-T4 · SEC5 SC-T5, SS3 · SEC6 SC-T6, BX-6
 TC1 TC-T1 · TC1b TC-T1b · TC2 TC-T2 · TC3 TC-T3 · TC4 TC-T4 · TC5 TC-T5, BX-1 · TC6 TC-T6, BX-2 · TC7 TC-T7, BX-4 · TC8 TC-T9
@@ -177,11 +181,11 @@ LB2
 LB3
 LB4
 LB5
-LB6
 LB7
 LB8
 LB9
 LB10
+LB11
 SS1
 SS2
 SS3
@@ -202,6 +206,7 @@ SS17
 SS18
 SS19
 SS20
+SS21
 SN-T1
 SN-T2
 SN-T3
@@ -249,6 +254,7 @@ PD-T5
 ```
 
 ## Changelog
+- r1.4 (2026-10-22 ~11:25 PM PT): re-pin to 1.0.6 `1809c3bc…`; LB6 retired, LB11/SS21/LM30 added, CQ-T2 to D6.
 - r1.3 (2026-10-22 ~10:55 PM PT): re-pin to 1.0.4 `1c59b421…`; E1–E4 applied (relayed; Ethan's direct confirmation pending); see header.
 - r1.2 (2026-10-22 ~10:50 PM PT): re-pin to 1.0.3 `020a837e…` (frozen); R10–R13 applied; see header.
 - r1.1 (2026-10-22 ~10:45 PM PT): re-pin to 1.0.1 `d56220ee…`; R1–R9 and CQ B1–B6 applied; see header.

@@ -1,9 +1,8 @@
 /* Posts list + detail — class-based styles; reuse Daily Fix token feel (CQ24 / B1). */
-@import "../../styles/post-prose.css";
 
 .posts-page {
   --posts-font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
-  --posts-font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --posts-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --posts-cream: #f3eee4;
   --posts-paper: #faf7f1;
   --posts-ink: #171512;
@@ -257,7 +256,7 @@
   flex-wrap: wrap;
   gap: 0.5rem 1.25rem;
   color: var(--posts-muted);
-  font-family: var(--posts-font-sans);
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
   margin-bottom: 24px;
 }

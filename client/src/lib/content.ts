@@ -169,33 +169,34 @@ export async function fetchCourses(): Promise<Course[]> {
   }
 }
 
+const EMPTY_SITE_SETTINGS: SiteSettings = {
+  copyrightText: DEFAULT_COPYRIGHT_TEXT,
+  navLinks: DEFAULT_NAV_LINKS,
+  searchTopics: [],
+};
+
 async function loadSiteSettings(): Promise<SiteSettings> {
-  const empty: SiteSettings = {
-    copyrightText: DEFAULT_COPYRIGHT_TEXT,
-    navLinks: DEFAULT_NAV_LINKS,
-    searchTopics: [],
-  };
   if (!sanityClient || !isSanityConfigured) {
-    return empty;
+    return EMPTY_SITE_SETTINGS;
   }
 
-  try {
-    const doc = await sanityClient.fetch<SanitySiteSettings | null>(SITE_SETTINGS_QUERY);
-    const copyrightText = doc?.copyrightText?.trim();
-    return {
-      copyrightText: copyrightText || DEFAULT_COPYRIGHT_TEXT,
-      navLinks: mapNavLinks(doc?.navLinks),
-      searchTopics: mapSearchTopics(doc?.searchTopics),
-    };
-  } catch (err) {
-    console.error("Failed to fetch site settings from Sanity", err);
-    return empty;
-  }
+  const doc = await sanityClient.fetch<SanitySiteSettings | null>(SITE_SETTINGS_QUERY);
+  const copyrightText = doc?.copyrightText?.trim();
+  return {
+    copyrightText: copyrightText || DEFAULT_COPYRIGHT_TEXT,
+    navLinks: mapNavLinks(doc?.navLinks),
+    searchTopics: mapSearchTopics(doc?.searchTopics),
+  };
 }
 
+/** Memoised settings read (SN3). On failure the memo clears so the next call retries (CQ N6). */
 export function fetchSiteSettings(): Promise<SiteSettings> {
   if (!siteSettingsPromise) {
-    siteSettingsPromise = loadSiteSettings();
+    siteSettingsPromise = loadSiteSettings().catch((err) => {
+      siteSettingsPromise = null;
+      console.error("Failed to fetch site settings from Sanity", err);
+      return EMPTY_SITE_SETTINGS;
+    });
   }
   return siteSettingsPromise;
 }

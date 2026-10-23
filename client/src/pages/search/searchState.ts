@@ -51,15 +51,6 @@ export function searchStateToSearchParams(state: SearchUrlState): URLSearchParam
   return sp;
 }
 
-export function pushSearchUrl(state: SearchUrlState, pathname = "/library/search") {
-  const qs = searchStateToSearchParams(state).toString();
-  const next = qs ? `${pathname}?${qs}` : pathname;
-  const cur = `${window.location.pathname}${window.location.search}`;
-  if (cur !== next) {
-    window.history.pushState(null, "", next);
-  }
-}
-
 export type SearchFetchParams = {
   query?: string;
   content_type_terms?: string[];

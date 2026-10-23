@@ -1,4 +1,3 @@
-import { CONTENT_TYPE_CHIPS } from "./constants";
 import type { LibraryFilterTerm } from "./types";
 
 /** One Sanity `searchTopics` row (Studio + CDN). E2/E3: topic_id only. */
@@ -65,12 +64,7 @@ export const SEARCH_TYPE_PILLS: ReadonlyArray<{ slug: string; label: string }> =
 ];
 
 const PILL_SLUGS = new Set(SEARCH_TYPE_PILLS.map((p) => p.slug));
-const CHIP_SLUGS = new Set(CONTENT_TYPE_CHIPS.map((c) => c.slug));
 
 export function isSearchTypePillSlug(slug: string): boolean {
   return PILL_SLUGS.has(slug);
-}
-
-export function isContentTypeChipSlug(slug: string): boolean {
-  return CHIP_SLUGS.has(slug);
 }

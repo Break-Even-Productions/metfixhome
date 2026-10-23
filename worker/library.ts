@@ -1042,9 +1042,6 @@ export async function handleLibraryHtml(
   }
 
   // SR18 / E1: SPA search page (not a resource type/id). Same shell as hub.
-  if (path === "/library/search/") {
-    return redirectResponse(`/library/search${url.search}`);
-  }
   if (path === "/library/search") {
     const head = buildLibraryHead({ kind: "hub" });
     return htmlOk(request, env, libraryHeadPlan(head), isHead);

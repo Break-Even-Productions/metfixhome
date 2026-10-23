@@ -61,4 +61,20 @@ describe("SN-T2 SITE_SETTINGS_QUERY + memoisation", () => {
     ]);
     expect(b).toBe(a);
   });
+
+  it("N6: Sanity failure does not memoize forever — next call retries", async () => {
+    sanityFetch
+      .mockRejectedValueOnce(new Error("cdn down"))
+      .mockResolvedValueOnce({
+        copyrightText: "© recovered",
+        navLinks: [],
+        searchTopics: [{ topic_id: 11, label: "A" }],
+      });
+    const { fetchSiteSettings } = await import("@/lib/content");
+    const first = await fetchSiteSettings();
+    expect(first.searchTopics).toEqual([]);
+    const second = await fetchSiteSettings();
+    expect(sanityFetch).toHaveBeenCalledTimes(2);
+    expect(second.searchTopics).toEqual([{ topic_id: 11, label: "A" }]);
+  });
 });

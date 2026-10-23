@@ -15,6 +15,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import NotFound from "@/pages/NotFound";
+import "@/styles/post-prose.css";
 import { PostsError, PostsLayout, PostsLoading } from "./PostsLayout";
 
 type DetailState =

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Link, useLocation, useSearch } from "wouter";
 import { Search as SearchIcon } from "lucide-react";
 import {
   QUERY_MAX,
   SEARCH_TYPE_PILLS,
-  SEARCH_VISIBILITY_MODE,
   buildLibraryHead,
-  filterSearchResultsForViewer,
   resolveSearchTabs,
   type LibraryResource,
   type SearchTab,
@@ -26,7 +25,7 @@ import {
   countLineText,
   isPillPressed,
   parseSearchUrl,
-  pushSearchUrl,
+  searchStateToSearchParams,
   selectAllTab,
   selectPill,
   selectTopicTab,
@@ -34,10 +33,6 @@ import {
   type SearchUrlState,
 } from "./searchState";
 import "./search.css";
-
-function readUrlState(): SearchUrlState {
-  return parseSearchUrl(window.location.search);
-}
 
 export default function SearchPage() {
   const head = useMemo(() => buildLibraryHead({ kind: "hub" }), []);
@@ -52,24 +47,18 @@ export default function SearchPage() {
   });
 
   const { settings } = useSiteSettings();
-  const [urlState, setUrlState] = useState<SearchUrlState>(() =>
-    typeof window !== "undefined" ? readUrlState() : { query: "", type: null, topic: null },
-  );
+  const [, setLocation] = useLocation();
+  // N2/N4: URL state from wouter (subscribes to push/replace); no second mount read.
+  const search = useSearch();
+  const urlState = useMemo(() => parseSearchUrl(search), [search]);
   const [inputValue, setInputValue] = useState(urlState.query);
   const [tabs, setTabs] = useState<SearchTab[]>([]);
   const [locked, setLocked] = useState<LibraryResource | null>(null);
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
-    const apply = () => {
-      const next = readUrlState();
-      setUrlState(next);
-      setInputValue(next.query);
-    };
-    apply();
-    window.addEventListener("popstate", apply);
-    return () => window.removeEventListener("popstate", apply);
-  }, []);
+    setInputValue(urlState.query);
+  }, [urlState.query]);
 
   useEffect(() => {
     const c = new AbortController();
@@ -85,10 +74,13 @@ export default function SearchPage() {
     return () => c.abort();
   }, [settings.searchTopics]);
 
-  const commitState = useCallback((next: SearchUrlState) => {
-    setUrlState(next);
-    pushSearchUrl(next);
-  }, []);
+  const commitState = useCallback(
+    (next: SearchUrlState) => {
+      const qs = searchStateToSearchParams(next).toString();
+      setLocation(qs ? `/library/search?${qs}` : "/library/search");
+    },
+    [setLocation],
+  );
 
   const fetchParams = useMemo(() => stateToFetchParams(urlState), [urlState]);
   const resetKey = useMemo(
@@ -100,15 +92,6 @@ export default function SearchPage() {
     [fetchParams],
   );
   const infinite = useInfiniteArchive(true, archive, resetKey);
-
-  const visibleItems = useMemo(
-    () =>
-      filterSearchResultsForViewer(infinite.items, {
-        signedIn: false,
-        mode: SEARCH_VISIBILITY_MODE,
-      }),
-    [infinite.items],
-  );
 
   const tabKey = activeTabKey(urlState, tabs);
   const tabLabel = activeTabLabel(urlState, tabs);
@@ -132,7 +115,6 @@ export default function SearchPage() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const q = inputValue.trim().slice(0, QUERY_MAX);
-    // SS17(c): identical submit must not refetch.
     if (q === urlState.query) return;
     commitState({ ...urlState, query: q });
   }
@@ -150,11 +132,11 @@ export default function SearchPage() {
     <div className="search-page">
       <div className="search-shell">
         <nav className="search-breadcrumb" aria-label="Breadcrumb">
-          <a href="/">HOME</a>
+          <Link href="/">HOME</Link>
           <span className="search-breadcrumb-sep" aria-hidden>
             /
           </span>
-          <a href="/library">RESOURCE LIBRARY</a>
+          <Link href="/library">RESOURCE LIBRARY</Link>
           <span className="search-breadcrumb-sep" aria-hidden>
             /
           </span>
@@ -227,7 +209,7 @@ export default function SearchPage() {
               className="search-tab"
               aria-selected={tabKey === "all"}
               onClick={() => {
-                if (tabKey === "all") return;
+                if (urlState.topic == null) return;
                 commitState(selectAllTab(urlState));
               }}
             >
@@ -243,13 +225,7 @@ export default function SearchPage() {
                   tabKey !== "all" && tabKey !== "none" && tabKey.topicId === t.topicId
                 }
                 onClick={() => {
-                  if (
-                    tabKey !== "all" &&
-                    tabKey !== "none" &&
-                    tabKey.topicId === t.topicId
-                  ) {
-                    return;
-                  }
+                  if (urlState.topic === t.topicId) return;
                   commitState(selectTopicTab(urlState, t.topicId));
                 }}
               >
@@ -262,13 +238,19 @@ export default function SearchPage() {
 
       <div className="search-shell">
         <div className="search-toolbar">
-          <p className="search-count" data-testid="search-count">
-            {countLineText({
-              n: infinite.total,
-              query: urlState.query,
-              tabLabel,
-            })}
-          </p>
+          {infinite.status === "loading" ? (
+            <p className="search-count" data-testid="search-count" aria-busy="true">
+              …
+            </p>
+          ) : (
+            <p className="search-count" data-testid="search-count">
+              {countLineText({
+                n: infinite.total,
+                query: urlState.query,
+                tabLabel,
+              })}
+            </p>
+          )}
           {filtersActive ? (
             <button
               type="button"
@@ -291,7 +273,7 @@ export default function SearchPage() {
             </button>
           </div>
         ) : null}
-        {infinite.status === "data" && visibleItems.length === 0 ? (
+        {infinite.status === "data" && infinite.items.length === 0 ? (
           <div className="search-empty">
             <p className="search-empty-title">No results found</p>
             <p className="search-empty-lead">
@@ -299,9 +281,9 @@ export default function SearchPage() {
             </p>
           </div>
         ) : null}
-        {infinite.status === "data" && visibleItems.length > 0 ? (
+        {infinite.status === "data" && infinite.items.length > 0 ? (
           <div className="search-grid">
-            {visibleItems.map((r) => (
+            {infinite.items.map((r) => (
               <ResourceCard
                 key={`${r.type}-${r.id}`}
                 resource={r}
