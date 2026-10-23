@@ -22,6 +22,7 @@ const KNOWN_ROUTES = new Set([
   "affiliate-seminars",
   "the-daily-fix",
   "posts",
+  "library",
   "login",
   "404",
 ]);

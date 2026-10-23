@@ -151,6 +151,15 @@ export default function LibraryDetailPage({
           <time dateTime={r.date}>{formatDate(r.date)}</time>
           {r.author ? <> · {r.author}</> : null}
         </div>
+        {r.image && !r.locked ? (
+          <img
+            className="library-reader-hero"
+            src={r.image}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        ) : null}
 
         {r.locked ? (
           <div className="library-stub">

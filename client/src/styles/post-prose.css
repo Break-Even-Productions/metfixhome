@@ -1,0 +1,40 @@
+/**
+ * Shared post/library reader measure + typography (PL1–PL3, PL7, PL11).
+ * Colours stay with each page theme (OQ-2). Body H2/blockquote keep page styles (PL8).
+ */
+.posts-detail-content,
+.library-reader-body {
+  max-width: 680px;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 26px;
+  overflow-wrap: anywhere;
+}
+
+.posts-detail-content > *:first-child,
+.library-reader-body > *:first-child {
+  margin-top: 0;
+}
+
+.posts-detail-content p,
+.library-reader-body p {
+  margin: 0 0 16px;
+}
+
+.posts-detail-content img,
+.library-reader-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.posts-detail-image,
+.library-reader-hero {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  margin-bottom: 32px;
+}

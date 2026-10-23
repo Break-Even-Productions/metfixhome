@@ -39,9 +39,16 @@ export type NavLink = {
   openInNewTab: boolean;
 };
 
+/** Sanity `searchTopics` row (E2: topic_id required; label optional). */
+export type SearchTopicSetting = {
+  topic_id: number;
+  label?: string;
+};
+
 export type SiteSettings = {
   copyrightText: string;
   navLinks: NavLink[];
+  searchTopics: SearchTopicSetting[];
 };
 
 export const DEFAULT_COPYRIGHT_TEXT =

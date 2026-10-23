@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLocation } from "wouter";
 import {
   BRAND_CATEGORY_SLUGS,
   CONTENT_TYPE_CHIPS,
+  QUERY_MAX,
+  SEARCH_TYPE_PILLS,
   buildLibraryHead,
   isFreeOpen,
   isProfessionalTagged,
@@ -14,12 +17,15 @@ import { fetchCourses } from "@/lib/content";
 import type { Course } from "@/lib/contentTypes";
 import { JoinModal } from "./JoinModal";
 import { ResourceCard } from "./ResourceCard";
-import { fetchLibraryFilters, fetchLibraryPopular, fetchLibrarySearch } from "./api";
+import { fetchLibraryPopular, fetchLibrarySearch } from "./api";
+import { getLibraryFilters } from "./filtersCache";
 import {
   useInfiniteArchive,
   type ArchiveKind,
 } from "./useInfiniteArchive";
 import "./library.css";
+
+const SEARCH_HANDOFF_PILL_SLUGS = new Set(SEARCH_TYPE_PILLS.map((p) => p.slug));
 
 type SearchParams = Parameters<typeof fetchLibrarySearch>[0];
 
@@ -159,6 +165,7 @@ function Rail({
 }
 
 export default function LibraryPage() {
+  const [, setLocation] = useLocation();
   const head = useMemo(() => buildLibraryHead({ kind: "hub" }), []);
   usePageMeta({
     title: head.title,
@@ -186,7 +193,7 @@ export default function LibraryPage() {
 
   useEffect(() => {
     const c = new AbortController();
-    void fetchLibraryFilters(c.signal)
+    void getLibraryFilters(c.signal)
       .then((f) => {
         if (c.signal.aborted) return;
         setCategories(f.categories);
@@ -420,12 +427,15 @@ export default function LibraryPage() {
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
-    const next = query.trim();
-    setSubmittedQuery(next);
-    setActiveType(null);
-    setActiveCategory(null);
-    setActiveSection(null);
-    setRefresh((n) => n + 1);
+    // SR16 / E1: hand off to /library/search (SPA navigation).
+    const next = query.trim().slice(0, QUERY_MAX);
+    const sp = new URLSearchParams();
+    if (next) sp.set("query", next);
+    if (activeType && SEARCH_HANDOFF_PILL_SLUGS.has(activeType)) {
+      sp.set("type", activeType);
+    }
+    const qs = sp.toString();
+    setLocation(qs ? `/library/search?${qs}` : "/library/search");
   }
 
   return (

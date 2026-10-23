@@ -1,8 +1,9 @@
 /* Posts list + detail — class-based styles; reuse Daily Fix token feel (CQ24 / B1). */
+@import "../../styles/post-prose.css";
 
 .posts-page {
   --posts-font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
-  --posts-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --posts-font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --posts-cream: #f3eee4;
   --posts-paper: #faf7f1;
   --posts-ink: #171512;
@@ -244,7 +245,11 @@
 
 .posts-detail-header .posts-title {
   text-align: left;
-  margin-bottom: 0.75rem;
+  font-family: var(--posts-font-serif);
+  font-size: 36px;
+  line-height: 1.25;
+  font-weight: 700;
+  margin-bottom: 16px;
 }
 
 .posts-detail-meta {
@@ -252,40 +257,23 @@
   flex-wrap: wrap;
   gap: 0.5rem 1.25rem;
   color: var(--posts-muted);
-  font-size: 0.9rem;
-  margin-bottom: 1.25rem;
+  font-family: var(--posts-font-sans);
+  font-size: 13px;
+  margin-bottom: 24px;
 }
 
 .posts-detail-image {
-  display: block;
-  width: 100%;
-  max-height: 28rem;
-  object-fit: cover;
-  border-radius: 1.25rem;
-  margin-bottom: 1.75rem;
   background: #e4ddd0;
 }
 
-.posts-detail-content {
-  font-size: 1.05rem;
-  line-height: 1.7;
-}
-
-.posts-detail-content > *:first-child {
-  margin-top: 0;
-}
-
-.posts-detail-content p,
 .posts-detail-content ul,
 .posts-detail-content ol,
 .posts-detail-content blockquote,
 .posts-detail-content pre {
-  margin: 0 0 1.1rem;
+  margin: 0 0 16px;
 }
 
 .posts-detail-content img {
-  max-width: 100%;
-  height: auto;
   border-radius: 0.75rem;
 }
 

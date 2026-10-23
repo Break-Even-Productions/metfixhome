@@ -1,4 +1,10 @@
-import type { Course, CourseCtaType, NavLink, SiteSettings } from "./contentTypes";
+import type {
+  Course,
+  CourseCtaType,
+  NavLink,
+  SearchTopicSetting,
+  SiteSettings,
+} from "./contentTypes";
 import { DEFAULT_COPYRIGHT_TEXT, DEFAULT_NAV_LINKS } from "./contentTypes";
 import { FALLBACK_COURSES } from "@/data/fallbackCourses";
 import { isSanityConfigured, sanityClient } from "./sanity";
@@ -31,6 +37,10 @@ type SanitySiteSettings = {
     href?: string;
     openInNewTab?: boolean;
   }[];
+  searchTopics?: {
+    topic_id?: number;
+    label?: string;
+  }[];
 };
 
 const COURSES_QUERY = `*[_type == "course"] | order(sortOrder asc, title asc) {
@@ -54,10 +64,37 @@ const COURSES_QUERY = `*[_type == "course"] | order(sortOrder asc, title asc) {
   bsiPostId
 }`;
 
-const SITE_SETTINGS_QUERY = `*[_type == "siteSettings"][0]{
+export const SITE_SETTINGS_QUERY = `*[_type == "siteSettings"][0]{
   copyrightText,
-  navLinks[]{ label, href, openInNewTab }
+  navLinks[]{ label, href, openInNewTab },
+  searchTopics[]{ topic_id, label }
 }`;
+
+function mapSearchTopics(
+  rows: SanitySiteSettings["searchTopics"],
+): SearchTopicSetting[] {
+  if (!Array.isArray(rows)) return [];
+  const out: SearchTopicSetting[] = [];
+  for (const row of rows) {
+    if (
+      !row ||
+      typeof row.topic_id !== "number" ||
+      !Number.isInteger(row.topic_id) ||
+      row.topic_id < 1
+    ) {
+      continue;
+    }
+    const entry: SearchTopicSetting = { topic_id: row.topic_id };
+    if (typeof row.label === "string" && row.label.trim()) {
+      entry.label = row.label.trim();
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+/** Module-level memo (CQ B1): nav, footer, and /library/search share one request. */
+let siteSettingsPromise: Promise<SiteSettings> | null = null;
 
 function mapNavLinks(links: SanitySiteSettings["navLinks"]): NavLink[] {
   const mapped = (links || [])
@@ -132,9 +169,14 @@ export async function fetchCourses(): Promise<Course[]> {
   }
 }
 
-export async function fetchSiteSettings(): Promise<SiteSettings> {
+async function loadSiteSettings(): Promise<SiteSettings> {
+  const empty: SiteSettings = {
+    copyrightText: DEFAULT_COPYRIGHT_TEXT,
+    navLinks: DEFAULT_NAV_LINKS,
+    searchTopics: [],
+  };
   if (!sanityClient || !isSanityConfigured) {
-    return { copyrightText: DEFAULT_COPYRIGHT_TEXT, navLinks: DEFAULT_NAV_LINKS };
+    return empty;
   }
 
   try {
@@ -143,9 +185,18 @@ export async function fetchSiteSettings(): Promise<SiteSettings> {
     return {
       copyrightText: copyrightText || DEFAULT_COPYRIGHT_TEXT,
       navLinks: mapNavLinks(doc?.navLinks),
+      searchTopics: mapSearchTopics(doc?.searchTopics),
     };
   } catch (err) {
     console.error("Failed to fetch site settings from Sanity", err);
-    return { copyrightText: DEFAULT_COPYRIGHT_TEXT, navLinks: DEFAULT_NAV_LINKS };
+    return empty;
   }
 }
+
+export function fetchSiteSettings(): Promise<SiteSettings> {
+  if (!siteSettingsPromise) {
+    siteSettingsPromise = loadSiteSettings();
+  }
+  return siteSettingsPromise;
+}
+
