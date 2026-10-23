@@ -68,4 +68,12 @@ describe("library source scan", () => {
     expect(src).toMatch(/Bearer/);
     expect(src).toMatch(/X-API-Key/);
   });
+
+  it("SR18 serves /library/search as SPA hub (not NotFound)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./library.ts", import.meta.url)), "utf8");
+    expect(src).toMatch(/path === "\/library\/search"/);
+    expect(src).toMatch(/buildLibraryHead\(\{\s*kind:\s*"hub"/);
+  });
 });
