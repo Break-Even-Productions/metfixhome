@@ -489,6 +489,15 @@
   margin: 0 auto;
 }
 
+/* Detail + author-right rail (mockup ~1280px). */
+.library-reader--wide {
+  max-width: 80rem;
+  --post-aside-bg: var(--lib-paper);
+  --post-aside-border: var(--lib-line);
+  --post-aside-label: var(--lib-accent);
+  --post-aside-ink: var(--lib-ink);
+}
+
 .library-reader-back {
   display: inline-flex;
   align-items: center;

@@ -36,6 +36,15 @@
   margin: 0 auto;
 }
 
+/* Detail + author-right rail (mockup container max-width 1280px). */
+.posts-shell--wide {
+  max-width: 80rem;
+  --post-aside-bg: var(--posts-paper);
+  --post-aside-border: var(--posts-line);
+  --post-aside-label: var(--posts-accent);
+  --post-aside-ink: var(--posts-ink);
+}
+
 .posts-kicker {
   display: flex;
   align-items: center;

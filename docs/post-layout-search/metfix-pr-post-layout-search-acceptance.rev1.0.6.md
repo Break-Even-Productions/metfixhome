@@ -117,6 +117,7 @@ Applies to the BSI post body, both `/posts/:id` (`PostDetailPage`, `.posts-detai
 - **PL10** Only layout and typography change. Locked/preview/join UX, `SafeHtml` sanitising, head/meta tags and the comments area behave the same as on main (existing tests pass unchanged).
 - **PL11** No horizontal scroll at 390px. Long URLs or code in the body wrap (`overflow-wrap:anywhere` on the body).
 - **PL12** (D2) Shared post styles, if used, live in one `post-prose.css`. It is imported only by `PostDetailPage` (`/posts/:id`) and the `/library/:type/:id` reader page. A repo grep finds no other import of `post-prose.css`, and the `/library` list and `ResourceCard` fonts are unchanged from main.
+- **PL13** (Ethan OQ-3 override, 2026-10-23) Both readers use an Emily ResourceDetail-style author-right layout at `lg+`: a CSS grid with main `2fr` and aside `1fr` (~379px rail at mockup width), gap 40px. The aside shows "About the Author" from the existing string `author` field only (initials avatar; no invented bio, image, or new `VITE_*` / Worker fields). Below `lg`, main stacks above the aside. When `author` is null/empty, the aside is omitted. Grid/aside rules live in `post-prose.css` alongside the body measure (PL12 importers unchanged).
 
 ### B. Search page (SR)
 Route: **`/library/search`** (E1). Top to bottom:
@@ -180,7 +181,7 @@ Route: **`/library/search`** (E1). Top to bottom:
 ## 3. Open questions
 - **OQ-1** (open, held by LB9 to main's styles, R6) Body H2/H3, blockquote, figure/figcaption and list styles. The reference page has none (plain paragraphs only, and no rules in its CSS). Pick one: (a) give values from another reference page that has them, (b) derive from the scale (for example H2 = Playfair 24px as the page H2), or (c) leave as is. The spec currently says (c).
 - **OQ-2** Colour: the reference is dark (body text `oklch(72%…)` on near-black), and `/posts` is light cream. Does "match the body layout/typography" include the dark theme? The spec assumes **no**: only sizes, measure and fonts, with colours kept.
-- **OQ-3** Which post pages are in scope: `/posts/:id`, `/library/:type/:id`, or both? The spec assumes both. Also, should the 2-column grid with an author sidebar (379px) be included? The spec assumes **no** (no new author data).
+- **OQ-3** Which post pages are in scope: `/posts/:id`, `/library/:type/:id`, or both? The spec assumes both. Also, should the 2-column grid with an author sidebar (379px) be included? ~~The spec assumes **no** (no new author data).~~ **Override (Ethan, 2026-10-23): yes — fold the author-right layout into this same draft PR.** Both routes; use existing `author` (and related) fields already on the resource; no new author CMS fields. See PL13.
 - **OQ-4** The mobile H1 size isn't separately set in the reference (36px at both widths). Keep 36px on mobile?
 - **OQ-5** **Closed (E1, relayed): `/library/search`, with the handoff in scope.** ~~ Route `/search` (as in the reference) or `/library/search`? Should the `/library` search box hand off to it?~~
 - **OQ-6** (ruled R1, R3, R7: the Project does the live read and records ids and kinds per SN7) Topic mapping: are the 8 tabs BSI `topics`, or are some BSI `categories` or `content_type_terms` (for example "Infographics" and "Whiteboards" are content types on main, and "Professional Library" may be a category)? This needs BSI slugs per tab; I can't confirm them without a live `/api/library/filters` read. If any tab is not a topic, SN1 gets a `kind` field (topic|category|type).
@@ -194,6 +195,7 @@ Route: **`/library/search`** (E1). Top to bottom:
 - **OQ-12** ~~Which pill lights for a type tab with no pill~~ **Closed (R13, relayed):** option (a), no pill lights.
 
 ## 4. Changelog
+- 1.0.6+PL13 (2026-10-23): Ethan overrides OQ-3 — author-right sidebar **in** on `/posts/:id` and `/library/:type/:id` (PL13), same draft PR; existing `author` string only. Search half unchanged. Spec filename kept as 1.0.6 for Round 2 pin continuity; md5 changes with this addendum.
 - 1.0.6 (2026-10-22): scope rulings relayed from Web Lead, recorded as §0d D1–D6. 59 IDs (58 + PL12; PL6 retired but kept as an ID).
   - Removed every QA test-list md5 pin (header notes 1.0.1, 1.0.2, 1.0.5, §0c heading, R10, changelog 1.0.1/1.0.2/1.0.5). Lists are named by revision only. CQ note pin and reference-asset hashes kept.
   - PL6 retired (hero out, D3). TC5 and PD5 updated to match.

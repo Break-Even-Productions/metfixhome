@@ -11,6 +11,7 @@ import {
   POST_ID_RE,
   type DetailPost,
 } from "@shared/posts";
+import { AuthorAside } from "@/components/AuthorAside";
 import { BackToTop } from "@/components/BackToTop";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
@@ -120,7 +121,7 @@ export default function PostDetailPage({
   };
 
   return (
-    <PostsLayout>
+    <PostsLayout wide={state.status === "data"}>
       {state.status === "loading" ? <PostsLoading /> : null}
       {state.status === "error" ? <PostsError onRetry={onRetry} /> : null}
       {state.status === "data" ? <DetailBody post={state.post} /> : null}
@@ -131,35 +132,39 @@ export default function PostDetailPage({
 function DetailBody({ post }: { post: DetailPost }) {
   return (
     <>
-      <article>
-        <header className="posts-detail-header">
-          <h1 className="posts-title">{post.title}</h1>
-          <div className="posts-detail-meta">
-            <time dateTime={post.date}>{formatPostDate(post.date)}</time>
-            {post.author ? <span>{post.author}</span> : null}
-            {post.category ? <span>{post.category.name}</span> : null}
+      <article className="post-reader" data-testid="post-reader">
+        <div className="post-reader-grid">
+          <div className="post-reader-main">
+            <header className="posts-detail-header">
+              <h1 className="posts-title">{post.title}</h1>
+              <div className="posts-detail-meta">
+                <time dateTime={post.date}>{formatPostDate(post.date)}</time>
+                {post.category ? <span>{post.category.name}</span> : null}
+              </div>
+            </header>
+            {post.image ? (
+              <img
+                className="posts-detail-image"
+                src={post.image}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : null}
+            <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+            {post.permalink ? (
+              <a
+                className="posts-external"
+                href={post.permalink}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                Read on Broken Science
+              </a>
+            ) : null}
           </div>
-        </header>
-        {post.image ? (
-          <img
-            className="posts-detail-image"
-            src={post.image}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-        ) : null}
-        <SafeHtml html={post.content} className="posts-detail-content" as="div" />
-        {post.permalink ? (
-          <a
-            className="posts-external"
-            href={post.permalink}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            Read on Broken Science
-          </a>
-        ) : null}
+          {post.author ? <AuthorAside name={post.author} /> : null}
+        </div>
       </article>
       <BackToTop mode="document" />
     </>

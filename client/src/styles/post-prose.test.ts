@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-describe("post-prose.css (PL1–PL3, PL7, PL8, PL11)", () => {
+describe("post-prose.css (PL1–PL3, PL7, PL8, PL11, PL13)", () => {
   const prose = fs.readFileSync(path.join(import.meta.dirname, "post-prose.css"), "utf8");
 
   it("shared body measure and DM Sans 16/26", () => {
@@ -23,4 +23,11 @@ describe("post-prose.css (PL1–PL3, PL7, PL8, PL11)", () => {
       /\.posts-detail-content\s+h2|\.library-reader-body\s+h2|\.posts-detail-content\s+blockquote/,
     );
   });
+
+  it("PL13: author-right grid + aside classes live in post-prose.css", () => {
+    expect(prose).toMatch(/\.post-reader-grid/);
+    expect(prose).toMatch(/minmax\(0,\s*2fr\)\s+minmax\(0,\s*1fr\)/);
+    expect(prose).toMatch(/\.post-author-card/);
+  });
 });
+
