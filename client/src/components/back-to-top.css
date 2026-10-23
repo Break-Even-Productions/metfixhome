@@ -1,0 +1,122 @@
+/* Cloudflare-style circular progress + MetFix hover mark */
+
+.mfx-btt {
+  --mfx-btt-a: #c4a46c;
+  --mfx-btt-b: #0485e3;
+  --mfx-btt-ring: var(--mfx-btt-a);
+
+  position: fixed;
+  z-index: 60;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  width: 47px;
+  height: 47px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0.2s ease;
+  box-shadow: 0 6px 20px rgba(23, 21, 18, 0.18);
+}
+
+.mfx-btt[data-visible="true"] {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.mfx-btt[data-color="a"] {
+  --mfx-btt-ring: var(--mfx-btt-a);
+}
+
+.mfx-btt[data-color="b"] {
+  --mfx-btt-ring: var(--mfx-btt-b);
+}
+
+.mfx-btt:focus-visible {
+  outline: 2px solid var(--mfx-btt-ring);
+  outline-offset: 3px;
+}
+
+.mfx-btt-ring {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.mfx-btt-bg {
+  fill: #faf7f1;
+}
+
+.mfx-btt-track {
+  stroke: rgba(23, 21, 18, 0.12);
+}
+
+.mfx-btt-progress {
+  stroke: var(--mfx-btt-ring);
+  transition: stroke-dashoffset 0.12s linear, stroke 0.35s ease;
+}
+
+.mfx-btt-face {
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  color: #171512;
+  display: grid;
+  place-items: center;
+}
+
+.mfx-btt-arrow,
+.mfx-btt-asterisk {
+  grid-area: 1 / 1;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.mfx-btt-asterisk {
+  opacity: 0;
+  transform: scale(0.85);
+  color: #0485e3;
+}
+
+.mfx-btt:hover .mfx-btt-arrow,
+.mfx-btt:focus-visible .mfx-btt-arrow {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.mfx-btt:hover .mfx-btt-asterisk,
+.mfx-btt:focus-visible .mfx-btt-asterisk {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.mfx-btt[data-color="b"]:hover .mfx-btt-asterisk,
+.mfx-btt[data-color="b"]:focus-visible .mfx-btt-asterisk {
+  color: #c4a46c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mfx-btt,
+  .mfx-btt-progress,
+  .mfx-btt-arrow,
+  .mfx-btt-asterisk {
+    transition: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .mfx-btt {
+    right: 1.75rem;
+    bottom: 1.75rem;
+  }
+}

@@ -29,6 +29,8 @@ export type Course = {
   startButtonLabel?: string;
   notifyButtonLabel?: string;
   sortOrder: number;
+  /** When set, Library Courses rail prefers this Sanity course over the matching BSI LearnPress id. */
+  bsiPostId?: number;
 };
 
 export type NavLink = {
@@ -48,7 +50,7 @@ export const DEFAULT_COPYRIGHT_TEXT =
 /** Fallback top-nav links when Sanity is unavailable or empty. */
 export const DEFAULT_NAV_LINKS: NavLink[] = [
   { label: "Classes", href: "/classes", openInNewTab: false },
-  { label: "Library", href: "https://brokenscience.org/all-content/", openInNewTab: true },
+  { label: "Library", href: "/library", openInNewTab: false },
   { label: "Daily Fix", href: "/the-daily-fix", openInNewTab: false },
   {
     label: "Seminars",

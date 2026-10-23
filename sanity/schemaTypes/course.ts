@@ -170,6 +170,14 @@ export const course = defineType({
       initialValue: 100,
     }),
     defineField({
+      name: "bsiPostId",
+      title: "BSI course / post ID",
+      type: "number",
+      description:
+        "Optional LearnPress / BSI post ID. On the Resource Library Courses rail, Sanity wins when this matches a BSI course id.",
+      validation: (Rule) => Rule.integer().positive(),
+    }),
+    defineField({
       name: "startButtonLabel",
       title: "Start Button Label",
       type: "string",

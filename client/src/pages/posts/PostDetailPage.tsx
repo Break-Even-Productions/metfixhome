@@ -11,6 +11,7 @@ import {
   POST_ID_RE,
   type DetailPost,
 } from "@shared/posts";
+import { BackToTop } from "@/components/BackToTop";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import NotFound from "@/pages/NotFound";
@@ -128,35 +129,38 @@ export default function PostDetailPage({
 
 function DetailBody({ post }: { post: DetailPost }) {
   return (
-    <article>
-      <header className="posts-detail-header">
-        <h1 className="posts-title">{post.title}</h1>
-        <div className="posts-detail-meta">
-          <time dateTime={post.date}>{formatPostDate(post.date)}</time>
-          {post.author ? <span>{post.author}</span> : null}
-          {post.category ? <span>{post.category.name}</span> : null}
-        </div>
-      </header>
-      {post.image ? (
-        <img
-          className="posts-detail-image"
-          src={post.image}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
-      ) : null}
-      <SafeHtml html={post.content} className="posts-detail-content" as="div" />
-      {post.permalink ? (
-        <a
-          className="posts-external"
-          href={post.permalink}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Read on Broken Science
-        </a>
-      ) : null}
-    </article>
+    <>
+      <article>
+        <header className="posts-detail-header">
+          <h1 className="posts-title">{post.title}</h1>
+          <div className="posts-detail-meta">
+            <time dateTime={post.date}>{formatPostDate(post.date)}</time>
+            {post.author ? <span>{post.author}</span> : null}
+            {post.category ? <span>{post.category.name}</span> : null}
+          </div>
+        </header>
+        {post.image ? (
+          <img
+            className="posts-detail-image"
+            src={post.image}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        ) : null}
+        <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+        {post.permalink ? (
+          <a
+            className="posts-external"
+            href={post.permalink}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Read on Broken Science
+          </a>
+        ) : null}
+      </article>
+      <BackToTop mode="document" />
+    </>
   );
 }

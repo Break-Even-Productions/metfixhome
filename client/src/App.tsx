@@ -14,9 +14,11 @@ import AffiliateSeminars from "./pages/AffiliateSeminars";
 import Login from "./pages/Login";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./pages/posts/PostsPage";
+import LibraryPage from "./pages/library/LibraryPage";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
+const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
 import { useLocation } from "wouter";
 
 function AppRoutes() {
@@ -40,6 +42,14 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/posts"} component={PostsPage} />
+      <Route path={"/library/:type/:id"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryDetailPage />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library"} component={LibraryPage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
