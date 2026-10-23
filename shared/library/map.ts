@@ -10,6 +10,7 @@ import {
 } from "./constants";
 import { mapAccessDisplay } from "./access";
 import type {
+  LibraryCompositeThumbnail,
   LibraryDetail,
   LibraryDetailBody,
   LibraryFilterTerm,
@@ -18,6 +19,13 @@ import type {
   LibrarySearchBody,
   TermRef,
 } from "./types";
+
+const DAILY_FIX_UPSTREAM_TYPES = new Set([
+  "daily_fix",
+  "daily_fix_mod",
+  "daily_fix_workout",
+  "daily_fix_thought",
+]);
 
 function truncateCodePoints(input: string, max: number): string {
   const chars = Array.from(input);
@@ -114,6 +122,38 @@ function mapType(raw: unknown): ResourceType | null {
     : null;
 }
 
+/** BSI Daily Fix rows often arrive as type "post" with daily_fix_date set. */
+function mapDailyFixDate(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const ms = Date.parse(`${raw}T12:00:00Z`);
+  if (!Number.isFinite(ms)) return null;
+  return raw;
+}
+
+/**
+ * Pull allowlisted img srcs from BSI's composite_thumbnail_html.
+ * Never forward the HTML itself — rebuild the layout in React/CSS.
+ */
+export function mapCompositeThumbnail(raw: unknown): LibraryCompositeThumbnail | null {
+  if (typeof raw !== "string" || !raw.includes("bsi-dfx-composite-thumbnail")) {
+    return null;
+  }
+  const layerSrc = (layer: "left" | "right" | "middle"): string | null => {
+    const re = new RegExp(
+      `bsi-dfx-composite-layer-${layer}[^>]*>\\s*<img\\b[^>]*\\bsrc=["']([^"']+)["']`,
+      "i",
+    );
+    const m = raw.match(re);
+    return m?.[1] ? mapImageUrl(m[1]) : null;
+  };
+  const brain = layerSrc("left");
+  const belly = layerSrc("right");
+  const body = layerSrc("middle");
+  if (!brain && !belly && !body) return null;
+  return { brain, belly, body };
+}
+
 /** Map one BSI search / list resource. */
 export function mapLibraryResource(raw: unknown): LibraryResource | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -121,16 +161,32 @@ export function mapLibraryResource(raw: unknown): LibraryResource | null {
 
   const id = mapId(item.id);
   if (id == null) return null;
-  const type = mapType(item.type) ?? (item.post_type === "page" ? "page" : "post");
+  const dailyFixDate = mapDailyFixDate(item.daily_fix_date);
+  const upstreamType = typeof item.type === "string" ? item.type : "";
+  // Prefer Daily Fix when the day key / DF subtype is present — upstream often labels these as post.
+  let type = mapType(item.type) ?? (item.post_type === "page" ? "page" : "post");
+  if (
+    dailyFixDate ||
+    item.post_type === "daily_fix" ||
+    type === "daily_fix" ||
+    DAILY_FIX_UPSTREAM_TYPES.has(upstreamType)
+  ) {
+    type = "daily_fix";
+  }
   const title = mapTitle(item.title);
   if (title == null) return null;
-  const date = mapDate(item.date) ?? new Date(0).toISOString();
+  const date =
+    mapDate(item.date) ??
+    (dailyFixDate ? `${dailyFixDate}T12:00:00.000Z` : null) ??
+    new Date(0).toISOString();
 
   const access = mapAccessDisplay(item.content_access_display);
   if (item.is_exclusive === true) {
     access.is_exclusive = true;
     access.has_content_access = true;
   }
+
+  const composite = mapCompositeThumbnail(item.composite_thumbnail_html);
 
   const resource: LibraryResource = {
     id,
@@ -147,11 +203,28 @@ export function mapLibraryResource(raw: unknown): LibraryResource | null {
     access,
   };
 
-  if (typeof item.daily_fix_date === "string") {
-    resource.daily_fix_date = item.daily_fix_date;
+  if (dailyFixDate) {
+    resource.daily_fix_date = dailyFixDate;
+  }
+  if (composite) {
+    resource.composite = composite;
   }
 
   return resource;
+}
+
+function mapResourceList(list: unknown[]): LibraryResource[] {
+  const seen = new Set<string>();
+  const resources: LibraryResource[] = [];
+  for (const item of list) {
+    const mapped = mapLibraryResource(item);
+    if (!mapped) continue;
+    const key = `${mapped.type}:${mapped.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    resources.push(mapped);
+  }
+  return resources;
 }
 
 export function mapSearchResponse(raw: unknown): LibrarySearchBody | null {
@@ -183,16 +256,7 @@ export function mapSearchResponse(raw: unknown): LibrarySearchBody | null {
       ? meta.offset
       : 0;
 
-  const seen = new Set<string>();
-  const resources: LibraryResource[] = [];
-  for (const item of list) {
-    const mapped = mapLibraryResource(item);
-    if (!mapped) continue;
-    const key = `${mapped.type}:${mapped.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    resources.push(mapped);
-  }
+  const resources = mapResourceList(list);
 
   const has_more =
     typeof meta.has_more === "boolean"
@@ -203,6 +267,57 @@ export function mapSearchResponse(raw: unknown): LibrarySearchBody | null {
     resources,
     meta: {
       total,
+      count: resources.length,
+      limit,
+      offset,
+      has_more,
+    },
+  };
+}
+
+/**
+ * BSI GET /resources/popular — by avada_post_views_count (then date).
+ * Prefers paginated meta (`offset`, `total`, `has_more`) when present; otherwise
+ * treats a full page as possibly having more (client stops if a page adds nothing).
+ */
+export function mapPopularResponse(
+  raw: unknown,
+  opts?: { offset?: number; limit?: number },
+): LibrarySearchBody | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const body = raw as Record<string, unknown>;
+  if (!Array.isArray(body.resources)) return null;
+  const meta =
+    body.meta && typeof body.meta === "object" && !Array.isArray(body.meta)
+      ? (body.meta as Record<string, unknown>)
+      : {};
+  const resources = mapResourceList(body.resources);
+  const limit =
+    typeof meta.limit === "number" && Number.isInteger(meta.limit) && meta.limit > 0
+      ? meta.limit
+      : opts?.limit && opts.limit > 0
+        ? opts.limit
+        : resources.length || 20;
+  const offset =
+    typeof meta.offset === "number" && Number.isInteger(meta.offset) && meta.offset >= 0
+      ? meta.offset
+      : opts?.offset && opts.offset >= 0
+        ? opts.offset
+        : 0;
+  const total =
+    typeof meta.total === "number" && Number.isInteger(meta.total) && meta.total >= 0
+      ? meta.total
+      : null;
+  const has_more =
+    typeof meta.has_more === "boolean"
+      ? meta.has_more
+      : total != null
+        ? offset + resources.length < total
+        : resources.length >= limit;
+  return {
+    resources,
+    meta: {
+      total: total ?? offset + resources.length,
       count: resources.length,
       limit,
       offset,

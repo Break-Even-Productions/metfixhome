@@ -22,10 +22,12 @@ import {
   isResourceType,
   libraryDetailCacheKey,
   libraryFiltersCacheKey,
+  libraryPopularCacheKey,
   librarySearchCacheKey,
   lockedDetailShell,
   mapDetailBody,
   mapFiltersPayload,
+  mapPopularResponse,
   mapSearchResponse,
   postsDetailBaseFromOrigin,
   resourcesBaseFromOrigin,
@@ -443,6 +445,42 @@ export function buildSearchUpstreamQuery(searchParams: URLSearchParams): string 
   return out.toString();
 }
 
+/**
+ * Popular query allowlist — same page size as search.
+ * Forwards `offset` so BSI can paginate once `/resources/popular` supports it.
+ */
+export function buildPopularUpstreamQuery(searchParams: URLSearchParams): string | null {
+  const out = new URLSearchParams();
+
+  const limitRaw = searchParams.get("limit");
+  let limit = 6;
+  if (limitRaw != null) {
+    if (!/^[1-9][0-9]{0,2}$/.test(limitRaw)) return null;
+    limit = Number(limitRaw);
+    if (limit < 1 || limit > MAX_LIMIT) return null;
+  }
+  out.set("limit", String(limit));
+
+  const offsetRaw = searchParams.get("offset");
+  let offset = 0;
+  if (offsetRaw != null) {
+    if (!/^(0|[1-9][0-9]{0,4})$/.test(offsetRaw)) return null;
+    offset = Number(offsetRaw);
+    if (offset < 0 || offset > MAX_OFFSET) return null;
+  }
+  out.set("offset", String(offset));
+
+  for (const v of [
+    ...searchParams.getAll("content_types[]"),
+    ...searchParams.getAll("content_types"),
+  ]) {
+    if (!/^(post|event|course|daily_fix|exclusive_resource)$/.test(v)) return null;
+    out.append("content_types[]", v);
+  }
+
+  return out.toString();
+}
+
 async function getSearch(
   queryString: string,
   env: Env,
@@ -517,6 +555,95 @@ async function getSearch(
   }
 
   const mapped = mapSearchResponse(json);
+  if (!mapped) {
+    console.info("library:unmappable");
+    return { kind: "unavailable" };
+  }
+
+  const jsonText = JSON.stringify(mapped);
+  const sMax = privateCache ? SEARCH_S_MAXAGE_USER : SEARCH_S_MAXAGE_ANON;
+  await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
+  return { kind: "ok", body: mapped, jsonText, private: privateCache };
+}
+
+async function getPopular(
+  queryString: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  cache: Cache,
+  ctx: ExecutionContext,
+  putMode: CachePutMode,
+  acting: ActingContext | null,
+  opts?: { baseUrl?: string },
+): Promise<
+  | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
+  | { kind: "nokey" }
+  | { kind: "unavailable" }
+> {
+  const key = readApiKey(env);
+  if (key == null) {
+    console.info("library:nokey");
+    return { kind: "nokey" };
+  }
+
+  const salt = userSalt(acting);
+  const privateCache = salt != null;
+  const keyReq = libraryPopularCacheKey(queryString, salt);
+  const cached = await cache.match(keyReq);
+  if (cached) {
+    try {
+      const text = await cached.clone().text();
+      const json: unknown = JSON.parse(text);
+      if (isLibrarySearchBody(json)) {
+        return { kind: "ok", body: json, jsonText: text, private: privateCache };
+      }
+    } catch {
+      /* refetch */
+    }
+  }
+
+  const url = `${resourcesBase(env, opts)}/popular?${queryString}`;
+
+  const call = (access: string | null) =>
+    fetchBsi(url, key, access, fetchImpl, env);
+
+  let upstream: UpstreamResult;
+  if (acting) {
+    const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
+      call(access),
+    );
+    if (ran instanceof Response) return { kind: "unavailable" };
+    upstream = ran.result;
+  } else {
+    upstream = await call(null);
+  }
+
+  if (
+    upstream.kind === "timeout" ||
+    upstream.kind === "throw" ||
+    upstream.kind === "size" ||
+    upstream.kind === "redirect"
+  ) {
+    return { kind: "unavailable" };
+  }
+  if (upstream.status !== 200) {
+    console.info("library:popular_upstream", upstream.status);
+    return { kind: "unavailable" };
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(upstream.text);
+  } catch {
+    console.info("library:bad_json");
+    return { kind: "unavailable" };
+  }
+
+  const qs = new URLSearchParams(queryString);
+  const mapped = mapPopularResponse(json, {
+    limit: Number(qs.get("limit") ?? 0) || undefined,
+    offset: Number(qs.get("offset") ?? 0) || 0,
+  });
   if (!mapped) {
     console.info("library:unmappable");
     return { kind: "unavailable" };
@@ -774,7 +901,7 @@ export function isValidLibraryId(id: string): boolean {
   return Number.isInteger(n) && n >= 1 && n <= RESOURCE_ID_MAX;
 }
 
-/** API: /api/library/search | /filters | /item/:type/:id */
+/** API: /api/library/search | /popular | /filters | /item/:type/:id */
 export async function handleLibraryApi(
   request: Request,
   env: Env,
@@ -799,6 +926,27 @@ export async function handleLibraryApi(
     const qs = buildSearchUpstreamQuery(url.searchParams);
     if (qs == null) return badRequestJson(isHead);
     const result = await getSearch(
+      qs,
+      env,
+      fetchImpl,
+      cache,
+      ctx,
+      "waitUntil",
+      acting,
+      opts,
+    );
+    if (result.kind === "ok") {
+      const headers = new Headers(apiOkHeaders(result.private));
+      if (isHead) return new Response(null, { status: 200, headers });
+      return new Response(result.jsonText, { status: 200, headers });
+    }
+    return unavailableJson(isHead);
+  }
+
+  if (path === "/api/library/popular" || path === "/api/library/popular/") {
+    const qs = buildPopularUpstreamQuery(url.searchParams);
+    if (qs == null) return badRequestJson(isHead);
+    const result = await getPopular(
       qs,
       env,
       fetchImpl,

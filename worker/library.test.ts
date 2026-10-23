@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildSearchUpstreamQuery, isValidLibraryId } from "./library";
+import {
+  buildPopularUpstreamQuery,
+  buildSearchUpstreamQuery,
+  isValidLibraryId,
+} from "./library";
 
 describe("library search query builder", () => {
   it("allows query + content_type_terms and rejects content_access", () => {
@@ -26,6 +30,30 @@ describe("library search query builder", () => {
     expect(isValidLibraryId("42")).toBe(true);
     expect(isValidLibraryId("0")).toBe(false);
     expect(isValidLibraryId("12abc")).toBe(false);
+  });
+});
+
+describe("library popular query builder", () => {
+  it("defaults limit/offset and allows content_types", () => {
+    const ok = buildPopularUpstreamQuery(new URLSearchParams("content_types[]=post"));
+    expect(ok).toContain("limit=6");
+    expect(ok).toContain("offset=0");
+    expect(ok).toContain("content_types");
+  });
+
+  it("forwards offset and rejects bad values", () => {
+    expect(buildPopularUpstreamQuery(new URLSearchParams("limit=24&offset=48"))).toBe(
+      "limit=24&offset=48",
+    );
+    expect(buildPopularUpstreamQuery(new URLSearchParams("limit=48"))).toContain(
+      "limit=48",
+    );
+    expect(buildPopularUpstreamQuery(new URLSearchParams("limit=0"))).toBeNull();
+    expect(buildPopularUpstreamQuery(new URLSearchParams("limit=49"))).toBeNull();
+    expect(buildPopularUpstreamQuery(new URLSearchParams("offset=-1"))).toBeNull();
+    expect(
+      buildPopularUpstreamQuery(new URLSearchParams("content_types[]=evil")),
+    ).toBeNull();
   });
 });
 

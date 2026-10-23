@@ -36,6 +36,7 @@ export {
 export {
   libraryDetailCacheKey,
   libraryFiltersCacheKey,
+  libraryPopularCacheKey,
   librarySearchCacheKey,
 } from "./cache";
 
@@ -54,14 +55,17 @@ export {
   mapDetailFromPostLike,
   mapFiltersPayload,
   mapImageUrl,
+  mapCompositeThumbnail,
   mapLibraryResource,
   mapPermalink,
+  mapPopularResponse,
   mapSearchResponse,
 } from "./map";
 
 export type {
   BuildLibraryHeadInput,
   ContentAccessDisplay,
+  LibraryCompositeThumbnail,
   LibraryDetail,
   LibraryDetailBody,
   LibraryFilterTerm,

@@ -18,6 +18,16 @@ export type TermRef = {
   slug: string;
 };
 
+/** Daily Fix diagonal composite (BSI brain | mark | belly). URLs are allowlisted. */
+export type LibraryCompositeThumbnail = {
+  /** Left diagonal — brain / thought photo */
+  brain: string | null;
+  /** Right diagonal — belly / recipe photo */
+  belly: string | null;
+  /** Center layer — usually MetFix Daily Fix mark */
+  body: string | null;
+};
+
 export type LibraryResource = {
   id: number;
   type: ResourceType;
@@ -33,6 +43,8 @@ export type LibraryResource = {
   access: ContentAccessDisplay;
   /** Daily Fix only */
   daily_fix_date?: string | null;
+  /** Parsed from BSI composite_thumbnail_html (never raw HTML). */
+  composite?: LibraryCompositeThumbnail | null;
 };
 
 export type LibraryDetail = LibraryResource & {

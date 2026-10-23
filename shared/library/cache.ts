@@ -13,6 +13,17 @@ export function librarySearchCacheKey(
   });
 }
 
+export function libraryPopularCacheKey(
+  queryString: string,
+  userSalt: string | null,
+): Request {
+  const salt = userSalt && userSalt.length > 0 ? userSalt : ANON;
+  const q = queryString.startsWith("?") ? queryString : `?${queryString}`;
+  return new Request(`https://library-cache.metfix.internal/popular/${salt}${q}`, {
+    method: "GET",
+  });
+}
+
 export function libraryFiltersCacheKey(userSalt: string | null): Request {
   const salt = userSalt && userSalt.length > 0 ? userSalt : ANON;
   return new Request(`https://library-cache.metfix.internal/filters/${salt}`, {

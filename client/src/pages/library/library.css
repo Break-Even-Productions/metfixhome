@@ -210,6 +210,11 @@
   color: var(--lib-muted);
   text-decoration: none;
   font-weight: 600;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .library-section-link:hover {
@@ -220,6 +225,11 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
+}
+
+.library-infinite-sentinel {
+  min-height: 2.5rem;
+  padding: 0.5rem 0 1.5rem;
 }
 
 @media (min-width: 720px) {
@@ -238,18 +248,28 @@
   display: flex;
   flex-direction: column;
   text-align: left;
-  background: transparent;
-  border: none;
+  background: var(--lib-paper);
+  border: 1px solid var(--lib-line);
+  border-radius: 0.55rem;
   padding: 0;
   color: inherit;
   font: inherit;
   cursor: pointer;
   text-decoration: none;
-  transition: transform 0.25s var(--lib-ease);
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(23, 21, 18, 0.05),
+    0 8px 22px rgba(23, 21, 18, 0.08);
+  transition:
+    transform 0.25s var(--lib-ease),
+    box-shadow 0.25s var(--lib-ease);
 }
 
 .library-card:hover {
   transform: translateY(-3px);
+  box-shadow:
+    0 2px 4px rgba(23, 21, 18, 0.06),
+    0 14px 32px rgba(23, 21, 18, 0.12);
 }
 
 .library-card-media {
@@ -257,33 +277,105 @@
   aspect-ratio: 16 / 10;
   background: var(--lib-cream-2);
   overflow: hidden;
-  margin-bottom: 0.85rem;
-  border-radius: 0.35rem;
+  margin: 0;
+  border-radius: 0;
 }
 
-.library-card-media img {
+.library-card-media > img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
+/* Daily Fix composite: diagonal half-split + frosted circle with MetFix mark */
+.library-dfx-composite {
+  position: absolute;
+  inset: 0;
+  background: #111;
+}
+
+.library-dfx-half {
+  position: absolute;
+  inset: 0;
+}
+
+.library-dfx-half img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Soft ~50/50 diagonal seam (matches BSI feed card reference) */
+.library-dfx-half-left {
+  z-index: 1;
+  clip-path: polygon(0% 0%, 58% 0%, 42% 100%, 0% 100%);
+}
+
+.library-dfx-half-right {
+  z-index: 1;
+  clip-path: polygon(58% 0%, 100% 0%, 100% 100%, 42% 100%);
+}
+
+.library-dfx-mark {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: clamp(3.5rem, 32%, 5.5rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.52);
+  backdrop-filter: blur(4px) saturate(1.05);
+  -webkit-backdrop-filter: blur(4px) saturate(1.05);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 4px 16px rgba(0, 0, 0, 0.22);
+  display: grid;
+  place-items: center;
+  color: #0a0a0a;
+}
+
+.library-dfx-mark img,
+.library-dfx-mark .library-card-type-icon--asterisk {
+  width: 54%;
+  height: 54%;
+  object-fit: contain;
+  display: block;
+}
+
 .library-card-badge {
   position: absolute;
+  z-index: 3;
   top: 0.65rem;
   left: 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   background: rgba(23, 21, 18, 0.82);
   color: var(--lib-paper);
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 0.55rem;
   border-radius: 0.2rem;
+}
+
+.library-card-type-icon {
+  flex-shrink: 0;
+  color: var(--lib-accent);
+}
+
+.library-card-type-icon--asterisk {
+  display: block;
 }
 
 .library-card-lock {
   position: absolute;
+  z-index: 3;
   top: 0.65rem;
   right: 0.65rem;
   width: 1.75rem;
@@ -293,7 +385,13 @@
   color: var(--lib-paper);
   display: grid;
   place-items: center;
-  font-size: 0.75rem;
+}
+
+.library-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 0.9rem 1rem 1.1rem;
 }
 
 .library-card-pro {
@@ -309,10 +407,16 @@
 .library-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem 0.75rem;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.72rem;
   color: var(--lib-muted);
   margin-bottom: 0.4rem;
+}
+
+.library-card-meta-sep {
+  color: var(--lib-accent-2);
+  line-height: 1;
 }
 
 .library-card-topics {
@@ -347,6 +451,14 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.library-card-byline {
+  margin: auto 0 0;
+  padding-top: 0.75rem;
+  color: var(--lib-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .library-status {

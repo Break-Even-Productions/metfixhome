@@ -53,6 +53,29 @@ export async function fetchLibrarySearch(
   return json;
 }
 
+/** BSI popular-by-views ranking (avada_post_views_count). Paginate with offset. */
+export async function fetchLibraryPopular(
+  params: { limit?: number; offset?: number; content_types?: string[] } = {},
+  signal?: AbortSignal,
+): Promise<LibrarySearchBody> {
+  const sp = new URLSearchParams();
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.offset != null) sp.set("offset", String(params.offset));
+  for (const v of params.content_types ?? []) {
+    sp.append("content_types[]", v);
+  }
+  const qs = sp.toString();
+  const res = await fetch(`/api/library/popular${qs ? `?${qs}` : ""}`, {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    signal,
+  });
+  if (!res.ok) throw new Error(`popular_${res.status}`);
+  const json: unknown = await res.json();
+  if (!isLibrarySearchBody(json)) throw new Error("popular_shape");
+  return json;
+}
+
 export async function fetchLibraryFilters(
   signal?: AbortSignal,
 ): Promise<LibraryFiltersBody> {
