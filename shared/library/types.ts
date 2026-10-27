@@ -71,6 +71,8 @@ export type LibraryDetail = LibraryResource & {
  */
 export type DetailReaderModel = {
   id: number;
+  /** BSI resource type segment (PL15 fallback when `content_types` is empty). */
+  resourceType: ResourceType;
   title: string;
   date: string;
   author: string | null;

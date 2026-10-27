@@ -9,6 +9,7 @@ import { ResourceMediaStage } from "./ResourceMediaStage";
 function model(partial: Partial<DetailReaderModel>): DetailReaderModel {
   return {
     id: 1,
+    resourceType: "post",
     title: "Locked video",
     date: "2026-01-01T00:00:00Z",
     author: null,
@@ -47,6 +48,20 @@ describe("ResourceMediaStage locked DOM (TC9)", () => {
     const { container } = render(<ResourceMediaStage model={model({})} />);
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.querySelector("video")).toBeNull();
+    expect(container.querySelector("[data-testid=resource-media-locked]")).toBeTruthy();
+  });
+
+  it("renders locked fallback stage when no image and no preview", () => {
+    const { container } = render(
+      <ResourceMediaStage
+        model={model({
+          image: null,
+          video: { kind: "youtube", embedUrl: "https://www.youtube.com/embed/x", url: null, videoId: "x" },
+        })}
+      />,
+    );
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector("[data-testid=resource-media-stage]")).toBeTruthy();
     expect(container.querySelector("[data-testid=resource-media-locked]")).toBeTruthy();
   });
 

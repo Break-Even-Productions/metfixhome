@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router } from "wouter";
 import LibraryTaxonomyPage from "./LibraryTaxonomyPage";
@@ -101,6 +101,48 @@ describe("LibraryTaxonomyPage mount (TC12)", () => {
       );
       expect(filterCalls.length).toBeLessThanOrEqual(1);
       expect(searchCalls).toHaveLength(1);
+    });
+  });
+
+  it("TX5: shows resource count; TX8: filtered empty tab resets to All", async () => {
+    const emptySearch = {
+      resources: [],
+      meta: { total: 0, count: 0, limit: 24, offset: 0, has_more: false },
+    };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/library/filters")) {
+        return new Response(JSON.stringify(filtersBody), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/api/library/search")) {
+        const hasVideos = url.includes("content_type_terms") && url.includes("videos");
+        const body = hasVideos ? emptySearch : searchBody;
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    mountTopic();
+    expect(await screen.findByRole("heading", { name: "Metabolic Health" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("taxonomy-resource-count").textContent).toBe("1 resources");
+    });
+
+    const videosTab = await screen.findByRole("tab", { name: "Videos" });
+    fireEvent.click(videosTab);
+
+    expect(await screen.findByText("No Videos resources yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /View all Metabolic Health content/ }));
+    expect(screen.queryByText("No Videos resources yet")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("taxonomy-resource-count").textContent).toBe("1 resources");
     });
   });
 });

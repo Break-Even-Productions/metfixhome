@@ -13,8 +13,11 @@ import type { DetailReaderModel } from "@shared/library";
 export function toDetailReaderModel(
   source: LibraryDetail | DetailPost,
 ): DetailReaderModel {
+  const resourceType =
+    "type" in source && source.type ? source.type : "post";
   return {
     id: source.id,
+    resourceType,
     title: source.title,
     date: source.date,
     author: source.author,

@@ -7,7 +7,7 @@ describe("post-prose.css (PL1–PL3, PL7, PL8, PL11, PL13)", () => {
 
   it("shared body measure and DM Sans 16/26", () => {
     expect(prose).toMatch(/max-width:\s*680px/);
-    expect(prose).toMatch(/"DM Sans"/);
+    expect(prose).toMatch(/--post-font-sans:\s*"DM Sans"/);
     expect(prose).toMatch(/font-size:\s*16px/);
     expect(prose).toMatch(/line-height:\s*26px/);
     expect(prose).toMatch(/overflow-wrap:\s*anywhere/);

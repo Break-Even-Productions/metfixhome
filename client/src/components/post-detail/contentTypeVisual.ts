@@ -5,13 +5,46 @@ import {
   Radio,
   type LucideIcon,
 } from "lucide-react";
-import type { DetailReaderModel } from "@shared/library";
+import type { DetailReaderModel, ResourceType } from "@shared/library";
 
 export type ContentTypeVisual = {
   label: string;
-  slug: string | null;
+  slug: string;
   Icon: LucideIcon;
 };
+
+const RESOURCE_TYPE_SLUG: Record<ResourceType, string> = {
+  post: "articles",
+  page: "articles",
+  course: "courses",
+  event: "events",
+  infographic: "infographic",
+  daily_fix: "daily-fix",
+  exclusive_resource: "articles",
+};
+
+const RESOURCE_TYPE_LABEL: Record<ResourceType, string> = {
+  post: "Articles",
+  page: "Articles",
+  course: "Courses",
+  event: "Events",
+  infographic: "Infographics",
+  daily_fix: "Daily Fix",
+  exclusive_resource: "Articles",
+};
+
+export function resourceTypeContentSlug(type: ResourceType): string {
+  return RESOURCE_TYPE_SLUG[type] ?? "articles";
+}
+
+function fallbackFromResourceType(type: ResourceType): ContentTypeVisual {
+  const slug = resourceTypeContentSlug(type);
+  return {
+    label: RESOURCE_TYPE_LABEL[type] ?? "Article",
+    slug,
+    Icon: FileText,
+  };
+}
 
 export function primaryContentTypeVisual(model: DetailReaderModel): ContentTypeVisual {
   const term = model.content_types[0];
@@ -33,5 +66,8 @@ export function primaryContentTypeVisual(model: DetailReaderModel): ContentTypeV
   if (name && term?.slug) {
     return { label: name, slug: term.slug, Icon: FileText };
   }
-  return { label: "Article", slug: term?.slug ?? null, Icon: FileText };
+  if (model.content_types.length === 0) {
+    return fallbackFromResourceType(model.resourceType);
+  }
+  return { label: "Article", slug: "articles", Icon: FileText };
 }

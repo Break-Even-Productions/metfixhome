@@ -6,7 +6,7 @@
   list-style: none;
   margin: 0 0 1.5rem;
   padding: 0;
-  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--lib-font-sans);
   font-size: 13px;
   color: var(--lib-muted);
 }
@@ -42,9 +42,17 @@
   margin: 0 0 0.5rem;
 }
 
+.taxonomy-hero-count {
+  margin: 0 0 0.75rem;
+  font-family: var(--lib-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lib-muted);
+}
+
 .taxonomy-hero-desc {
   margin: 0 0 0.75rem;
-  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--lib-font-sans);
   font-size: 14px;
   line-height: 1.65;
   color: var(--lib-muted);
@@ -55,7 +63,7 @@
   border: 0;
   background: none;
   padding: 0;
-  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--lib-font-sans);
   font-size: 13px;
   font-weight: 600;
   color: var(--lib-accent-2);
@@ -115,9 +123,23 @@
   color: var(--lib-muted);
 }
 
-.taxonomy-empty a {
+.taxonomy-empty a,
+.taxonomy-empty-reset {
   color: var(--lib-ink);
   font-weight: 600;
+}
+
+.taxonomy-empty-reset {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-top: 0.75rem;
+  font-family: var(--lib-font-sans);
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
 }
 
 .taxonomy-sentinel {

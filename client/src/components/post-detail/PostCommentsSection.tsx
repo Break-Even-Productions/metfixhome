@@ -15,22 +15,29 @@ export function PostCommentsSection({ postId, locked }: PostCommentsSectionProps
       typeof window !== "undefined"
         ? `${window.location.pathname}${window.location.search}`
         : "/",
-    [],
+    [postId],
   );
-  const [load, setLoad] = useState<CommentsLoadState>({ status: "loading" });
+  const [load, setLoad] = useState<CommentsLoadState>(
+    locked ? { status: "unavailable" } : { status: "loading" },
+  );
   const [viewerDisplayName, setViewerDisplayName] = useState<string | null>(null);
+  const [moderator, setModerator] = useState(false);
 
   useEffect(() => {
+    if (locked) return;
     void loadMe().then((me) => {
       if (me.status === "signed_in" && me.public_name) {
         setViewerDisplayName(me.public_name);
+        setModerator(me.moderator === true);
       } else {
         setViewerDisplayName(null);
+        setModerator(false);
       }
     });
-  }, []);
+  }, [locked]);
 
   useEffect(() => {
+    if (locked) return;
     let cancelled = false;
     setLoad({ status: "loading" });
     void fetchPostComments(postId).then((next) => {
@@ -39,7 +46,7 @@ export function PostCommentsSection({ postId, locked }: PostCommentsSectionProps
     return () => {
       cancelled = true;
     };
-  }, [postId]);
+  }, [postId, locked]);
 
   return (
     <section className="post-detail-discussion" aria-labelledby="post-discussion-title">
@@ -57,6 +64,7 @@ export function PostCommentsSection({ postId, locked }: PostCommentsSectionProps
           load={load}
           pillar="body"
           viewerDisplayName={viewerDisplayName}
+          moderator={moderator}
           onCommentsChanged={setLoad}
           showHeader={false}
         />

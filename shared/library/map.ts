@@ -108,6 +108,11 @@ function cleanText(raw: string): string {
   return decodeHtmlEntitiesOnce(stripTags(raw)).replace(/\s+/g, " ").trim();
 }
 
+/** Collapse horizontal whitespace only — preserves `\n` when used inside paragraphs (TX5). */
+function filterParagraphText(raw: string): string {
+  return decodeHtmlEntitiesOnce(stripTags(raw)).replace(/[^\S\n]+/g, " ").trim();
+}
+
 /** Map `[{ id, name, slug }]` — exported for posts DetailPost parity (CQ-4.1). */
 export function mapTerms(raw: unknown): TermRef[] {
   if (!Array.isArray(raw)) return [];
@@ -143,7 +148,7 @@ export function mapFilterDescription(raw: unknown): string | null {
     .replace(/\r?\n\s*\r?\n/g, "\n\n");
   const paragraphs = withBreaks
     .split(/\n\n+/)
-    .map((p) => cleanText(p))
+    .map((p) => filterParagraphText(p))
     .filter(Boolean);
   if (paragraphs.length === 0) return null;
   return paragraphs.join("\n\n");

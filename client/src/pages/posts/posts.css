@@ -251,6 +251,7 @@
   text-align: left;
 }
 
+.post-reader-main > .posts-title,
 .posts-detail-header .posts-title {
   text-align: left;
   font-family: var(--posts-font-serif);
@@ -258,6 +259,13 @@
   line-height: 1.25;
   font-weight: 700;
   margin-bottom: 16px;
+}
+
+@media (max-width: 639px) {
+  .post-reader-main > .posts-title,
+  .posts-detail-header .posts-title {
+    font-size: 28px;
+  }
 }
 
 .posts-detail-meta {

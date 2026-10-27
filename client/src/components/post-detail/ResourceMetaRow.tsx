@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { basePath } from "@/const";
 import type { DetailReaderModel } from "./types";
 import { primaryContentTypeVisual } from "./contentTypeVisual";
@@ -20,22 +21,18 @@ export function ResourceMetaRow({ model }: { model: DetailReaderModel }) {
   return (
     <div className="post-detail-meta">
       <time dateTime={model.date}>{formatDate(model.date)}</time>
-      {visual.slug ? (
-        <>
-          <span className="post-detail-meta-sep" aria-hidden>·</span>
-          <a
-            className="post-detail-meta-type"
-            href={basePath(`/library/content-type/${visual.slug}`)}
-          >
-            <TypeIcon size={12} strokeWidth={2.25} aria-hidden />
-            <span>{visual.label}</span>
-          </a>
-        </>
-      ) : null}
+      <span className="post-detail-meta-sep" aria-hidden>·</span>
+      <Link
+        className="post-detail-meta-type"
+        href={basePath(`/library/content-type/${visual.slug}`)}
+      >
+        <TypeIcon size={12} strokeWidth={2.25} aria-hidden />
+        <span>{visual.label}</span>
+      </Link>
       {category ? (
         <>
           <span className="post-detail-meta-sep" aria-hidden>·</span>
-          <a href={basePath(`/library/category/${category.slug}`)}>{category.name}</a>
+          <Link href={basePath(`/library/category/${category.slug}`)}>{category.name}</Link>
         </>
       ) : null}
       {model.author ? (

@@ -79,6 +79,29 @@ describe("LibraryDetailPage author-right (PL13)", () => {
     expect(screen.getByText("Library body")).toBeTruthy();
   });
 
+  it("TC11: ?from= mount does not call /api/library/filters", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/library/filters")) {
+        return new Response(JSON.stringify({ topics: [], categories: [], content_type_terms: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ resource: resource() }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mountAt("/library/post/42?from=topic:metabolic-health");
+    expect(await screen.findByRole("heading", { name: "Library Detail Title" })).toBeTruthy();
+    const filterCalls = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/api/library/filters"),
+    );
+    expect(filterCalls).toHaveLength(0);
+  });
+
   it("omits aside when author is null", async () => {
     vi.stubGlobal(
       "fetch",

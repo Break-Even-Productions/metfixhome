@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { Link, useSearch } from "wouter";
 import {
   CONTENT_TYPE_CHIPS,
   fromParamHref,
@@ -60,37 +62,37 @@ function defaultCategoryCrumb(model: DetailReaderModel): {
 }
 
 export function ResourceBreadcrumbs({ model }: { model: DetailReaderModel }) {
-  const rawFrom =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("from")
-      : null;
-  const parsed = parseFromParam(rawFrom);
+  const search = useSearch();
+  const parsed = useMemo(
+    () => parseFromParam(new URLSearchParams(search).get("from")),
+    [search],
+  );
 
-  let third: { href: string; label: string } | null = null;
-  if (parsed) {
-    third = {
-      href: basePath(fromParamHref(parsed)),
-      label: resolveFromLabel(parsed.kind, parsed.slug, model),
-    };
-  } else {
-    third = defaultCategoryCrumb(model);
-  }
+  const third = useMemo(() => {
+    if (parsed) {
+      return {
+        href: basePath(fromParamHref(parsed)),
+        label: resolveFromLabel(parsed.kind, parsed.slug, model),
+      };
+    }
+    return defaultCategoryCrumb(model);
+  }, [parsed, model]);
 
   return (
     <nav className="post-detail-breadcrumbs" aria-label="Breadcrumb">
       <ol className="post-detail-breadcrumbs-list">
         <li>
-          <a href={basePath("/")}>Home</a>
+          <Link href={basePath("/")}>Home</Link>
         </li>
         <li aria-hidden="true">›</li>
         <li>
-          <a href={basePath("/library")}>Resource Library</a>
+          <Link href={basePath("/library")}>Resource Library</Link>
         </li>
         {third ? (
           <>
             <li aria-hidden="true">›</li>
             <li>
-              <a href={third.href}>{third.label}</a>
+              <Link href={third.href}>{third.label}</Link>
             </li>
           </>
         ) : null}

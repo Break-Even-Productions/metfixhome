@@ -3,11 +3,21 @@ import { isFreeOpen, isLockedCard, isProfessionalTagged, mapAccessDisplay } from
 import { buildLibraryHead } from "./head";
 import {
   mapCompositeThumbnail,
+  mapFilterDescription,
   mapLibraryResource,
   mapPopularResponse,
   mapSearchResponse,
 } from "./map";
 import type { LibraryResource } from "./types";
+
+describe("mapFilterDescription (TX5)", () => {
+  it("preserves paragraph breaks from HTML", () => {
+    const mapped = mapFilterDescription(
+      "<p>Para 1</p><p>Para 2</p><p>Para 3</p>",
+    );
+    expect(mapped).toBe("Para 1\n\nPara 2\n\nPara 3");
+  });
+});
 
 describe("library access mapping", () => {
   it("maps false / none to none", () => {

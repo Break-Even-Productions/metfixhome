@@ -3,6 +3,7 @@ import { Link, useParams } from "wouter";
 import {
   buildLibraryHead,
   formatFromParam,
+  humanizeSlug,
   type LibraryFilterTerm,
 } from "@shared/library";
 import { basePath } from "@/const";
@@ -10,7 +11,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { JoinModal } from "./JoinModal";
 import { ResourceCard } from "./ResourceCard";
-import { getLibraryFilters } from "./filtersCache";
+import { getLibraryFilters, peekLibraryFilters } from "./filtersCache";
 import { useInfiniteArchive, type ArchiveKind } from "./useInfiniteArchive";
 import "./library.css";
 import "./taxonomy.css";
@@ -166,6 +167,11 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
 
   const fromParam = formatFromParam(taxonomyKind, term.slug);
   const showTypeTabs = taxonomyKind === "topic" || taxonomyKind === "category";
+  const activeTypeLabel =
+    contentTypeSlug == null
+      ? null
+      : peekLibraryFilters()?.content_type_terms.find((t) => t.slug === contentTypeSlug)
+          ?.name ?? humanizeSlug(contentTypeSlug);
 
   return (
     <div className="library-page taxonomy-page">
@@ -183,6 +189,9 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
         <div className="taxonomy-hero">
           <div className="taxonomy-hero-copy">
             <h1 className="taxonomy-hero-title">{term.name}</h1>
+            <p className="taxonomy-hero-count" data-testid="taxonomy-resource-count">
+              {archiveState.total} resources
+            </p>
             {visibleParagraphs.map((p, i) => (
               <p key={i} className="taxonomy-hero-desc">{p}</p>
             ))}
@@ -231,8 +240,23 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
 
         {archiveState.status === "data" && archiveState.items.length === 0 ? (
           <div className="taxonomy-empty" data-testid="taxonomy-empty">
-            <p>No resources match this filter yet.</p>
-            <Link href="/library">Browse the full library</Link>
+            {showTypeTabs && contentTypeSlug != null ? (
+              <>
+                <p>No {activeTypeLabel} resources yet</p>
+                <button
+                  type="button"
+                  className="taxonomy-empty-reset"
+                  onClick={() => setContentTypeSlug(null)}
+                >
+                  View all {term.name} content →
+                </button>
+              </>
+            ) : (
+              <>
+                <p>No resources match this filter yet.</p>
+                <Link href="/library">Browse the full library</Link>
+              </>
+            )}
           </div>
         ) : null}
 
