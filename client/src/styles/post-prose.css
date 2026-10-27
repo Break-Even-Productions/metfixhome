@@ -79,6 +79,13 @@
   border: 2px solid color-mix(in srgb, var(--post-aside-label, #cfa576) 35%, transparent);
 }
 
+.post-author-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .post-author-name {
   margin: 0;
   font-family: var(--post-font-sans);
@@ -86,6 +93,27 @@
   font-weight: 600;
   line-height: 1.35;
   color: var(--post-aside-ink, #171512);
+}
+
+.post-author-blurb {
+  margin: 0;
+  font-family: var(--post-font-sans);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--post-aside-ink, #171512);
+  opacity: 0.72;
+}
+
+.post-author-more {
+  font-family: var(--post-font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--post-aside-label, #cfa576);
+  text-decoration: none;
+}
+
+.post-author-more:hover {
+  text-decoration: underline;
 }
 
 /* —— Body measure + typography —— */

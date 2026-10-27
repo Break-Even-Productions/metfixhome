@@ -1,7 +1,10 @@
 /**
- * Author rail for post/library readers (Emily ResourceDetail composition).
- * Uses the existing string `author` field only — no invented bio/title/image.
+ * Author rail for post/library readers (Emily ResourceDetail / LB12).
+ * Uses the existing string `author` field only — no invented bio beyond the
+ * static contributor line in the mockup.
  */
+import { Link } from "wouter";
+
 type AuthorAsideProps = {
   name: string;
 };
@@ -25,7 +28,16 @@ export function AuthorAside({ name }: AuthorAsideProps) {
           <div className="post-author-avatar" aria-hidden="true">
             {initialsFromName(trimmed)}
           </div>
-          <p className="post-author-name">{trimmed}</p>
+          <div className="post-author-copy">
+            <p className="post-author-name">{trimmed}</p>
+            <p className="post-author-blurb">Broken Science Initiative contributor.</p>
+            <Link
+              href={`/library?query=${encodeURIComponent(trimmed)}`}
+              className="post-author-more"
+            >
+              More from this author →
+            </Link>
+          </div>
         </div>
       </div>
     </aside>
