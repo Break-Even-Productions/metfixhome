@@ -73,7 +73,9 @@ describe("LibraryDetailPage author-right (PL13)", () => {
     expect(document.querySelector(".post-reader-grid")).toBeTruthy();
     expect(document.querySelector(".library-reader--wide")).toBeTruthy();
     expect(screen.getByLabelText("About the author")).toBeTruthy();
-    expect(screen.getByText("Emily Kaplan")).toBeTruthy();
+    expect(
+      screen.getByLabelText("About the author").textContent,
+    ).toContain("Emily Kaplan");
     expect(screen.getByText("Library body")).toBeTruthy();
   });
 

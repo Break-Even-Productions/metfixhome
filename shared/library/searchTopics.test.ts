@@ -14,6 +14,8 @@ function api(
     id: r.id,
     name: r.name ?? `Topic ${r.id}`,
     slug: r.slug ?? `topic-${r.id}`,
+    description: null,
+    image: null,
   }));
 }
 

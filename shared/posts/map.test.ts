@@ -247,15 +247,21 @@ describe("mapDetailPost / mapDetailResponse", () => {
     expect(mapped.permalink).toBe("https://brokenscience.org/hello");
     expect(Object.keys(mapped).sort()).toEqual(
       [
+        "access",
         "author",
+        "categories",
         "category",
         "content",
+        "content_types",
         "date",
         "excerpt",
         "id",
         "image",
+        "locked",
         "permalink",
         "title",
+        "topics",
+        "video",
       ].sort(),
     );
   });

@@ -172,9 +172,19 @@ function detailPost(
   overrides: Partial<ReturnType<typeof listPost>> & {
     content?: string;
     permalink?: string | null;
+    video?: null;
+    categories?: { id: number; name: string; slug: string }[];
+    content_types?: { id: number; name: string; slug: string }[];
+    topics?: { id: number; name: string; slug: string }[];
+    locked?: boolean;
   } = {},
 ) {
   const base = listPost(overrides);
+  const categories =
+    overrides.categories ??
+    (base.category
+      ? [{ id: 1, name: base.category.name, slug: base.category.slug }]
+      : []);
   return {
     ...base,
     content: overrides.content ?? "<p>Body content</p>",
@@ -182,6 +192,22 @@ function detailPost(
       overrides.permalink !== undefined
         ? overrides.permalink
         : "https://brokenscience.org/sample-post/",
+    video: overrides.video ?? null,
+    categories,
+    content_types:
+      overrides.content_types ?? [{ id: 2, name: "Articles", slug: "articles" }],
+    topics: overrides.topics ?? [],
+    locked: overrides.locked ?? false,
+    access: {
+      access: "full" as const,
+      has_content_access: false,
+      user_has_access: true,
+      has_preview: false,
+      is_exclusive: false,
+      show_same: 0,
+      show_video_in_preview: false,
+      access_group_labels: [] as string[],
+    },
   };
 }
 
@@ -298,7 +324,7 @@ describe("Posts page mount", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchCallUrl(fetchMock.mock.calls[0]!)).toBe("/api/posts/1");
     expect(await screen.findByRole("heading", { name: "Detail Title One" })).toBeTruthy();
-    expect(screen.getByText("Dr. A")).toBeTruthy();
+    expect(screen.getByLabelText("About the author").textContent).toContain("Dr. A");
     expect(screen.getByText("Detail body")).toBeTruthy();
     expect(
       document.querySelector('img[src="https://brokenscience.org/wp-content/uploads/a.jpg"]'),
