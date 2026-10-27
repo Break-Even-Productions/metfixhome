@@ -310,6 +310,17 @@ function bsiMeHeaders(accessToken: string): Record<string, string> {
   };
 }
 
+/** Authenticated BSI post comment routes — Bearer only (BK3/BK12). */
+function bsiPostCommentsBearerHeaders(
+  accessToken: string,
+  opts?: { jsonBody?: boolean },
+): Record<string, string> {
+  return {
+    ...bsiMeHeaders(accessToken),
+    ...(opts?.jsonBody ? { "Content-Type": "application/json" } : {}),
+  };
+}
+
 async function oauthTokenFetch(
   url: string,
   body: URLSearchParams,
@@ -1041,8 +1052,9 @@ export async function fetchPostComments(
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string; accessToken?: string },
 ): Promise<CommentsUpstream> {
-  const apiKey = postsCommentsApiKey(env);
-  if (!apiKey) return { kind: "nokey" };
+  const accessToken = opts?.accessToken ?? null;
+  const apiKey = accessToken ? null : postsCommentsApiKey(env);
+  if (!accessToken && !apiKey) return { kind: "nokey" };
 
   const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments`;
   try {
@@ -1052,10 +1064,9 @@ export async function fetchPostComments(
   }
 
   try {
-    const headers =
-      opts?.accessToken
-        ? bsiBearerHeaders(apiKey, opts.accessToken)
-        : bsiGetHeaders(apiKey);
+    const headers = accessToken
+      ? bsiPostCommentsBearerHeaders(accessToken)
+      : bsiGetHeaders(apiKey!);
     const response = await fetchImpl(url, {
       method: "GET",
       headers,
@@ -1086,14 +1097,12 @@ export async function bsiPostPostComment(
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<CommentWriteUpstream> {
-  const apiKey = postsCommentsApiKey(env);
-  if (!apiKey) return { kind: "nokey" };
   const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments`;
   const r = await bsiFetch(
     url,
     {
       method: "POST",
-      headers: bsiBearerHeaders(apiKey, accessToken),
+      headers: bsiPostCommentsBearerHeaders(accessToken, { jsonBody: true }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     },
@@ -1112,14 +1121,12 @@ export async function bsiPatchPostComment(
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<CommentWriteUpstream> {
-  const apiKey = postsCommentsApiKey(env);
-  if (!apiKey) return { kind: "nokey" };
   const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`;
   const r = await bsiFetch(
     url,
     {
       method: "PATCH",
-      headers: bsiBearerHeaders(apiKey, accessToken),
+      headers: bsiPostCommentsBearerHeaders(accessToken, { jsonBody: true }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     },
@@ -1137,19 +1144,36 @@ export async function bsiDeletePostComment(
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<CommentWriteUpstream> {
-  const apiKey = postsCommentsApiKey(env);
-  if (!apiKey) return { kind: "nokey" };
   const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`;
   const r = await bsiFetch(
     url,
     {
       method: "DELETE",
-      headers: {
-        Accept: "application/json",
-        "User-Agent": UPSTREAM_USER_AGENT,
-        "X-API-Key": apiKey,
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: bsiPostCommentsBearerHeaders(accessToken),
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+export async function bsiTogglePostCommentLike(
+  postId: string,
+  commentId: string,
+  liked: boolean,
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "POST",
+      headers: bsiPostCommentsBearerHeaders(accessToken, { jsonBody: true }),
+      body: JSON.stringify({ liked }),
       signal: AbortSignal.timeout(5000),
     },
     fetchImpl,

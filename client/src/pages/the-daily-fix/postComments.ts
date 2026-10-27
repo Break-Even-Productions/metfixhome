@@ -1,8 +1,6 @@
 import type { DailyFixComment } from "./comments";
 import type { CommentsLoadState } from "./comments";
 
-const moduleFetch: typeof fetch = globalThis.fetch.bind(globalThis);
-
 function postCommentsUrl(postId: number): string {
   return `/api/posts/${postId}/comments`;
 }
@@ -85,7 +83,7 @@ async function fetchPostCommentsNetwork(
   opts?: { bypassHttpCache?: boolean },
 ): Promise<Exclude<CommentsLoadState, { status: "loading" }>> {
   try {
-    const res = await moduleFetch(postCommentsUrl(postId), {
+    const res = await globalThis.fetch(postCommentsUrl(postId), {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",

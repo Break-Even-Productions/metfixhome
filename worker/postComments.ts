@@ -16,11 +16,16 @@ import { isAuthHost } from "./auth/host";
 import { jsonNoStore, unavailable } from "./auth/http";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { clientIp } from "./auth/throttle";
-import { checkCommentWriteLimit } from "./auth/comment-rate-limit";
+import {
+  checkCommentLikeLimit,
+  checkCommentLikeToggleLimit,
+  checkCommentWriteLimit,
+} from "./auth/comment-rate-limit";
 import {
   bsiDeletePostComment,
   bsiPatchPostComment,
   bsiPostPostComment,
+  bsiTogglePostCommentLike,
   fetchPostComments,
   parseRetryAfter,
   type Env,
@@ -125,15 +130,29 @@ function commentsNoStoreHeaders(sessionCookie: boolean): HeadersInit {
   return headers;
 }
 
-function parsePostCommentsPath(path: string): { postId: string; commentId: string | null } | null {
+type PostCommentsRoute = {
+  postId: string;
+  commentId: string | null;
+  like: boolean;
+};
+
+function parsePostCommentsPath(path: string): PostCommentsRoute | null {
   if (path.endsWith("/") && path.includes("/comments/")) return null;
+  const likeMatch = path.match(/^\/api\/posts\/([^/]+)\/comments\/([^/]+)\/like$/);
+  if (likeMatch) {
+    const postId = likeMatch[1]!;
+    const commentId = likeMatch[2]!;
+    if (!isValidPostId(postId)) return null;
+    if (!COMMENT_ID_RE.test(commentId)) return null;
+    return { postId, commentId, like: true };
+  }
   const m = path.match(/^\/api\/posts\/([^/]+)\/comments(?:\/([^/]+))?$/);
   if (!m) return null;
   const postId = m[1]!;
   const commentId = m[2] ?? null;
   if (!isValidPostId(postId)) return null;
   if (commentId != null && !COMMENT_ID_RE.test(commentId)) return null;
-  return { postId, commentId };
+  return { postId, commentId, like: false };
 }
 
 export async function handlePostCommentsRoutes(
@@ -158,12 +177,19 @@ export async function handlePostCommentsRoutes(
 async function handlePostCommentsRequest(
   request: Request,
   env: Env,
-  route: { postId: string; commentId: string | null },
+  route: PostCommentsRoute,
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<Response> {
   const method = request.method.toUpperCase();
   const { postId, commentId } = route;
+
+  if (route.like && commentId != null) {
+    if (method === "POST") {
+      return handlePostCommentLike(request, env, postId, commentId, fetchImpl, opts);
+    }
+    return jsonNoStore({ error: "method_not_allowed" }, 405, { Allow: "POST" });
+  }
 
   if (commentId == null) {
     if (method === "GET" || method === "HEAD") {
@@ -393,10 +419,71 @@ async function handlePostCommentDelete(
   return mapPostWriteResponse(upstream, 200, "delete");
 }
 
+async function handlePostCommentLike(
+  request: Request,
+  env: Env,
+  postId: string,
+  commentId: string,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<Response> {
+  if (!isAuthHost(request, env)) {
+    return jsonNoStore({ error: "not_found" }, 404);
+  }
+  const session = await requireSession(request, env, fetchImpl, opts);
+  if (session instanceof Response) return session;
+  if (!session.access) return unavailable();
+  const csrf = await requireCommentCsrf(request, env, session.sid);
+  if (csrf) return csrf;
+
+  const parsed = await readCommentJsonBodyLimited(request);
+  if (parsed instanceof Response) return parsed;
+  if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+  const body = parsed.json as Record<string, unknown>;
+  if (typeof body.liked !== "boolean") {
+    return jsonNoStore({ error: "invalid_request" }, 400);
+  }
+  const liked = body.liked;
+
+  const ip = clientIp(request);
+  const likeLim = await checkCommentLikeLimit(
+    env as CommentLimitEnv,
+    session.record.bsi_user_id,
+    ip,
+  );
+  if (!likeLim.allowed) {
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
+  }
+  const toggleLim = await checkCommentLikeToggleLimit(
+    env as CommentLimitEnv,
+    session.record.bsi_user_id,
+    commentId,
+  );
+  if (!toggleLim.allowed) {
+    return jsonNoStore(
+      { error: "rate_limited" },
+      429,
+      { "Retry-After": String(parseRetryAfter(null)) },
+    );
+  }
+
+  const ran = await runUserBsiCall(session, env, fetchImpl, opts, (access) =>
+    bsiTogglePostCommentLike(postId, commentId, liked, access, env, fetchImpl, opts),
+  );
+  if (ran instanceof Response) return ran;
+  return mapPostWriteResponse(ran.result, 200, "like");
+}
+
 async function mapPostWriteResponse(
   upstream: Awaited<ReturnType<typeof bsiPostPostComment>>,
   okStatus: number,
-  kind: "post" | "patch" | "delete",
+  kind: "post" | "patch" | "delete" | "like",
 ): Promise<Response> {
   if (upstream.kind === "rate_limited") {
     const ra = upstream.retryAfter ?? parseRetryAfter(null);

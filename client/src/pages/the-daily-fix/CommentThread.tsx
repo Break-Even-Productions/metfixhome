@@ -17,7 +17,7 @@ import {
   type DailyFixComment,
 } from "./comments";
 import { JoinModal } from "./JoinModal";
-import { ensureRecaptchaScript } from "./recaptcha";
+import { ensureRecaptchaScript, getRecaptchaToken } from "./recaptcha";
 import { PILLARS, pillarLabel, type Pillar } from "./model";
 import {
   fetchPostComments,
@@ -191,12 +191,14 @@ export function CommentThread({
         setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
         return;
       }
+      const recaptcha = await getRecaptchaToken("comment");
       const payload: Record<string, unknown> = isPostTarget
-        ? { content }
+        ? { content, recaptcha }
         : {
             date: dateIso,
             type: commentType,
             content,
+            recaptcha,
           };
       if (isReply) payload.parent_comment_id = parent.id;
       const postUrl = isPostTarget
@@ -432,7 +434,9 @@ export function CommentThread({
   }
 
   async function toggleLike(comment: DailyFixComment) {
-    if (!dateIso || load.status !== "loaded") return;
+    if (load.status !== "loaded") return;
+    if (!isPostTarget && !dateIso) return;
+    if (isPostTarget && postId == null) return;
     const lockKey = `like:${comment.id}`;
     if (isLocked(lockKey) || inFlightRef.current.has(lockKey)) return;
     const wasLiked = comment.liked === true;
@@ -441,23 +445,42 @@ export function CommentThread({
     const optimisticCount = Math.max(0, prevCount + (nextLiked ? 1 : -1));
     inFlightRef.current.add(lockKey);
     onCommentsChanged?.(
-      patchComments(load, comment.id, comment.pillar, {
-        liked: nextLiked,
-        like_count: optimisticCount,
-      }),
+      patchComments(
+        load,
+        comment.id,
+        comment.pillar,
+        {
+          liked: nextLiked,
+          like_count: optimisticCount,
+        },
+        isPostTarget,
+      ),
     );
     try {
       const csrf = await fetchCsrf();
       if (!csrf) {
         onCommentsChanged?.(
-          patchComments(load, comment.id, comment.pillar, {
-            liked: wasLiked,
-            like_count: prevCount,
-          }),
+          patchComments(
+            load,
+            comment.id,
+            comment.pillar,
+            {
+              liked: wasLiked,
+              like_count: prevCount,
+            },
+            isPostTarget,
+          ),
         );
         return;
       }
-      const res = await commentsHttp(likeUrl(comment.id, dateIso), {
+      const likeRequestUrl =
+        isPostTarget && postId != null
+          ? `/api/posts/${postId}/comments/${comment.id}/like`
+          : likeUrl(comment.id, dateIso!);
+      const likeBody = isPostTarget
+        ? JSON.stringify({ liked: nextLiked })
+        : JSON.stringify({ liked: nextLiked, date: dateIso });
+      const res = await commentsHttp(likeRequestUrl, {
         method: "POST",
         credentials: "same-origin",
         headers: {
@@ -465,40 +488,70 @@ export function CommentThread({
           "Content-Type": "application/json",
           "X-CSRF-Token": csrf,
         },
-        body: JSON.stringify({ liked: nextLiked, date: dateIso }),
+        body: likeBody,
       });
       if (res.status === 429) {
         onCommentsChanged?.(
-          patchComments(load, comment.id, comment.pillar, {
-            liked: wasLiked,
-            like_count: prevCount,
-          }),
+          patchComments(
+            load,
+            comment.id,
+            comment.pillar,
+            {
+              liked: wasLiked,
+              like_count: prevCount,
+            },
+            isPostTarget,
+          ),
         );
         applyRateLimit(lockKey, res);
         return;
       }
       if (res.status === 403 || res.status === 503) {
         onCommentsChanged?.(
-          patchComments(load, comment.id, comment.pillar, {
-            liked: wasLiked,
-            like_count: prevCount,
-          }),
+          patchComments(
+            load,
+            comment.id,
+            comment.pillar,
+            {
+              liked: wasLiked,
+              like_count: prevCount,
+            },
+            isPostTarget,
+          ),
         );
         return;
       }
       if (!res.ok) {
         onCommentsChanged?.(
-          patchComments(load, comment.id, comment.pillar, {
-            liked: wasLiked,
-            like_count: prevCount,
-          }),
+          patchComments(
+            load,
+            comment.id,
+            comment.pillar,
+            {
+              liked: wasLiked,
+              like_count: prevCount,
+            },
+            isPostTarget,
+          ),
         );
-        invalidateCommentsCache(dateIso);
-        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
-        onCommentsChanged?.(refetched);
+        if (isPostTarget && postId != null) {
+          invalidatePostCommentsCache(postId);
+          const refetched = await fetchPostComments(postId, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+        } else if (dateIso) {
+          invalidateCommentsCache(dateIso);
+          const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+        }
         return;
       }
-      invalidateCommentsCache(dateIso);
+      if (isPostTarget && postId != null) {
+        invalidatePostCommentsCache(postId);
+        const refetched = await fetchPostComments(postId, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } else if (dateIso) {
+        invalidateCommentsCache(dateIso);
+      }
     } finally {
       inFlightRef.current.delete(lockKey);
     }
@@ -614,42 +667,40 @@ export function CommentThread({
                         )}
                       </button>
                     ) : null}
-                    {isPostTarget ? null : (
-                      <button
-                        type="button"
-                        className={
-                          loggedIn && comment.liked === true
-                            ? "df-comment-action df-comment-action-liked"
-                            : "df-comment-action"
+                    <button
+                      type="button"
+                      className={
+                        loggedIn && comment.liked === true
+                          ? "df-comment-action df-comment-action-liked"
+                          : "df-comment-action"
+                      }
+                      disabled={loggedIn && isLocked(`like:${comment.id}`)}
+                      aria-label={
+                        loggedIn && isLocked(`like:${comment.id}`)
+                          ? undefined
+                          : likeLabel(comment)
+                      }
+                      onClick={() => {
+                        if (!loggedIn) {
+                          promptSignIn();
+                          return;
                         }
-                        disabled={loggedIn && isLocked(`like:${comment.id}`)}
-                        aria-label={
-                          loggedIn && isLocked(`like:${comment.id}`)
-                            ? undefined
-                            : likeLabel(comment)
-                        }
-                        onClick={() => {
-                          if (!loggedIn) {
-                            promptSignIn();
-                            return;
-                          }
-                          void toggleLike(comment);
-                        }}
-                      >
-                        {loggedIn && isLocked(`like:${comment.id}`) ? (
-                          `Try again in ${retryLeft(`like:${comment.id}`)}s`
-                        ) : (
-                          <>
-                            <Heart
-                              className="df-comment-action-icon"
-                              aria-hidden="true"
-                              fill={loggedIn && comment.liked === true ? "currentColor" : "none"}
-                            />
-                            <span aria-hidden="true">{likeCount(comment)}</span>
-                          </>
-                        )}
-                      </button>
-                    )}
+                        void toggleLike(comment);
+                      }}
+                    >
+                      {loggedIn && isLocked(`like:${comment.id}`) ? (
+                        `Try again in ${retryLeft(`like:${comment.id}`)}s`
+                      ) : (
+                        <>
+                          <Heart
+                            className="df-comment-action-icon"
+                            aria-hidden="true"
+                            fill={loggedIn && comment.liked === true ? "currentColor" : "none"}
+                          />
+                          <span aria-hidden="true">{likeCount(comment)}</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                   {loggedIn && canModerate(comment) ? (
                     <div className="df-comment-actions-mod">

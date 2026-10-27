@@ -235,6 +235,45 @@ function fetchCallInit(call: unknown[]): RequestInit | undefined {
   return call[1] as RequestInit | undefined;
 }
 
+function isPostDetailFetchUrl(url: string): boolean {
+  return /^\/api\/posts\/\d+$/.test(url);
+}
+
+function postDetailFetchCalls(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.filter((call) => isPostDetailFetchUrl(fetchCallUrl(call)));
+}
+
+function postCommentsSidecarResponse(url: string): Response | null {
+  if (url === "/api/auth/me") {
+    return new Response(JSON.stringify({ signed_in: false }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (/^\/api\/posts\/\d+\/comments$/.test(url)) {
+    return new Response(JSON.stringify({ comments: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return null;
+}
+
+function stubPostDetailFetch(post: ReturnType<typeof detailPost>) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    const sidecar = postCommentsSidecarResponse(url);
+    if (sidecar) return sidecar;
+    if (isPostDetailFetchUrl(url)) {
+      return new Response(JSON.stringify({ post }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+}
+
 beforeEach(() => {
   stubBrowserApis();
   openAddressBar("/");
@@ -311,18 +350,13 @@ describe("Posts page mount", () => {
       image: "https://brokenscience.org/wp-content/uploads/a.jpg",
       content: "<p>Detail body</p>",
     });
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ post }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    const fetchMock = stubPostDetailFetch(post);
     vi.stubGlobal("fetch", fetchMock);
     openAddressBar("/posts/1");
     const { unmount } = render(<MountedApp />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchCallUrl(fetchMock.mock.calls[0]!)).toBe("/api/posts/1");
+    await waitFor(() => expect(postDetailFetchCalls(fetchMock)).toHaveLength(1));
+    expect(fetchCallUrl(postDetailFetchCalls(fetchMock)[0]!)).toBe("/api/posts/1");
     expect(await screen.findByRole("heading", { name: "Detail Title One" })).toBeTruthy();
     expect(screen.getByLabelText("About the author").textContent).toContain("Dr. A");
     expect(screen.getByText("Detail body")).toBeTruthy();
@@ -357,15 +391,7 @@ describe("Posts page mount", () => {
       author: null,
       content: "<p>Body</p>",
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        new Response(JSON.stringify({ post }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
+    vi.stubGlobal("fetch", stubPostDetailFetch(post));
     openAddressBar("/posts/2");
     render(<MountedApp />);
     expect(await screen.findByRole("heading", { name: "No Author Post" })).toBeTruthy();
@@ -648,39 +674,43 @@ describe("Posts page mount", () => {
   });
 
   it("PC10: detail 503 → error + retry, no content", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ error: "unavailable" }), {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const sidecar = postCommentsSidecarResponse(url);
+      if (sidecar) return sidecar;
+      return new Response(JSON.stringify({ error: "unavailable" }), {
         status: 503,
         headers: { "Content-Type": "application/json" },
-      }),
-    );
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
     openAddressBar("/posts/5");
     render(<MountedApp />);
     expect(await screen.findByText("Posts couldn't be loaded")).toBeTruthy();
     expect(screen.queryByText("Detail body")).toBeNull();
 
-    fetchMock.mockImplementation(async () =>
-      new Response(JSON.stringify({ post: detailPost({ id: 5, title: "Retry Detail" }) }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const sidecar = postCommentsSidecarResponse(url);
+      if (sidecar) return sidecar;
+      if (isPostDetailFetchUrl(url)) {
+        return new Response(JSON.stringify({ post: detailPost({ id: 5, title: "Retry Detail" }) }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("heading", { name: "Retry Detail" })).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(postDetailFetchCalls(fetchMock)).toHaveLength(2);
   });
 
   it("PC11: permalink link only when non-null", async () => {
-    const withLink = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          post: detailPost({
-            permalink: "https://brokenscience.org/with-link/",
-          }),
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+    const withLink = stubPostDetailFetch(
+      detailPost({
+        permalink: "https://brokenscience.org/with-link/",
+      }),
     );
     vi.stubGlobal("fetch", withLink);
     openAddressBar("/posts/7");
@@ -691,12 +721,7 @@ describe("Posts page mount", () => {
     expect(link.getAttribute("target")).toBe("_blank");
     r1.unmount();
 
-    const noLink = vi.fn(async () =>
-      new Response(JSON.stringify({ post: detailPost({ permalink: null }) }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    const noLink = stubPostDetailFetch(detailPost({ permalink: null }));
     vi.stubGlobal("fetch", noLink);
     openAddressBar("/posts/8");
     render(<MountedApp />);
@@ -705,15 +730,10 @@ describe("Posts page mount", () => {
   });
 
   it("PC14: all fetch URLs start with /api/posts; permalink click does not fetch", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          post: detailPost({
-            permalink: "https://brokenscience.org/out/",
-          }),
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+    const fetchMock = stubPostDetailFetch(
+      detailPost({
+        permalink: "https://brokenscience.org/out/",
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
     openAddressBar("/posts/9");
@@ -753,18 +773,13 @@ describe("Posts page mount", () => {
   it("PC15: detail with permalink sets index + canonical", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            post: detailPost({
-              title: "Canon Post",
-              excerpt: "Short excerpt for head.",
-              permalink: "https://brokenscience.org/canon/",
-              image: null,
-            }),
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
+      stubPostDetailFetch(
+        detailPost({
+          title: "Canon Post",
+          excerpt: "Short excerpt for head.",
+          permalink: "https://brokenscience.org/canon/",
+          image: null,
+        }),
       ),
     );
     openAddressBar("/posts/11");
@@ -888,6 +903,8 @@ describe("Posts page mount", () => {
     const pending: Pending[] = [];
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      const sidecar = postCommentsSidecarResponse(url);
+      if (sidecar) return Promise.resolve(sidecar);
       return new Promise<Response>((resolve) => {
         pending.push({
           url,
@@ -988,18 +1005,18 @@ describe("Posts page mount", () => {
     fetchMock.mockClear();
     openAddressBar("/posts/5");
     const d = render(<MountedApp />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchCallUrl(fetchMock.mock.calls[0]!)).toBe("/api/posts/5");
-    const d1 = pending[0]!;
+    await waitFor(() => expect(postDetailFetchCalls(fetchMock)).toHaveLength(1));
+    expect(fetchCallUrl(postDetailFetchCalls(fetchMock)[0]!)).toBe("/api/posts/5");
+    const d1 = pending.find((p) => p.url === "/api/posts/5")!;
 
     openAddressBar("/posts/6");
     d.rerender(<MountedApp />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchCallUrl(fetchMock.mock.calls[1]!)).toBe("/api/posts/6");
+    await waitFor(() => expect(postDetailFetchCalls(fetchMock)).toHaveLength(2));
+    expect(fetchCallUrl(postDetailFetchCalls(fetchMock)[1]!)).toBe("/api/posts/6");
     expect(d1.signal.aborted).toBe(true);
 
     await act(async () => {
-      pending[1]!.resolve(
+      pending.find((p) => p.url === "/api/posts/6")!.resolve(
         new Response(
           JSON.stringify({ post: detailPost({ id: 6, title: "Post Six" }) }),
           { status: 200, headers: { "Content-Type": "application/json" } },
