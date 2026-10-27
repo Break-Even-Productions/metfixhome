@@ -19,11 +19,20 @@ import {
 import { JoinModal } from "./JoinModal";
 import { ensureRecaptchaScript } from "./recaptcha";
 import { PILLARS, pillarLabel, type Pillar } from "./model";
+import {
+  fetchPostComments,
+  invalidatePostCommentsCache,
+} from "./postComments";
 
 /** Indirect binding so tests can stub `globalThis.fetch` (P7.2). */
 const commentsHttp: typeof fetch = (...args) => globalThis.fetch(...args);
 
+export type CommentThreadTarget =
+  | { kind: "daily-fix" }
+  | { kind: "post"; postId: number; returnPath: string };
+
 type CommentThreadProps = {
+  target?: CommentThreadTarget;
   load: CommentsLoadState;
   /** Active day tab; seeds the comment-type control. */
   pillar: Pillar;
@@ -63,28 +72,42 @@ function likeUrl(id: number, dateIso: string): string {
   return `/api/daily-fix/comments/${id}/like?date=${encodeURIComponent(dateIso)}`;
 }
 
+function postCommentUrl(postId: number, commentId: number): string {
+  return `/api/posts/${postId}/comments/${commentId}`;
+}
+
 function patchComments(
   load: CommentsLoadState,
   id: number,
   pillar: Pillar,
   patch: Partial<DailyFixComment> | null,
+  postMode = false,
 ): CommentsLoadState {
   if (load.status !== "loaded") return load;
   if (patch === null) {
     return {
       status: "loaded",
-      comments: load.comments.filter((c) => c.id !== id || c.pillar !== pillar),
+      comments: load.comments.filter((c) =>
+        postMode ? c.id !== id : c.id !== id || c.pillar !== pillar,
+      ),
     };
   }
   return {
     status: "loaded",
     comments: load.comments.map((c) =>
-      c.id === id && c.pillar === pillar ? { ...c, ...patch } : c,
+      postMode
+        ? c.id === id
+          ? { ...c, ...patch }
+          : c
+        : c.id === id && c.pillar === pillar
+          ? { ...c, ...patch }
+          : c,
     ),
   };
 }
 
 export function CommentThread({
+  target,
   load,
   pillar,
   dateIso = null,
@@ -93,6 +116,9 @@ export function CommentThread({
   onCommentsChanged,
   showHeader = true,
 }: CommentThreadProps) {
+  const isPostTarget = target?.kind === "post";
+  const postId = isPostTarget ? target.postId : null;
+  const loginReturnPath = isPostTarget ? target.returnPath : "/the-daily-fix";
   const authHost = isAuthUiHost();
   const loggedIn = Boolean(viewerDisplayName?.trim());
   const [body, setBody] = useState("");
@@ -145,7 +171,12 @@ export function CommentThread({
   const postLocked = isLocked("post");
 
   async function postComment(parent?: DailyFixComment | null) {
-    if (!dateIso || posting) return;
+    if (posting) return;
+    if (isPostTarget) {
+      if (postId == null) return;
+    } else if (!dateIso) {
+      return;
+    }
     const isReply = parent != null;
     const lockKey = isReply ? `reply:${parent.id}` : "post";
     if (isLocked(lockKey)) return;
@@ -160,13 +191,18 @@ export function CommentThread({
         setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
         return;
       }
-      const payload: Record<string, unknown> = {
-        date: dateIso,
-        type: commentType,
-        content,
-      };
+      const payload: Record<string, unknown> = isPostTarget
+        ? { content }
+        : {
+            date: dateIso,
+            type: commentType,
+            content,
+          };
       if (isReply) payload.parent_comment_id = parent.id;
-      const res = await commentsHttp("/api/daily-fix/comments", {
+      const postUrl = isPostTarget
+        ? `/api/posts/${postId}/comments`
+        : "/api/daily-fix/comments";
+      const res = await commentsHttp(postUrl, {
         method: "POST",
         credentials: "same-origin",
         headers: {
@@ -200,7 +236,11 @@ export function CommentThread({
           comment !== null &&
           typeof (comment as { id?: unknown }).id === "number"
         ) {
-          invalidateCommentsCache(dateIso);
+          if (isPostTarget && postId != null) {
+            invalidatePostCommentsCache(postId);
+          } else if (dateIso) {
+            invalidateCommentsCache(dateIso);
+          }
           const c = comment as {
             id: number;
             content?: string;
@@ -210,7 +250,7 @@ export function CommentThread({
           };
           const mapped: DailyFixComment = {
             id: c.id,
-            pillar: commentType,
+            pillar: isPostTarget ? "body" : commentType,
             author:
               typeof c.user?.display_name === "string" && c.user.display_name.trim()
                 ? c.user.display_name.trim()
@@ -229,17 +269,29 @@ export function CommentThread({
         }
       }
       // CT-P1: one refetch, no auto-retry of POST.
-      invalidateCommentsCache(dateIso);
-      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
-      onCommentsChanged?.(refetched);
+      if (isPostTarget && postId != null) {
+        invalidatePostCommentsCache(postId);
+        const refetched = await fetchPostComments(postId, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } else if (dateIso) {
+        invalidateCommentsCache(dateIso);
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      }
       setStatusMsg("We couldn't confirm your comment. Check the thread before posting again.");
       setBody(previous);
     } catch {
       // CT-P1 (c)(d): network/sync throw → one bypass GET, no second POST.
-      invalidateCommentsCache(dateIso);
       try {
-        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
-        onCommentsChanged?.(refetched);
+        if (isPostTarget && postId != null) {
+          invalidatePostCommentsCache(postId);
+          const refetched = await fetchPostComments(postId, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+        } else if (dateIso) {
+          invalidateCommentsCache(dateIso);
+          const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+        }
       } catch {
         /* message still shown */
       }
@@ -251,7 +303,12 @@ export function CommentThread({
   }
 
   async function editComment(comment: DailyFixComment) {
-    if (!dateIso || load.status !== "loaded") return;
+    if (load.status !== "loaded") return;
+    if (isPostTarget) {
+      if (postId == null) return;
+    } else if (!dateIso) {
+      return;
+    }
     const lockKey = `edit:${comment.id}`;
     if (isLocked(lockKey) || inFlightRef.current.has(lockKey)) return;
     const next = window.prompt("Edit comment", comment.content);
@@ -262,7 +319,10 @@ export function CommentThread({
     try {
       const csrf = await fetchCsrf();
       if (!csrf) return;
-      const res = await commentsHttp(commentUrl(comment.id, dateIso), {
+      const editUrl = isPostTarget
+        ? postCommentUrl(postId!, comment.id)
+        : commentUrl(comment.id, dateIso!);
+      const res = await commentsHttp(editUrl, {
         method: "PATCH",
         credentials: "same-origin",
         headers: {
@@ -277,22 +337,43 @@ export function CommentThread({
         return;
       }
       if (res.ok) {
-        invalidateCommentsCache(dateIso);
+        if (isPostTarget && postId != null) {
+          invalidatePostCommentsCache(postId);
+        } else if (dateIso) {
+          invalidateCommentsCache(dateIso);
+        }
         onCommentsChanged?.(
-          patchComments(load, comment.id, comment.pillar, { content: trimmed, edited: 1 }),
+          patchComments(
+            load,
+            comment.id,
+            comment.pillar,
+            { content: trimmed, edited: 1 },
+            isPostTarget,
+          ),
         );
         return;
       }
-      invalidateCommentsCache(dateIso);
-      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
-      onCommentsChanged?.(refetched);
+      if (isPostTarget && postId != null) {
+        invalidatePostCommentsCache(postId);
+        const refetched = await fetchPostComments(postId, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } else if (dateIso) {
+        invalidateCommentsCache(dateIso);
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      }
     } finally {
       inFlightRef.current.delete(lockKey);
     }
   }
 
   async function deleteComment(comment: DailyFixComment) {
-    if (!dateIso || load.status !== "loaded") return;
+    if (load.status !== "loaded") return;
+    if (isPostTarget) {
+      if (postId == null) return;
+    } else if (!dateIso) {
+      return;
+    }
     const lockKey = `delete:${comment.id}`;
     if (isLocked(lockKey) || inFlightRef.current.has(lockKey)) return;
     if (!window.confirm("Delete this comment?")) return;
@@ -300,7 +381,10 @@ export function CommentThread({
     try {
       const csrf = await fetchCsrf();
       if (!csrf) return;
-      const res = await commentsHttp(commentUrl(comment.id, dateIso), {
+      const deleteUrl = isPostTarget
+        ? postCommentUrl(postId!, comment.id)
+        : commentUrl(comment.id, dateIso!);
+      const res = await commentsHttp(deleteUrl, {
         method: "DELETE",
         credentials: "same-origin",
         headers: {
@@ -313,19 +397,35 @@ export function CommentThread({
         return;
       }
       if (res.status === 204) {
-        // CW16.3: one cache-bypassing fresh list GET; no client cache purge (CW16.2b).
-        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
-        onCommentsChanged?.(refetched);
+        if (isPostTarget && postId != null) {
+          const refetched = await fetchPostComments(postId, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+        } else if (dateIso) {
+          const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+          onCommentsChanged?.(refetched);
+        }
         return;
       }
       if (res.status === 200) {
-        invalidateCommentsCache(dateIso);
-        onCommentsChanged?.(patchComments(load, comment.id, comment.pillar, null));
+        if (isPostTarget && postId != null) {
+          invalidatePostCommentsCache(postId);
+        } else if (dateIso) {
+          invalidateCommentsCache(dateIso);
+        }
+        onCommentsChanged?.(
+          patchComments(load, comment.id, comment.pillar, null, isPostTarget),
+        );
         return;
       }
-      invalidateCommentsCache(dateIso);
-      const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
-      onCommentsChanged?.(refetched);
+      if (isPostTarget && postId != null) {
+        invalidatePostCommentsCache(postId);
+        const refetched = await fetchPostComments(postId, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      } else if (dateIso) {
+        invalidateCommentsCache(dateIso);
+        const refetched = await fetchDailyFixComments(dateIso, undefined, { bypassCache: true });
+        onCommentsChanged?.(refetched);
+      }
     } finally {
       inFlightRef.current.delete(lockKey);
     }
@@ -422,7 +522,7 @@ export function CommentThread({
   /** Same gate as Post comment: join modal on AUTH-HOST, login URL elsewhere. */
   function promptSignIn() {
     if (!authHost) {
-      window.location.assign(getMetfixLoginUrl("/the-daily-fix"));
+      window.location.assign(getMetfixLoginUrl(loginReturnPath));
       return;
     }
     setJoinOpen(true);
@@ -476,10 +576,15 @@ export function CommentThread({
       {load.status === "loaded" && load.comments.length > 0 ? (
         <ul className="df-comment-list">
           {load.comments.map((comment) => (
-            <li key={`${comment.pillar}-${comment.id}`} className="df-comment">
+            <li
+              key={isPostTarget ? `post-${comment.id}` : `${comment.pillar}-${comment.id}`}
+              className="df-comment"
+            >
               <div className="df-comment-meta">
                 <span className="df-comment-author">{comment.author}</span>
-                <span className="df-comment-pillar">{pillarLabel(comment.pillar)}</span>
+                {isPostTarget ? null : (
+                  <span className="df-comment-pillar">{pillarLabel(comment.pillar)}</span>
+                )}
               </div>
               <p className="df-comment-body">{comment.content}</p>
               {comment.deleted === 0 ? (
@@ -509,40 +614,42 @@ export function CommentThread({
                         )}
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      className={
-                        loggedIn && comment.liked === true
-                          ? "df-comment-action df-comment-action-liked"
-                          : "df-comment-action"
-                      }
-                      disabled={loggedIn && isLocked(`like:${comment.id}`)}
-                      aria-label={
-                        loggedIn && isLocked(`like:${comment.id}`)
-                          ? undefined
-                          : likeLabel(comment)
-                      }
-                      onClick={() => {
-                        if (!loggedIn) {
-                          promptSignIn();
-                          return;
+                    {isPostTarget ? null : (
+                      <button
+                        type="button"
+                        className={
+                          loggedIn && comment.liked === true
+                            ? "df-comment-action df-comment-action-liked"
+                            : "df-comment-action"
                         }
-                        void toggleLike(comment);
-                      }}
-                    >
-                      {loggedIn && isLocked(`like:${comment.id}`) ? (
-                        `Try again in ${retryLeft(`like:${comment.id}`)}s`
-                      ) : (
-                        <>
-                          <Heart
-                            className="df-comment-action-icon"
-                            aria-hidden="true"
-                            fill={loggedIn && comment.liked === true ? "currentColor" : "none"}
-                          />
-                          <span aria-hidden="true">{likeCount(comment)}</span>
-                        </>
-                      )}
-                    </button>
+                        disabled={loggedIn && isLocked(`like:${comment.id}`)}
+                        aria-label={
+                          loggedIn && isLocked(`like:${comment.id}`)
+                            ? undefined
+                            : likeLabel(comment)
+                        }
+                        onClick={() => {
+                          if (!loggedIn) {
+                            promptSignIn();
+                            return;
+                          }
+                          void toggleLike(comment);
+                        }}
+                      >
+                        {loggedIn && isLocked(`like:${comment.id}`) ? (
+                          `Try again in ${retryLeft(`like:${comment.id}`)}s`
+                        ) : (
+                          <>
+                            <Heart
+                              className="df-comment-action-icon"
+                              aria-hidden="true"
+                              fill={loggedIn && comment.liked === true ? "currentColor" : "none"}
+                            />
+                            <span aria-hidden="true">{likeCount(comment)}</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                   {loggedIn && canModerate(comment) ? (
                     <div className="df-comment-actions-mod">
@@ -594,7 +701,7 @@ export function CommentThread({
       {!authHost ? (
         <a
           className="df-btn df-btn-accent df-signin-to-comment"
-          href={getMetfixLoginUrl("/the-daily-fix")}
+          href={getMetfixLoginUrl(loginReturnPath)}
           role="status"
         >
           Sign In To Comment
@@ -613,28 +720,30 @@ export function CommentThread({
             }}
           >
             <div className="df-composer-meta">
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger className="df-comment-type" aria-label="Comment type">
-                  {pillarLabel(commentType)}
-                  <ChevronDown className="df-comment-type-caret" aria-hidden="true" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  sideOffset={8}
-                  className="df-share-menu df-comment-type-menu"
-                >
-                  <DropdownMenuRadioGroup
-                    value={commentType}
-                    onValueChange={(value) => setCommentType(value as Pillar)}
+              {isPostTarget ? null : (
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger className="df-comment-type" aria-label="Comment type">
+                    {pillarLabel(commentType)}
+                    <ChevronDown className="df-comment-type-caret" aria-hidden="true" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    sideOffset={8}
+                    className="df-share-menu df-comment-type-menu"
                   >
-                    {PILLARS.map((item) => (
-                      <DropdownMenuRadioItem key={item} value={item}>
-                        {pillarLabel(item)}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuRadioGroup
+                      value={commentType}
+                      onValueChange={(value) => setCommentType(value as Pillar)}
+                    >
+                      {PILLARS.map((item) => (
+                        <DropdownMenuRadioItem key={item} value={item}>
+                          {pillarLabel(item)}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {replyTo ? (
                 <p className="df-muted" data-testid="df-replying-to">
                   Replying to {replyTo.author}{" "}
@@ -654,7 +763,11 @@ export function CommentThread({
                 name="comment"
                 rows={3}
                 placeholder={
-                  replyTo ? "Write a reply" : "Share a thought on today’s fix"
+                  replyTo
+                    ? "Write a reply"
+                    : isPostTarget
+                      ? "Share a thought"
+                      : "Share a thought on today’s fix"
                 }
                 value={body}
                 onChange={(event) => setBody(event.target.value)}

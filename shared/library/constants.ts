@@ -52,6 +52,9 @@ export const RESOURCE_TYPE_RE = new RegExp(
 export const RESOURCE_ID_RE = /^[1-9][0-9]{0,9}$/;
 export const RESOURCE_ID_MAX = 2_147_483_647;
 
+/** Taxonomy / term slug (TX2 / SEC13). */
+export const SLUG_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+
 /** Browse chips (Emily IA → BSI content_type slugs). */
 export const CONTENT_TYPE_CHIPS: ReadonlyArray<{ slug: string; label: string }> = [
   { slug: "articles", label: "Articles" },

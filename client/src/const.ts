@@ -23,6 +23,7 @@ const KNOWN_ROUTES = new Set([
   "the-daily-fix",
   "posts",
   "library",
+  "topic",
   "login",
   "404",
 ]);

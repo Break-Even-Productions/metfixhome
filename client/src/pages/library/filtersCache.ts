@@ -7,15 +7,26 @@ import { fetchLibraryFilters } from "./api";
  * tests use `vi.resetModules()` between cases.
  */
 let filtersPromise: Promise<LibraryFiltersBody> | null = null;
+let resolvedFilters: LibraryFiltersBody | null = null;
+
+/** Synchronous peek after `getLibraryFilters` has resolved (CQ-5.2). No fetch. */
+export function peekLibraryFilters(): LibraryFiltersBody | null {
+  return resolvedFilters;
+}
 
 export function getLibraryFilters(
   signal?: AbortSignal,
 ): Promise<LibraryFiltersBody> {
   if (!filtersPromise) {
-    filtersPromise = fetchLibraryFilters().catch((err) => {
-      filtersPromise = null;
-      throw err;
-    });
+    filtersPromise = fetchLibraryFilters()
+      .then((body) => {
+        resolvedFilters = body;
+        return body;
+      })
+      .catch((err) => {
+        filtersPromise = null;
+        throw err;
+      });
   }
   if (!signal) return filtersPromise;
   return new Promise((resolve, reject) => {

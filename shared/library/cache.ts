@@ -1,6 +1,8 @@
 /** Cache API keys — anonymous public; gated responses must be user-salted. */
+/** v2: ResourceVideo shape + filter description/image (CQ-4.2 / TX1). */
 
 const ANON = "anon";
+const VER = "v2";
 
 export function librarySearchCacheKey(
   queryString: string,
@@ -8,7 +10,7 @@ export function librarySearchCacheKey(
 ): Request {
   const salt = userSalt && userSalt.length > 0 ? userSalt : ANON;
   const q = queryString.startsWith("?") ? queryString : `?${queryString}`;
-  return new Request(`https://library-cache.metfix.internal/search/${salt}${q}`, {
+  return new Request(`https://library-cache.metfix.internal/${VER}/search/${salt}${q}`, {
     method: "GET",
   });
 }
@@ -19,14 +21,14 @@ export function libraryPopularCacheKey(
 ): Request {
   const salt = userSalt && userSalt.length > 0 ? userSalt : ANON;
   const q = queryString.startsWith("?") ? queryString : `?${queryString}`;
-  return new Request(`https://library-cache.metfix.internal/popular/${salt}${q}`, {
+  return new Request(`https://library-cache.metfix.internal/${VER}/popular/${salt}${q}`, {
     method: "GET",
   });
 }
 
 export function libraryFiltersCacheKey(userSalt: string | null): Request {
   const salt = userSalt && userSalt.length > 0 ? userSalt : ANON;
-  return new Request(`https://library-cache.metfix.internal/filters/${salt}`, {
+  return new Request(`https://library-cache.metfix.internal/${VER}/filters/${salt}`, {
     method: "GET",
   });
 }
@@ -38,7 +40,7 @@ export function libraryDetailCacheKey(
 ): Request {
   const salt = userSalt && userSalt.length > 0 ? userSalt : ANON;
   return new Request(
-    `https://library-cache.metfix.internal/item/${salt}/${type}/${id}`,
+    `https://library-cache.metfix.internal/${VER}/item/${salt}/${type}/${id}`,
     { method: "GET" },
   );
 }

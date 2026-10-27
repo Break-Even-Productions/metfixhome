@@ -19,6 +19,7 @@ import LibraryPage from "./pages/library/LibraryPage";
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
 const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
+const LibraryTaxonomyPage = lazy(() => import("./pages/library/LibraryTaxonomyPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
 import { useLocation } from "wouter";
 
@@ -47,6 +48,34 @@ function AppRoutes() {
         {() => (
           <Suspense fallback={null}>
             <SearchPage />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/topic/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="topic" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/topic/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="topic" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/content-type/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="content-type" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/category/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="category" />
           </Suspense>
         )}
       </Route>

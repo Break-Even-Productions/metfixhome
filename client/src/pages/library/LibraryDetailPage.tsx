@@ -8,7 +8,8 @@ import {
   RESOURCE_ID_RE,
   type LibraryDetail,
 } from "@shared/library";
-import { AuthorAside } from "@/components/AuthorAside";
+import { DetailReader } from "@/components/post-detail/DetailReader";
+import { toDetailReaderModel } from "@/components/post-detail/types";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import NotFound from "@/pages/NotFound";
@@ -28,16 +29,6 @@ function parseId(raw: string | undefined): number | null {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > RESOURCE_ID_MAX) return null;
   return n;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 export default function LibraryDetailPage({
@@ -88,7 +79,6 @@ export default function LibraryDetailPage({
       return;
     }
     if (typeRaw === "daily_fix") {
-      // Prefer Daily Fix surface
       window.location.replace("/the-daily-fix");
       return;
     }
@@ -138,68 +128,61 @@ export default function LibraryDetailPage({
 
   const r = state.resource;
   const isPreview = r.access.access === "preview" && !r.locked;
+  const model = toDetailReaderModel(r);
+  const showComments = r.type === "post" || r.type === "page";
 
   return (
     <div className="library-page">
-      <article
-        className="library-reader library-reader--wide post-reader"
-        data-testid="post-reader"
-      >
-        <Link href="/library" className="library-reader-back">
-          ← Resource Library
-        </Link>
-        <div className="post-reader-grid">
-          <div className="post-reader-main">
-            {r.access.is_exclusive || r.access.has_content_access ? (
+      <div className="library-reader library-reader--wide">
+        <DetailReader
+          model={model}
+          titleClassName="library-reader-title"
+          showComments={showComments}
+          beforeTitle={
+            r.access.is_exclusive || r.access.has_content_access ? (
               <p className="library-card-pro">Professional</p>
-            ) : null}
-            <h1 className="library-reader-title">{r.title}</h1>
-            <div className="library-reader-meta">
-              <time dateTime={r.date}>{formatDate(r.date)}</time>
+            ) : null
+          }
+        >
+          {r.locked ? (
+            <div className="library-stub">
+              <strong>Members-only</strong>
+              Sign in with an entitled MetFix account to read this resource on metfix.org.
+              <div className="library-modal-actions" style={{ marginTop: "1rem" }}>
+                <a className="library-btn library-btn-gold" href={joinCtaHref()}>
+                  Log in / Join
+                </a>
+                <button
+                  type="button"
+                  className="library-btn library-btn-ghost"
+                  onClick={() => setShowJoin(true)}
+                >
+                  Why is this locked?
+                </button>
+              </div>
             </div>
-
-            {r.locked ? (
-              <div className="library-stub">
-                <strong>Members-only</strong>
-                Sign in with an entitled MetFix account to read this resource on
-                metfix.org.
-                <div className="library-modal-actions" style={{ marginTop: "1rem" }}>
-                  <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                    Log in / Join
-                  </a>
-                  <button
-                    type="button"
-                    className="library-btn library-btn-ghost"
-                    onClick={() => setShowJoin(true)}
-                  >
-                    Why is this locked?
-                  </button>
-                </div>
-              </div>
-            ) : isPreview ? (
-              <div className="library-preview-wrap">
-                <div className="library-reader-body">
-                  <SafeHtml html={r.content} />
-                </div>
-                <div className="library-preview-fade">
-                  <div className="library-preview-fade-inner">
-                    <h2>Continue with MetFix</h2>
-                    <p>You’re seeing a preview. Join or sign in for the full piece.</p>
-                    <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                      Log in / Join
-                    </a>
-                  </div>
-                </div>
-              </div>
-            ) : (
+          ) : isPreview ? (
+            <div className="library-preview-wrap">
               <div className="library-reader-body">
                 <SafeHtml html={r.content} />
               </div>
-            )}
-          </div>
-          {r.author ? <AuthorAside name={r.author} /> : null}
-        </div>
-      </article>
+              <div className="library-preview-fade">
+                <div className="library-preview-fade-inner">
+                  <h2>Continue with MetFix</h2>
+                  <p>You’re seeing a preview. Join or sign in for the full piece.</p>
+                  <a className="library-btn library-btn-gold" href={joinCtaHref()}>
+                    Log in / Join
+                  </a>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="library-reader-body">
+              <SafeHtml html={r.content} />
+            </div>
+          )}
+        </DetailReader>
+      </div>
 
       <JoinModal open={showJoin} title={r.title} onClose={() => setShowJoin(false)} />
     </div>

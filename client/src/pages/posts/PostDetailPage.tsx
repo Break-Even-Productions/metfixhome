@@ -11,8 +11,9 @@ import {
   POST_ID_RE,
   type DetailPost,
 } from "@shared/posts";
-import { AuthorAside } from "@/components/AuthorAside";
 import { BackToTop } from "@/components/BackToTop";
+import { DetailReader } from "@/components/post-detail/DetailReader";
+import { toDetailReaderModel } from "@/components/post-detail/types";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import NotFound from "@/pages/NotFound";
@@ -30,16 +31,6 @@ function parsePostId(raw: string | undefined): number | null {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > POST_ID_MAX) return null;
   return n;
-}
-
-function formatPostDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 export default function PostDetailPage({
@@ -130,42 +121,22 @@ export default function PostDetailPage({
 }
 
 function DetailBody({ post }: { post: DetailPost }) {
+  const model = toDetailReaderModel(post);
   return (
     <>
-      <article className="post-reader" data-testid="post-reader">
-        <div className="post-reader-grid">
-          <div className="post-reader-main">
-            <header className="posts-detail-header">
-              <h1 className="posts-title">{post.title}</h1>
-              <div className="posts-detail-meta">
-                <time dateTime={post.date}>{formatPostDate(post.date)}</time>
-                {post.category ? <span>{post.category.name}</span> : null}
-              </div>
-            </header>
-            {post.image ? (
-              <img
-                className="posts-detail-image"
-                src={post.image}
-                alt=""
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-            ) : null}
-            <SafeHtml html={post.content} className="posts-detail-content" as="div" />
-            {post.permalink ? (
-              <a
-                className="posts-external"
-                href={post.permalink}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                Read on Broken Science
-              </a>
-            ) : null}
-          </div>
-          {post.author ? <AuthorAside name={post.author} /> : null}
-        </div>
-      </article>
+      <DetailReader model={model}>
+        <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+        {post.permalink ? (
+          <a
+            className="posts-external"
+            href={post.permalink}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Read on Broken Science
+          </a>
+        ) : null}
+      </DetailReader>
       <BackToTop mode="document" />
     </>
   );

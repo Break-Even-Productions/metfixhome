@@ -10,6 +10,7 @@ import {
 import {
   isLockedCard,
   isProfessionalTagged,
+  parseFromParam,
   type LibraryResource,
 } from "@shared/library";
 
@@ -118,17 +119,28 @@ function typeVisual(r: LibraryResource): TypeVisual {
 type ResourceCardProps = {
   resource: LibraryResource;
   onOpenLocked: (r: LibraryResource) => void;
+  /** Breadcrumb context `?from=` (PL9 / TX7). */
+  from?: string;
 };
 
-export function ResourceCard({ resource, onOpenLocked }: ResourceCardProps) {
+function hrefWithFrom(href: string, from?: string): string {
+  if (!from) return href;
+  const valid = parseFromParam(from) ? from : null;
+  if (!valid) return href;
+  const sep = href.includes("?") ? "&" : "?";
+  return `${href}${sep}from=${encodeURIComponent(valid)}`;
+}
+
+export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps) {
   const locked = isLockedCard(resource);
   const exclusive = isProfessionalTagged(resource);
   const showLock = locked || exclusive;
-  const href = resource.daily_fix_date
+  const baseHref = resource.daily_fix_date
     ? `/the-daily-fix/${resource.daily_fix_date.replace(/-/g, "").slice(2)}`
     : resource.type === "daily_fix"
       ? "/the-daily-fix"
       : `/library/${resource.type}/${resource.id}`;
+  const href = hrefWithFrom(baseHref, from);
 
   const visual = typeVisual(resource);
   const TypeIcon = visual.Icon;

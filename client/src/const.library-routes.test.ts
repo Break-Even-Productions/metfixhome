@@ -17,4 +17,9 @@ describe("getRouterBase library paths (SS21)", () => {
     const knownBlock = src.match(/KNOWN_ROUTES = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
     expect([...knownBlock.matchAll(/"library"/g)]).toHaveLength(1);
   });
+
+  it('KNOWN_ROUTES includes "topic" (SS21)', () => {
+    const src = readFileSync(fileURLToPath(new URL("./const.ts", import.meta.url)), "utf8");
+    expect(src).toMatch(/"topic"/);
+  });
 });

@@ -5,10 +5,12 @@ import {
   EXCERPT_MAX,
   IMAGE_HOST,
   RESOURCE_TYPES,
+  SLUG_RE,
   TITLE_MAX,
   type ResourceType,
 } from "./constants";
 import { mapAccessDisplay } from "./access";
+import { mapResourceVideo } from "./video";
 import type {
   LibraryCompositeThumbnail,
   LibraryDetail,
@@ -17,6 +19,7 @@ import type {
   LibraryFiltersBody,
   LibraryResource,
   LibrarySearchBody,
+  ResourceVideo,
   TermRef,
 } from "./types";
 
@@ -101,7 +104,12 @@ function mapAuthor(raw: unknown): string | null {
   return typeof name === "string" && name.trim() ? name.trim() : null;
 }
 
-function mapTerms(raw: unknown): TermRef[] {
+function cleanText(raw: string): string {
+  return decodeHtmlEntitiesOnce(stripTags(raw)).replace(/\s+/g, " ").trim();
+}
+
+/** Map `[{ id, name, slug }]` — exported for posts DetailPost parity (CQ-4.1). */
+export function mapTerms(raw: unknown): TermRef[] {
   if (!Array.isArray(raw)) return [];
   const out: TermRef[] = [];
   for (const item of raw) {
@@ -110,9 +118,35 @@ function mapTerms(raw: unknown): TermRef[] {
     const id = mapId(rec.id);
     if (id == null) continue;
     if (typeof rec.name !== "string" || typeof rec.slug !== "string") continue;
-    out.push({ id, name: rec.name, slug: rec.slug });
+    if (!SLUG_RE.test(rec.slug)) continue;
+    const name = cleanText(rec.name);
+    if (!name) continue;
+    out.push({ id, name, slug: rec.slug });
   }
   return out;
+}
+
+/** Allowlisted brokenscience.org image (TX1 / SEC13). */
+export function pickImage(raw: unknown): string | null {
+  return mapImageUrl(raw);
+}
+
+/**
+ * Sanitize filter term description: strip HTML, preserve `\n\n` paragraphs (TX1 / CQ-4.3).
+ * Never safe for dangerouslySetInnerHTML — plain text only.
+ */
+export function mapFilterDescription(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const withBreaks = raw
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n\n")
+    .replace(/\r?\n\s*\r?\n/g, "\n\n");
+  const paragraphs = withBreaks
+    .split(/\n\n+/)
+    .map((p) => cleanText(p))
+    .filter(Boolean);
+  if (paragraphs.length === 0) return null;
+  return paragraphs.join("\n\n");
 }
 
 function mapType(raw: unknown): ResourceType | null {
@@ -326,7 +360,7 @@ export function mapPopularResponse(
   };
 }
 
-function mapFilterTerms(raw: unknown): LibraryFilterTerm[] {
+export function mapFilterTerms(raw: unknown): LibraryFilterTerm[] {
   if (!Array.isArray(raw)) return [];
   const out: LibraryFilterTerm[] = [];
   for (const item of raw) {
@@ -335,7 +369,16 @@ function mapFilterTerms(raw: unknown): LibraryFilterTerm[] {
     const id = mapId(rec.id);
     if (id == null) continue;
     if (typeof rec.name !== "string" || typeof rec.slug !== "string") continue;
-    const term: LibraryFilterTerm = { id, name: rec.name, slug: rec.slug };
+    if (!SLUG_RE.test(rec.slug)) continue;
+    const name = cleanText(rec.name);
+    if (!name) continue;
+    const term: LibraryFilterTerm = {
+      id,
+      name,
+      slug: rec.slug,
+      description: mapFilterDescription(rec.description),
+      image: pickImage(rec.image ?? rec.featured_image ?? rec.thumbnail),
+    };
     if (typeof rec.count === "number" && Number.isInteger(rec.count)) {
       term.count = rec.count;
     }
@@ -400,10 +443,8 @@ export function mapDetailFromPostLike(
   const locked = access.access === "none";
   const contentRaw = typeof item.content === "string" ? item.content : "";
   const content = locked ? "" : sanitizeHtml(contentRaw);
-  const video =
-    !locked && typeof item.video === "string" && item.video
-      ? allowlistedHttpsUrl(item.video, { resolveRelative: true })
-      : null;
+  const allowPlayable = !locked || access.show_video_in_preview === true;
+  const video: ResourceVideo | null = mapResourceVideo(item.video, { allowPlayable });
 
   return {
     ...base,

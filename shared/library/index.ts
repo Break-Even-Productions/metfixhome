@@ -21,6 +21,7 @@ export {
   RESOURCE_TYPE_RE,
   RESOURCE_TYPES,
   resourcesBaseFromOrigin,
+  SLUG_RE,
   TITLE_MAX,
   type ResourceType,
 } from "./constants";
@@ -61,6 +62,8 @@ export {
   lockedDetailShell,
   mapDetailBody,
   mapDetailFromPostLike,
+  mapFilterDescription,
+  mapFilterTerms,
   mapFiltersPayload,
   mapImageUrl,
   mapCompositeThumbnail,
@@ -68,11 +71,25 @@ export {
   mapPermalink,
   mapPopularResponse,
   mapSearchResponse,
+  mapTerms,
+  pickImage,
 } from "./map";
+
+export {
+  formatFromParam,
+  fromParamHref,
+  humanizeSlug,
+  parseFromParam,
+  type FromKind,
+  type ParsedFromParam,
+} from "./fromParam";
+
+export { isResourceVideo, mapResourceVideo } from "./video";
 
 export type {
   BuildLibraryHeadInput,
   ContentAccessDisplay,
+  DetailReaderModel,
   LibraryCompositeThumbnail,
   LibraryDetail,
   LibraryDetailBody,
@@ -82,5 +99,6 @@ export type {
   LibraryResource,
   LibrarySearchBody,
   LibrarySearchMeta,
+  ResourceVideo,
   TermRef,
 } from "./types";
