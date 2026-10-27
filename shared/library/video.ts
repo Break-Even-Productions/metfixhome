@@ -24,7 +24,7 @@ function hasExplicitPort(raw: string): boolean {
 }
 
 function parseHttpsUrl(raw: string, resolveRelative = false): URL | null {
-  if (!raw || hasExplicitPort(raw) || raw.startsWith("//")) return null;
+  if (!raw || hasExplicitPort(raw) || raw.startsWith("//") || raw.includes("..")) return null;
   try {
     const url = resolveRelative ? new URL(raw, `${BSI_ORIGIN}/`) : new URL(raw);
     if (url.protocol !== "https:") return null;
@@ -82,6 +82,7 @@ function vimeoFromUrl(url: URL): ResourceVideo | null {
 
 function selfHostedFromUrl(url: URL): ResourceVideo | null {
   if (url.hostname !== IMAGE_HOST) return null;
+  if (url.pathname.includes("..")) return null;
   return {
     kind: "self_hosted",
     embedUrl: null,

@@ -31,6 +31,7 @@ import {
   mapSearchResponse,
   postsDetailBaseFromOrigin,
   resourcesBaseFromOrigin,
+  SLUG_RE,
   type LibraryDetailBody,
   type LibraryFiltersBody,
   type LibraryHead,
@@ -43,6 +44,7 @@ import {
   runUserBsiCall,
   type ActingContext,
 } from "./auth/acting";
+import { finishDetailPageHtml } from "./detailHtml";
 import { rewriteHtml, type HeadMode } from "./head";
 import {
   assertBsiHost,
@@ -172,9 +174,11 @@ async function htmlNotFound(request: Request, env: Env): Promise<Response> {
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic_noindex" });
-  const headers = new Headers(rewritten.headers);
-  if (isHead) return new Response(null, { status: 404, headers });
-  return new Response(rewritten.body, { status: 404, headers });
+  const finished = finishDetailPageHtml(rewritten, env);
+  if (isHead) {
+    return new Response(null, { status: 404, headers: finished.headers });
+  }
+  return new Response(finished.body, { status: 404, headers: finished.headers });
 }
 
 async function htmlServiceUnavailable(
@@ -199,11 +203,12 @@ async function htmlServiceUnavailable(
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic" });
-  const headers = new Headers(rewritten.headers);
+  const finished = finishDetailPageHtml(rewritten, env);
+  const headers = new Headers(finished.headers);
   headers.set("Retry-After", "300");
   headers.set("Cache-Control", "no-store");
   if (isHead) return new Response(null, { status: 503, headers });
-  return new Response(rewritten.body, { status: 503, headers });
+  return new Response(finished.body, { status: 503, headers });
 }
 
 async function htmlOk(
@@ -219,13 +224,14 @@ async function htmlOk(
     return htmlServiceUnavailable(request, env, isHead, true);
   }
   const bodyRes = rewriteHtml(assetRes, plan);
-  const headers = new Headers(bodyRes.headers);
+  const finished = finishDetailPageHtml(bodyRes, env);
+  const headers = new Headers(finished.headers);
   const cc = headers.get("Cache-Control");
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
   }
   if (isHead) return new Response(null, { status: 200, headers });
-  return new Response(bodyRes.body, { status: 200, headers });
+  return new Response(finished.body, { status: 200, headers });
 }
 
 function libraryHeadPlan(head: LibraryHead): HeadMode {
@@ -432,12 +438,21 @@ export function buildSearchUpstreamQuery(searchParams: URLSearchParams): string 
     out.append("content_type_terms[]", v);
   }
 
-  // topics[] / categories[] — integers
+  const appendCategoryId = (v: string): boolean => {
+    if (!/^[1-9][0-9]{0,9}$/.test(v)) return false;
+    out.append("categories[]", v);
+    return true;
+  };
+
+  // topics[] / categories[] — integers (+ singular category)
   for (const name of ["topics", "categories"] as const) {
     for (const v of [...searchParams.getAll(`${name}[]`), ...searchParams.getAll(name)]) {
       if (!/^[1-9][0-9]{0,9}$/.test(v)) return null;
       out.append(`${name}[]`, v);
     }
+  }
+  for (const v of searchParams.getAll("category")) {
+    if (!appendCategoryId(v)) return null;
   }
 
   // Do NOT forward content_access[] on the main catalog (narrows to exclusive path).
@@ -1043,6 +1058,22 @@ export async function handleLibraryHtml(
 
   // SR18 / E1: SPA search page (not a resource type/id). Same shell as hub.
   if (path === "/library/search") {
+    const head = buildLibraryHead({ kind: "hub" });
+    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+  }
+
+  const topicRoot = path.match(/^\/topic\/([^/]+)$/);
+  if (topicRoot) {
+    const slug = topicRoot[1]!;
+    if (!SLUG_RE.test(slug)) return htmlNotFound(request, env);
+    const head = buildLibraryHead({ kind: "hub" });
+    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+  }
+
+  const taxonomy = path.match(/^\/library\/(topic|content-type|category)\/([^/]+)$/);
+  if (taxonomy) {
+    const slug = taxonomy[2]!;
+    if (!SLUG_RE.test(slug)) return htmlNotFound(request, env);
     const head = buildLibraryHead({ kind: "hub" });
     return htmlOk(request, env, libraryHeadPlan(head), isHead);
   }

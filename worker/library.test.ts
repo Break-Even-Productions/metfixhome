@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { DETAIL_PAGE_CSP } from "./csp";
+import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
+
+installHtmlRewriterPolyfill();
 
 vi.mock("./head", async () => {
   const actual = await vi.importActual<typeof import("./head")>("./head");
@@ -36,6 +40,13 @@ describe("library search query builder", () => {
     expect(
       buildSearchUpstreamQuery(new URLSearchParams("content_types[]=evil")),
     ).toBeNull();
+  });
+
+  it("forwards singular category as categories[]", () => {
+    const qs = buildSearchUpstreamQuery(new URLSearchParams("category=42&category=7"));
+    expect(qs).toContain("categories%5B%5D=42");
+    expect(qs).toContain("categories%5B%5D=7");
+    expect(buildSearchUpstreamQuery(new URLSearchParams("category=0"))).toBeNull();
   });
 
   it("validates ids", () => {
@@ -159,5 +170,101 @@ describe("SS20a handleLibraryHtml /library/search (SR18)", () => {
     expect(qBody).toContain('id="root"');
     expect(hubBody).toContain('id="root"');
     expect(notFound.status).toBe(404);
+  });
+});
+
+describe("TC12 taxonomy HTML routes", () => {
+  const SPA_SHELL = `<!doctype html><html><head><title>MetFix</title></head><body><div id="root"></div></body></html>`;
+
+  function makeEnv(): Env {
+    return {
+      ASSETS: {
+        fetch: vi.fn(async () =>
+          new Response(SPA_SHELL, {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        ),
+      } as unknown as Fetcher,
+      BSI_POSTS_API_KEY: "test-key",
+      RECAPTCHA_SITE_KEY: "6LeTestSiteKey_abc-123",
+    } as Env;
+  }
+
+  const ctx = {
+    waitUntil() {},
+    passThroughOnException() {},
+    props: {},
+  } as unknown as ExecutionContext;
+
+  const deps = {
+    cachesDefault: {
+      match: async () => undefined,
+      put: async () => {},
+    } as unknown as Cache,
+    fetchImpl: vi.fn(async () => new Response("{}", { status: 404 })),
+  };
+
+  for (const path of [
+    "/topic/metabolic-health",
+    "/library/topic/metabolic-health",
+    "/library/category/bsi",
+    "/library/content-type/video",
+  ]) {
+    it(`GET ${path} → 200 SPA`, async () => {
+      const res = await handleLibraryHtml(
+        new Request(`https://metfix.org${path}`, { headers: { Accept: "text/html" } }),
+        makeEnv(),
+        ctx,
+        deps,
+      );
+      expect(res.status).toBe(200);
+    });
+  }
+
+  it("invalid taxonomy slug → 404", async () => {
+    const res = await handleLibraryHtml(
+      new Request("https://metfix.org/topic/not%20valid", {
+        headers: { Accept: "text/html" },
+      }),
+      makeEnv(),
+      ctx,
+      deps,
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("TC14 detail page CSP + reCAPTCHA (library)", () => {
+  const SPA_SHELL = `<!doctype html><html><head><title>MetFix</title></head><body><div id="root"></div></body></html>`;
+
+  it("handleLibraryHtml sets DETAIL_PAGE_CSP and site key", async () => {
+    const env = {
+      ASSETS: {
+        fetch: vi.fn(async () => new Response(SPA_SHELL, { status: 200 })),
+      } as unknown as Fetcher,
+      BSI_POSTS_API_KEY: "test-key",
+      RECAPTCHA_SITE_KEY: "6LeTestSiteKey_abc-123",
+    } as Env;
+    const res = await handleLibraryHtml(
+      new Request("https://metfix.org/library/topic/metabolic-health", {
+        headers: { Accept: "text/html" },
+      }),
+      env,
+      { waitUntil() {}, passThroughOnException() {}, props: {} } as ExecutionContext,
+      {
+        cachesDefault: {
+          match: async () => undefined,
+          put: async () => {},
+        } as unknown as Cache,
+        fetchImpl: vi.fn(async () => new Response("{}", { status: 404 })),
+      },
+    );
+    expect(res.headers.get("Content-Security-Policy")).toBe(DETAIL_PAGE_CSP);
+    const body = await res.text();
+    expect(body).toContain("window.__MFX_RECAPTCHA_SITE_KEY__");
+    expect(body).toContain("6LeTestSiteKey_abc-123");
+    expect(DETAIL_PAGE_CSP).toContain("https://www.youtube.com");
+    expect(DETAIL_PAGE_CSP).toContain("player.vimeo.com");
   });
 });

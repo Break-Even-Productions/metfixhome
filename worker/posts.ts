@@ -18,6 +18,7 @@ import {
   type PostListBody,
   type PostsHead,
 } from "../shared/posts";
+import { finishDetailPageHtml } from "./detailHtml";
 import { rewriteHtml, type HeadMode } from "./head";
 import { assertBsiHost, UPSTREAM_USER_AGENT, type Env } from "./upstream";
 
@@ -135,9 +136,11 @@ async function htmlNotFound(request: Request, env: Env): Promise<Response> {
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic_noindex" });
-  const headers = new Headers(rewritten.headers);
-  if (isHead) return new Response(null, { status: 404, headers });
-  return new Response(rewritten.body, { status: 404, headers });
+  const finished = finishDetailPageHtml(rewritten, env);
+  if (isHead) {
+    return new Response(null, { status: 404, headers: finished.headers });
+  }
+  return new Response(finished.body, { status: 404, headers: finished.headers });
 }
 
 async function htmlServiceUnavailable(
@@ -162,11 +165,12 @@ async function htmlServiceUnavailable(
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic" });
-  const headers = new Headers(rewritten.headers);
+  const finished = finishDetailPageHtml(rewritten, env);
+  const headers = new Headers(finished.headers);
   headers.set("Retry-After", "300");
   headers.set("Cache-Control", "no-store");
   if (isHead) return new Response(null, { status: 503, headers });
-  return new Response(rewritten.body, { status: 503, headers });
+  return new Response(finished.body, { status: 503, headers });
 }
 
 async function htmlOk(
@@ -182,13 +186,14 @@ async function htmlOk(
     return htmlServiceUnavailable(request, env, isHead, true);
   }
   const bodyRes = rewriteHtml(assetRes, plan);
-  const headers = new Headers(bodyRes.headers);
+  const finished = finishDetailPageHtml(bodyRes, env);
+  const headers = new Headers(finished.headers);
   const cc = headers.get("Cache-Control");
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
   }
   if (isHead) return new Response(null, { status: 200, headers });
-  return new Response(bodyRes.body, { status: 200, headers });
+  return new Response(finished.body, { status: 200, headers });
 }
 
 /**

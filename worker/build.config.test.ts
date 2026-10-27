@@ -86,6 +86,7 @@ describe("B1/B5/B6/B7 build config", () => {
       "/posts/*",
       "/library",
       "/library/*",
+      "/topic/*",
     ]);
     expect(json.assets.run_worker_first).not.toContain("/sitemap-posts.xml");
     const workerSrc = readFileSync(

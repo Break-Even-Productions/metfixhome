@@ -16,7 +16,8 @@
 			"/posts",
 			"/posts/*",
 			"/library",
-			"/library/*"
+			"/library/*",
+			"/topic/*"
 		]
 	},
 	"kv_namespaces": [

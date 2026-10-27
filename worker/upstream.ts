@@ -4,6 +4,7 @@ import {
   type DailyFixDay,
   type UpstreamOutcome,
 } from "../shared/daily-fix";
+import { postsDetailBaseFromOrigin } from "../shared/library/constants";
 import { parseLocalBsiOrigin, type LocalAuthEnv } from "./dev-auth";
 
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
@@ -67,6 +68,8 @@ export type RateLimitBinding = {
 export type Env = {
   ASSETS: Fetcher;
   DAILY_FIX_API_KEY?: string;
+  /** Optional broad BSI key (anonymous post comments GET fallback). */
+  BSI_API_KEY?: string;
   /** Posts proxy secret — read only from worker/posts.ts (never DAILY_FIX_API_KEY). */
   BSI_POSTS_API_KEY?: string;
   AUTH_SESSIONS: KVNamespace;
@@ -1010,6 +1013,141 @@ export async function bsiDeleteComment(
         Accept: "application/json",
         "User-Agent": UPSTREAM_USER_AGENT,
         "X-API-Key": env.DAILY_FIX_API_KEY,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+function resolvePostsDetailBase(env: Env, opts?: { baseUrl?: string }): string {
+  return postsDetailBaseFromOrigin(resolveBsiOrigin(env, opts));
+}
+
+/** API key for anonymous post-comments reads (PL17 / OQ-14). */
+export function postsCommentsApiKey(env: Env): string | null {
+  for (const candidate of [env.BSI_API_KEY, env.DAILY_FIX_API_KEY, env.BSI_POSTS_API_KEY]) {
+    if (candidate != null && candidate !== "" && !/^\s*$/.test(candidate)) return candidate;
+  }
+  return null;
+}
+
+export async function fetchPostComments(
+  postId: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; accessToken?: string },
+): Promise<CommentsUpstream> {
+  const apiKey = postsCommentsApiKey(env);
+  if (!apiKey) return { kind: "nokey" };
+
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments`;
+  try {
+    assertBsiHost(url, env);
+  } catch {
+    return { kind: "unavailable" };
+  }
+
+  try {
+    const headers =
+      opts?.accessToken
+        ? bsiBearerHeaders(apiKey, opts.accessToken)
+        : bsiGetHeaders(apiKey);
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.status === 400) return { kind: "bad_request" };
+    if (response.status === 404) return { kind: "not_found" };
+    if (response.status === 401) return { kind: "unauthorized" };
+    if (response.status === 403) return { kind: "forbidden" };
+    if (response.status === 429) {
+      return {
+        kind: "rate_limited",
+        retryAfter: parseRetryAfter(response.headers.get("Retry-After")),
+      };
+    }
+    if (!response.ok) return { kind: "unavailable" };
+    return { kind: "ok", bodyText: await response.text() };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+export async function bsiPostPostComment(
+  postId: string,
+  body: { content: string; parent_comment_id?: number },
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const apiKey = postsCommentsApiKey(env);
+  if (!apiKey) return { kind: "nokey" };
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "POST",
+      headers: bsiBearerHeaders(apiKey, accessToken),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+export async function bsiPatchPostComment(
+  postId: string,
+  commentId: string,
+  body: { content: string },
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const apiKey = postsCommentsApiKey(env);
+  if (!apiKey) return { kind: "nokey" };
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "PATCH",
+      headers: bsiBearerHeaders(apiKey, accessToken),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+export async function bsiDeletePostComment(
+  postId: string,
+  commentId: string,
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const apiKey = postsCommentsApiKey(env);
+  if (!apiKey) return { kind: "nokey" };
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "DELETE",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": UPSTREAM_USER_AGENT,
+        "X-API-Key": apiKey,
         Authorization: `Bearer ${accessToken}`,
       },
       signal: AbortSignal.timeout(5000),
