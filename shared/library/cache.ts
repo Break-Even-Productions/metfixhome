@@ -1,8 +1,8 @@
 /** Cache API keys — anonymous public; gated responses must be user-salted. */
-/** v2: ResourceVideo shape + filter description/image (CQ-4.2 / TX1). */
+/** v3: course purchase locks + member-gated page flags on listing payloads. */
 
 const ANON = "anon";
-const VER = "v2";
+const VER = "v3";
 
 export function librarySearchCacheKey(
   queryString: string,

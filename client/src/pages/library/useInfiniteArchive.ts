@@ -4,12 +4,18 @@ import {
   isProfessionalTagged,
   type LibraryResource,
 } from "@shared/library";
-import { fetchLibraryPopular, fetchLibrarySearch, type SearchParams } from "./api";
+import {
+  fetchLibraryArchive,
+  fetchLibraryPopular,
+  fetchLibrarySearch,
+  type SearchParams,
+} from "./api";
 
 const PAGE = 24;
 
 export type ArchiveKind =
   | { kind: "popular" }
+  | { kind: "archive" }
   | { kind: "search"; params: Omit<SearchParams, "limit" | "offset"> }
   | { kind: "free"; params: Omit<SearchParams, "limit" | "offset"> }
   | { kind: "gated"; params: Omit<SearchParams, "limit" | "offset"> };
@@ -103,6 +109,20 @@ export function useInfiniteArchive(
           return;
         }
 
+        if (archive.kind === "archive") {
+          const body = await fetchLibraryArchive(
+            { limit: PAGE, offset: 0 },
+            signal,
+          );
+          if (signal.aborted) return;
+          setItems(body.resources);
+          setTotal(body.meta.total);
+          offsetRef.current = PAGE;
+          setHasMore(body.meta.has_more);
+          setStatus("data");
+          return;
+        }
+
         const body = await fetchLibrarySearch(
           { ...archive.params, limit: PAGE, offset: 0 },
           signal,
@@ -141,6 +161,18 @@ export function useInfiniteArchive(
           itemsRef.current = next;
           setItems(next);
           // Until BSI paginates popular, a repeated first page adds 0 → stop.
+          setHasMore(gained > 0 && body.meta.has_more);
+          return;
+        }
+
+        if (arch.kind === "archive") {
+          const offset = offsetRef.current;
+          const body = await fetchLibraryArchive({ limit: PAGE, offset });
+          offsetRef.current = offset + PAGE;
+          const next = dedupeAppend(itemsRef.current, body.resources);
+          const gained = next.length - itemsRef.current.length;
+          itemsRef.current = next;
+          setItems(next);
           setHasMore(gained > 0 && body.meta.has_more);
           return;
         }

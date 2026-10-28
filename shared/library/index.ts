@@ -8,6 +8,8 @@ export {
   DEFAULT_LIMIT,
   DESC_MAX,
   EXCERPT_MAX,
+  BSI_COURSES_BASE,
+  coursesBaseFromOrigin,
   exclusiveBaseFromOrigin,
   IMAGE_HOST,
   MAX_LIMIT,
@@ -27,6 +29,7 @@ export {
 } from "./constants";
 
 export {
+  htmlShowsMembershipGate,
   isFreeOpen,
   isLockedCard,
   isProfessionalTagged,
@@ -83,6 +86,14 @@ export {
   type FromKind,
   type ParsedFromParam,
 } from "./fromParam";
+
+export {
+  BOOK_LIBRARY_CONTENT_TYPE_SLUG,
+  GLASSMAN_ARCHIVE_SLUG,
+  archiveSearchLegs,
+  mergeArchivePages,
+  type ArchiveLeg,
+} from "./archiveMerge";
 
 export { isResourceVideo, mapResourceVideo } from "./video";
 

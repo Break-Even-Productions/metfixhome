@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "wouter";
 import {
   buildLibraryHead,
@@ -8,7 +8,10 @@ import {
   RESOURCE_ID_RE,
   type LibraryDetail,
 } from "@shared/library";
+import { SiteFooter } from "@/components/SiteFooter";
 import { DetailReader } from "@/components/post-detail/DetailReader";
+import { PostReaderSkeleton } from "@/components/post-detail/PostReaderSkeleton";
+import { KeepLearning } from "@/components/post-detail/KeepLearning";
 import { toDetailReaderModel } from "@/components/post-detail/types";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -23,6 +26,15 @@ type DetailState =
   | { status: "data"; resource: LibraryDetail }
   | { status: "error" }
   | { status: "not_found" };
+
+function LibraryFrame({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <div className="library-page">{children}</div>
+      <SiteFooter />
+    </>
+  );
+}
 
 function parseId(raw: string | undefined): number | null {
   if (raw == null || !RESOURCE_ID_RE.test(raw)) return null;
@@ -105,24 +117,24 @@ export default function LibraryDetailPage({
 
   if (state.status === "loading") {
     return (
-      <div className="library-page">
-        <div className="library-reader">
-          <p className="library-status">Loading…</p>
+      <LibraryFrame>
+        <div className="library-reader library-reader--wide">
+          <PostReaderSkeleton />
         </div>
-      </div>
+      </LibraryFrame>
     );
   }
 
   if (state.status === "error") {
     return (
-      <div className="library-page">
+      <LibraryFrame>
         <div className="library-reader">
           <p className="library-status">This resource is temporarily unavailable.</p>
           <Link href="/library" className="library-reader-back">
             ← Back to library
           </Link>
         </div>
-      </div>
+      </LibraryFrame>
     );
   }
 
@@ -132,7 +144,7 @@ export default function LibraryDetailPage({
   const showComments = r.type === "post" || r.type === "page";
 
   return (
-    <div className="library-page">
+    <LibraryFrame>
       <div className="library-reader library-reader--wide">
         <DetailReader
           model={model}
@@ -182,9 +194,10 @@ export default function LibraryDetailPage({
             </div>
           )}
         </DetailReader>
+        <KeepLearning model={model} />
       </div>
 
       <JoinModal open={showJoin} title={r.title} onClose={() => setShowJoin(false)} />
-    </div>
+    </LibraryFrame>
   );
 }

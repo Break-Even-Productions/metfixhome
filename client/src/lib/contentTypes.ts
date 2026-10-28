@@ -29,7 +29,9 @@ export type Course = {
   startButtonLabel?: string;
   notifyButtonLabel?: string;
   sortOrder: number;
-  /** When set, Library Courses rail prefers this Sanity course over the matching BSI LearnPress id. */
+  /** Card photo. Empty means the library rail may fill it from the matching BSI course. */
+  image?: string;
+  /** When set, the library Courses rail merges this course with that BSI LearnPress id. */
   bsiPostId?: number;
 };
 

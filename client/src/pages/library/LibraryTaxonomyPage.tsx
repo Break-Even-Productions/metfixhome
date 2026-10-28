@@ -10,6 +10,7 @@ import { basePath } from "@/const";
 import { BackToTop } from "@/components/BackToTop";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { JoinModal } from "./JoinModal";
+import { LibraryRailSkeleton } from "./LibraryRailSkeleton";
 import { ResourceCard } from "./ResourceCard";
 import { getLibraryFilters, peekLibraryFilters } from "./filtersCache";
 import { useInfiniteArchive, type ArchiveKind } from "./useInfiniteArchive";
@@ -146,7 +147,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
     return (
       <div className="library-page taxonomy-page">
         <div className="library-shell">
-          <p className="library-status">Loading…</p>
+          <LibraryRailSkeleton />
         </div>
       </div>
     );
@@ -231,9 +232,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
           </div>
         ) : null}
 
-        {archiveState.status === "loading" ? (
-          <p className="library-status">Loading resources…</p>
-        ) : null}
+        {archiveState.status === "loading" ? <LibraryRailSkeleton /> : null}
         {archiveState.status === "error" ? (
           <p className="library-status">Could not load resources.</p>
         ) : null}
@@ -261,7 +260,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
         ) : null}
 
         {archiveState.items.length > 0 ? (
-          <div className="library-grid taxonomy-grid">
+          <div className="taxonomy-grid">
             {archiveState.items.map((resource) => (
               <ResourceCard
                 key={`${resource.type}:${resource.id}`}
@@ -275,7 +274,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
 
         <div ref={sentinelRef} className="taxonomy-sentinel" aria-hidden />
         {archiveState.loadingMore ? (
-          <p className="library-status">Loading more…</p>
+          <LibraryRailSkeleton count={3} label="Loading more resources" />
         ) : null}
       </div>
 

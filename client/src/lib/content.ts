@@ -8,6 +8,7 @@ import type {
 import { DEFAULT_COPYRIGHT_TEXT, DEFAULT_NAV_LINKS } from "./contentTypes";
 import { FALLBACK_COURSES } from "@/data/fallbackCourses";
 import { isSanityConfigured, sanityClient } from "./sanity";
+import { sanityImageUrl } from "./sanityImage";
 
 type SanityCourseDoc = {
   _id: string;
@@ -28,6 +29,7 @@ type SanityCourseDoc = {
   notifyButtonLabel?: string;
   sortOrder?: number;
   bsiPostId?: number;
+  image?: unknown;
 };
 
 type SanitySiteSettings = {
@@ -61,7 +63,8 @@ const COURSES_QUERY = `*[_type == "course"] | order(sortOrder asc, title asc) {
   startButtonLabel,
   notifyButtonLabel,
   sortOrder,
-  bsiPostId
+  bsiPostId,
+  image
 }`;
 
 export const SITE_SETTINGS_QUERY = `*[_type == "siteSettings"][0]{
@@ -149,6 +152,7 @@ function mapCourse(doc: SanityCourseDoc): Course | null {
     startButtonLabel: doc.startButtonLabel || undefined,
     notifyButtonLabel: doc.notifyButtonLabel || undefined,
     sortOrder: typeof doc.sortOrder === "number" ? doc.sortOrder : 100,
+    image: sanityImageUrl(doc.image, 960),
     bsiPostId:
       typeof doc.bsiPostId === "number" && Number.isInteger(doc.bsiPostId) && doc.bsiPostId > 0
         ? doc.bsiPostId

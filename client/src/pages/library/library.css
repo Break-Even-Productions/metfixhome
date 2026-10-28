@@ -13,6 +13,17 @@
   --lib-muted: #6e675c;
   --lib-line: rgba(23, 21, 18, 0.1);
   --lib-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Comment thread reuses Daily Fix tokens. */
+  --df-cream: var(--lib-cream);
+  --df-cream-2: var(--lib-cream-2);
+  --df-paper: var(--lib-paper);
+  --df-ink: var(--lib-ink);
+  --df-ink-2: var(--lib-ink-2);
+  --df-accent: var(--lib-accent);
+  --df-accent-2: var(--lib-accent-2);
+  --df-muted: var(--lib-muted);
+  --df-line: var(--lib-line);
+  --df-ease: var(--lib-ease);
 
   min-height: 100svh;
   padding: 5.25rem 1rem 3.5rem;
@@ -286,6 +297,44 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.35s var(--lib-ease);
+}
+
+.library-card:hover .library-card-media > img,
+.library-card:focus-visible .library-card-media > img {
+  transform: scale(1.04);
+}
+
+.library-card-play {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s var(--lib-ease);
+}
+
+.library-card:hover .library-card-play,
+.library-card:focus-visible .library-card-play {
+  opacity: 1;
+}
+
+.library-card-play-btn {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: var(--lib-accent);
+  color: var(--lib-ink);
+  box-shadow: 0 8px 22px rgba(23, 21, 18, 0.28);
+}
+
+.library-card-play-btn svg {
+  margin-left: 2px;
 }
 
 /* Daily Fix composite: diagonal half-split + frosted circle with MetFix mark */
@@ -467,6 +516,104 @@
   padding: 2rem 1rem;
 }
 
+.library-rail-skeleton {
+  --lib-skel: #e4dccb;
+  --lib-skel-hi: #f7f2e8;
+  position: relative;
+}
+
+.library-skel-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.library-card-skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.library-card-skeleton:hover {
+  transform: none;
+  box-shadow:
+    0 1px 2px rgba(23, 21, 18, 0.05),
+    0 8px 22px rgba(23, 21, 18, 0.08);
+}
+
+.library-skel {
+  border-radius: 0.35rem;
+  background: var(--lib-skel);
+}
+
+.library-card-skeleton .library-card-media {
+  background: var(--lib-skel);
+}
+
+.library-skel-meta {
+  height: 0.7rem;
+  width: 58%;
+  margin-bottom: 0.65rem;
+}
+
+.library-skel-title {
+  height: 1.05rem;
+  width: 94%;
+  margin-bottom: 0.4rem;
+}
+
+.library-skel-title-short {
+  width: 64%;
+  margin-bottom: 0.7rem;
+}
+
+.library-skel-line {
+  height: 0.72rem;
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+
+.library-skel-line-short {
+  width: 72%;
+  margin-bottom: 0;
+}
+
+.library-card-skeleton:nth-child(3n) .library-skel-title {
+  width: 76%;
+}
+
+.library-card-skeleton:nth-child(3n + 1) .library-skel-line-short {
+  width: 48%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .library-rail-skeleton .library-skel,
+  .library-rail-skeleton .library-card-media {
+    background: linear-gradient(
+      90deg,
+      var(--lib-skel) 0%,
+      var(--lib-skel-hi) 45%,
+      var(--lib-skel) 90%
+    );
+    background-size: 200% 100%;
+    animation: library-skel-shimmer 1.35s ease-in-out infinite;
+  }
+}
+
+@keyframes library-skel-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
 .library-stub {
   border: 1px dashed var(--lib-line);
   border-radius: 0.5rem;
@@ -632,12 +779,70 @@
   gap: 0.65rem;
 }
 
+/* Related resources under the reader (Emily "Keep Learning"). */
+.keep-learning {
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--lib-line);
+}
+
+.keep-learning-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.keep-learning-label {
+  margin: 0 0 0.35rem;
+  font-family: var(--lib-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lib-accent);
+}
+
+.keep-learning-title {
+  margin: 0;
+  font-family: var(--lib-font-serif);
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.keep-learning-browse {
+  font-family: var(--lib-font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lib-accent-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.keep-learning-browse:hover {
+  color: var(--lib-ink);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .library-card,
+  .library-card-media > img,
+  .library-card-play,
+  .library-card-skeleton,
+  .library-rail-skeleton .library-skel,
+  .library-rail-skeleton .library-card-media,
   .library-search button,
   .library-btn,
   .library-modal {
     transition: none;
     animation: none;
+  }
+
+  .library-card:hover .library-card-media > img,
+  .library-card:focus-visible .library-card-media > img {
+    transform: none;
   }
 }

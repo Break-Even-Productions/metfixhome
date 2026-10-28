@@ -36,10 +36,10 @@ export function ResourceMetaRow({ model }: { model: DetailReaderModel }) {
         </>
       ) : null}
       {model.author ? (
-        <>
+        <span className="post-detail-meta-author">
           <span className="post-detail-meta-sep" aria-hidden>·</span>
           <span>{model.author}</span>
-        </>
+        </span>
       ) : null}
     </div>
   );

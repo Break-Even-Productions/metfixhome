@@ -170,11 +170,19 @@ export const course = defineType({
       initialValue: 100,
     }),
     defineField({
+      name: "image",
+      title: "Card photo",
+      type: "image",
+      options: { hotspot: true },
+      description:
+        "Photo on the Resource Library Courses card. Leave empty to use the matching BSI course image.",
+    }),
+    defineField({
       name: "bsiPostId",
       title: "BSI course / post ID",
       type: "number",
       description:
-        "Optional LearnPress / BSI post ID. On the Resource Library Courses rail, Sanity wins when this matches a BSI course id.",
+        "Optional LearnPress / BSI post ID. The library Courses rail merges this Sanity course with that BSI course, filling any empty display field from the other source.",
       validation: (Rule) => Rule.integer().positive(),
     }),
     defineField({

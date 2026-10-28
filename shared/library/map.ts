@@ -224,6 +224,7 @@ export function mapLibraryResource(raw: unknown): LibraryResource | null {
     access.is_exclusive = true;
     access.has_content_access = true;
   }
+  applyCourseListingLock(item, access, type);
 
   const composite = mapCompositeThumbnail(item.composite_thumbnail_html);
 
@@ -459,16 +460,68 @@ export function mapDetailFromPostLike(
   };
 }
 
+function numericPrice(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/**
+ * LearnPress courses omit `content_access_display` on search rows.
+ * A positive price with no enrollment matches BSI `is_locked` for anonymous viewers.
+ * An explicit `is_locked` boolean wins when the detail payload includes it.
+ */
+function applyCourseListingLock(
+  item: Record<string, unknown>,
+  access: ReturnType<typeof mapAccessDisplay>,
+  type: ResourceType,
+): void {
+  let restricted = false;
+  if (item.is_locked === true) {
+    restricted = true;
+  } else if (type === "course" && item.is_locked !== false && item.is_enrolled !== true) {
+    const price = numericPrice(item.price);
+    restricted = price != null && price > 0;
+  }
+  if (!restricted) return;
+  access.access = "none";
+  access.is_exclusive = true;
+  access.has_content_access = true;
+  access.user_has_access = false;
+}
+
 export function mapDetailBody(
   raw: unknown,
   fallbackType: ResourceType,
 ): LibraryDetailBody | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const body = raw as Record<string, unknown>;
-  const postLike = body.post ?? body.resource ?? body;
+  const postLike = detailPostLike(body);
   const mapped = mapDetailFromPostLike(postLike, fallbackType);
   if (!mapped) return null;
   return { resource: mapped };
+}
+
+/** Course detail is `{ course }`, not `{ post }`. Honor LearnPress `is_locked`. */
+function detailPostLike(body: Record<string, unknown>): unknown {
+  const course = body.course;
+  if (course && typeof course === "object" && !Array.isArray(course)) {
+    const item = { ...(course as Record<string, unknown>), type: "course" };
+    if (item.is_locked === true) {
+      item.content = "";
+      item.content_access_display = {
+        access: "none",
+        is_exclusive: true,
+        has_content_access: true,
+        user_has_access: false,
+      };
+    }
+    return item;
+  }
+  return body.post ?? body.resource ?? body;
 }
 
 /** Locked shell when BSI returns 404 for access:none (list still had the card). */

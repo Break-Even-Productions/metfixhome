@@ -77,6 +77,13 @@ describe("LibraryDetailPage author-right (PL13)", () => {
       screen.getByLabelText("About the author").textContent,
     ).toContain("Emily Kaplan");
     expect(screen.getByText("Library body")).toBeTruthy();
+    expect(document.querySelector("footer.footer-mobile-pad")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "The Daily Fix" })).toBeTruthy();
+    const aside = document.querySelector(".post-reader-aside");
+    const comments = document.querySelector(".post-reader-comments");
+    expect(aside && comments && Boolean(aside.compareDocumentPosition(comments) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
   });
 
   it("TC11: ?from= mount does not call /api/library/filters", async () => {
@@ -116,5 +123,57 @@ describe("LibraryDetailPage author-right (PL13)", () => {
     expect(await screen.findByRole("heading", { name: "Library Detail Title" })).toBeTruthy();
     expect(document.querySelector(".post-reader-grid")).toBeTruthy();
     expect(screen.queryByLabelText("About the author")).toBeNull();
+  });
+
+  it("renders Keep Learning below comments, excluding the current resource", async () => {
+    const related = [
+      resource({ id: 7, title: "Zone Two", topics: [] }),
+      resource({ id: 8, title: "Pregnancy Guide", topics: [] }),
+      resource({ id: 9, title: "Metabolic Flexibility", topics: [] }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/library/search") || url.includes("/api/library/popular")) {
+          return new Response(
+            JSON.stringify({
+              resources: [resource({ topics: [] }), ...related],
+              meta: { total: 4, count: 4, limit: 8, offset: 0, has_more: false },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            resource: resource({
+              topics: [{ id: 3, name: "Metabolic Health", slug: "metabolic-health" }],
+            }),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+    mountAt("/library/post/42");
+    expect(await screen.findByRole("heading", { name: "Related Resources" })).toBeTruthy();
+    expect(screen.getByText("Keep Learning")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Browse All" }).getAttribute("href")).toBe("/library");
+    expect(screen.getByRole("heading", { name: "Zone Two" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Pregnancy Guide" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Metabolic Flexibility" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "Library Detail Title" })).toHaveLength(1);
+    const discussion = document.querySelector(".post-detail-discussion");
+    const keep = document.querySelector(".keep-learning");
+    const footer = document.querySelector("footer.footer-mobile-pad");
+    expect(
+      discussion &&
+        keep &&
+        Boolean(discussion.compareDocumentPosition(keep) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      keep &&
+        footer &&
+        Boolean(keep.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
   });
 });

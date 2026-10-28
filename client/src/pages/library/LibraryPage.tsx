@@ -15,14 +15,17 @@ import { BackToTop } from "@/components/BackToTop";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { fetchCourses } from "@/lib/content";
 import type { Course } from "@/lib/contentTypes";
+import { mergeCourseRail } from "./mergeCourseRail";
 import { JoinModal } from "./JoinModal";
+import { LibraryRailSkeleton } from "./LibraryRailSkeleton";
 import { ResourceCard } from "./ResourceCard";
-import { fetchLibraryPopular, fetchLibrarySearch } from "./api";
-import { getLibraryFilters } from "./filtersCache";
 import {
-  useInfiniteArchive,
-  type ArchiveKind,
-} from "./useInfiniteArchive";
+  fetchLibraryArchive,
+  fetchLibraryPopular,
+  fetchLibrarySearch,
+} from "./api";
+import { getLibraryFilters } from "./filtersCache";
+import { useInfiniteArchive, type ArchiveKind } from "./useInfiniteArchive";
 import "./library.css";
 
 const SEARCH_HANDOFF_PILL_SLUGS = new Set(SEARCH_TYPE_PILLS.map((p) => p.slug));
@@ -35,9 +38,10 @@ type RailState =
   | { status: "data"; items: LibraryResource[] };
 
 type BrandSlug = "metfix" | "bsi";
-type SectionSlug = "featured" | "free" | "gated";
+type SectionSlug = "featured" | "free" | "gated" | "archives";
 
 const FEATURED_LIMIT = 6;
+const ARCHIVE_RAIL_LIMIT = 9;
 
 /** Pass `null` to skip the network call (keeps loading until params are ready). */
 function useRail(params: SearchParams | null, refreshKey: number): RailState {
@@ -63,6 +67,34 @@ function useRail(params: SearchParams | null, refreshKey: number): RailState {
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- params serialized in paramsKey
   }, [refreshKey, paramsKey]);
+  return state;
+}
+
+/** Merged Glassman topic + category, plus Book Library when that content type exists. */
+function useArchiveRail(limit: number | null, refreshKey: number): RailState {
+  const [state, setState] = useState<RailState>({ status: "loading" });
+  useEffect(() => {
+    if (limit == null) {
+      setState({ status: "loading" });
+      return;
+    }
+    const controller = new AbortController();
+    setState({ status: "loading" });
+    void (async () => {
+      try {
+        const body = await fetchLibraryArchive(
+          { limit, offset: 0 },
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        setState({ status: "data", items: body.resources });
+      } catch {
+        if (controller.signal.aborted) return;
+        setState({ status: "error" });
+      }
+    })();
+    return () => controller.abort();
+  }, [limit, refreshKey]);
   return state;
 }
 
@@ -139,15 +171,21 @@ function Rail({
             Browse all →
           </a>
         ) : onBrowseAll ? (
-          <button type="button" className="library-section-link" onClick={onBrowseAll}>
+          <button
+            type="button"
+            className="library-section-link"
+            onClick={onBrowseAll}
+          >
             Browse all →
           </button>
         ) : null}
       </div>
       {state.status === "loading" ? (
-        <p className="library-status">Loading…</p>
+        <LibraryRailSkeleton />
       ) : state.status === "error" ? (
-        <p className="library-status">Couldn’t load this section. Try again later.</p>
+        <p className="library-status">
+          Couldn’t load this section. Try again later.
+        </p>
       ) : state.items.length === 0 ? (
         <div className="library-stub">
           <strong>{title}</strong>
@@ -156,7 +194,11 @@ function Rail({
       ) : (
         <div className="library-rail">
           {state.items.map((r) => (
-            <ResourceCard key={`${r.type}-${r.id}`} resource={r} onOpenLocked={onLocked} />
+            <ResourceCard
+              key={`${r.type}-${r.id}`}
+              resource={r}
+              onOpenLocked={onLocked}
+            />
           ))}
         </div>
       )}
@@ -186,9 +228,12 @@ export default function LibraryPage() {
   const [categories, setCategories] = useState<LibraryFilterTerm[]>([]);
   const [filtersReady, setFiltersReady] = useState(false);
   const [sanityCourses, setSanityCourses] = useState<Course[]>([]);
+  const [sanityCoursesReady, setSanityCoursesReady] = useState(false);
   const [refresh, setRefresh] = useState(0);
 
-  const archiveMode = Boolean(submittedQuery || activeType || activeCategory || activeSection);
+  const archiveMode = Boolean(
+    submittedQuery || activeType || activeCategory || activeSection,
+  );
   const browseMode = !archiveMode;
 
   useEffect(() => {
@@ -209,6 +254,9 @@ export default function LibraryPage() {
       })
       .catch(() => {
         /* optional */
+      })
+      .finally(() => {
+        if (!c.signal.aborted) setSanityCoursesReady(true);
       });
     return () => c.abort();
   }, []);
@@ -216,7 +264,11 @@ export default function LibraryPage() {
   const metfixCatIds = useMemo(
     () =>
       categories
-        .filter((c) => BRAND_CATEGORY_SLUGS.includes(c.slug as BrandSlug) && c.slug === "metfix")
+        .filter(
+          (c) =>
+            BRAND_CATEGORY_SLUGS.includes(c.slug as BrandSlug) &&
+            c.slug === "metfix",
+        )
         .map((c) => c.id),
     [categories],
   );
@@ -233,6 +285,7 @@ export default function LibraryPage() {
   const archiveKind = useMemo((): ArchiveKind | null => {
     if (!archiveMode) return null;
     if (activeSection === "featured") return { kind: "popular" };
+    if (activeSection === "archives") return { kind: "archive" };
     const base: Omit<SearchParams, "limit" | "offset"> = {
       query: submittedQuery || undefined,
       content_type_terms: activeType ? [activeType] : undefined,
@@ -279,7 +332,11 @@ export default function LibraryPage() {
     ],
   );
 
-  const infinite = useInfiniteArchive(archiveMode, archiveKind, archiveResetKey);
+  const infinite = useInfiniteArchive(
+    archiveMode,
+    archiveKind,
+    archiveResetKey,
+  );
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -315,6 +372,11 @@ export default function LibraryPage() {
       : null,
     refresh,
   );
+  const archivesRail = useArchiveRail(
+    browseMode ? ARCHIVE_RAIL_LIMIT : null,
+    refresh,
+  );
+
   const bsiRail = useRail(
     browseMode && filtersReady
       ? bsiCatIds.length
@@ -337,39 +399,24 @@ export default function LibraryPage() {
   const archiveTitle = useMemo(() => {
     if (submittedQuery) return `Results for “${submittedQuery}”`;
     if (activeType) {
-      return CONTENT_TYPE_CHIPS.find((c) => c.slug === activeType)?.label ?? "Filtered results";
+      return (
+        CONTENT_TYPE_CHIPS.find((c) => c.slug === activeType)?.label ??
+        "Filtered results"
+      );
     }
     if (activeCategory === "metfix") return "MetFix";
     if (activeCategory === "bsi") return "Broken Science Initiative";
     if (activeSection === "featured") return "Top resources";
+    if (activeSection === "archives") return "Glassman & Book Library";
     if (activeSection === "free") return "Free / open";
     if (activeSection === "gated") return "Gated & exclusive";
     return "Filtered results";
   }, [submittedQuery, activeType, activeCategory, activeSection]);
 
-  /** Sanity wins on dedupe when bsiPostId matches a BSI course id. */
+  /** Sanity and BSI courses merge field-by-field; empty Sanity values take the BSI value. */
   const courseCards = useMemo(() => {
     const bsiCourses = coursesRail.status === "data" ? coursesRail.items : [];
-    const byBsiId = new Map<number, Course>();
-    for (const c of sanityCourses) {
-      const id = (c as Course & { bsiPostId?: number }).bsiPostId;
-      if (typeof id === "number" && id > 0) byBsiId.set(id, c);
-    }
-    const used = new Set<number>();
-    const merged: Array<
-      | { kind: "sanity"; course: Course }
-      | { kind: "bsi"; resource: LibraryResource }
-    > = [];
-    for (const sc of sanityCourses) {
-      merged.push({ kind: "sanity", course: sc });
-      const id = (sc as Course & { bsiPostId?: number }).bsiPostId;
-      if (typeof id === "number") used.add(id);
-    }
-    for (const r of bsiCourses) {
-      if (used.has(r.id) || byBsiId.has(r.id)) continue;
-      merged.push({ kind: "bsi", resource: r });
-    }
-    return merged.slice(0, 9);
+    return mergeCourseRail(sanityCourses, bsiCourses).slice(0, 12);
   }, [coursesRail, sanityCourses]);
 
   useEffect(() => {
@@ -389,7 +436,12 @@ export default function LibraryPage() {
     const cat = sp.get("category");
     if (cat === "metfix" || cat === "bsi") setActiveCategory(cat);
     const section = sp.get("section");
-    if (section === "featured" || section === "free" || section === "gated") {
+    if (
+      section === "featured" ||
+      section === "free" ||
+      section === "gated" ||
+      section === "archives"
+    ) {
       setActiveSection(section);
     }
   }, []);
@@ -443,12 +495,14 @@ export default function LibraryPage() {
       <div className="library-shell">
         <div className="library-kicker">
           <span className="library-kicker-line" />
-          <span className="library-kicker-label">MetFix / Resource Library</span>
+          <span className="library-kicker-label">
+            MetFix / Resource Library
+          </span>
         </div>
         <h1 className="library-hero-title">Resource Library</h1>
         <p className="library-hero-lead">
-          A repository of metabolic health education — articles, live streams, coach
-          briefings, courses, and research. Read on metfix.org.
+          A repository of metabolic health education — articles, live streams,
+          coach briefings, courses, and research. Read on metfix.org.
         </p>
 
         <form className="library-search" onSubmit={onSearch}>
@@ -466,7 +520,11 @@ export default function LibraryPage() {
           <button
             type="button"
             className="library-chip"
-            data-active={!activeType && !activeCategory && !activeSection ? "true" : "false"}
+            data-active={
+              !activeType && !activeCategory && !activeSection
+                ? "true"
+                : "false"
+            }
             onClick={() => clearArchiveFilters()}
           >
             All
@@ -504,16 +562,25 @@ export default function LibraryPage() {
               emptyHint="No matches. Clear filters with All, or try another search."
             />
             {infinite.status === "data" && infinite.hasMore ? (
-              <div ref={sentinelRef} className="library-infinite-sentinel" aria-hidden>
-                {infinite.loadingMore ? (
-                  <p className="library-status">Loading more…</p>
-                ) : null}
-              </div>
+              <div
+                ref={sentinelRef}
+                className="library-infinite-sentinel"
+                aria-hidden
+              />
             ) : null}
-            {infinite.status === "data" && !infinite.hasMore && infinite.items.length > 0 ? (
+            {infinite.loadingMore ? (
+              <LibraryRailSkeleton count={3} label="Loading more resources" />
+            ) : null}
+            {infinite.status === "data" &&
+            !infinite.hasMore &&
+            infinite.items.length > 0 ? (
               <p className="library-status">You’re caught up.</p>
             ) : null}
-            <BackToTop mode="items" itemSelector=".library-card" cycleEvery={40} />
+            <BackToTop
+              mode="items"
+              itemSelector=".library-card"
+              cycleEvery={40}
+            />
           </>
         ) : (
           <>
@@ -578,70 +645,74 @@ export default function LibraryPage() {
                   Browse all →
                 </a>
               </div>
-              {courseCards.length === 0 ? (
+              {courseCards.length === 0 &&
+              (coursesRail.status === "loading" || !sanityCoursesReady) ? (
+                <LibraryRailSkeleton label="Loading courses" />
+              ) : courseCards.length === 0 ? (
                 <div className="library-stub">
                   <strong>Courses</strong>
-                  BSI LearnPress and Sanity classes will appear here. Dedupe prefers Sanity
-                  when <code>bsiPostId</code> is set.
+                  BSI LearnPress and Sanity classes will appear here.
                 </div>
               ) : (
                 <div className="library-rail">
-                  {courseCards.map((item) =>
-                    item.kind === "sanity" ? (
+                  {courseCards.map((item) => {
+                    const media = (
+                      <div className="library-card-media">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt=""
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : null}
+                        <span className="library-card-badge">{item.badge}</span>
+                      </div>
+                    );
+                    const body = (
+                      <div className="library-card-body">
+                        <h3 className="library-card-title">{item.title}</h3>
+                        {item.excerpt ? (
+                          <p className="library-card-excerpt">{item.excerpt}</p>
+                        ) : null}
+                      </div>
+                    );
+                    if (item.lockedResource) {
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className="library-card"
+                          onClick={() => setLocked(item.lockedResource)}
+                        >
+                          {media}
+                          {body}
+                        </button>
+                      );
+                    }
+                    return (
                       <a
-                        key={`sanity-${item.course.id}`}
+                        key={item.key}
                         className="library-card"
-                        href={item.course.landingPageUrl || "/classes"}
+                        href={item.href}
                       >
-                        <div className="library-card-media">
-                          <span className="library-card-badge">
-                            {item.course.tag || "Course"}
-                          </span>
-                        </div>
-                        <h3 className="library-card-title">{item.course.title}</h3>
-                        <p className="library-card-excerpt">
-                          {item.course.audience || item.course.details || item.course.price}
-                        </p>
+                        {media}
+                        {body}
                       </a>
-                    ) : (
-                      <ResourceCard
-                        key={`bsi-${item.resource.id}`}
-                        resource={item.resource}
-                        onOpenLocked={setLocked}
-                      />
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
               )}
             </section>
 
-            <section className="library-section">
-              <div className="library-section-head">
-                <div>
-                  <div className="library-section-label">Source material</div>
-                  <h2 className="library-section-title">MetFix Source Material</h2>
-                </div>
-              </div>
-              <div className="library-stub">
-                <strong>Browse source material</strong>
-                Stub until BSI exposes a dedicated source-material surface. Use topic filters
-                above in the meantime.
-              </div>
-            </section>
-
-            <section className="library-section">
-              <div className="library-section-head">
-                <div>
-                  <div className="library-section-label">Archives</div>
-                  <h2 className="library-section-title">Glassman &amp; Book Library</h2>
-                </div>
-              </div>
-              <div className="library-stub">
-                <strong>Coming later</strong>
-                No first-party BSI Glassman or Book Library rails in this PR — stubs only so
-                IA stays aligned with the mockup.
-              </div>
-            </section>
+            <Rail
+              label="Archives"
+              title="Glassman & Book Library"
+              state={archivesRail}
+              onLocked={setLocked}
+              emptyHint="Glassman Archive and Book Library items will show up here."
+              onBrowseAll={() => openArchive({ section: "archives" })}
+            />
           </>
         )}
       </div>

@@ -32,7 +32,9 @@ function walkTsFiles(dir: string, out: string[] = []): string[] {
 }
 
 function extractRuleSelectors(css: string): string[] {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const withoutComments = css
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/@keyframes\s+[\w-]+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, "");
   const selectors: string[] = [];
   const re = /([^{}]+)\{/g;
   let match: RegExpExecArray | null;

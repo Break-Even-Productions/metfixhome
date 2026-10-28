@@ -23,6 +23,12 @@ export function exclusiveBaseFromOrigin(origin: string): string {
   return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/exclusive-resources`;
 }
 
+export function coursesBaseFromOrigin(origin: string): string {
+  return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/courses`;
+}
+
+export const BSI_COURSES_BASE = coursesBaseFromOrigin(BSI_ORIGIN);
+
 export const MAX_UPSTREAM_BYTES = 1_500_000;
 export const DEFAULT_LIMIT = 12;
 export const MAX_LIMIT = 48;

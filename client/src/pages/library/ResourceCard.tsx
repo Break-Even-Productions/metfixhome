@@ -116,6 +116,22 @@ function typeVisual(r: LibraryResource): TypeVisual {
   return { label: String(r.type).replace(/_/g, " "), Icon: FileText };
 }
 
+const PLAYABLE_CONTENT_SLUGS = new Set([
+  "video",
+  "videos",
+  "webinar",
+  "webinars",
+  "live-stream",
+  "live-streams",
+  "livestream",
+  "whiteboard",
+  "whiteboards",
+]);
+
+function showsPlayButton(r: LibraryResource): boolean {
+  return r.content_types.some((t) => PLAYABLE_CONTENT_SLUGS.has(t.slug.toLowerCase()));
+}
+
 type ResourceCardProps = {
   resource: LibraryResource;
   onOpenLocked: (r: LibraryResource) => void;
@@ -143,6 +159,7 @@ export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps
   const href = hrefWithFrom(baseHref, from);
 
   const visual = typeVisual(resource);
+  const playable = showsPlayButton(resource);
   const TypeIcon = visual.Icon;
   const dateLabel = formatDate(resource.date);
   const category = resource.categories[0]?.name;
@@ -201,6 +218,13 @@ export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps
           ) : null}
           {visual.label}
         </span>
+        {playable ? (
+          <span className="library-card-play" aria-hidden>
+            <span className="library-card-play-btn">
+              <Play size={18} fill="currentColor" strokeWidth={2} />
+            </span>
+          </span>
+        ) : null}
         {showLock ? (
           <span className="library-card-lock" aria-label="Exclusive content">
             <Lock size={12} strokeWidth={2.25} aria-hidden />

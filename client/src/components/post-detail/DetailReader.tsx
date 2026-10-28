@@ -35,11 +35,13 @@ export function DetailReader({
           <ResourceTopicPills model={model} />
           <ResourceMediaStage model={model} />
           {children}
-          {showComments ? (
-            <PostCommentsSection postId={model.id} locked={model.locked} />
-          ) : null}
         </div>
         {model.author ? <AuthorAside name={model.author} /> : null}
+        {showComments ? (
+          <div className="post-reader-comments">
+            <PostCommentsSection postId={model.id} locked={model.locked} />
+          </div>
+        ) : null}
       </div>
     </article>
   );
