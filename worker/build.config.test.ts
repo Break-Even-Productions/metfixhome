@@ -103,6 +103,48 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(wrangler).toMatch(/"workers_dev"\s*:\s*false/);
   });
 
+  it("preview_urls is true while workers_dev stays false", () => {
+    const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
+    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    expect(json.workers_dev).toBe(false);
+    expect(json.preview_urls).toBe(true);
+  });
+
+  it("previews mirrors vars, preview KV, DO bindings, and 6 ratelimits", () => {
+    const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
+    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const previews = json.previews;
+    expect(previews).toBeTruthy();
+    expect(previews.vars).toEqual(json.vars);
+    expect(previews.kv_namespaces).toEqual([
+      {
+        binding: "AUTH_SESSIONS",
+        id: "6976f8cf9e934258bd253b1d65bb4ece",
+      },
+    ]);
+    expect(previews.durable_objects.bindings).toEqual(json.durable_objects.bindings);
+    expect(previews.ratelimits).toHaveLength(6);
+    expect(previews.ratelimits.map((r: { name: string }) => r.name)).toEqual(
+      json.ratelimits.map((r: { name: string }) => r.name),
+    );
+    expect(previews.ratelimits.map((r: { namespace_id: string }) => r.namespace_id)).toEqual([
+      "27201",
+      "27202",
+      "27203",
+      "27204",
+      "27205",
+      "27206",
+    ]);
+  });
+
+  it("CI push branches include main and staging", () => {
+    const ci = readFileSync(
+      fileURLToPath(new URL("../.github/workflows/ci.yml", import.meta.url)),
+      "utf8",
+    );
+    expect(ci).toMatch(/push:\s*\n\s*branches:\s*\[main,\s*staging\]/);
+  });
+
   it("LOCAL_AUTH is never enabled in wrangler.jsonc (dev-only via .dev.vars)", () => {
     const wrangler = readFileSync(
       fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)),

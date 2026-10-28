@@ -4,6 +4,7 @@
 	"compatibility_date": "2026-10-12",
 	"account_id": "84da09b9c67aa02ce3deb8edbdf5379c",
 	"workers_dev": false,
+	"preview_urls": true,
 	"assets": {
 		"directory": "./dist/public",
 		"binding": "ASSETS",
@@ -129,6 +130,87 @@
     "RECAPTCHA_SITE_KEY": "6LfUFO0mAAAAAKxrVeYxZ9p3vMWNtvJzCKhqBs1R"
 	},
 	// Required for Worker Previews (`npx wrangler preview`, Wrangler ≥4.135).
-	// Empty: Previews reuse top-level bindings/vars (no separate env split).
-	"previews": {}
+	// Previews do not inherit top-level bindings — mirror vars / KV / DOs / ratelimits.
+	"previews": {
+		"vars": {
+			"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
+			"GOOGLE_AUTH_ENABLED": "1",
+			"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com",
+			"RECAPTCHA_SITE_KEY": "6LfUFO0mAAAAAKxrVeYxZ9p3vMWNtvJzCKhqBs1R"
+		},
+		"kv_namespaces": [
+			{
+				"binding": "AUTH_SESSIONS",
+				"id": "6976f8cf9e934258bd253b1d65bb4ece"
+			}
+		],
+		"durable_objects": {
+			"bindings": [
+				{
+					"name": "SESSION",
+					"class_name": "SessionDO"
+				},
+				{
+					"name": "LOGIN_THROTTLE",
+					"class_name": "LoginThrottleDO"
+				},
+				{
+					"name": "OAUTH_STATE",
+					"class_name": "OauthStateDO"
+				}
+			]
+		},
+		// Preview rate limits use a separate namespace_id band (27201–27206) so
+		// Previews do not share counters with production 27101–27106.
+		"ratelimits": [
+			{
+				"name": "SIGNUP_LIMITER",
+				"namespace_id": "27201",
+				"simple": {
+					"limit": 5,
+					"period": 60
+				}
+			},
+			{
+				"name": "USERNAME_CHECK_LIMITER",
+				"namespace_id": "27202",
+				"simple": {
+					"limit": 20,
+					"period": 60
+				}
+			},
+			{
+				"name": "GOOGLE_AUTH_LIMITER",
+				"namespace_id": "27203",
+				"simple": {
+					"limit": 20,
+					"period": 60
+				}
+			},
+			{
+				"name": "COMMENT_WRITE_LIMITER",
+				"namespace_id": "27204",
+				"simple": {
+					"limit": 5,
+					"period": 60
+				}
+			},
+			{
+				"name": "COMMENT_LIKE_LIMITER",
+				"namespace_id": "27205",
+				"simple": {
+					"limit": 30,
+					"period": 60
+				}
+			},
+			{
+				"name": "COMMENT_LIKE_TOGGLE_LIMITER",
+				"namespace_id": "27206",
+				"simple": {
+					"limit": 4,
+					"period": 60
+				}
+			}
+		]
+	}
 }
