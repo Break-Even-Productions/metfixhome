@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router, Route } from "wouter";
 import { clearAccountCache } from "@/lib/account";
 import MemberProfilePage from "./MemberProfilePage";
-import { jsonResponse } from "../account/testFixtures";
+import { jsonResponse } from "../../../test/account/testFixtures";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 

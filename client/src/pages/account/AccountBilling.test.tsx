@@ -12,7 +12,7 @@ import {
   PAYMENTS_PAGE1,
   SUBS_ACTIVE,
   jsonResponse,
-} from "./testFixtures";
+} from "../../../test/account/testFixtures";
 import type { AccountSubscriptions } from "@/lib/account";
 
 vi.mock("@/lib/session", () => ({

@@ -11,9 +11,18 @@ describe("computeThreeYearExpiryIso (DP-T-COACH4 / CQ Feb28)", () => {
     );
   });
 
-  it("leap-day 2024-02-29 → 2027-02-28 (clamp, not March 1)", () => {
+  it("DP-T-COACH4 leap-day 2024-02-29 → 2027-02-28 (clamp, not March 1)", () => {
     expect(computeThreeYearExpiryIso("2024-02-29T00:00:00.000Z")).toBe(
       "2027-02-28T00:00:00.000Z",
+    );
+  });
+
+  it("DP-T-COACH4 neighbours 2024-02-28 and 2024-03-01", () => {
+    expect(computeThreeYearExpiryIso("2024-02-28T00:00:00.000Z")).toBe(
+      "2027-02-28T00:00:00.000Z",
+    );
+    expect(computeThreeYearExpiryIso("2024-03-01T00:00:00.000Z")).toBe(
+      "2027-03-01T00:00:00.000Z",
     );
   });
 
@@ -130,5 +139,34 @@ describe("normalizeFoundationsCoachStatus (CQ B1)", () => {
     });
     expect(incomplete.active).toBe(false);
     expect(incomplete.grant_reason).toBeNull();
+  });
+
+  it("DP-T-COACH5: garbage granted_at → inactive, expires_at null", () => {
+    for (const granted_at of ["not-a-date", "", "2026-13-45", 0] as const) {
+      const status = normalizeFoundationsCoachStatus(
+        {
+          seminar_checked_in: true,
+          granted_at,
+          expires_at: expiresAt,
+        },
+        expiresMs - 1,
+      );
+      expect(status.active).toBe(false);
+      expect(status.granted_at).toBeNull();
+      expect(status.expires_at).toBeNull();
+    }
+  });
+
+  it("DP-T-COACH5: BSI expires_at later than +3y → clamp to computed; inactive at boundary", () => {
+    const status = normalizeFoundationsCoachStatus(
+      {
+        seminar_checked_in: true,
+        granted_at: grantedAt,
+        expires_at: "2035-01-01T00:00:00.000Z",
+      },
+      expiresMs,
+    );
+    expect(status.expires_at).toBe(expiresAt);
+    expect(status.active).toBe(false);
   });
 });

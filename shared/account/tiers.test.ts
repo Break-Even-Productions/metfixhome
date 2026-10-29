@@ -48,7 +48,7 @@ describe("canonical subscription tier union (DP-TIER-1)", () => {
     }
   });
 
-  it("tierDisplayLabel covers org/pro/grandfathered/member/free", () => {
+  it("tierDisplayLabel covers org/pro/grandfathered/member/free (TIER1b)", () => {
     expect(tierDisplayLabel("organization_owner")).toBe("Organization Owner ($170/mo)");
     expect(tierDisplayLabel("metfix_pro")).toBe("MetFix Pro ($30/mo)");
     expect(
@@ -56,40 +56,38 @@ describe("canonical subscription tier union (DP-TIER-1)", () => {
     ).toBe("MetFix Pro · Grandfathered Med Society");
     expect(tierDisplayLabel("member")).toBe("Member");
     expect(tierDisplayLabel("free")).toBe("Free");
+    expect(hasMetFixPro("organization_owner")).toBe(true);
   });
 });
 
-describe("resolveAccountCanonicalTier (CQ B2)", () => {
+describe("resolveAccountCanonicalTier (CQ R2-N1 / DP-TIER-2)", () => {
   const medSocItem = {
     tier: "member",
     legacy_source: "medical_society_stripe",
     status: "active",
   };
 
-  it("grandfathers Stripe Med Society → metfix_pro for active|trialing|past_due", () => {
-    for (const status of ["active", "trialing", "past_due"] as const) {
-      expect(
-        resolveAccountCanonicalTier({
-          canonical_tier: "member",
-          items: [{ ...medSocItem, status }],
-        }),
-      ).toBe("metfix_pro");
+  it("DP-T-TIER2b: stored free + Med Society active → metfix_pro; trialing/past_due/canceled stay free", () => {
+    expect(
+      resolveAccountCanonicalTier({
+        canonical_tier: "free",
+        items: [{ ...medSocItem, status: "active" }],
+      }),
+    ).toBe("metfix_pro");
+    for (const status of ["trialing", "past_due", "canceled"] as const) {
+      const tier = resolveAccountCanonicalTier({
+        canonical_tier: "free",
+        items: [{ ...medSocItem, status }],
+      });
+      expect(tier).toBe("free");
+      expect(hasMetFixPro(tier)).toBe(false);
     }
   });
 
-  it("does not grandfather canceled / unpaid Med Society", () => {
-    expect(
-      resolveAccountCanonicalTier({
-        canonical_tier: "member",
-        items: [{ ...medSocItem, status: "canceled" }],
-      }),
-    ).toBe("member");
-  });
-
-  it("same fixture yields same tier (overview/subs/LTV lockstep)", () => {
+  it("same rows → same tier (overview/subs/LTV lockstep)", () => {
     const fixture = {
-      canonical_tier: "member" as const,
-      items: [{ ...medSocItem, status: "trialing" }],
+      canonical_tier: "free" as const,
+      items: [{ ...medSocItem, status: "active" }],
     };
     const a = resolveAccountCanonicalTier(fixture);
     const b = resolveAccountCanonicalTier(fixture);
@@ -99,15 +97,36 @@ describe("resolveAccountCanonicalTier (CQ B2)", () => {
     expect(c).toBe(a);
   });
 
-  it("organization_owner wins over Med Society grandfather", () => {
+  it("DP-T-TIER5b: stored organization_owner never downgraded by grandfathered item", () => {
+    for (const status of ["active", "trialing", "canceled"] as const) {
+      expect(
+        resolveAccountCanonicalTier({
+          canonical_tier: "organization_owner",
+          items: [{ ...medSocItem, status }],
+        }),
+      ).toBe("organization_owner");
+      expect(hasMetFixPro("organization_owner")).toBe(true);
+    }
+  });
+
+  it("DP-T-TIER5: no item-level organization_owner upgrade of free/member", () => {
     expect(
       resolveAccountCanonicalTier({
-        canonical_tier: "organization_owner",
-        items: [
-          { tier: "organization_owner", status: "active" },
-          { ...medSocItem, status: "active" },
-        ],
+        canonical_tier: "free",
+        items: [{ tier: "organization_owner", legacy_source: "affiliate_stripe", status: "active" }],
       }),
-    ).toBe("organization_owner");
+    ).toBe("free");
+    expect(
+      resolveAccountCanonicalTier({
+        canonical_tier: "member",
+        items: [{ tier: "organization_owner", status: "active" }],
+      }),
+    ).toBe("member");
+    expect(
+      resolveAccountCanonicalTier({
+        canonical_tier: "member",
+        items: [{ ...medSocItem, status: "active" }],
+      }),
+    ).toBe("metfix_pro");
   });
 });

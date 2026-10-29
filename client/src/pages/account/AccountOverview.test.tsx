@@ -14,7 +14,7 @@ import {
   OVERVIEW_FIXTURE,
   SUBS_ACTIVE,
   jsonResponse,
-} from "./testFixtures";
+} from "../../../test/account/testFixtures";
 
 vi.mock("@/lib/session", () => ({
   loadMe: vi.fn(async () => ({
@@ -104,6 +104,64 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     await waitFor(() => expect(screen.getByText(/Foundations Coach/i)).toBeTruthy());
     expect(screen.getByText(/in-person seminar check-in/i)).toBeTruthy();
     expect(screen.getByText(/Expires/i)).toBeTruthy();
+  });
+
+  it("DP-T-COACH3: none state shows checklist; Path B partial tick only first box", async () => {
+    const { COACH_NONE, OVERVIEW_FIXTURE, LTV300_AC, SUBS_ACTIVE, jsonResponse } = await import(
+      "../../../test/account/testFixtures"
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/account/overview")) {
+          return jsonResponse({
+            ...OVERVIEW_FIXTURE,
+            foundations_coach: {
+              ...COACH_NONE,
+              metfix_essentials_completed: true,
+              metfix_essentials_certificate_claimed: false,
+            },
+            badges: { ...OVERVIEW_FIXTURE.badges, foundations_coach: false },
+          });
+        }
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_ACTIVE);
+        if (url.includes("/api/account/ltv-certificates") || url.includes("/api/account/spend")) {
+          return jsonResponse({
+            ...LTV300_AC,
+            foundations_coach: {
+              ...COACH_NONE,
+              metfix_essentials_completed: true,
+              metfix_essentials_certificate_claimed: false,
+            },
+          });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+    render(
+      <Router>
+        <AccountOverview />
+      </Router>,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/Attend an in-person seminar \(checked in\)/i)).toBeTruthy(),
+    );
+    expect(screen.getByText(/Complete MetFix Essentials online/i)).toBeTruthy();
+    expect(screen.getByText(/Claim MetFix Essentials certificate/i)).toBeTruthy();
+    const done = document.querySelectorAll('.account-checklist li[data-done="true"]');
+    expect(done.length).toBe(1);
+    expect(done[0]!.textContent).toMatch(/Complete MetFix Essentials online/);
+    expect(document.body.textContent).not.toMatch(/Foundations Coach · Active/);
+  });
+
+  it("DP-T-UI2: CSS shows sidebar at ≥1024 and mobile nav below", () => {
+    const css = readFileSync(path.join(import.meta.dirname, "account.css"), "utf8");
+    expect(css).toMatch(/@media \(min-width:\s*1024px\)/);
+    expect(css).toMatch(/\.account-sidebar\s*\{[^}]*display:\s*none/s);
+    expect(css).toMatch(/\.account-mobile-nav\s*\{[^}]*display:\s*flex/s);
+    expect(css).toMatch(/min-width:\s*1024px[\s\S]*?\.account-sidebar[\s\S]*?display:\s*flex/);
+    expect(css).toMatch(/min-width:\s*1024px[\s\S]*?\.account-mobile-nav[\s\S]*?display:\s*none/);
   });
 
   it("mounting /account fires ≤3 account GETs (overview, subscriptions, ltv-certificates)", async () => {

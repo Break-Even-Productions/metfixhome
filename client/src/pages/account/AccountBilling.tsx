@@ -62,7 +62,8 @@ export default function AccountBilling() {
     let cancelled = false;
     (async () => {
       try {
-        const p = await loadPayments(page, 20, { force: true, signal: ac.signal });
+        // N5: do not force-refetch — allow module cache for repeat mounts/page hits.
+        const p = await loadPayments(page, 20, { signal: ac.signal });
         if (cancelled) return;
         setPayments(p);
       } catch (err) {
@@ -205,7 +206,8 @@ export default function AccountBilling() {
           <h2>Organization Owner on Stripe</h2>
           <p className="account-muted">
             Switch your Organization Owner subscription to Whop ($170/mo) under Break Even
-            Productions.
+            Productions. Covers Gym Affiliates and Doctor Practices, and includes MetFix Pro
+            access.
           </p>
           <div className="account-course-card__actions">
             <button

@@ -62,6 +62,14 @@ jobs:
           fi
           echo "B2 ok: no key strings in dist/public"
 
+      - name: DP-WHOP-1 — no Curie in dist/public
+        run: |
+          if grep -RInE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'curie' dist/public; then
+            echo "DP-WHOP-1 failed: Curie substring found in dist/public" >&2
+            exit 1
+          fi
+          echo "DP-WHOP-1 ok: no Curie in dist/public"
+
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk
 

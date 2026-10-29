@@ -11,7 +11,7 @@ import {
   LTV300_AC,
   OVERVIEW_FIXTURE,
   jsonResponse,
-} from "./testFixtures";
+} from "../../../test/account/testFixtures";
 
 vi.mock("@/lib/session", () => ({
   loadMe: vi.fn(async () => ({
@@ -75,9 +75,7 @@ describe("AccountCourses (P-DB-7, P-DB-8, CERT)", () => {
       name: /Claim Certificate with LTV \(-\$200\.00\)/,
     });
     expect((claimB as HTMLButtonElement).disabled).toBe(true);
-    expect(
-      screen.getByRole("button", { name: /Buy Course for Certificate \(\$200\.00\)/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Buy Course \(\$200\.00\)$/ })).toBeTruthy();
   });
 
   it("claim lock disables all LTV buttons while a claim is in flight", async () => {

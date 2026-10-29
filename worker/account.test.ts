@@ -1,7 +1,7 @@
 /**
  * PR B account Worker gates (QA §E/F) — bearer-only, CSRF, LTV300, tiers, URL allowlist.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleAccountRoutes, EDITABLE_ATTR_IDS } from "./account";
 import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
 import {
@@ -1100,7 +1100,7 @@ describe("worker/account routes", () => {
     expect(body2.badges.foundations_coach).toBe(false);
   });
 
-  it("CQ B2: same Med Society fixture → same canonical_tier on overview/subs/LTV", async () => {
+  it("CQ B2 / R2-N1: same active Med Society rows → same metfix_pro on overview/subs/LTV", async () => {
     const sess = await withSession(h);
     const medItems = [
       {
@@ -1108,7 +1108,7 @@ describe("worker/account routes", () => {
         provider: "stripe",
         tier: "member",
         legacy_source: "medical_society_stripe",
-        status: "past_due",
+        status: "active",
         current_period_end: "2026-12-01",
         paid_through: "2026-12-01",
         cancel_at_period_end: false,
@@ -1120,17 +1120,17 @@ describe("worker/account routes", () => {
         if (path.endsWith("/me/account")) {
           return Response.json({
             ...OVERVIEW_FIXTURE,
-            canonical_tier: "member",
+            canonical_tier: "free",
             subscription_items: medItems,
           });
         }
         if (path.endsWith("/me/subscriptions")) {
-          return Response.json({ canonical_tier: "member", items: medItems });
+          return Response.json({ canonical_tier: "free", items: medItems });
         }
         if (path.endsWith("/me/spend")) {
           return Response.json({
             ...LTV300_SPEND,
-            canonical_tier: "member",
+            canonical_tier: "free",
             subscription_items: medItems,
           });
         }
@@ -1161,9 +1161,10 @@ describe("worker/account routes", () => {
     expect(lt.canonical_tier).toBe("metfix_pro");
   });
 
-  it("CQ B3: limiter key uses sid when bsi_user_id empty (no shared acct:0 bucket)", async () => {
+  it("accountRateLimitKey: '' and '0' → hashed sid; real id → acct:; never raw sid / acct:0", async () => {
     const { accountRateLimitKey } = await import("./account");
-    const emptyUid = {
+    const { sha256Hex } = await import("./auth/crypto");
+    const base = {
       sid: "sid_aaa",
       hex: "x",
       access: "a",
@@ -1178,37 +1179,23 @@ describe("worker/account routes", () => {
         last_seen: Date.now(),
       },
     };
-    expect(accountRateLimitKey(emptyUid)).toBe("sid:sid_aaa");
+    const hashed = `sid:${await sha256Hex("sid_aaa")}`;
+    expect(await accountRateLimitKey(base)).toBe(hashed);
+    expect(await accountRateLimitKey(base)).not.toBe("sid:sid_aaa");
     expect(
-      accountRateLimitKey({
-        ...emptyUid,
-        sid: "sid_bbb",
-        record: { ...emptyUid.record, bsi_user_id: "99" },
+      await accountRateLimitKey({
+        ...base,
+        record: { ...base.record, bsi_user_id: "0" },
       }),
-    ).toBe("acct:99");
-    expect(accountRateLimitKey(emptyUid)).not.toBe("acct:0");
-
-    const keys: string[] = [];
-    const recordingLimiter: RateLimitBinding = {
-      async limit({ key }) {
-        keys.push(key);
-        return { success: true };
-      },
-    };
-    h.env.ACCOUNT_READ_LIMITER = recordingLimiter;
-    const sess = await withSession(h);
-    const { fetchImpl } = makeFetchMock([
-      async () => Response.json(OVERVIEW_FIXTURE),
-    ]);
-    await callAccount(
-      h,
-      "/api/account/overview",
-      { headers: { Cookie: sess.cookie } },
-      fetchImpl,
-    );
-    expect(keys.length).toBeGreaterThan(0);
-    expect(keys.some((k) => k.startsWith("acct:") || k.startsWith("sid:"))).toBe(true);
-    expect(keys.includes("acct:0")).toBe(false);
+    ).toBe(hashed);
+    expect(
+      await accountRateLimitKey({
+        ...base,
+        sid: "sid_bbb",
+        record: { ...base.record, bsi_user_id: "123" },
+      }),
+    ).toBe("acct:123");
+    expect(hashed.includes("acct:0")).toBe(false);
   });
 
   it("grandfathered med society + convert-to-whop happy path", async () => {
@@ -1238,5 +1225,287 @@ describe("worker/account routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { purchase_url: string };
     expect(body.purchase_url).toContain("whop.com");
+  });
+
+  it("DP-T-CFG3: real limiter keys for '', '0', absent; two no-uid sessions differ; 123→acct:123", async () => {
+    const { createSession } = await import("./auth/session");
+    const { sha256Hex } = await import("./auth/crypto");
+    const { csrfSid } = await import("../tools/pr2/harness/realauth-harness");
+
+    async function sessionWithUid(user_id: string | undefined) {
+      const tokens: {
+        access_token: string;
+        refresh_token: string;
+        public_name: string;
+        user_id?: string;
+      } = {
+        access_token: ACCESS1,
+        refresh_token: "refresh",
+        public_name: "NoUid",
+      };
+      if (user_id !== undefined) tokens.user_id = user_id;
+      const sid = (await createSession(h.env, tokens)) as string;
+      const csrf = await csrfSid(h.env, sid);
+      return { sid, csrf, cookie: `${SID_COOKIE}=${encodeURIComponent(sid)}` };
+    }
+
+    const keys: string[] = [];
+    h.env.ACCOUNT_READ_LIMITER = {
+      async limit({ key }) {
+        keys.push(key);
+        return { success: true };
+      },
+    };
+    const { fetchImpl } = makeFetchMock([
+      async () => Response.json(OVERVIEW_FIXTURE),
+    ]);
+
+    const empty = await sessionWithUid("");
+    const zero = await sessionWithUid("0");
+    const absent = await sessionWithUid(undefined);
+    const real = await sessionWithUid("123");
+
+    for (const s of [empty, zero, absent, real]) {
+      await callAccount(
+        h,
+        "/api/account/overview",
+        { headers: { Cookie: s.cookie } },
+        fetchImpl,
+      );
+    }
+
+    expect(keys.length).toBe(4);
+    expect(keys.every((k) => !k.includes("acct:0"))).toBe(true);
+    expect(keys[0]).toBe(`sid:${await sha256Hex(empty.sid)}`);
+    expect(keys[1]).toBe(`sid:${await sha256Hex(zero.sid)}`);
+    expect(keys[2]).toBe(`sid:${await sha256Hex(absent.sid)}`);
+    expect(keys[0]).not.toBe(keys[1]);
+    expect(keys[3]).toBe("acct:123");
+  });
+
+  it("DP-T-CERT3b: 409 double claim; claimed>total → available 0", async () => {
+    const sess = await withSession(h);
+    let claims = 0;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("/claim-certificate") && method === "POST") {
+          claims += 1;
+          if (claims > 1) {
+            return Response.json({ error: "already_claimed" }, { status: 409 });
+          }
+          return Response.json({ ok: true, foundations_coach: { seminar_checked_in: false } });
+        }
+        if (path.endsWith("/me/spend")) {
+          return Response.json({
+            total_ltv_cents: 30000,
+            claimed_courses_value_cents: 50000,
+            claimed_certificates: [],
+            canonical_tier: "metfix_pro",
+            foundations_coach: {},
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+
+    const first = await callAccount(
+      h,
+      "/api/account/courses/10/claim-certificate",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ method: "ltv" }),
+      },
+      fetchImpl,
+    );
+    expect(first.status).toBe(200);
+
+    const second = await callAccount(
+      h,
+      "/api/account/courses/10/claim-certificate",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ method: "ltv" }),
+      },
+      fetchImpl,
+    );
+    expect(second.status).toBe(409);
+    expect(await second.json()).toEqual({ error: "already_claimed" });
+
+    const ltv = await callAccount(
+      h,
+      "/api/account/ltv-certificates",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(ltv.status).toBe(200);
+    const body = (await ltv.json()) as {
+      available_certificate_ltv_cents: number;
+      claimed_courses_value_cents: number;
+    };
+    expect(body.available_certificate_ltv_cents).toBe(0);
+    expect(body.claimed_courses_value_cents).toBe(50000);
+  });
+
+  it("DP-T-16: 5242880 pass / 5242881 reject; gif/SVG reject; png/webp pass", async () => {
+    const sess = await withSession(h);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const webp = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x00,
+    ]);
+    const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+    const svg = new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'></svg>");
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.includes("profile-picture")) return Response.json({ ok: true });
+        return new Response(null, { status: 404 });
+      },
+    ]);
+
+    async function postPic(ct: string, body: Uint8Array) {
+      recorded.length = 0;
+      return callAccount(
+        h,
+        "/api/account/profile/picture",
+        {
+          method: "POST",
+          headers: {
+            ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+            "Content-Type": ct,
+          },
+          body,
+        },
+        fetchImpl,
+      );
+    }
+
+    const okPng = await postPic("image/png", png);
+    expect(okPng.status).toBe(200);
+    expect(recorded.length).toBe(1);
+    const okWebp = await postPic("image/webp", webp);
+    expect(okWebp.status).toBe(200);
+
+    const badGif = await postPic("image/gif", gif);
+    expect(badGif.status).toBe(400);
+    expect(recorded.length).toBe(0);
+    const badSvg = await postPic("image/svg+xml", svg);
+    expect(badSvg.status).toBe(400);
+    expect(recorded.length).toBe(0);
+
+    const exact = new Uint8Array(5_242_880);
+    exact.set(png, 0);
+    const okExact = await postPic("image/png", exact);
+    expect(okExact.status).toBe(200);
+
+    const over = new Uint8Array(5_242_881);
+    over.set(png, 0);
+    const badOver = await postPic("image/png", over);
+    expect([413, 400]).toContain(badOver.status);
+    expect(recorded.length).toBe(0);
+  });
+
+  it("DP-T-26b: notifications PUT whitelist strips unknown keys", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("notification-preferences") && method === "PUT") {
+          return Response.json({ ok: true });
+        }
+        if (path.includes("/me/newsletter") && method === "PUT") {
+          return Response.json({ ok: true });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/notifications",
+      {
+        method: "PUT",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          preferences: { email_digest: true, product_updates: false },
+          newsletter: true,
+          role: "admin",
+          user_id: 9,
+          email: "x@y.z",
+          __proto__: { polluted: true },
+          is_admin: true,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBeLessThan(500);
+    const prefPut = recorded.find(
+      (r) => r.method === "PUT" && r.url.includes("notification-preferences"),
+    );
+    expect(prefPut).toBeTruthy();
+    const body = JSON.parse(prefPut!.bodyText) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["newsletter", "preferences"].sort());
+    expect(body).not.toHaveProperty("role");
+    expect(body).not.toHaveProperty("user_id");
+    expect(body).not.toHaveProperty("email");
+    expect(body).not.toHaveProperty("is_admin");
+    expect(body.preferences).toEqual({ email_digest: true, product_updates: false });
+  });
+
+  it("members expired coach → foundations_coach badge false (normalize only)", async () => {
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.includes("/profiles/summary/")) {
+          return Response.json({
+            member_id: 9,
+            display_name: "Bob",
+            badges: { medical: false, affiliate: false, foundations_coach: true },
+            foundations_coach: {
+              seminar_checked_in: true,
+              granted_at: "2020-01-15T00:00:00.000Z",
+              expires_at: "2023-01-15T00:00:00.000Z",
+            },
+            bio: "hi",
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(h, "/api/members/9", {}, fetchImpl);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      badges: { foundations_coach: boolean };
+      foundations_coach: { active: boolean };
+    };
+    expect(body.foundations_coach.active).toBe(false);
+    expect(body.badges.foundations_coach).toBe(false);
+  });
+
+  it("DP-T-UI5: /members/abc and /members/1.5 → 400, 0 upstream", async () => {
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json({ ok: true }),
+    ]);
+    for (const id of ["abc", "1.5", "-1"]) {
+      recorded.length = 0;
+      const res = await callAccount(h, `/api/members/${id}`, {}, fetchImpl);
+      expect(res.status).toBe(400);
+      expect(recorded.length).toBe(0);
+    }
+  });
+
+  it("DP-T-T6: accountLog redacts Bearer and emails (no Bearer , no @)", async () => {
+    const { accountLog } = await import("./account");
+    const spy = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      accountLog(
+        "probe",
+        `Authorization: Bearer ${ACCESS1} user=jane@example.test`,
+      );
+      expect(spy).toHaveBeenCalled();
+      const logged = String(spy.mock.calls[0]![0] ?? "");
+      expect(logged).not.toMatch(/Bearer /);
+      expect(logged).not.toContain("@");
+      expect(logged).not.toContain(ACCESS1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -31,9 +31,11 @@ export function computeLtvBudget(
 ): LtvBudgetSummary {
   const total = toNonNegativeSafeCents(totalLtvCents);
   const claimed = toNonNegativeSafeCents(claimedCoursesValueCents);
+  // CERT2 / CERT3b: clamp available; keep claimed as reported (N7: do not
+  // Math.min(claimed, total) when computing utilization — that hid over-claim).
   const available = Math.max(0, total - claimed);
   const utilization =
-    total > 0 ? Math.min(100, Math.round((Math.min(claimed, total) * 100) / total)) : 0;
+    total > 0 ? Math.min(100, Math.round((claimed * 100) / total)) : 0;
   return {
     total_ltv_cents: total,
     claimed_courses_value_cents: claimed,

@@ -77,9 +77,10 @@ describe("computeLtvBudget / evaluateCourseCertificateEligibility (DP-T-CERT3 LT
     });
   });
 
-  it("clamps available at 0 when claimed exceeds total", () => {
+  it("CERT3b: clamps available at 0 when claimed exceeds total; keeps claimed", () => {
     const budget = computeLtvBudget(30000, 50000);
     expect(budget.available_certificate_ltv_cents).toBe(0);
+    expect(budget.claimed_courses_value_cents).toBe(50000);
     expect(budget.utilization_percent).toBe(100);
   });
 

@@ -12,13 +12,6 @@ export type LegacySubscriptionSource =
   | "affiliate_stripe"
   | null;
 
-/** Entitled Stripe/Whop statuses that keep a grandfathered Med Society → Pro mapping. */
-export const ENTITLED_SUBSCRIPTION_STATUSES = new Set([
-  "active",
-  "trialing",
-  "past_due",
-]);
-
 const CANONICAL_SET = new Set<string>(CANONICAL_SUBSCRIPTION_TIERS);
 
 /**
@@ -50,31 +43,23 @@ function itemStatus(item: SubscriptionTierItem): string {
 }
 
 /**
- * Single shared resolver for overview / subscriptions / LTV (CQ B2).
- * Grandfathered Stripe Med Society (`legacy_source === medical_society_stripe`)
- * with status in active|trialing|past_due → `metfix_pro`, unless already
- * `organization_owner`.
+ * Single shared resolver for overview / subscriptions / LTV (CQ B2 / R2-N1).
+ *
+ * DP-TIER-2: grandfathered Stripe Med Society (`legacy_source === medical_society_stripe`)
+ * maps to `metfix_pro` **only** while status is exactly `active` (not trialing/past_due).
+ * Never promotes a single subscription row to `organization_owner`.
+ * A stored/upstream `organization_owner` is never downgraded by a grandfathered item.
  */
 export function resolveAccountCanonicalTier(
   input: SubscriptionTierInput,
 ): CanonicalSubscriptionTier {
-  let tier = normalizeCanonicalTier(input.canonical_tier);
+  const tier = normalizeCanonicalTier(input.canonical_tier);
   const items = input.items ?? [];
 
   for (const item of items) {
-    const status = itemStatus(item);
-    if (!ENTITLED_SUBSCRIPTION_STATUSES.has(status)) continue;
-    const itemTier = normalizeCanonicalTier(item.tier);
-    if (itemTier === "organization_owner") {
-      return "organization_owner";
-    }
-  }
-
-  for (const item of items) {
-    const status = itemStatus(item);
     if (
       item.legacy_source === "medical_society_stripe" &&
-      ENTITLED_SUBSCRIPTION_STATUSES.has(status)
+      itemStatus(item) === "active"
     ) {
       return tier === "organization_owner" ? "organization_owner" : "metfix_pro";
     }

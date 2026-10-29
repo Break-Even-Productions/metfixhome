@@ -40,7 +40,7 @@ import {
 } from "../shared/account/bsi-paths";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { getSid } from "./auth/cookies";
-import { csrfForSid, timingSafeEqualStr } from "./auth/crypto";
+import { csrfForSid, sha256Hex, timingSafeEqualStr } from "./auth/crypto";
 import { isAllowedAuthOrigin } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
@@ -50,6 +50,7 @@ import {
   bsiAccountBearerHeaders,
   parseRetryAfter,
   resolveBsiOrigin,
+  UPSTREAM_USER_AGENT,
   type BsiHttpResult,
   type Env,
   type FetchImpl,
@@ -62,6 +63,18 @@ const POSITIVE_INT_RE = /^[1-9][0-9]{0,9}$/;
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const STRIPE_LIKE_ID_RE = /^(cus|sub|mem|seti|pi)_[A-Za-z0-9]+$/;
 const EMAIL_VALUE_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const BEARER_LOG_RE = /Bearer\s+\S+/gi;
+const EMAIL_LOG_RE = /[^\s"']+@[^\s"']+/g;
+
+/** DP-T-26b: only these top-level keys may leave the Worker toward BSI. */
+const NOTIFICATION_PUT_KEYS = new Set([
+  "email_digest",
+  "product_updates",
+  "newsletter",
+  "newsletter_subscribed",
+  "preferences",
+]);
+const NOTIFICATION_PREF_KEYS = new Set(["email_digest", "product_updates"]);
 
 /**
  * Editable profile attribute IDs (non-email). Common BSI attr slots for
@@ -174,13 +187,52 @@ function limiterBinding(env: Env, kind: LimiterKind): RateLimitBinding | undefin
 }
 
 /**
- * CQ B3: per-user limiter key. Prefer `bsi_user_id`; when missing/empty, key on
- * session id so anonymous-id sessions never share an `"acct:0"` bucket.
+ * CQ B3 / DP-T-CFG3 / R2-N3: per-user limiter key.
+ * Prefer real `bsi_user_id`. Treat missing, `""`, and `"0"` (session.ts stores
+ * `String(user_id ?? "0")`) as absent → hashed sid fallback. Never raw sid;
+ * never `acct:0`.
  */
-export function accountRateLimitKey(ctx: ActingContext): string {
+export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
   const uid = ctx.record.bsi_user_id;
-  if (typeof uid === "string" && uid.length > 0) return `acct:${uid}`;
-  return `sid:${ctx.sid}`;
+  if (typeof uid === "string" && uid.length > 0 && uid !== "0") {
+    return `acct:${uid}`;
+  }
+  return `sid:${await sha256Hex(ctx.sid)}`;
+}
+
+/** DP-T-T6: structured account logs never contain Bearer tokens or emails. */
+export function accountLog(kind: string, detail?: string): void {
+  let msg = `account:${kind}`;
+  if (detail != null && detail.length > 0) {
+    const redacted = detail
+      .replace(BEARER_LOG_RE, "[REDACTED_TOKEN]")
+      .replace(EMAIL_LOG_RE, "[REDACTED_EMAIL]")
+      .replace(/@/g, "");
+    msg = `${msg} ${redacted}`;
+  }
+  console.info(msg);
+}
+
+function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of NOTIFICATION_PUT_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+    const val = body[key];
+    if (key === "preferences") {
+      const pref = asRecord(val);
+      if (!pref) continue;
+      const cleaned: Record<string, boolean> = {};
+      for (const pk of NOTIFICATION_PREF_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(pref, pk) && typeof pref[pk] === "boolean") {
+          cleaned[pk] = pref[pk] as boolean;
+        }
+      }
+      out.preferences = cleaned;
+      continue;
+    }
+    if (typeof val === "boolean") out[key] = val;
+  }
+  return out;
 }
 
 async function checkAccountLimit(
@@ -295,7 +347,7 @@ async function runBearer(
 ): Promise<{ ctx: ActingContext; result: BsiHttpResult } | Response> {
   return runUserBsiCall(ctx, env, fetchImpl, opts, (access) => {
     const bearer = bsiAccountBearerHeaders(access, init?.contentType);
-    // Spread into a plain Record so RequestInit accepts it (UserBearerHeaders forbids API-key).
+    // N3: use shared header+UA from bsiAccountBearerHeaders (plain Record for RequestInit).
     const headers: Record<string, string> = {
       Authorization: bearer.Authorization,
       Accept: bearer.Accept,
@@ -330,8 +382,9 @@ function mapUpstreamErrorBody(json: unknown, status: number): Record<string, unk
   }
   if (err === "already_claimed") return { error: "already_claimed" };
   if (status === 404) return { error: "not_found" };
-  if (status === 409) return { error: typeof err === "string" ? err : "conflict" };
-  if (status === 400) return { error: typeof err === "string" ? err : "invalid_request" };
+  // R2-N2: map 400/409 to our codes — never echo arbitrary upstream strings.
+  if (status === 409) return { error: "already_claimed" };
+  if (status === 400) return { error: "invalid_request" };
   return { error: "upstream_error" };
 }
 
@@ -636,6 +689,8 @@ function shapeMemberSummary(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
   const badgesRaw = asRecord(obj.badges) ?? {};
+  // CQ r2: coach badge ONLY via normalizeFoundationsCoachStatus (never raw BSI badge).
+  const coach = normalizeFoundationsCoachStatus(obj.foundations_coach);
   return {
     member_id: obj.member_id ?? null,
     display_name: publicDisplayName({ display_name: obj.display_name }),
@@ -644,8 +699,9 @@ function shapeMemberSummary(raw: unknown): Record<string, unknown> | null {
     badges: {
       medical: boolOrFalse(badgesRaw.medical),
       affiliate: boolOrFalse(badgesRaw.affiliate),
-      foundations_coach: boolOrFalse(badgesRaw.foundations_coach),
+      foundations_coach: coach.active,
     },
+    foundations_coach: coach,
   };
 }
 
@@ -1094,7 +1150,7 @@ async function dispatch(
       const obj = asRecord(mapped.json);
       const checkout = sanitizeExternalBillingUrl(
         obj?.checkout_url ?? obj?.url,
-        "billing_portal",
+        "whop_only",
       );
       if (!checkout) return accountJson({ error: "bad_gateway" }, 502);
       return accountJson({ checkout_url: checkout }, 200);
@@ -1330,6 +1386,8 @@ async function dispatch(
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json) ?? {};
+      // DP-T-26b: whitelist before BSI — unknown keys never forwarded.
+      const safeBody = whitelistNotificationsPut(body);
       const ran = await runBearer(
         ctx!,
         env,
@@ -1337,12 +1395,12 @@ async function dispatch(
         opts,
         "PUT",
         accountNotificationPreferencesPath(),
-        { body: JSON.stringify(body), contentType: "application/json" },
+        { body: JSON.stringify(safeBody), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      if ("newsletter" in body || "newsletter_subscribed" in body) {
+      if ("newsletter" in safeBody || "newsletter_subscribed" in safeBody) {
         const newsRan = await runBearer(
           ran.ctx,
           env,
@@ -1352,7 +1410,8 @@ async function dispatch(
           accountNewsletterPath(),
           {
             body: JSON.stringify({
-              subscribed: body.newsletter === true || body.newsletter_subscribed === true,
+              subscribed:
+                safeBody.newsletter === true || safeBody.newsletter_subscribed === true,
             }),
             contentType: "application/json",
           },
@@ -1472,13 +1531,14 @@ async function dispatch(
         return accountJson(shaped, 200);
       }
       // Public: Bearer-less GET (no user token). Never attach X-API-Key.
+      // N3: shared Accept + UPSTREAM_USER_AGENT.
       const result = await accountBsiFetch(
         bsiUrl(env, accountMemberSummaryPath(memberId), opts),
         {
           method: "GET",
           headers: {
             Accept: "application/json",
-            "User-Agent": "metfixhome-worker/1.0",
+            "User-Agent": UPSTREAM_USER_AGENT,
           },
         },
         fetchImpl,
@@ -1539,8 +1599,8 @@ export async function handleAccountRoutes(
   }
 
   const limitKey = match.public
-    ? `ip:${clientIp(request)}`
-    : accountRateLimitKey(ctx!);
+    ? `ip:${await sha256Hex(clientIp(request))}`
+    : await accountRateLimitKey(ctx!);
   const limited = await checkAccountLimit(env, match.limiter, limitKey);
   if (limited) return limited;
 

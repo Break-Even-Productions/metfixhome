@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeExternalBillingUrl } from "./url-allowlist";
+import { BEP_WHOP_COMPANY_ID, sanitizeExternalBillingUrl } from "./url-allowlist";
 
 describe("sanitizeExternalBillingUrl (DP-WHOP-1 / T19)", () => {
   it("allows whop.com and *.whop.com in whop_only mode", () => {
@@ -29,6 +29,18 @@ describe("sanitizeExternalBillingUrl (DP-WHOP-1 / T19)", () => {
     ).toBeNull();
     expect(
       sanitizeExternalBillingUrl("https://whop.com/checkout/Curie", "whop_only"),
+    ).toBeNull();
+  });
+
+  it("pins Break Even Productions biz id; rejects foreign biz_", () => {
+    expect(
+      sanitizeExternalBillingUrl(
+        `https://whop.com/${BEP_WHOP_COMPANY_ID}/checkout/x`,
+        "whop_only",
+      ),
+    ).toBe(`https://whop.com/${BEP_WHOP_COMPANY_ID}/checkout/x`);
+    expect(
+      sanitizeExternalBillingUrl("https://whop.com/biz_FOREIGN123/checkout/x", "whop_only"),
     ).toBeNull();
   });
 

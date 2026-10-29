@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { clearAccountCache } from "@/lib/account";
 import AccountProfile from "./AccountProfile";
-import { jsonResponse } from "./testFixtures";
+import { jsonResponse } from "../../../test/account/testFixtures";
 
 vi.mock("@/lib/session", () => ({
   loadMe: vi.fn(async () => ({

@@ -3,7 +3,7 @@
  * Never fetch /api/auth/me here; callers use loadMe() from session.ts.
  */
 import { getMetfixLoginUrl } from "@/const";
-import { sanitizeExternalBillingUrl } from "@shared/account/url-allowlist";
+import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
 
@@ -619,7 +619,7 @@ export function assignBillingUrl(
   raw: unknown,
   mode: "whop_only" | "billing_portal" = "billing_portal",
 ): boolean {
-  const url = sanitizeExternalBillingUrl(raw, mode);
+  const url = sanitizeClientBillingUrl(raw, mode);
   if (!url) return false;
   window.location.assign(url);
   return true;
@@ -629,7 +629,7 @@ export function safeBillingHref(
   raw: unknown,
   mode: "whop_only" | "billing_portal" = "billing_portal",
 ): string | null {
-  return sanitizeExternalBillingUrl(raw, mode);
+  return sanitizeClientBillingUrl(raw, mode);
 }
 
 export type MembershipStatusLabel =
