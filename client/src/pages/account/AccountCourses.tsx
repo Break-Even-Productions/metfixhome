@@ -239,6 +239,7 @@ export default function AccountCourses() {
       if ("checkout_url" in res && res.checkout_url) {
         // B1/S1/CL-T19: redirect from POST alone — no claim-options GET before/after.
         if (!openWhopCheckout(res.checkout_url)) {
+          // N-R5-3: 200 with a bad body keeps the key — BSI replays the stored response.
           setError("Checkout unavailable.");
         }
         return;
