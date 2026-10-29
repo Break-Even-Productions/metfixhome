@@ -33,7 +33,7 @@ function moneyScanMatchers() {
   return { hitsMoney, hitsAdvisory };
 }
 
-/** errata d3 DR-3: remove only the identifier; keep scanning call args. */
+/** errata d4 DR-8: remove only the call name; args + rest of line stay scanned. */
 function scrubFormatUsdName(line: string): string {
   return line.replace(/\bformatUsdFromCents\b/g, "");
 }
@@ -457,7 +457,7 @@ describe("account.repo-scan", () => {
     expect(hitsMoney("commission_bps*(x_cents)/100")).toBe(true);
     expect(hitsMoney("(price_cents - fee) * bps / 100")).toBe(false);
 
-    // errata d3 DR-3: scrub only the formatUsdFromCents *name*; args stay scanned.
+    // errata d4 DR-8: scrub only the formatUsdFromCents *name*; args stay scanned.
     // formatUsdFromCents(price_cents / 100) must FAIL (args still hit).
     expect(hitsMoney(scrubFormatUsdName('formatUsdFromCents(price_cents / 100)'))).toBe(true);
     expect(hitsMoney(scrubFormatUsdName('formatUsdFromCents(x)'))).toBe(false);

@@ -2651,6 +2651,34 @@ describe("worker/account routes", () => {
             },
           ];
         }, "bad_path");
+        // Kill claimOptions.ts:243 mutant — length !== 3 must reject (duplicate / fourth).
+        const pathRow = (
+          id: "redeem_ltv" | "prepay_credit" | "buy_outright",
+          eligible: boolean,
+          shortfall: number,
+          reason: string | null,
+        ) => ({
+          path: id,
+          eligible,
+          shortfall_cents: shortfall,
+          price_cents: 30000,
+          reason_code: reason,
+        });
+        await rejectCase("bad_path duplicate path", (raw) => {
+          (raw.courses as Record<string, unknown>[])[0]!.paths = [
+            pathRow("redeem_ltv", false, 8000, "insufficient_ltv"),
+            pathRow("redeem_ltv", false, 8000, "insufficient_ltv"),
+            pathRow("buy_outright", true, 30000, null),
+          ];
+        }, "bad_path");
+        await rejectCase("bad_path fourth path", (raw) => {
+          (raw.courses as Record<string, unknown>[])[0]!.paths = [
+            pathRow("redeem_ltv", false, 8000, "insufficient_ltv"),
+            pathRow("prepay_credit", true, 8000, null),
+            pathRow("buy_outright", true, 30000, null),
+            pathRow("buy_outright", true, 30000, null),
+          ];
+        }, "bad_path");
 
         await rejectCase("bad_money available 21999", (raw) => {
           (raw.ltv as Record<string, unknown>).available_cents = 21999;
@@ -2687,9 +2715,9 @@ describe("worker/account routes", () => {
 
     it("CL-LEAK-1: spec regex on every claim POST + claim-options body", async () => {
       const sess = await withSession(h);
-      // Spec rev1.2.3 / S7 — verbatim.
+      // CL-LEAK-1 — exact spec regex (verbatim).
       const LEAK =
-        /\b(biz|cus|sub|mem|plan|prod|ch)_[A-Za-z0-9]{6,}\b|\bcca_[a-f0-9]+\b|\bmembership_id\b|\battempt_id\b/;
+        /(biz|cus|sub|mem|plan|prod|ch)_[A-Za-z0-9]+|cca_[a-f0-9]+|membership_id|attempt/;
 
       function assertClean(label: string, body: unknown) {
         const clone =

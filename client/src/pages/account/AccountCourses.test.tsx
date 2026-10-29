@@ -479,7 +479,7 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
   });
 
   it.each([418, 502] as const)(
-    "DR-7 / D7_502 / D7final: after %s, same-option retry → NEW key",
+    "errata d5 DR-12 / D7_502 / D7final: after %s final, same-option retry → NEW key",
     async (finalStatus) => {
       let claimPosts = 0;
       const idemKeys: string[] = [];
@@ -526,56 +526,62 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     },
   );
 
-  it("DR-7 / D7_503: after 503 in_progress, same-option retry → KEEP key", async () => {
-    let claimPosts = 0;
-    const idemKeys: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        const method = (init?.method ?? "GET").toUpperCase();
-        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
-        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
-        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
-        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
-          return jsonResponse(COURSES_LTV300);
-        }
-        if (url.includes("/certificate-claim-options")) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
-        if (url.includes("/courses/20/claim") && method === "POST") {
-          claimPosts += 1;
-          const key = new Headers(init?.headers).get("Idempotency-Key");
-          if (key) idemKeys.push(key);
-          if (claimPosts <= 2) {
-            return jsonResponse(
-              { error: "claim_in_progress", reason_code: "claim_in_progress" },
-              503,
-            );
+  it.each([
+    { status: 409 as const, body: { error: "claim_in_progress" } },
+    {
+      status: 503 as const,
+      body: { error: "claim_in_progress", reason_code: "claim_in_progress" },
+    },
+  ])(
+    "errata d5 DR-12: after $status transient, same-option retry → KEEP key",
+    async ({ status: transientStatus, body: transientBody }) => {
+      let claimPosts = 0;
+      const idemKeys: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          const method = (init?.method ?? "GET").toUpperCase();
+          if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+          if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+          if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+          if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+            return jsonResponse(COURSES_LTV300);
           }
-          return jsonResponse({ already_claimed: false });
-        }
-        return jsonResponse({ error: "not_found" }, 404);
-      }),
-    );
+          if (url.includes("/certificate-claim-options")) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+          if (url.includes("/courses/20/claim") && method === "POST") {
+            claimPosts += 1;
+            const key = new Headers(init?.headers).get("Idempotency-Key");
+            if (key) idemKeys.push(key);
+            if (claimPosts <= 2) {
+              return jsonResponse(transientBody, transientStatus);
+            }
+            return jsonResponse({ already_claimed: false });
+          }
+          return jsonResponse({ error: "not_found" }, 404);
+        }),
+      );
 
-    render(
-      <Router>
-        <AccountCourses />
-      </Router>,
-    );
-    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
-    fireEvent.click(claimCertificateButton());
-    await waitFor(() => expect(redeemButton()).toBeTruthy());
-    fireEvent.click(redeemButton());
-    await waitFor(() => expect(claimPosts).toBe(1));
-    await waitFor(() => expect(screen.getByText(/Still working on it/i)).toBeTruthy());
-    fireEvent.click(redeemButton());
-    await waitFor(() => expect(claimPosts).toBe(2));
-    expect(idemKeys).toHaveLength(2);
-    expect(idemKeys[1]).toBe(idemKeys[0]);
-  });
+      render(
+        <Router>
+          <AccountCourses />
+        </Router>,
+      );
+      await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+      fireEvent.click(claimCertificateButton());
+      await waitFor(() => expect(redeemButton()).toBeTruthy());
+      fireEvent.click(redeemButton());
+      await waitFor(() => expect(claimPosts).toBe(1));
+      await waitFor(() => expect(screen.getByText(/Still working on it/i)).toBeTruthy());
+      fireEvent.click(redeemButton());
+      await waitFor(() => expect(claimPosts).toBe(2));
+      expect(idemKeys).toHaveLength(2);
+      expect(idemKeys[1]).toBe(idemKeys[0]);
+    },
+  );
 
   it.each([409, 503] as const)(
-    "S-R4-1 / S-R5-2 / errata d3 DR-7: after %s, same option keeps key; different option → new key",
+    "S-R4-1 / S-R5-2 / errata d5 DR-12: after %s, same option keeps key; different option → new key",
     async (inProgressStatus) => {
       let claimPosts = 0;
       const idemKeys: string[] = [];

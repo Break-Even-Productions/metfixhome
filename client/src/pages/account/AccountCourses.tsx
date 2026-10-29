@@ -226,9 +226,9 @@ export default function AccountCourses() {
     setBusy(true);
     setError(null);
     setMessage(null);
-    // errata d3/d4 DR-7 / S-R4-1: one key per attempt; different option → new key.
-    // Keep key only for network throw, 409 in_progress, and 503 in_progress.
-    // Final HTTP (incl. 418/502) clears → same-option retry gets a NEW key.
+    // errata d5 DR-12 / DR-7: one key per attempt; different option → new key.
+    // Transient 409 ClaimInProgressBody + 503 ClaimLockTimeoutBody keep the key.
+    // Final HTTP (418/502/…) clears → same-option retry gets a NEW key.
     if (!idemRef.current || lastClaimPathRef.current !== path) {
       idemRef.current = crypto.randomUUID();
     }
@@ -255,10 +255,10 @@ export default function AccountCourses() {
       const status = (err as { status?: number })?.status;
       const body = (err as { body?: { error?: string; reason_code?: string } })?.body;
       if (status === 409 && body?.error === "claim_in_progress") {
-        // Keep key for same-option retry (errata d3 DR-7 / S-R4-1).
+        // errata d5 DR-12: 409 ClaimInProgressBody is transient → keep key.
         setError("Still working on it. Try again in a few seconds.");
       } else if (status === 503 && body?.error === "claim_in_progress") {
-        // DR-7 / D7_503: keep key for same-option retry (in_progress is not final).
+        // errata d5 DR-12: 503 ClaimLockTimeoutBody is transient → keep key.
         setError("Still working on it. Try again in a few seconds.");
         if (lockRefetchTimerRef.current != null) {
           clearTimeout(lockRefetchTimerRef.current);
