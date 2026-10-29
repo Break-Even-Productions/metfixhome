@@ -253,24 +253,3 @@ export function showOrganizationOwnerCard(
   const clinicOk = roles.includes("clinician") && hasPhysicalClinic === true;
   return gymOk || clinicOk;
 }
-
-/**
- * Allowlist Whop checkout URLs (WT-J4). Fail closed on curie contamination.
- * Shared with PR B `sanitizeExternalBillingUrl(..., "whop_only")`.
- */
-export function sanitizeWhopCheckoutUrl(raw: unknown): string | null {
-  if (typeof raw !== "string" || !raw) return null;
-  if (/curie/i.test(raw)) return null;
-  let u: URL;
-  try {
-    u = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== "https:") return null;
-  if (u.username || u.password) return null;
-  const host = u.hostname.toLowerCase();
-  if (host !== "whop.com" && !host.endsWith(".whop.com")) return null;
-  if (/curie/i.test(host)) return null;
-  return u.toString();
-}
