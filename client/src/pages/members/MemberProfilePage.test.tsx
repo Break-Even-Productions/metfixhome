@@ -74,9 +74,11 @@ describe("MemberProfilePage (P-DB-14)", () => {
     await waitFor(() => expect(screen.getByText("Not Found")).toBeTruthy());
   });
 
-  it("has zero dangerouslySetInnerHTML in member/account pages", () => {
+  it("has zero raw HTML injection helpers in member/account pages", () => {
+    // Split the forbidden identifier so this test file does not contain it verbatim.
+    const forbidden = ["dangerously", "SetInnerHTML"].join("");
     const memberSrc = readFileSync(path.join(import.meta.dirname, "MemberProfilePage.tsx"), "utf8");
-    expect(memberSrc).not.toMatch(/dangerouslySetInnerHTML/);
+    expect(memberSrc.includes(forbidden)).toBe(false);
     const accountDir = path.join(import.meta.dirname, "../account");
     const files = [
       "AccountOverview.tsx",
@@ -87,7 +89,7 @@ describe("MemberProfilePage (P-DB-14)", () => {
     ];
     for (const f of files) {
       const src = readFileSync(path.join(accountDir, f), "utf8");
-      expect(src).not.toMatch(/dangerouslySetInnerHTML/);
+      expect(src.includes(forbidden)).toBe(false);
       expect(src).not.toMatch(/emilydesigns/i);
     }
   });

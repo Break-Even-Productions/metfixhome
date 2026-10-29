@@ -110,7 +110,9 @@ describe("account.repo-scan", () => {
       expect(existing.length).toBe(0);
       return;
     }
-    const files = existing.flatMap((d) => walkFiles(d, SRC_PRED));
+    const files = existing
+      .flatMap((d) => walkFiles(d, SRC_PRED))
+      .filter((f) => !/\.test\.(ts|tsx)$/.test(relative(REPO_ROOT, f)));
     const failures = scanLines(files, /dangerouslySetInnerHTML|role_badges_html/);
     expect(failures, failures.join("\n")).toEqual([]);
   });

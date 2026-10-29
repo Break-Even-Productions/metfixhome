@@ -9,6 +9,34 @@ import {
   type LegacySubscriptionSource,
 } from "../shared/account/tiers";
 import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
+import {
+  accountCancelDuplicatePath,
+  accountClaimCertificatePath,
+  accountConvertToWhopPath,
+  accountCourseGiftsPath,
+  accountEmailConfirmPath,
+  accountEmailPath,
+  accountFavoriteItemPath,
+  accountFavoritesPath,
+  accountMePath,
+  accountMeProfilePath,
+  accountMemberSummaryPath,
+  accountMyCoursesPath,
+  accountNewsletterPath,
+  accountNotificationPreferencesPath,
+  accountPasswordResetPath,
+  accountPaymentsPath,
+  accountPortalLinkPath,
+  accountPrivacySettingsPath,
+  accountProfilesMeAttributesPath,
+  accountProfilesMePath,
+  accountProfilesMePicturePath,
+  accountPurchaseCheckoutPath,
+  accountReferralCodePath,
+  accountReferralEarningsPath,
+  accountSpendPath,
+  accountSubscriptionsPath,
+} from "../shared/account/bsi-paths";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { csrfForSid, timingSafeEqualStr } from "./auth/crypto";
 import { isAllowedAuthOrigin } from "./auth/csrf";
@@ -824,7 +852,7 @@ async function dispatch(
 
   switch (match.id) {
     case "DP1": {
-      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", "/wp-json/bsi/v1/me/account");
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountMePath());
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
@@ -839,7 +867,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/bsi/v1/me/subscriptions",
+        accountSubscriptionsPath(),
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
@@ -875,7 +903,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/me/subscriptions/portal-link",
+        accountPortalLinkPath(),
         { body: JSON.stringify(payload), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -906,7 +934,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/me/subscriptions/convert-to-whop",
+        accountConvertToWhopPath(),
         { body: JSON.stringify(payload), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -938,7 +966,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        `/wp-json/bsi/v1/me/subscriptions/${encodeURIComponent(subRef)}/cancel-duplicate`,
+        accountCancelDuplicatePath(subRef),
         {
           body: JSON.stringify({ at_period_end: atPeriodEnd }),
           contentType: "application/json",
@@ -953,7 +981,7 @@ async function dispatch(
       const pages = parsePageParams(url);
       if (pages instanceof Response) return pages;
       const q = `page=${pages.page}&per_page=${pages.per_page}`;
-      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", "/wp-json/bsi/v1/me/payments", {
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountPaymentsPath(), {
         query: q,
       });
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -964,7 +992,7 @@ async function dispatch(
       return accountJson(shaped, 200);
     }
     case "DP5": {
-      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", "/wp-json/bsi/v1/me/spend");
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountSpendPath());
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
@@ -989,7 +1017,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        `/wp-json/bsi/v1/courses/${courseId}/claim-certificate`,
+        accountClaimCertificatePath(courseId),
         { body: JSON.stringify({ method: "ltv" }), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1012,7 +1040,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        `/wp-json/bsi/v1/courses/${courseId}/purchase-checkout`,
+        accountPurchaseCheckoutPath(courseId),
         { body: "{}", contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1028,7 +1056,7 @@ async function dispatch(
     }
     case "DP12": {
       // Ignore client-supplied member_id / user_id (T2).
-      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", "/wp-json/bsi/v1/profiles/me");
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountProfilesMePath());
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
@@ -1045,7 +1073,7 @@ async function dispatch(
       if (parsed instanceof Response) return parsed;
       const patch = validateProfilePatch(parsed.json);
       if (patch instanceof Response) return patch;
-      const ran = await runBearer(ctx!, env, fetchImpl, opts, "PATCH", "/wp-json/bsi/v1/me/profile", {
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "PATCH", accountMeProfilePath(), {
         body: JSON.stringify(patch),
         contentType: "application/json",
       });
@@ -1065,7 +1093,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/profiles/me/attributes",
+        accountProfilesMeAttributesPath(),
         {
           body: JSON.stringify({ attributes: attrs }),
           contentType: "application/json",
@@ -1106,7 +1134,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/profiles/me/profile-picture",
+        accountProfilesMePicturePath(),
         { body: buf, contentType: ct },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1124,7 +1152,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/bsi/v1/courses/my-courses",
+        accountMyCoursesPath(),
         { query: q },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1146,7 +1174,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/metfix/v1/favorites",
+        accountFavoritesPath(),
         { query: q },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1167,7 +1195,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/metfix/v1/favorites",
+        accountFavoritesPath(),
       );
       if (getRan instanceof Response) return mapUnauthenticated(getRan);
       const getMapped = mapUpstreamResult(getRan.result);
@@ -1182,7 +1210,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        `/wp-json/metfix/v1/favorites/${encodeURIComponent(sourceType)}/${encodeURIComponent(sourceId)}`,
+        accountFavoriteItemPath(sourceType, sourceId),
         { body: "{}", contentType: "application/json" },
       );
       if (postRan instanceof Response) return mapUnauthenticated(postRan);
@@ -1197,7 +1225,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/bsi/v1/me/referral-earnings",
+        accountReferralEarningsPath(),
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
@@ -1217,7 +1245,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/me/referral-code",
+        accountReferralCodePath(),
         { body: JSON.stringify({ action: body.action }), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1232,7 +1260,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/bsi/v1/me/course-gifts",
+        accountCourseGiftsPath(),
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
@@ -1246,7 +1274,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/bsi/v1/notification-preferences",
+        accountNotificationPreferencesPath(),
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
@@ -1263,7 +1291,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "PUT",
-        "/wp-json/bsi/v1/notification-preferences",
+        accountNotificationPreferencesPath(),
         { body: JSON.stringify(body), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1276,7 +1304,7 @@ async function dispatch(
           fetchImpl,
           opts,
           "PUT",
-          "/wp-json/bsi/v1/me/newsletter",
+          accountNewsletterPath(),
           {
             body: JSON.stringify({
               subscribed: body.newsletter === true || body.newsletter_subscribed === true,
@@ -1297,7 +1325,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "GET",
-        "/wp-json/bsi/v1/account/privacy-settings",
+        accountPrivacySettingsPath(),
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
@@ -1314,7 +1342,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "PUT",
-        "/wp-json/bsi/v1/account/privacy-settings",
+        accountPrivacySettingsPath(),
         { body: JSON.stringify(body), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1329,7 +1357,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/me/password-reset",
+        accountPasswordResetPath(),
         { body: "{}", contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1344,7 +1372,7 @@ async function dispatch(
       if (!body || typeof body.email !== "string" || !EMAIL_VALUE_RE.test(body.email)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
-      const ran = await runBearer(ctx!, env, fetchImpl, opts, "PUT", "/wp-json/bsi/v1/me/email", {
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "PUT", accountEmailPath(), {
         body: JSON.stringify({ email: body.email }),
         contentType: "application/json",
       });
@@ -1366,7 +1394,7 @@ async function dispatch(
         fetchImpl,
         opts,
         "POST",
-        "/wp-json/bsi/v1/me/email/confirm",
+        accountEmailConfirmPath(),
         { body: JSON.stringify({ code: body.code }), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
@@ -1389,7 +1417,7 @@ async function dispatch(
           fetchImpl,
           opts,
           "GET",
-          `/wp-json/bsi/v1/profiles/summary/${memberId}`,
+          accountMemberSummaryPath(memberId),
         );
         if (ran instanceof Response) return mapUnauthenticated(ran);
         const mapped = mapUpstreamResult(ran.result);
@@ -1400,7 +1428,7 @@ async function dispatch(
       }
       // Public: Bearer-less GET (no user token). Never attach X-API-Key.
       const result = await accountBsiFetch(
-        bsiUrl(env, `/wp-json/bsi/v1/profiles/summary/${memberId}`, opts),
+        bsiUrl(env, accountMemberSummaryPath(memberId), opts),
         {
           method: "GET",
           headers: {
