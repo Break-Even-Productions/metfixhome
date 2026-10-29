@@ -1,0 +1,15 @@
+{
+  "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+  "playwright": "1.56.1",
+  "chromium": "bundled",
+  "maskCapPct": 10,
+  "threshold": 0.1,
+  "maxDiffPixelRatio": 0.02,
+  "retries": 0,
+  "notes": "Baselines box-only vs beta 95f67814. Masks are Playwright locators (no data-visual-*). Terms URL: brokenscience.org/terms-and-conditions/.",
+  "entries": [],
+  "fontHashes": {
+    "playfair-display/playfair-display-latin-400-normal.woff2": "51c8eae79bf05bbcc1811da8cb56ff69d87d40bafdce8282fea8a43259b4afcb",
+    "plus-jakarta-sans/plus-jakarta-sans-latin-400-normal.woff2": "cf1300338d5db6340c61d3e549d482298897791d327c156509e1968c84e0f143"
+  }
+}

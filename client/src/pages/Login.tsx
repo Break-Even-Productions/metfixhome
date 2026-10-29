@@ -552,7 +552,7 @@ export default function Login() {
       <footer className="login-footer">
         <Link href="/">MetFix</Link>
         <a href="https://brokenscience.org/privacy-policy/">Privacy</a>
-        <a href="https://brokenscience.org/terms-of-use/">Terms</a>
+        <a href="https://brokenscience.org/terms-and-conditions/">Terms</a>
         <a href="mailto:courses@metfix.org">Support</a>
         <Link href="/become-an-affiliate">Affiliates</Link>
       </footer>

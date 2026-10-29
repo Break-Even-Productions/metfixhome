@@ -1,0 +1,251 @@
+/* F1 style parity — Become an Affiliate (cream / ink / gold) */
+
+.affiliate-page {
+  --color-cream: #f3eee4;
+  --color-cream-2: #e9e1d2;
+  --color-paper: #faf7f1;
+  --color-ink: #171512;
+  --color-ink-2: #221f1b;
+  --color-ink-3: #2c2925;
+  --color-accent: #c4a46c;
+  --color-accent-2: #b08d52;
+  --color-accent-3: #d4bc8a;
+  --color-accent-text: #775f37;
+  --color-muted: #686158;
+  --color-muted-2: #8a8378;
+  --color-line: rgba(23, 21, 18, 0.1);
+  --color-danger-text: #9a4a2e;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-font-smoothing: antialiased;
+}
+
+.affiliate-page.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 7.15rem 0.5rem 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .affiliate-page.page-stack {
+    gap: 0.75rem;
+    padding: 7.15rem 0.75rem 0.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .affiliate-page.page-stack {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
+.affiliate-page .section-card {
+  overflow: hidden;
+  border-radius: 1.75rem;
+  background: var(--color-paper);
+  border: 0;
+  box-shadow: none;
+}
+
+.affiliate-page .section-card--cream {
+  background: var(--color-cream);
+}
+
+.affiliate-page .section-card--cream-2 {
+  background: var(--color-cream-2);
+}
+
+.affiliate-page .section-card--paper {
+  background: var(--color-paper);
+}
+
+.affiliate-page .section-card--hero {
+  background: var(--color-ink);
+  color: var(--color-cream);
+}
+
+.affiliate-page .section-card--hero .display-serif,
+.affiliate-page .section-card--hero .display-serif-italic {
+  color: var(--color-cream);
+}
+
+.affiliate-page .section-card--hero .label-mono {
+  color: var(--color-accent-3);
+}
+
+.affiliate-page .section-card--hero .btn-outline--on-ink {
+  border-color: color-mix(in srgb, var(--color-cream) 35%, transparent);
+  color: var(--color-cream);
+}
+
+.affiliate-page .section-card--hero .btn-outline--on-ink:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-3);
+}
+
+@media (min-width: 768px) {
+  .affiliate-page .section-card {
+    border-radius: 2.5rem;
+  }
+}
+
+.affiliate-page .display-serif,
+.affiliate-page .display-serif-italic {
+  font-family: var(--font-serif);
+  color: inherit;
+}
+
+.affiliate-page .section-card:not(.section-card--hero) .display-serif,
+.affiliate-page .section-card:not(.section-card--hero) .display-serif-italic {
+  color: var(--color-ink);
+}
+
+.affiliate-page .label-mono {
+  font-family: var(--font-sans);
+  color: var(--color-accent-text);
+}
+
+.affiliate-page .text-gold {
+  color: var(--color-accent-text);
+}
+
+.affiliate-page .rule::before {
+  background: var(--color-accent);
+}
+
+.affiliate-page .course-card {
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  box-shadow: none;
+}
+
+.affiliate-page .course-card:hover {
+  background: var(--color-cream);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.affiliate-page .btn-primary {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.affiliate-page .btn-primary:hover {
+  background: var(--color-accent-2);
+  color: var(--color-ink);
+}
+
+.affiliate-page .btn-outline {
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+
+.affiliate-page .btn-outline:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.affiliate-page .btn-gold {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.affiliate-page .btn-gold:hover {
+  background: var(--color-accent-2);
+}
+
+.affiliate-page .testimonial-quote {
+  font-family: var(--font-serif);
+  color: var(--color-ink);
+}
+
+.affiliate-page .aff-muted {
+  color: var(--color-muted);
+}
+
+.affiliate-page .aff-accent-text {
+  color: var(--color-accent-text);
+}
+
+.affiliate-page .aff-serif {
+  font-family: var(--font-serif);
+}
+
+.affiliate-page .aff-sans {
+  font-family: var(--font-sans);
+}
+
+.affiliate-page .aff-label {
+  font-family: var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent-text);
+}
+
+.affiliate-page .aff-include-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-left: 2px solid var(--color-accent);
+}
+
+.affiliate-page .aff-include-row--a {
+  background: var(--color-cream);
+}
+
+.affiliate-page .aff-include-row--b {
+  background: var(--color-cream-2);
+}
+
+.affiliate-page .aff-sticky-cta {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  background: color-mix(in srgb, var(--color-paper) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--color-line);
+  padding: 0.875rem 1.5rem;
+  padding-bottom: calc(0.875rem + env(safe-area-inset-bottom));
+}
+
+.affiliate-page .aff-sticky-home {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--color-line);
+  color: var(--color-ink);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .affiliate-page .affiliate-hero-content {
+    padding-top: 5rem;
+    padding-bottom: 2rem;
+  }
+  .affiliate-page .affiliate-footer-row {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+}
