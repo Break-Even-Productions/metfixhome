@@ -3,6 +3,7 @@ import {
   CANONICAL_SUBSCRIPTION_TIERS,
   hasMetFixPro,
   normalizeCanonicalTier,
+  resolveAccountCanonicalTier,
   tierDisplayLabel,
   type CanonicalSubscriptionTier,
 } from "./tiers";
@@ -55,5 +56,58 @@ describe("canonical subscription tier union (DP-TIER-1)", () => {
     ).toBe("MetFix Pro · Grandfathered Med Society");
     expect(tierDisplayLabel("member")).toBe("Member");
     expect(tierDisplayLabel("free")).toBe("Free");
+  });
+});
+
+describe("resolveAccountCanonicalTier (CQ B2)", () => {
+  const medSocItem = {
+    tier: "member",
+    legacy_source: "medical_society_stripe",
+    status: "active",
+  };
+
+  it("grandfathers Stripe Med Society → metfix_pro for active|trialing|past_due", () => {
+    for (const status of ["active", "trialing", "past_due"] as const) {
+      expect(
+        resolveAccountCanonicalTier({
+          canonical_tier: "member",
+          items: [{ ...medSocItem, status }],
+        }),
+      ).toBe("metfix_pro");
+    }
+  });
+
+  it("does not grandfather canceled / unpaid Med Society", () => {
+    expect(
+      resolveAccountCanonicalTier({
+        canonical_tier: "member",
+        items: [{ ...medSocItem, status: "canceled" }],
+      }),
+    ).toBe("member");
+  });
+
+  it("same fixture yields same tier (overview/subs/LTV lockstep)", () => {
+    const fixture = {
+      canonical_tier: "member" as const,
+      items: [{ ...medSocItem, status: "trialing" }],
+    };
+    const a = resolveAccountCanonicalTier(fixture);
+    const b = resolveAccountCanonicalTier(fixture);
+    const c = resolveAccountCanonicalTier(fixture);
+    expect(a).toBe("metfix_pro");
+    expect(b).toBe(a);
+    expect(c).toBe(a);
+  });
+
+  it("organization_owner wins over Med Society grandfather", () => {
+    expect(
+      resolveAccountCanonicalTier({
+        canonical_tier: "organization_owner",
+        items: [
+          { tier: "organization_owner", status: "active" },
+          { ...medSocItem, status: "active" },
+        ],
+      }),
+    ).toBe("organization_owner");
   });
 });

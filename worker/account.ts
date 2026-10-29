@@ -6,6 +6,7 @@ import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
   normalizeCanonicalTier,
+  resolveAccountCanonicalTier,
   type LegacySubscriptionSource,
 } from "../shared/account/tiers";
 import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
@@ -38,6 +39,7 @@ import {
   accountSubscriptionsPath,
 } from "../shared/account/bsi-paths";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
+import { getSid } from "./auth/cookies";
 import { csrfForSid, timingSafeEqualStr } from "./auth/crypto";
 import { isAllowedAuthOrigin } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
@@ -169,6 +171,16 @@ function limiterBinding(env: Env, kind: LimiterKind): RateLimitBinding | undefin
   if (kind === "read") return env.ACCOUNT_READ_LIMITER;
   if (kind === "write") return env.ACCOUNT_WRITE_LIMITER;
   return env.ACCOUNT_PORTAL_LIMITER;
+}
+
+/**
+ * CQ B3: per-user limiter key. Prefer `bsi_user_id`; when missing/empty, key on
+ * session id so anonymous-id sessions never share an `"acct:0"` bucket.
+ */
+export function accountRateLimitKey(ctx: ActingContext): string {
+  const uid = ctx.record.bsi_user_id;
+  if (typeof uid === "string" && uid.length > 0) return `acct:${uid}`;
+  return `sid:${ctx.sid}`;
 }
 
 async function checkAccountLimit(
@@ -303,14 +315,30 @@ async function runBearer(
   });
 }
 
+/** Allowlisted upstream error shapes — never pass BSI bodies through verbatim (CQ N). */
+function mapUpstreamErrorBody(json: unknown, status: number): Record<string, unknown> {
+  const obj = asRecord(json);
+  if (!obj) return { error: "upstream_error" };
+  const err = typeof obj.error === "string" ? obj.error : null;
+  if (err === "insufficient_ltv") {
+    return {
+      error: "insufficient_ltv",
+      required_cents: typeof obj.required_cents === "number" ? obj.required_cents : undefined,
+      available_cents: typeof obj.available_cents === "number" ? obj.available_cents : undefined,
+      shortfall_cents: typeof obj.shortfall_cents === "number" ? obj.shortfall_cents : undefined,
+    };
+  }
+  if (err === "already_claimed") return { error: "already_claimed" };
+  if (status === 404) return { error: "not_found" };
+  if (status === 409) return { error: typeof err === "string" ? err : "conflict" };
+  if (status === 400) return { error: typeof err === "string" ? err : "invalid_request" };
+  return { error: "upstream_error" };
+}
+
 function mapUpstreamResult(result: BsiHttpResult): Response | { json: unknown; status: number } {
   if (result.kind === "ok") return { json: result.json, status: result.status };
   if (result.kind === "http") {
-    const errBody =
-      result.json && typeof result.json === "object"
-        ? result.json
-        : { error: "upstream_error" };
-    return accountJson(errBody, result.status);
+    return accountJson(mapUpstreamErrorBody(result.json, result.status), result.status);
   }
   if (result.kind === "bad_json") {
     return accountJson({ error: "unavailable" }, 502);
@@ -413,6 +441,20 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
   if (!obj) return null;
   const badges = asRecord(obj.badges) ?? {};
   const coach = normalizeFoundationsCoachStatus(obj.foundations_coach);
+  // Prefer explicit subscription payload fields — never treat unrelated `items` as subs.
+  const subsRaw = asRecord(obj.subscriptions);
+  const subItems = Array.isArray(obj.subscription_items)
+    ? obj.subscription_items
+    : Array.isArray(subsRaw?.items)
+      ? (subsRaw!.items as unknown[])
+      : [];
+  const canonical_tier = resolveAccountCanonicalTier({
+    canonical_tier: obj.canonical_tier,
+    items: subItems.map((row) => {
+      const r = asRecord(row) ?? {};
+      return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
+    }),
+  });
   return {
     user_id: obj.user_id ?? null,
     member_id: obj.member_id ?? null,
@@ -423,9 +465,10 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
       medical: boolOrFalse(badges.medical),
       affiliate: boolOrFalse(badges.affiliate),
       subscription: boolOrFalse(badges.subscription),
-      foundations_coach: boolOrFalse(badges.foundations_coach) || coach.active,
+      // CQ B1: badge only when coach is active (not expired / not missing granted_at).
+      foundations_coach: coach.active,
     },
-    canonical_tier: normalizeCanonicalTier(obj.canonical_tier),
+    canonical_tier,
     foundations_coach: coach,
     tabs: Array.isArray(obj.tabs) ? obj.tabs : [],
     links: asRecord(obj.links) ?? {},
@@ -441,16 +484,10 @@ function shapeSubscriptions(raw: unknown): Record<string, unknown> | null {
     const shaped = shapeSubscriptionItem(row);
     if (shaped) items.push(shaped);
   }
-  let canonical_tier = normalizeCanonicalTier(obj.canonical_tier);
-  for (const item of items) {
-    if (
-      item.legacy_source === "medical_society_stripe" &&
-      item.status === "active" &&
-      canonical_tier !== "organization_owner"
-    ) {
-      canonical_tier = "metfix_pro";
-    }
-  }
+  const canonical_tier = resolveAccountCanonicalTier({
+    canonical_tier: obj.canonical_tier,
+    items,
+  });
   const out: Record<string, unknown> = { canonical_tier, items };
   const conversion = shapeConversion(obj.conversion);
   if (conversion) out.conversion = conversion;
@@ -544,7 +581,15 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
     claimed_courses_value_cents: budget.claimed_courses_value_cents,
     available_certificate_ltv_cents: budget.available_certificate_ltv_cents,
     claimed_certificates,
-    canonical_tier: normalizeCanonicalTier(obj.canonical_tier),
+    canonical_tier: resolveAccountCanonicalTier({
+      canonical_tier: obj.canonical_tier,
+      items: Array.isArray(obj.subscription_items)
+        ? (obj.subscription_items as unknown[]).map((row) => {
+            const r = asRecord(row) ?? {};
+            return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
+          })
+        : undefined,
+    }),
     foundations_coach: normalizeFoundationsCoachStatus(obj.foundations_coach),
   };
 }
@@ -1481,13 +1526,10 @@ export async function handleAccountRoutes(
     const resolved = await resolveAccountSession(request, env, fetchImpl, opts);
     if (resolved instanceof Response) return resolved;
     ctx = resolved;
-  } else {
+  } else if (getSid(request)) {
     // Optional session for members (Bearer when signed in).
-    const cookies = request.headers.get("Cookie") ?? "";
-    if (cookies.includes("__Host-mfx_sid=")) {
-      const resolved = await resolveAccountSession(request, env, fetchImpl, opts);
-      if (!(resolved instanceof Response)) ctx = resolved;
-    }
+    const resolved = await resolveAccountSession(request, env, fetchImpl, opts);
+    if (!(resolved instanceof Response)) ctx = resolved;
   }
 
   if (match.method !== "GET" && match.method !== "HEAD") {
@@ -1498,7 +1540,7 @@ export async function handleAccountRoutes(
 
   const limitKey = match.public
     ? `ip:${clientIp(request)}`
-    : `acct:${ctx!.record.bsi_user_id || "0"}`;
+    : accountRateLimitKey(ctx!);
   const limited = await checkAccountLimit(env, match.limiter, limitKey);
   if (limited) return limited;
 

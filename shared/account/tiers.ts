@@ -12,6 +12,13 @@ export type LegacySubscriptionSource =
   | "affiliate_stripe"
   | null;
 
+/** Entitled Stripe/Whop statuses that keep a grandfathered Med Society → Pro mapping. */
+export const ENTITLED_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+]);
+
 const CANONICAL_SET = new Set<string>(CANONICAL_SUBSCRIPTION_TIERS);
 
 /**
@@ -24,6 +31,56 @@ export function normalizeCanonicalTier(raw: unknown): CanonicalSubscriptionTier 
   if (CANONICAL_SET.has(key)) return key as CanonicalSubscriptionTier;
   if (key === "medical_society") return "member";
   return "free";
+}
+
+export type SubscriptionTierItem = {
+  tier?: unknown;
+  legacy_source?: unknown;
+  status?: unknown;
+};
+
+export type SubscriptionTierInput = {
+  /** Upstream/self-reported canonical_tier when present. */
+  canonical_tier?: unknown;
+  items?: ReadonlyArray<SubscriptionTierItem>;
+};
+
+function itemStatus(item: SubscriptionTierItem): string {
+  return typeof item.status === "string" ? item.status.toLowerCase() : "";
+}
+
+/**
+ * Single shared resolver for overview / subscriptions / LTV (CQ B2).
+ * Grandfathered Stripe Med Society (`legacy_source === medical_society_stripe`)
+ * with status in active|trialing|past_due → `metfix_pro`, unless already
+ * `organization_owner`.
+ */
+export function resolveAccountCanonicalTier(
+  input: SubscriptionTierInput,
+): CanonicalSubscriptionTier {
+  let tier = normalizeCanonicalTier(input.canonical_tier);
+  const items = input.items ?? [];
+
+  for (const item of items) {
+    const status = itemStatus(item);
+    if (!ENTITLED_SUBSCRIPTION_STATUSES.has(status)) continue;
+    const itemTier = normalizeCanonicalTier(item.tier);
+    if (itemTier === "organization_owner") {
+      return "organization_owner";
+    }
+  }
+
+  for (const item of items) {
+    const status = itemStatus(item);
+    if (
+      item.legacy_source === "medical_society_stripe" &&
+      ENTITLED_SUBSCRIPTION_STATUSES.has(status)
+    ) {
+      return tier === "organization_owner" ? "organization_owner" : "metfix_pro";
+    }
+  }
+
+  return tier;
 }
 
 /** MetFix Pro access includes organization_owner (includes Pro). */

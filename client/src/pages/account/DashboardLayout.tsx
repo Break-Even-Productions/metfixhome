@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { basePath } from "@/const";
+import { basePath, getMetfixLoginUrl } from "@/const";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { loadMe } from "@/lib/session";
 import {
@@ -8,6 +8,7 @@ import {
   deriveMembershipStatus,
   loadOverview,
   loadSubscriptions,
+  sanitizeReturnPath,
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
@@ -56,10 +57,10 @@ export default function DashboardLayout({ title, description, children }: Props)
         const me = await loadMe({ signal: ac.signal });
         if (me.status !== "signed_in") {
           clearAccountCache();
-          const { getMetfixLoginUrl } = await import("@/const");
-          const { sanitizeReturnPath } = await import("@/lib/account");
           window.location.assign(
-            getMetfixLoginUrl(sanitizeReturnPath(`${window.location.pathname}${window.location.search}`)),
+            getMetfixLoginUrl(
+              sanitizeReturnPath(`${window.location.pathname}${window.location.search}`),
+            ),
           );
           return;
         }
@@ -86,7 +87,8 @@ export default function DashboardLayout({ title, description, children }: Props)
   const pills = useMemo(() => {
     if (!overview) return [] as string[];
     const out: string[] = ["MetFix Member"];
-    if (overview.foundations_coach.active || overview.badges.foundations_coach) {
+    // CQ B1: Coach pill only when active (expired / missing granted_at → no badge).
+    if (overview.foundations_coach.active) {
       out.push("Foundations Coach");
     }
     if (overview.badges.affiliate) out.push("Affiliate");

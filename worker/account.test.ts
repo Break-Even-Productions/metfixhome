@@ -1030,6 +1030,187 @@ describe("worker/account routes", () => {
     expect(ACCESS1.length).toBeGreaterThan(0);
   });
 
+  it("CQ B1: expired coach → foundations_coach badge false; missing granted_at inactive", async () => {
+    const sess = await withSession(h);
+    const expiredGrant = "2020-01-15T00:00:00.000Z";
+    const expiredAt = "2023-01-15T00:00:00.000Z";
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/account")) {
+          return Response.json({
+            ...OVERVIEW_FIXTURE,
+            badges: {
+              medical: false,
+              affiliate: false,
+              subscription: true,
+              foundations_coach: true, // upstream lies — Worker must not echo when expired
+            },
+            foundations_coach: {
+              seminar_checked_in: true,
+              metfix_essentials_completed: false,
+              metfix_essentials_certificate_claimed: false,
+              granted_at: expiredGrant,
+              expires_at: expiredAt,
+              active: true,
+            },
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      badges: { foundations_coach: boolean };
+      foundations_coach: { active: boolean; granted_at: string | null };
+    };
+    expect(body.foundations_coach.active).toBe(false);
+    expect(body.badges.foundations_coach).toBe(false);
+
+    const { fetchImpl: fetch2 } = makeFetchMock([
+      async () =>
+        Response.json({
+          ...OVERVIEW_FIXTURE,
+          foundations_coach: {
+            seminar_checked_in: true,
+            metfix_essentials_completed: false,
+            metfix_essentials_certificate_claimed: false,
+            // granted_at missing → INACTIVE
+          },
+        }),
+    ]);
+    const res2 = await callAccount(
+      h,
+      "/api/account/overview",
+      { headers: { Cookie: sess.cookie } },
+      fetch2,
+    );
+    const body2 = (await res2.json()) as {
+      badges: { foundations_coach: boolean };
+      foundations_coach: { active: boolean; granted_at: string | null; expires_at: string | null };
+    };
+    expect(body2.foundations_coach.active).toBe(false);
+    expect(body2.foundations_coach.granted_at).toBeNull();
+    expect(body2.foundations_coach.expires_at).toBeNull();
+    expect(body2.badges.foundations_coach).toBe(false);
+  });
+
+  it("CQ B2: same Med Society fixture → same canonical_tier on overview/subs/LTV", async () => {
+    const sess = await withSession(h);
+    const medItems = [
+      {
+        sub_ref: "opaque_med_1",
+        provider: "stripe",
+        tier: "member",
+        legacy_source: "medical_society_stripe",
+        status: "past_due",
+        current_period_end: "2026-12-01",
+        paid_through: "2026-12-01",
+        cancel_at_period_end: false,
+        card: { brand: "visa", last4: "1111" },
+      },
+    ];
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/account")) {
+          return Response.json({
+            ...OVERVIEW_FIXTURE,
+            canonical_tier: "member",
+            subscription_items: medItems,
+          });
+        }
+        if (path.endsWith("/me/subscriptions")) {
+          return Response.json({ canonical_tier: "member", items: medItems });
+        }
+        if (path.endsWith("/me/spend")) {
+          return Response.json({
+            ...LTV300_SPEND,
+            canonical_tier: "member",
+            subscription_items: medItems,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const ov = await (
+      await callAccount(h, "/api/account/overview", { headers: { Cookie: sess.cookie } }, fetchImpl)
+    ).json() as { canonical_tier: string };
+    const su = await (
+      await callAccount(
+        h,
+        "/api/account/subscriptions",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      )
+    ).json() as { canonical_tier: string };
+    const lt = await (
+      await callAccount(
+        h,
+        "/api/account/ltv-certificates",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      )
+    ).json() as { canonical_tier: string };
+    expect(ov.canonical_tier).toBe("metfix_pro");
+    expect(su.canonical_tier).toBe("metfix_pro");
+    expect(lt.canonical_tier).toBe("metfix_pro");
+  });
+
+  it("CQ B3: limiter key uses sid when bsi_user_id empty (no shared acct:0 bucket)", async () => {
+    const { accountRateLimitKey } = await import("./account");
+    const emptyUid = {
+      sid: "sid_aaa",
+      hex: "x",
+      access: "a",
+      record: {
+        bsi_access: "a",
+        bsi_refresh: "r",
+        access_exp: Date.now() + 60_000,
+        user_public_name: "A",
+        bsi_user_id: "",
+        can_moderate: false,
+        created: Date.now(),
+        last_seen: Date.now(),
+      },
+    };
+    expect(accountRateLimitKey(emptyUid)).toBe("sid:sid_aaa");
+    expect(
+      accountRateLimitKey({
+        ...emptyUid,
+        sid: "sid_bbb",
+        record: { ...emptyUid.record, bsi_user_id: "99" },
+      }),
+    ).toBe("acct:99");
+    expect(accountRateLimitKey(emptyUid)).not.toBe("acct:0");
+
+    const keys: string[] = [];
+    const recordingLimiter: RateLimitBinding = {
+      async limit({ key }) {
+        keys.push(key);
+        return { success: true };
+      },
+    };
+    h.env.ACCOUNT_READ_LIMITER = recordingLimiter;
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async () => Response.json(OVERVIEW_FIXTURE),
+    ]);
+    await callAccount(
+      h,
+      "/api/account/overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.some((k) => k.startsWith("acct:") || k.startsWith("sid:"))).toBe(true);
+    expect(keys.includes("acct:0")).toBe(false);
+  });
+
   it("grandfathered med society + convert-to-whop happy path", async () => {
     const sess = await withSession(h);
     const { fetchImpl } = makeFetchMock([
