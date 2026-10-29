@@ -110,7 +110,7 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(json.preview_urls).toBe(true);
   });
 
-  it("previews mirrors vars, preview KV, DO bindings, and 6 ratelimits", () => {
+  it("previews mirrors vars, preview KV, DO bindings, and 9 ratelimits", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
     const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
     const previews = json.previews;
@@ -122,10 +122,16 @@ describe("B1/B5/B6/B7 build config", () => {
         id: "6976f8cf9e934258bd253b1d65bb4ece",
       },
     ]);
+    // DP-CFG-2: preview KV id must equal top-level preview_id
+    expect(previews.kv_namespaces[0].id).toBe(json.kv_namespaces[0].preview_id);
     expect(previews.durable_objects.bindings).toEqual(json.durable_objects.bindings);
-    expect(previews.ratelimits).toHaveLength(6);
+    expect(previews.ratelimits).toHaveLength(9);
+    expect(json.ratelimits).toHaveLength(9);
     expect(previews.ratelimits.map((r: { name: string }) => r.name)).toEqual(
       json.ratelimits.map((r: { name: string }) => r.name),
+    );
+    expect(previews.ratelimits.map((r: { simple: unknown }) => r.simple)).toEqual(
+      json.ratelimits.map((r: { simple: unknown }) => r.simple),
     );
     expect(previews.ratelimits.map((r: { namespace_id: string }) => r.namespace_id)).toEqual([
       "27201",
@@ -134,6 +140,9 @@ describe("B1/B5/B6/B7 build config", () => {
       "27204",
       "27205",
       "27206",
+      "27212",
+      "27213",
+      "27214",
     ]);
   });
 

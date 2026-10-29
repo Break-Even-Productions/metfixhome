@@ -105,6 +105,18 @@ export type Env = {
   COMMENT_LIKE_LIMITER?: RateLimitBinding;
   COMMENT_LIKE_TOGGLE_LIMITER?: RateLimitBinding;
   LEADERBOARD_LIMITER?: RateLimitBinding;
+  ACCOUNT_READ_LIMITER?: RateLimitBinding;
+  ACCOUNT_WRITE_LIMITER?: RateLimitBinding;
+  ACCOUNT_PORTAL_LIMITER?: RateLimitBinding;
+};
+
+/** DP9 / DP42 / DP45 / T1: Bearer-only headers — TypeScript rejects X-API-Key. */
+export type UserBearerHeaders = {
+  Authorization: string;
+  Accept: string;
+  "User-Agent": string;
+  "Content-Type"?: string;
+  readonly "X-API-Key"?: never;
 };
 
 export type FetchImpl = typeof fetch;
@@ -305,6 +317,22 @@ function bsiMeHeaders(accessToken: string): Record<string, string> {
     Accept: "application/json",
     "User-Agent": UPSTREAM_USER_AGENT,
   };
+}
+
+/** DP9 / DP42 / DP45 / T1: User-acting Bearer-only headers (NEVER sends X-API-Key, Referer, Origin, or client IP). */
+export function bsiAccountBearerHeaders(
+  accessToken: string,
+  contentType?: string,
+): UserBearerHeaders {
+  const headers: UserBearerHeaders = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+  };
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
+  return headers;
 }
 
 async function oauthTokenFetch(

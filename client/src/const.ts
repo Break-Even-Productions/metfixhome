@@ -24,6 +24,9 @@ const KNOWN_ROUTES = new Set([
   "posts",
   "login",
   "404",
+  "account",
+  "members",
+  "library",
 ]);
 
 /** Wouter base path from Vite `base` (Cloudflare Workers; `base: "/"`). */
