@@ -14,12 +14,12 @@ const prosePath = path.join(import.meta.dirname, "post-prose.css");
 const prose = fs.readFileSync(prosePath, "utf8");
 
 describe("post-prose author-right layout (PL13)", () => {
-  it("defines lg 2fr/1fr grid with 40px gap (Emily ResourceDetail)", () => {
+  it("defines a desktop grid with a 780px main column and 40px gap", () => {
     expect(prose).toMatch(/\.post-reader-grid\s*\{/);
     expect(prose).toMatch(/grid-template-columns:\s*1fr/);
     expect(prose).toMatch(/@media\s*\(min-width:\s*1024px\)/);
     expect(prose).toMatch(
-      /grid-template-columns:\s*minmax\(0,\s*2fr\)\s+minmax\(0,\s*1fr\)/,
+      /grid-template-columns:\s*minmax\(0,\s*780px\)\s+minmax\(14rem,\s*1fr\)/,
     );
     expect(prose).toMatch(/gap:\s*2\.5rem/);
     expect(prose).toMatch(/\.post-reader-aside/);
@@ -27,9 +27,9 @@ describe("post-prose author-right layout (PL13)", () => {
     expect(prose).toMatch(/position:\s*sticky/);
   });
 
-  it("keeps body measure 680px under the main column selectors", () => {
+  it("keeps body measure 780px under the main column selectors", () => {
     expect(prose).toMatch(
-      /\.posts-detail-content,\s*\.library-reader-body\s*\{[^}]*max-width:\s*680px/s,
+      /\.posts-detail-content,\s*\.library-reader-body\s*\{[^}]*max-width:\s*780px/s,
     );
   });
 });
@@ -55,10 +55,6 @@ describe("post-reader-grid computed style (jsdom)", () => {
     const grid = document.querySelector(".post-reader-grid")!;
     const cs = getComputedStyle(grid);
     expect(cs.display).toBe("grid");
-    expect(prose).toContain("minmax(0, 2fr) minmax(0, 1fr)");
-    // ~379px aside share at 1280 content: 1/3 of (1280 - 40 gap) ≈ 413; mockup
-    // measures ~379 in a tighter container — ratio lock is 2:1 columns.
-    const ratio = 2 / 1;
-    expect(ratio).toBe(2);
+    expect(prose).toContain("minmax(0, 780px) minmax(14rem, 1fr)");
   });
 });
