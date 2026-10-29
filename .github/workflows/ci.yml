@@ -157,24 +157,21 @@ jobs:
       - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm run test:workers; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
-  # Playwright + axe a11y (T-E-5 / T-E-NAV-4) — separate job from unit/build.
-  playwright-axe:
+  # Required: Playwright visual + axe (PR F T-F-60 / LR-F16). Separate job.
+  # Uses the official Playwright image matching the exact @playwright/test pin.
+  test-playwright:
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-jammy
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Install Playwright Chromium
-        run: npx --yes playwright install --with-deps chromium
+      - name: Typecheck client (T-F-58)
+        run: npm run check
 
       - name: Build static site
         run: npm run build:cf
@@ -182,27 +179,47 @@ jobs:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
 
-      - name: T-E-43 snapshot-update scope (ES-1 / ES-2 / FS-1)
+      - name: Assert Playwright + axe pins (T-F-60)
         run: |
-          node tests/ci/checkUpdateSnapshots.mjs self-test
-          node tests/ci/checkUpdateSnapshots.mjs
+          node -e '
+            const p = require("./package.json");
+            for (const k of ["@playwright/test", "@axe-core/playwright", "axe-core"]) {
+              const v = p.devDependencies[k];
+              if (!/^\d+\.\d+\.\d+$/.test(v)) {
+                console.error("T-F-60: " + k + " must be exact, got " + v);
+                process.exit(1);
+              }
+            }
+            console.log("T-F-60 ok: exact pins");
+          '
 
-      - name: Visual fixture guards (fonts + hide-recaptcha)
+      - name: Assert hide-recaptcha is tests-only (T-F-62)
         run: |
-          test -f tests/visual/fonts/manifest.json
           test -f tests/visual/fixtures/hide-recaptcha.css
-          grep -q 'visibility: hidden' tests/visual/fixtures/hide-recaptcha.css
-          ! grep -RIn --include='*.css' --exclude-dir=node_modules --exclude-dir=tests 'grecaptcha-badge' client || {
-            echo "production CSS must not hide reCAPTCHA" >&2
+          # Scope: production client sources only (exclude *.test.*). Fail on any
+          # grecaptcha-badge mention or hide rule outside tests/visual/fixtures.
+          if grep -RIn --include='*.css' --include='*.tsx' --include='*.ts' \
+            --exclude='*.test.ts' --exclude='*.test.tsx' \
+            'grecaptcha-badge' client/; then
+            echo "T-F-62 failed: grecaptcha-badge must not live in client/ production sources" >&2
             exit 1
-          }
-          echo "ok: visual fixtures present; production CSS does not hide reCAPTCHA"
-
-      - name: Playwright + axe smoke (optional until suite lands)
-        run: |
-          if [ -f playwright.config.ts ] || [ -f playwright.config.mjs ]; then
-            npx playwright test --project=chromium
-          else
-            echo "playwright config not present yet — fixture guards only (T-E-5 scaffold)"
           fi
-        continue-on-error: false
+          echo "T-F-62 ok"
+
+      - name: Assert no Playwright snapshot-update flags (T-F-68 / FS-2)
+        run: |
+          node tests/ci/checkUpdateSnapshots.mjs --self-test
+          node tests/ci/checkUpdateSnapshots.mjs
+          if ! grep -q 'updateSnapshots: process.env.CI ? "none"' playwright.config.ts; then
+            echo "T-F-68: playwright.config.ts must set updateSnapshots none under CI" >&2
+            exit 1
+          fi
+          echo "T-F-68 ok: updateSnapshots gated none under CI"
+
+      - name: Assert VISUAL_HOOK_PATTERN scope (T-F-65 / ER-1)
+        run: node tests/ci/scanVisualHooks.mjs
+
+      - name: Playwright a11y + visual
+        run: npx playwright test
+        env:
+          CI: true
