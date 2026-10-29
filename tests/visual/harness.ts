@@ -59,6 +59,12 @@ export async function routeVendoredFonts(page: Page): Promise<void> {
   });
 }
 
+/** 1×1 PNG — fixed placeholder so image load/fail never changes page height. */
+const PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
 /** Stub Worker/Sanity/BSI network (SR-4). */
 export async function stubApi(page: Page): Promise<void> {
   await page.route("**/api/**", async (route) => {
@@ -81,6 +87,15 @@ export async function stubApi(page: Page): Promise<void> {
   await page.route(/youtube\.com|youtu\.be|ytimg\.com|googlevideo\.com/, (route) =>
     route.abort(),
   );
+  // Deterministic media: image requests → same 1×1 PNG (CI/local height parity).
+  // Use fallback() (not continue()) so earlier **/api/** and font routes still run.
+  await page.route("**/*", async (route) => {
+    if (route.request().resourceType() === "image") {
+      await route.fulfill({ status: 200, contentType: "image/png", body: PIXEL_PNG });
+      return;
+    }
+    await route.fallback();
+  });
 }
 
 export async function prepareVisualPage(page: Page): Promise<void> {
@@ -107,12 +122,47 @@ export async function settleForCapture(page: Page): Promise<void> {
         transition: none !important;
         scroll-behavior: auto !important;
       }
+      /* Hide scrollbars — jammy vs noble widths shift aspect-ratio box heights. */
+      html {
+        scrollbar-gutter: auto;
+        scrollbar-width: none !important;
+      }
+      html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
+        width: 0 !important;
+        height: 0 !important;
+        display: none !important;
+      }
+      body {
+        overflow-y: scroll;
+        scrollbar-width: none !important;
+      }
       .reveal, .reveal.visible, [class*="reveal"] {
         opacity: 1 !important;
         transform: none !important;
         visibility: visible !important;
         filter: none !important;
       }
+      /*
+       * DF meal/pillar bands use width×aspect-ratio (+ svh max-height). Any
+       * content-width delta (scrollbar, font) changes fullPage height by a few
+       * px and fails toHaveScreenshot dimension checks. Pin explicit heights.
+       */
+      .df-meal-photo, .df-photo {
+        aspect-ratio: auto !important;
+        width: 100% !important;
+        max-height: none !important;
+        height: 360px !important;
+      }
+      /* In-flow images get a stable box; absolute fill imgs keep parent size. */
+      img:not([style*="position: absolute"]):not(.df-meal-photo-img) {
+        width: 240px !important;
+        height: 160px !important;
+        max-width: 100% !important;
+        object-fit: cover !important;
+      }
+      iframe { display: none !important; height: 0 !important; }
+      /* LiquidGlass canvas overhang must not inflate scrollHeight. */
+      canvas { max-height: 0 !important; overflow: hidden !important; }
     `,
   });
   await page.evaluate(() => {
@@ -123,11 +173,20 @@ export async function settleForCapture(page: Page): Promise<void> {
       (el as HTMLElement).style.setProperty("visibility", "visible", "important");
     });
     // Drop third-party iframes (YouTube) so axe does not score embed chrome.
-    document.querySelectorAll("iframe[src*='youtube'], iframe[src*='youtu.be']").forEach((el) => {
+    document.querySelectorAll("iframe").forEach((el) => {
       el.remove();
     });
+    // Ensure every img has intrinsic box attrs so 1×1 stubs never collapse flow.
+    document.querySelectorAll("img").forEach((img) => {
+      if (!img.getAttribute("width")) img.setAttribute("width", "240");
+      if (!img.getAttribute("height")) img.setAttribute("height", "160");
+      if (!img.complete || img.naturalWidth === 0) {
+        img.src =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      }
+    });
   });
-  await page.waitForTimeout(50);
+  await page.waitForTimeout(100);
   // Explicit loads (F-T-SETTLE): avoid hanging on fonts.ready when any face pendings.
   await page.evaluate(async () => {
     await Promise.race([

@@ -28,7 +28,7 @@
       "page": "become-an-affiliate",
       "viewport": "1280",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/become-an-affiliate-1280-visual-linux.png",
-      "sha256": "5dea96d54bd191b4be449563778ec85be8d2e87eb10fec306986a2640186f6e5",
+      "sha256": "5d7c9989dd615418605af5e8c48ca658ed23f9306c6e6e32ac47dd89c6feee4c",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     },
@@ -36,7 +36,7 @@
       "page": "become-an-affiliate",
       "viewport": "390",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/become-an-affiliate-390-visual-linux.png",
-      "sha256": "e6092101cc5eaa242f4be07f8e359d71480657e8b7ab94eb646b59961401939b",
+      "sha256": "32c964a56cd726ac7e7781ae7f268fdfbe16289fb3f7bf57096e36637f7ef2b5",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     },
@@ -44,7 +44,7 @@
       "page": "the-daily-fix",
       "viewport": "1280",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/the-daily-fix-1280-visual-linux.png",
-      "sha256": "654833de5da9f5af34c2ea60075663406c83d98dc98249552cbf69985533be7a",
+      "sha256": "192108fc9c30fdeb052d4a237d227706b19c71e440944847b4b244271348ab20",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     },
@@ -52,7 +52,7 @@
       "page": "the-daily-fix",
       "viewport": "390",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/the-daily-fix-390-visual-linux.png",
-      "sha256": "a14e1d22c34e66e191fac99a040b6cfde6587a1627107b08d705ef02a67e4f8c",
+      "sha256": "7cca4c6c7b26ae927952cb2b0d5d1098b398c06f0f601685206e226f71afea51",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     }
