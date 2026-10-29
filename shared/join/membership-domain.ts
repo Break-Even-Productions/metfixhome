@@ -79,6 +79,9 @@ export const WHOP_PLAN_TO_TIER: Record<WhopCheckoutPlan, CanonicalSubscriptionTi
 /** Break Even Productions Whop company id — never Curie & Co (WJ-WHOP-1). */
 export const BEP_WHOP_COMPANY_ID = "biz_u15G8d34g9c0B0";
 
+/** Allowed Whop company ids for scanners and allowlists (N10). */
+export const WHOP_ALLOWED_COMPANY_IDS = [BEP_WHOP_COMPANY_ID] as const;
+
 export const MEMBERSHIP_COMPARISON_ROWS: ReadonlyArray<{
   feature: string;
   metfix: string;
@@ -217,6 +220,57 @@ export function resolveJoinStepTransition(
   if (step === "conditional") return "roles";
   if (step === "path") return needsConditional ? "conditional" : "roles";
   return null;
+}
+
+const JOIN_STEPS: readonly JoinStep[] = ["name", "auth", "roles", "conditional", "path"];
+
+export function parseJoinStepParam(raw: string | null | undefined): JoinStep | null {
+  if (!raw) return null;
+  return (JOIN_STEPS as readonly string[]).includes(raw) ? (raw as JoinStep) : null;
+}
+
+/**
+ * Clamp deep-link `?step=` to a reachable step (CQ B4 / WJ3 / WJ8).
+ * - signed-in + auth → roles
+ * - path with no roles → name (signed out) or roles (signed in)
+ * - conditional without gym/clinician roles → roles
+ */
+export function clampJoinDeepLink(
+  requested: JoinStep | null | undefined,
+  ctx: JoinStepTransitionContext,
+): JoinStep {
+  if (!requested || requested === "name") return "name";
+  if (requested === "auth") return ctx.isSignedIn ? "roles" : "auth";
+  if (requested === "roles") return "roles";
+  if (requested === "conditional") {
+    return needsConditionalStep(ctx.roles) ? "conditional" : "roles";
+  }
+  // path
+  if (ctx.roles.length === 0) return ctx.isSignedIn ? "roles" : "name";
+  if (needsConditionalStep(ctx.roles)) return "conditional";
+  return "path";
+}
+
+/** Normalize facility flags when role is absent (CQ B3): never true without the role. */
+export function facilityFlagsForRoles(
+  roles: readonly RoleId[],
+  hasPhysicalGym: boolean | null,
+  hasPhysicalClinic: boolean | null,
+): { has_physical_gym: boolean | null; has_physical_clinic: boolean | null } {
+  return {
+    has_physical_gym: roles.includes("gym_owner") ? hasPhysicalGym : null,
+    has_physical_clinic: roles.includes("clinician") ? hasPhysicalClinic : null,
+  };
+}
+
+export function showOrganizationOwnerCard(
+  roles: readonly RoleId[],
+  hasPhysicalGym: boolean | null,
+  hasPhysicalClinic: boolean | null,
+): boolean {
+  const gymOk = roles.includes("gym_owner") && hasPhysicalGym === true;
+  const clinicOk = roles.includes("clinician") && hasPhysicalClinic === true;
+  return gymOk || clinicOk;
 }
 
 export function sanitizeReturnPath(raw: unknown): string | null {

@@ -1,17 +1,19 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { BEP_WHOP_COMPANY_ID, WHOP_ALLOWED_COMPANY_IDS } from "../shared/join/membership-domain";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 function walk(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "dist" || name === ".git") continue;
+    if (name === "node_modules" || name === ".git") continue;
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx|js|jsx|jsonc|json|css)$/.test(name)) out.push(p);
+    else if (/\.(ts|tsx|js|jsx|mjs|cjs|css|jsonc|json|html|map)$/.test(name)) out.push(p);
   }
   return out;
 }
@@ -20,6 +22,7 @@ function isTestFile(file: string): boolean {
   return /\.test\.(ts|tsx|js|jsx)$/.test(file) || file.includes("__fixtures__");
 }
 
+/** Real scanner — returns every hit (file + match), not a fixture-only regex. */
 function scanHits(
   files: string[],
   pattern: RegExp,
@@ -30,8 +33,11 @@ function scanHits(
     if (file.includes("join.repo-scan.test.ts")) continue;
     if (!opts?.includeTests && isTestFile(file)) continue;
     const text = readFileSync(file, "utf8");
-    const m = text.match(pattern);
-    if (m) hits.push({ file: file.replace(ROOT + "/", ""), match: m[0] });
+    const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      hits.push({ file: file.replace(ROOT + "/", ""), match: m[0] });
+    }
   }
   return hits;
 }
@@ -41,20 +47,46 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
   const worker = walk(join(ROOT, "worker")).filter((f) => !f.includes("__fixtures__"));
   const shared = walk(join(ROOT, "shared"));
   const wrangler = [join(ROOT, "wrangler.jsonc")];
+  const distPublic = walk(join(ROOT, "dist/public"));
   const all = [...client, ...worker, ...shared, ...wrangler];
+  const withDist = [...all, ...distPublic];
 
-  it("self-check: scanner detects curie + foreign biz_ on fixture text", () => {
+  it("self-check: scanner detects curie + foreign biz_ on fixture text (2 hits)", () => {
     const fixture = "checkout https://curie.whop.com biz_FOREIGN123 plan_xyz";
-    const curie = fixture.match(/curie/i);
-    const biz = fixture.match(/biz_[A-Za-z0-9]+/g) ?? [];
-    expect(curie).toBeTruthy();
-    expect(biz.filter((b) => b !== "biz_u15G8d34g9c0B0")).toHaveLength(1);
+    const curieHits = fixture.match(/curie/gi) ?? [];
+    const foreignBiz = (fixture.match(/biz_[A-Za-z0-9]+/g) ?? []).filter(
+      (b) => !(WHOP_ALLOWED_COMPANY_IDS as readonly string[]).includes(b),
+    );
+    expect(curieHits.length + foreignBiz.length).toBeGreaterThanOrEqual(2);
+    expect(foreignBiz).toHaveLength(1);
+    expect(BEP_WHOP_COMPANY_ID).toBe("biz_u15G8d34g9c0B0");
   });
 
-  it("zero Curie Whop identifiers in client/worker/shared/wrangler", () => {
+  it("zero bare curie (case-insensitive) outside deny-guard allowlist files", () => {
+    // Deny-guards in membership-domain intentionally mention curie — exclude that file only.
+    const cleaned = scanHits(withDist, /curie/i).filter(
+      (h) => !h.file.endsWith("shared/join/membership-domain.ts"),
+    );
+    expect(cleaned).toEqual([]);
+  });
+
+  it("every biz_* literal equals BEP company id (or none)", () => {
+    const hits = scanHits(withDist, /biz_[A-Za-z0-9]+/g);
+    const foreign = hits.filter(
+      (h) => !(WHOP_ALLOWED_COMPANY_IDS as readonly string[]).includes(h.match),
+    );
+    expect(foreign).toEqual([]);
+  });
+
+  it("zero foreign plan_* / prod_* Whop identifiers", () => {
+    const hits = scanHits(withDist, /\b(?:plan|prod)_[A-Za-z0-9]+/g);
+    expect(hits).toEqual([]);
+  });
+
+  it("zero Curie Whop URL shapes in client/worker/shared/wrangler (+ dist)", () => {
     const hits = scanHits(
-      all,
-      /curie\.whop|whop\.com\/[^\s"']*curie|biz_(?!u15G8d34g9c0B0)[A-Za-z0-9]+/i,
+      withDist,
+      /curie\.whop|whop\.com\/[^\s"']*curie/i,
     );
     expect(hits).toEqual([]);
   });
@@ -62,7 +94,7 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
   it("zero legacy pricing / demo persistence keys in production sources", () => {
     const hits = scanHits(
       all,
-      /\$1,000|100000|\$400 one-time|\$166\.60|metfix-join-demo|jordan\.hale@gmail\.com|googleAccounts/,
+      /\$1,000|100000|\$400 one-time|\$166\.60|metfix-join-demo|jordan\.hale@gmail\.com|googleAccounts|test-recaptcha-token/,
     );
     expect(hits).toEqual([]);
   });
@@ -101,5 +133,9 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
       /NODE_ENV\s*===\s*["']test["']|import\.meta\.env\.MODE\s*===\s*["']test["']|__TEST__/,
     );
     expect(hits).toEqual([]);
+  });
+
+  it("uses BEP_WHOP_COMPANY_ID as the sole allowed company constant", () => {
+    expect([...WHOP_ALLOWED_COMPANY_IDS]).toEqual([BEP_WHOP_COMPANY_ID]);
   });
 });

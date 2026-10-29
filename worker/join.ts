@@ -5,7 +5,6 @@
 import {
   isOnboardingRoleId,
   isWhopCheckoutPlan,
-  ONBOARDING_ROLE_IDS,
   sanitizeReturnPath,
   sanitizeWhopCheckoutUrl,
   type RoleId,
@@ -17,13 +16,7 @@ import { isAllowedAuthOrigin } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
 import { clientIp } from "./auth/http";
 import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
-import {
-  bsiAccountBearerHeaders,
-  bsiPostMeOnboarding,
-  bsiPostWhopCheckoutSession,
-} from "./upstream";
-
-export { bsiAccountBearerHeaders };
+import { bsiPostMeOnboarding, bsiPostWhopCheckoutSession } from "./upstream";
 
 const MAX_BODY_BYTES = 8_192;
 const NAME_MAX = 80;
@@ -52,40 +45,13 @@ export function jsonPrivateNoStore(
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-const keyChains = new Map<string, Promise<unknown>>();
-
-async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const prev = keyChains.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const gate = new Promise<void>((r) => {
-    release = r;
-  });
-  const next = prev.then(
-    () => gate,
-    () => gate,
-  );
-  keyChains.set(key, next);
-  await prev.then(
-    () => undefined,
-    () => undefined,
-  );
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (keyChains.get(key) === next) keyChains.delete(key);
-  }
-}
-
 async function limitOrDeny(
   binding: RateLimitBinding | undefined,
   key: string,
 ): Promise<boolean> {
   if (!binding) return false;
-  return withKeyLock(key, async () => {
-    const r = await binding.limit({ key });
-    return r.success === true;
-  });
+  const r = await binding.limit({ key });
+  return r.success === true;
 }
 
 export async function checkAccountWriteLimit(
@@ -116,6 +82,10 @@ function forbidden(): Response {
 
 function rateLimited429(): Response {
   return jsonPrivateNoStore({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+}
+
+function upstreamError(status = 502): Response {
+  return jsonPrivateNoStore({ error: "upstream_error" }, status >= 500 ? 502 : status);
 }
 
 async function requireSidCsrf(
@@ -194,12 +164,6 @@ export function validateOnboardingBody(raw: unknown): OnboardingPayload | null {
     roles.push(r);
   }
   if (roles.length < 1) return null;
-  // Reject unknown keys that look like admin escalation
-  for (const r of body.roles) {
-    if (typeof r === "string" && !(ONBOARDING_ROLE_IDS as readonly string[]).includes(r)) {
-      return null;
-    }
-  }
 
   const needsGym = roles.includes("gym_owner");
   const needsClinic = roles.includes("clinician");
@@ -208,28 +172,33 @@ export function validateOnboardingBody(raw: unknown): OnboardingPayload | null {
   if (needsGym) {
     if (typeof body.has_physical_gym !== "boolean") return null;
     has_physical_gym = body.has_physical_gym;
-  } else if (body.has_physical_gym === null || body.has_physical_gym === false || body.has_physical_gym === undefined) {
-    has_physical_gym = body.has_physical_gym === false ? false : null;
-  } else if (typeof body.has_physical_gym === "boolean") {
-    has_physical_gym = body.has_physical_gym;
   } else {
-    return null;
+    // CQ B3 / P-WJ-7: never accept true when gym_owner is absent
+    if (body.has_physical_gym === true) return null;
+    if (
+      body.has_physical_gym !== null &&
+      body.has_physical_gym !== false &&
+      body.has_physical_gym !== undefined
+    ) {
+      return null;
+    }
+    has_physical_gym = body.has_physical_gym === false ? false : null;
   }
 
   let has_physical_clinic: boolean | null;
   if (needsClinic) {
     if (typeof body.has_physical_clinic !== "boolean") return null;
     has_physical_clinic = body.has_physical_clinic;
-  } else if (
-    body.has_physical_clinic === null ||
-    body.has_physical_clinic === false ||
-    body.has_physical_clinic === undefined
-  ) {
-    has_physical_clinic = body.has_physical_clinic === false ? false : null;
-  } else if (typeof body.has_physical_clinic === "boolean") {
-    has_physical_clinic = body.has_physical_clinic;
   } else {
-    return null;
+    if (body.has_physical_clinic === true) return null;
+    if (
+      body.has_physical_clinic !== null &&
+      body.has_physical_clinic !== false &&
+      body.has_physical_clinic !== undefined
+    ) {
+      return null;
+    }
+    has_physical_clinic = body.has_physical_clinic === false ? false : null;
   }
 
   return { first_name, last_name, roles, has_physical_gym, has_physical_clinic };
@@ -243,13 +212,13 @@ async function resolveSessionOrUnauth(
 ): Promise<ActingContext | Response> {
   const resolved = await resolveActingSession(request, env, fetchImpl, opts);
   if (resolved instanceof Response) {
-    // Map acting signed_out → unauthenticated for account/billing contract (WJ21/WJ22).
     if (resolved.status === 401) return unauthenticated();
-    // Preserve 503 unavailable; wrap others as private no-store when possible.
-    const text = await resolved.text();
-    const headers = new Headers(resolved.headers);
-    headers.set("Cache-Control", PRIVATE_NO_STORE);
-    return new Response(text, { status: resolved.status, headers });
+    if (resolved.status === 503) {
+      return jsonPrivateNoStore({ error: "unavailable" }, 503, {
+        "Retry-After": resolved.headers.get("Retry-After") ?? "60",
+      });
+    }
+    return upstreamError(resolved.status);
   }
   return resolved;
 }
@@ -283,25 +252,23 @@ export async function handleAccountOnboarding(
   const csrfFail = await requireSidCsrf(request, env, session.sid);
   if (csrfFail) return csrfFail;
 
-  const bodyRead = await readJsonBody(request);
-  if (bodyRead instanceof Response) return bodyRead;
-  const payload = validateOnboardingBody(bodyRead.json);
-  if (!payload) return jsonPrivateNoStore({ error: "invalid_request" }, 400);
-
+  // N8: limiter before body parse — invalid bodies still count against the key
   const userId = String(session.record.bsi_user_id ?? session.hex);
   const ip = clientIp(request);
   const lim = await checkAccountWriteLimit(env, userId, ip);
   if (!lim.allowed) return rateLimited429();
+
+  const bodyRead = await readJsonBody(request);
+  if (bodyRead instanceof Response) return bodyRead;
+  const payload = validateOnboardingBody(bodyRead.json);
+  if (!payload) return jsonPrivateNoStore({ error: "invalid_request" }, 400);
 
   const ran = await runUserBsiCall(session, env, fetchImpl, opts, (access) =>
     bsiPostMeOnboarding(access, payload, env, fetchImpl, opts),
   );
   if (ran instanceof Response) {
     if (ran.status === 401) return unauthenticated();
-    const text = await ran.text();
-    const headers = new Headers(ran.headers);
-    headers.set("Cache-Control", PRIVATE_NO_STORE);
-    return new Response(text, { status: ran.status, headers });
+    return upstreamError(ran.status);
   }
 
   const { result } = ran;
@@ -341,6 +308,11 @@ export async function handleWhopCheckoutSession(
   const csrfFail = await requireSidCsrf(request, env, session.sid);
   if (csrfFail) return csrfFail;
 
+  const userId = String(session.record.bsi_user_id ?? session.hex);
+  const ip = clientIp(request);
+  const lim = await checkWhopCheckoutLimit(env, userId, ip);
+  if (!lim.allowed) return rateLimited429();
+
   const bodyRead = await readJsonBody(request);
   if (bodyRead instanceof Response) return bodyRead;
   const raw = bodyRead.json;
@@ -359,11 +331,6 @@ export async function handleWhopCheckoutSession(
     return_path = sanitized;
   }
 
-  const userId = String(session.record.bsi_user_id ?? session.hex);
-  const ip = clientIp(request);
-  const lim = await checkWhopCheckoutLimit(env, userId, ip);
-  if (!lim.allowed) return rateLimited429();
-
   const upstreamBody: Record<string, unknown> = { plan };
   if (return_path) upstreamBody.return_path = return_path;
 
@@ -372,10 +339,7 @@ export async function handleWhopCheckoutSession(
   );
   if (ran instanceof Response) {
     if (ran.status === 401) return unauthenticated();
-    const text = await ran.text();
-    const headers = new Headers(ran.headers);
-    headers.set("Cache-Control", PRIVATE_NO_STORE);
-    return new Response(text, { status: ran.status, headers });
+    return upstreamError(ran.status);
   }
 
   const { result } = ran;

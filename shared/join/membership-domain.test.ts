@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   availableCertificateLtvCents,
+  BEP_WHOP_COMPANY_ID,
   CANONICAL_SUBSCRIPTION_TIERS,
+  clampJoinDeepLink,
   coachCredentialStatus,
   coachExpiresAtIso,
+  facilityFlagsForRoles,
   isFoundationsCoachGranted,
   MEMBERSHIP_COMPARISON_ROWS,
   needsConditionalStep,
   ONBOARDING_ROLES,
   ONBOARDING_ROLE_IDS,
+  parseJoinStepParam,
   resolveJoinStepTransition,
   sanitizeReturnPath,
   sanitizeWhopCheckoutUrl,
+  showOrganizationOwnerCard,
+  WHOP_ALLOWED_COMPANY_IDS,
 } from "./membership-domain";
 
 describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
@@ -147,5 +153,21 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(sanitizeWhopCheckoutUrl("https://u:p@whop.com")).toBeNull();
     expect(sanitizeWhopCheckoutUrl("https://curie.whop.com/x")).toBeNull();
     expect(sanitizeWhopCheckoutUrl("javascript:alert(1)")).toBeNull();
+  });
+
+  it("clampJoinDeepLink (B4) + facilityFlags (B3)", () => {
+    expect(parseJoinStepParam("auth")).toBe("auth");
+    expect(parseJoinStepParam("nope")).toBeNull();
+    expect(clampJoinDeepLink("auth", { isSignedIn: true, roles: [] })).toBe("roles");
+    expect(clampJoinDeepLink("path", { isSignedIn: false, roles: [] })).toBe("name");
+    expect(clampJoinDeepLink("conditional", { isSignedIn: true, roles: ["individual"] })).toBe(
+      "roles",
+    );
+    expect(facilityFlagsForRoles(["coach"], true, true)).toEqual({
+      has_physical_gym: null,
+      has_physical_clinic: null,
+    });
+    expect(showOrganizationOwnerCard(["gym_owner"], true, null)).toBe(true);
+    expect([...WHOP_ALLOWED_COMPANY_IDS]).toEqual([BEP_WHOP_COMPANY_ID]);
   });
 });

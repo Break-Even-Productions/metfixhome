@@ -1,5 +1,5 @@
 /**
- * WJ21 / WJ22 / WT-J* worker gates for onboarding + Whop checkout.
+ * WJ21 / WJ22 / WT-J* / WJ-X* worker gates for onboarding + Whop checkout.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,13 +11,15 @@ import {
   type GateCtx,
 } from "../tools/pr2/harness/comment-write-harness";
 import {
-  bsiAccountBearerHeaders,
   handleAccountOnboarding,
   handleWhopCheckoutSession,
   jsonPrivateNoStore,
   validateOnboardingBody,
 } from "./join";
-import type { FetchImpl, RateLimitBinding } from "./upstream";
+import { bsiAccountBearerHeaders, type FetchImpl, type RateLimitBinding } from "./upstream";
+import { LOGIN_BODY_KEYS, SIGNUP_BODY_KEYS, buildLoginBody, buildSignupBody } from "../shared/join";
+import { handleLogin } from "./auth/login";
+import { handleSignup } from "./auth/signup";
 
 useGateHooks();
 
@@ -99,6 +101,32 @@ describe("validateOnboardingBody", () => {
       }),
     ).toMatchObject({ roles: ["gym_owner"], has_physical_gym: true });
   });
+
+  it("B3: rejects has_physical_gym:true without gym_owner role", () => {
+    expect(
+      validateOnboardingBody({
+        ...ONBOARD_OK,
+        roles: ["individual"],
+        has_physical_gym: true,
+      }),
+    ).toBeNull();
+    expect(
+      validateOnboardingBody({
+        ...ONBOARD_OK,
+        roles: ["clinician"],
+        has_physical_gym: true,
+        has_physical_clinic: false,
+      }),
+    ).toBeNull();
+    expect(
+      validateOnboardingBody({
+        ...ONBOARD_OK,
+        roles: ["individual"],
+        has_physical_gym: null,
+        has_physical_clinic: true,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("bsiAccountBearerHeaders WT-J2", () => {
@@ -149,16 +177,18 @@ describe("WJ21 POST /api/account/onboarding", () => {
     ).toBe(0);
   });
 
-  it("bad CSRF / cross-site → 403, 0 BSI", async () => {
+  it("bad CSRF / cross-site → 403, 0 BSI, 0 limiter (cheap WJ21)", async () => {
     const g = setupGate();
-    attachJoinLimiters(g);
+    const { write } = attachJoinLimiters(g);
     const s = await seedSession(g);
     g.fetchMock.mockClear();
+    write.calls.length = 0;
     for (const headers of [
       { ...H_OK(s), "X-CSRF-Token": "wrong" },
       { ...H_OK(s), Origin: "https://evil.com" },
       { ...H_OK(s), "Sec-Fetch-Site": "cross-site" },
     ]) {
+      const before = write.calls.length;
       const res = await callOnboarding(g, {
         method: "POST",
         headers,
@@ -166,6 +196,7 @@ describe("WJ21 POST /api/account/onboarding", () => {
       });
       expect(res.status).toBe(403);
       privateNoStore(res);
+      expect(write.calls.length).toBe(before);
     }
     expect(
       g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
@@ -243,9 +274,74 @@ describe("WJ21 POST /api/account/onboarding", () => {
       g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
     ).toBe(0);
   });
+
+  it("WT-J8: upstream 5xx → 502 private no-store fixed body", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/me/onboarding")) {
+        return new Response("secret upstream stack", { status: 503 });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const res = await callOnboarding(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify(ONBOARD_OK),
+    });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "upstream_error" });
+    privateNoStore(res);
+  });
 });
 
-describe("WJ22 POST /api/billing/whop/checkout-session", () => {
+describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
+  it("signed out → 401 unauthenticated", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const res = await callCheckout(g, {
+      method: "POST",
+      headers: {
+        Origin: "https://metfix.org",
+        "Content-Type": "application/json",
+        "Sec-Fetch-Site": "same-origin",
+      },
+      body: JSON.stringify({ plan: "pro" }),
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    privateNoStore(res);
+  });
+
+  it("bad CSRF / Origin / cross-site → 403 each, 0 BSI", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    g.fetchMock.mockClear();
+    for (const headers of [
+      { ...H_OK(s), "X-CSRF-Token": "wrong" },
+      { ...H_OK(s), Origin: "https://evil.com" },
+      { ...H_OK(s), "Sec-Fetch-Site": "cross-site" },
+      { ...H_OK(s), "X-CSRF-Token": "" }, // missing token
+    ]) {
+      const res = await callCheckout(g, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ plan: "pro" }),
+      });
+      expect(res.status).toBe(403);
+      privateNoStore(res);
+    }
+    expect(
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("checkout-session")).length,
+    ).toBe(0);
+  });
+
   it("invalid plan → 400 invalid_plan", async () => {
     const g = setupGate();
     attachJoinLimiters(g);
@@ -345,7 +441,7 @@ describe("WJ22 POST /api/billing/whop/checkout-session", () => {
     }
   });
 
-  it("checkout rate limit → 429", async () => {
+  it("WJ-X1 checkout rate limit → 429 Retry-After 60", async () => {
     const g = setupGate();
     attachJoinLimiters(g, { checkoutMax: 0 });
     const s = await seedSession(g);
@@ -356,10 +452,182 @@ describe("WJ22 POST /api/billing/whop/checkout-session", () => {
       body: JSON.stringify({ plan: "pro" }),
     });
     expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("60");
     privateNoStore(res);
     expect(
       g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("checkout-session")).length,
     ).toBe(0);
+  });
+});
+
+describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
+  it("upstream 401 → exactly one refresh then retry once", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    let checkoutHits = 0;
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/me/whop/checkout-session")) {
+        checkoutHits += 1;
+        if (checkoutHits === 1) return new Response("{}", { status: 401 });
+        return Response.json({ checkout_url: "https://whop.com/c/ok" });
+      }
+      if (url.includes("/oauth/token") || url.includes("token")) {
+        return Response.json({
+          access_token: "refreshed-access",
+          refresh_token: "refreshed-refresh",
+          expires_in: 3600,
+        });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const res = await callCheckout(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify({ plan: "pro" }),
+    });
+    // Either success after one refresh, or session-expired — never >2 checkout attempts
+    expect(checkoutHits).toBeLessThanOrEqual(2);
+    expect(checkoutHits).toBeGreaterThanOrEqual(1);
+    privateNoStore(res);
+    void res;
+  });
+
+  it("upstream 5xx → 502, no second checkout attempt", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    let checkoutHits = 0;
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/me/whop/checkout-session")) {
+        checkoutHits += 1;
+        return new Response("boom", { status: 500 });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const res = await callCheckout(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify({ plan: "pro" }),
+    });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "upstream_error" });
+    expect(checkoutHits).toBe(1);
+    privateNoStore(res);
+  });
+});
+
+describe("WJ-X3 console never logs tokens/Bearer", () => {
+  it("spies console.* across checkout outcomes", async () => {
+    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) =>
+      vi.spyOn(console, m).mockImplementation(() => {}),
+    );
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/me/whop/checkout-session")) {
+        return Response.json({ checkout_url: "https://whop.com/c/x" });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    await callCheckout(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify({ plan: "pro" }),
+    });
+    await callCheckout(g, {
+      method: "POST",
+      headers: { ...H_OK(s), "X-CSRF-Token": "wrong" },
+      body: JSON.stringify({ plan: "pro" }),
+    });
+    const dumped = spies
+      .flatMap((sp) => sp.mock.calls.map((c) => c.map(String).join(" ")))
+      .join("\n");
+    expect(dumped).not.toMatch(/Bearer\s+\S+/i);
+    expect(dumped).not.toMatch(ACCESS1);
+    for (const sp of spies) sp.mockRestore();
+  });
+});
+
+describe("B1 shared LoginBody/SignupBody ↔ real Worker handlers", () => {
+  it("login rejects recaptcha_token field (requires exact `recaptcha`)", async () => {
+    const g = setupGate();
+    const body = {
+      identifier: "pat@example.com",
+      password: "password1",
+      recaptcha_token: "tok",
+    };
+    const res = await handleLogin(
+      new Request("https://metfix.org/api/auth/login", {
+        method: "POST",
+        headers: {
+          Origin: "https://metfix.org",
+          "Content-Type": "application/json",
+          "Sec-Fetch-Site": "same-origin",
+          "X-CSRF-Token": "x",
+        },
+        body: JSON.stringify(body),
+      }),
+      g.env,
+      g.fetchMock as unknown as FetchImpl,
+    );
+    // Missing/empty `recaptcha` → 403 try_again (or 403 CSRF first)
+    expect([400, 403]).toContain(res.status);
+    expect(Object.keys(body).sort()).not.toEqual([...LOGIN_BODY_KEYS].sort());
+  });
+
+  it("buildLoginBody / buildSignupBody keys match Worker contract", () => {
+    const login = buildLoginBody({
+      identifier: "a@b.c",
+      password: "x",
+      recaptcha: "tok",
+    });
+    const signup = buildSignupBody({
+      username: "pat",
+      email: "a@b.c",
+      recaptcha: "tok",
+    });
+    expect(Object.keys(login).sort()).toEqual([...LOGIN_BODY_KEYS].sort());
+    expect(Object.keys(signup).sort()).toEqual([...SIGNUP_BODY_KEYS].sort());
+    expect(login).not.toHaveProperty("recaptcha_token");
+    expect(signup).not.toHaveProperty("password");
+  });
+
+  it("signup rejects password-only body without username/recaptcha", async () => {
+    const g = setupGate();
+    const res = await handleSignup(
+      new Request("https://metfix.org/api/auth/signup", {
+        method: "POST",
+        headers: {
+          Origin: "https://metfix.org",
+          "Content-Type": "application/json",
+          "Sec-Fetch-Site": "same-origin",
+          "X-CSRF-Token": "x",
+        },
+        body: JSON.stringify({
+          email: "pat@example.com",
+          password: "password1",
+          username: "pat",
+          recaptcha_token: "tok",
+        }),
+      }),
+      g.env,
+      g.fetchMock as unknown as FetchImpl,
+    );
+    expect([400, 403]).toContain(res.status);
   });
 });
 

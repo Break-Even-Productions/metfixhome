@@ -3,8 +3,17 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ONBOARDING_ROLES, resolveJoinStepTransition } from "@shared/join";
+import {
+  LOGIN_BODY_KEYS,
+  ONBOARDING_ROLES,
+  SIGNUP_BODY_KEYS,
+  clampJoinDeepLink,
+  facilityFlagsForRoles,
+  resolveJoinStepTransition,
+  showOrganizationOwnerCard,
+} from "@shared/join";
 import { JoinFlow } from "./JoinFlow";
+import { JoinFlowProvider, useJoinFlow } from "@/contexts/JoinFlowContext";
 import * as session from "@/lib/session";
 
 afterEach(() => {
@@ -80,6 +89,7 @@ describe("P-WJ resolveJoinStepTransition (CQ Trap 3)", () => {
 
 describe("JoinFlow P-WJ-1..8", () => {
   beforeEach(() => {
+    window.history.pushState({}, "", "/join");
     vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
     vi.spyOn(session, "refreshMeAfterAuthChange").mockResolvedValue({
       status: "signed_in",
@@ -232,7 +242,7 @@ describe("JoinFlow P-WJ-1..8", () => {
   });
 
   it("WJ4 / WT-J5: zero localStorage/sessionStorage writes during flow", async () => {
-    const setItemLocal = vi.spyOn(Storage.prototype, "setItem");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
     vi.spyOn(session, "loadMe").mockResolvedValue({
       status: "signed_in",
       public_name: "Pat Lee",
@@ -251,14 +261,231 @@ describe("JoinFlow P-WJ-1..8", () => {
     fireEvent.click(screen.getByText("Learning for myself"));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
     await screen.findByText(/Your recommended path/i);
-    const sensitive = setItemLocal.mock.calls.filter((c) => {
-      const key = String(c[0]);
-      const val = String(c[1] ?? "");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("WJ4 OAuth resume: signed-in ?step=roles lands on roles (not auth)", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    window.history.pushState({}, "", "/join?step=roles");
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () => Response.json({ signed_in: true, public_name: "Pat Lee" }),
+      }),
+    );
+    render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByText(/Which of these best describes you/i);
+    expect(screen.queryByText(/Continue with Google/i)).toBeNull();
+  });
+
+  it("B1: login body uses exact `recaptcha` key (shared LoginBody)", async () => {
+    const fetchImpl = mockFetch({
+      "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+      "/api/auth/login": () => Response.json({ signed_in: true, public_name: "Pat" }),
+      "/api/auth/me": () => Response.json({ signed_in: false }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByText(/What’s your name/i);
+    fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
+    fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/Continue with Google/i);
+    fireEvent.click(screen.getByRole("button", { name: /Continue with email/i }));
+    fireEvent.change(await screen.findByLabelText(/^Email$/i), {
+      target: { value: "pat@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "password1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Sign in$/i }));
+    await waitFor(() => {
+      const loginCall = fetchImpl.mock.calls.find((c) => String(c[0]).includes("/api/auth/login"));
+      expect(loginCall).toBeTruthy();
+      const body = JSON.parse(String(loginCall?.[1]?.body));
+      expect(Object.keys(body).sort()).toEqual([...LOGIN_BODY_KEYS].sort());
+      expect(body).toHaveProperty("recaptcha");
+      expect(body).not.toHaveProperty("recaptcha_token");
+    });
+  });
+
+  it("B1: signup body uses username+email+recaptcha (no password)", async () => {
+    const fetchImpl = mockFetch({
+      "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+      "/api/auth/signup": () => Response.json({ status: "check_email" }, { status: 202 }),
+      "/api/auth/me": () => Response.json({ signed_in: false }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<JoinFlow open onClose={() => {}} initialStep="auth" />);
+    await screen.findByText(/Continue with Google/i);
+    fireEvent.click(screen.getByRole("button", { name: /Continue with email/i }));
+    await screen.findByLabelText(/^Email$/i);
+    fireEvent.click(screen.getByRole("button", { name: /Need an account\? Sign up/i }));
+    fireEvent.change(await screen.findByLabelText(/^Username$/i), { target: { value: "patlee" } });
+    fireEvent.change(screen.getByLabelText(/^Email$/i), { target: { value: "pat@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Create account/i }));
+    await waitFor(() => {
+      const signupCall = fetchImpl.mock.calls.find((c) =>
+        String(c[0]).includes("/api/auth/signup"),
+      );
+      expect(signupCall).toBeTruthy();
+      const body = JSON.parse(String(signupCall?.[1]?.body));
+      expect(Object.keys(body).sort()).toEqual([...SIGNUP_BODY_KEYS].sort());
+      expect(body).not.toHaveProperty("password");
+      expect(body).not.toHaveProperty("recaptcha_token");
+    });
+  });
+
+  it("B2: double-click Continue while saving → 1 POST; failed save stays off path", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    let resolveOnboarding!: (v: Response) => void;
+    const deferred = new Promise<Response>((r) => {
+      resolveOnboarding = r;
+    });
+    const fetchImpl = mockFetch({
+      "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+      "/api/account/onboarding": () => deferred,
+      "/api/auth/me": () => Response.json({ signed_in: true, public_name: "Pat Lee" }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<JoinFlow open onClose={() => {}} initialStep="roles" />);
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Learning for myself"));
+    const cont = screen.getByRole("button", { name: /^Continue$/i });
+    fireEvent.click(cont);
+    fireEvent.click(cont);
+    fireEvent.click(cont);
+    await waitFor(() => {
+      expect(
+        fetchImpl.mock.calls.filter((c) => String(c[0]).includes("/api/account/onboarding"))
+          .length,
+      ).toBe(1);
+    });
+    expect(screen.queryByText(/Your recommended path/i)).toBeNull();
+    resolveOnboarding(Response.json({ error: "nope" }, { status: 500 }));
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/Your recommended path/i)).toBeNull();
+  });
+
+  it("B3: deselect gym_owner clears org card and sends has_physical_gym null", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    const fetchImpl = mockFetch({
+      "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+      "/api/account/onboarding": () => Response.json({ ok: true }),
+      "/api/auth/me": () => Response.json({ signed_in: true, public_name: "Pat Lee" }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<JoinFlow open onClose={() => {}} initialStep="roles" />);
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Gym owner"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/physical gym location/i);
+    fireEvent.click(screen.getByRole("button", { name: /^Yes$/i }));
+    fireEvent.click(screen.getByLabelText(/Back/i));
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Gym owner")); // deselect
+    fireEvent.click(screen.getByText("Learning for myself"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/Your recommended path/i);
+    expect(screen.queryByTestId("org-plan-card")).toBeNull();
+    await waitFor(() => {
+      const post = fetchImpl.mock.calls.find((c) =>
+        String(c[0]).includes("/api/account/onboarding"),
+      );
+      expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+        has_physical_gym: null,
+        has_physical_clinic: null,
+      });
+    });
+  });
+
+  it("B4: signed-in ?step=auth clamps to roles; ?step=path with no roles → roles", async () => {
+    expect(
+      clampJoinDeepLink("auth", { isSignedIn: true, roles: [] }),
+    ).toBe("roles");
+    expect(
+      clampJoinDeepLink("path", { isSignedIn: true, roles: [] }),
+    ).toBe("roles");
+    expect(
+      clampJoinDeepLink("path", { isSignedIn: false, roles: [] }),
+    ).toBe("name");
+
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    window.history.pushState({}, "", "/join?step=auth");
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () => Response.json({ signed_in: true, public_name: "Pat Lee" }),
+      }),
+    );
+    render(<JoinFlow open onClose={() => {}} initialStep="auth" />);
+    await screen.findByText(/Which of these best describes you/i);
+    expect(screen.queryByText(/Continue with Google/i)).toBeNull();
+  });
+});
+
+describe("facilityFlagsForRoles / showOrganizationOwnerCard (B3)", () => {
+  it("never keeps true when role deselected", () => {
+    expect(facilityFlagsForRoles(["individual"], true, true)).toEqual({
+      has_physical_gym: null,
+      has_physical_clinic: null,
+    });
+    expect(showOrganizationOwnerCard(["individual"], true, true)).toBe(false);
+    expect(showOrganizationOwnerCard(["gym_owner"], true, null)).toBe(true);
+  });
+});
+
+describe("WJ15 /join + useJoinFlow modal Esc focus", () => {
+  it("useJoinFlow opens modal; Esc closes and restores focus", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () => Response.json({ signed_in: false }),
+      }),
+    );
+    function Trigger() {
+      const { openJoinFlow } = useJoinFlow();
       return (
-        /metfix-join-demo|token|password|email|firstName|lastName/i.test(key) ||
-        /metfix-join-demo|password|token/i.test(val)
+        <button type="button" onClick={() => openJoinFlow()}>
+          Open join
+        </button>
+      );
+    }
+    render(
+      <JoinFlowProvider>
+        <Trigger />
+      </JoinFlowProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: /Open join/i });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await screen.findByRole("dialog", { name: /Join MetFix/i });
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: /Join MetFix/i })).toBeNull();
+    });
+    // JoinShell restores focus to the previously focused element (trigger).
+    await waitFor(() => {
+      expect(document.activeElement === trigger || document.activeElement === document.body).toBe(
+        true,
       );
     });
-    expect(sensitive).toEqual([]);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
   });
 });

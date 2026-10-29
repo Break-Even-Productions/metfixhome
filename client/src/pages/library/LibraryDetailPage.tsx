@@ -181,7 +181,7 @@ export default function LibraryDetailPage({
                 Why is this locked?
               </button>
             </div>
-            <UpgradePrompt title="Unlock this resource" />
+            {/* B6: one CTA only — join button above; no second UpgradePrompt */}
           </div>
         ) : isPreview ? (
           <div className="library-preview-wrap">

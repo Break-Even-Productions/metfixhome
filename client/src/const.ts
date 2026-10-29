@@ -25,8 +25,6 @@ const KNOWN_ROUTES = new Set([
   "library",
   "login",
   "join",
-  "account",
-  "members",
   "404",
   "account",
   "members",

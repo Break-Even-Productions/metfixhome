@@ -342,8 +342,9 @@ export function bsiAccountBearerHeaders(
   return headers;
 }
 
-/** POST {origin}/wp-json/bsi/v1/me/onboarding — Bearer only (WJ21). */
-export async function bsiPostMeOnboarding(
+/** Shared POST helper for `/wp-json/bsi/v1/me…` write paths (N6) — one Bearer builder. */
+async function bsiPostMe(
+  mePath: string,
   accessToken: string,
   body: unknown,
   env: Env,
@@ -352,7 +353,8 @@ export async function bsiPostMeOnboarding(
 ): Promise<BsiHttpResult> {
   const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
   if (!cfg) return { kind: "nokey" };
-  const url = `${cfg.origin}/wp-json/bsi/v1/me/onboarding`;
+  const path = mePath.startsWith("/") ? mePath : `/${mePath}`;
+  const url = `${cfg.origin}/wp-json/bsi/v1/me${path}`;
   return bsiFetch(
     url,
     {
@@ -366,6 +368,17 @@ export async function bsiPostMeOnboarding(
   );
 }
 
+/** POST {origin}/wp-json/bsi/v1/me/onboarding — Bearer only (WJ21). */
+export async function bsiPostMeOnboarding(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  return bsiPostMe("/onboarding", accessToken, body, env, fetchImpl, opts);
+}
+
 /** POST {origin}/wp-json/bsi/v1/me/whop/checkout-session — Bearer only (WJ22). */
 export async function bsiPostWhopCheckoutSession(
   accessToken: string,
@@ -374,20 +387,7 @@ export async function bsiPostWhopCheckoutSession(
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string; timeoutMs?: number },
 ): Promise<BsiHttpResult> {
-  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
-  if (!cfg) return { kind: "nokey" };
-  const url = `${cfg.origin}/wp-json/bsi/v1/me/whop/checkout-session`;
-  return bsiFetch(
-    url,
-    {
-      method: "POST",
-      headers: bsiAccountBearerHeaders(accessToken, "application/json"),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts?.timeoutMs ?? 15_000),
-    },
-    fetchImpl,
-    env,
-  );
+  return bsiPostMe("/whop/checkout-session", accessToken, body, env, fetchImpl, opts);
 }
 
 async function oauthTokenFetch(

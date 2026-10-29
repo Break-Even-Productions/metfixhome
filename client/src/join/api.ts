@@ -1,35 +1,6 @@
 /** Client helpers for onboarding + Whop checkout (no credential storage). */
 
-export async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await fetch("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function getRecaptchaToken(action: string): Promise<string> {
-  const g = (
-    window as unknown as {
-      grecaptcha?: {
-        ready: (cb: () => void) => void;
-        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
-      };
-    }
-  ).grecaptcha;
-  const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
-    .__MFX_RECAPTCHA_SITE_KEY__;
-  if (!g || !siteKey) return "test-recaptcha-token";
-  await new Promise<void>((resolve) => g.ready(() => resolve()));
-  return g.execute(siteKey, { action });
-}
+export { fetchCsrf, getRecaptchaToken, clearCsrfCache } from "@/lib/authRequest";
 
 export type OnboardingBody = {
   first_name: string;

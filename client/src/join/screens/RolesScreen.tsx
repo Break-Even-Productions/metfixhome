@@ -6,10 +6,12 @@ export function RolesScreen({
   selected,
   onToggle,
   onContinue,
+  saving = false,
 }: {
   selected: RoleId[];
   onToggle: (id: RoleId) => void;
   onContinue: () => void;
+  saving?: boolean;
 }) {
   return (
     <div>
@@ -53,8 +55,8 @@ export function RolesScreen({
         })}
       </div>
       <div className="mt-10">
-        <GoldButton disabled={selected.length === 0} onClick={onContinue}>
-          Continue
+        <GoldButton disabled={saving || selected.length === 0} onClick={onContinue}>
+          {saving ? "Saving…" : "Continue"}
         </GoldButton>
       </div>
     </div>
