@@ -200,11 +200,13 @@ const CHECKOUT_OK = {
   },
 };
 
+/** BSI account-api-gaps rev1.3.18 §2.4 documented payload (not *_cents). */
 const EARNINGS = {
-  pending_cents: 0,
-  ready_cents: 100,
-  paid_total_cents: 500,
-  currency: "USD",
+  currency: "usd",
+  pending: 0,
+  ready: 100,
+  paid_total: 500,
+  connect_status: "active",
 };
 
 describe("PR D course referrals + checkout", () => {
@@ -266,7 +268,12 @@ describe("PR D course referrals + checkout", () => {
       expect(body.eligible).toBe(true);
       expect(body.join_code.commission_percent).toBe(15);
       expect(body.course_links[0].estimated_commission_cents).toBe(3000);
-      expect(body.earnings.paid_total_cents).toBe(500);
+      expect(body.earnings).toEqual({
+        pending_cents: 0,
+        ready_cents: 100,
+        paid_total_cents: 500,
+        currency: "USD",
+      });
       const s = JSON.stringify(body);
       expect(s).not.toContain("commission_policy");
       expect(s).not.toContain("payee_entity_id");
@@ -377,21 +384,12 @@ describe("PR D course referrals + checkout", () => {
     spy.mockRestore();
   });
 
-  it("CR2 generate maps 403 reason_code; pre-check blocks mutation", async () => {
+  it("CR2 generate maps 403 reason_code; ≤1 upstream mutation (CQ B3)", async () => {
     const sess = await withSession(h);
     let posts = 0;
-    const { fetchImpl } = makeFetchMock([
+    let gets = 0;
+    const { fetchImpl, recorded } = makeFetchMock([
       async ({ path, method }) => {
-        if (path.endsWith("/me/referrals") && method === "GET") {
-          return Response.json({
-            eligible: false,
-            reason_code: "bsi_referral_coach_expired",
-            foundations_coach_expires_at: "2025-01-01T00:00:00Z",
-            eligibility_type: "foundations_coach",
-            join_code: null,
-            course_links: [],
-          });
-        }
         if (path.includes("referral-code") && method === "POST") {
           posts += 1;
           return Response.json(
@@ -399,6 +397,7 @@ describe("PR D course referrals + checkout", () => {
             { status: 403 },
           );
         }
+        if (method === "GET") gets += 1;
         return new Response(null, { status: 404 });
       },
     ]);
@@ -418,7 +417,44 @@ describe("PR D course referrals + checkout", () => {
       error: "referral_ineligible",
       reason_code: "bsi_referral_coach_expired",
     });
-    expect(posts).toBe(0);
+    expect(posts).toBe(1);
+    expect(gets).toBe(0);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+  });
+
+  it("CQ B2: upstream 500 with payee/whop/commission_policy → only {error}", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          return Response.json(
+            {
+              error: "boom",
+              payee_entity_id: 42,
+              whop_checkout_config_id: "ch_leak",
+              commission_policy: { commission_percent: 25 },
+            },
+            { status: 500 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(["error"]);
+    expect(body).toEqual({ error: "upstream_error" });
+    expect(JSON.stringify(body)).not.toMatch(/payee|whop_|commission_policy/);
   });
 
   it("CR2 invalid action → 400 with 0 upstream", async () => {
@@ -727,20 +763,16 @@ describe("PR D course referrals + checkout", () => {
     expect(res.status).toBe(502);
   });
 
-  it("CR2 200 returns CR1 DTO via same builder", async () => {
+  it("CR2 200 returns CR1 DTO via same builder; exactly 1 upstream call", async () => {
     const sess = await withSession(h);
-    const { fetchImpl } = makeFetchMock([
+    const { fetchImpl, recorded } = makeFetchMock([
       async ({ path, method }) => {
-        if (path.endsWith("/me/referrals") && method === "GET") {
-          return Response.json(REFERRALS_OK);
-        }
         if (path.includes("referral-code") && method === "POST") {
           return Response.json({
             ...REFERRALS_OK,
             commission_policy: { commission_percent: 25, commission_bps: 2500 },
           });
         }
-        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
         return new Response(null, { status: 404 });
       },
     ]);
@@ -758,6 +790,8 @@ describe("PR D course referrals + checkout", () => {
     const body = await res.json();
     expect(body.join_code.commission_percent).toBe(15);
     expect(body).not.toHaveProperty("commission_policy");
+    expect(body).not.toHaveProperty("earnings");
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
   });
 });
 

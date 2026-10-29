@@ -73,6 +73,11 @@ export function hasMetFixPro(tier: CanonicalSubscriptionTier): boolean {
   return tier === "metfix_pro" || tier === "organization_owner";
 }
 
+/** Organization Owner check — keep the `organization_owner` literal in tiers.ts only. */
+export function isOrganizationOwnerTier(tier: CanonicalSubscriptionTier): boolean {
+  return tier === "organization_owner";
+}
+
 export type TierDisplayOpts = {
   legacy_source?: LegacySubscriptionSource;
 };

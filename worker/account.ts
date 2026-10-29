@@ -7,7 +7,6 @@ import {
   COURSE_ID_RE,
   buildCheckoutDto,
   buildReferralsDto,
-  canGenerateCourseReferrals,
   emitDropLogs,
   sanitizeReturnPath,
 } from "../shared/account/courseReferrals";
@@ -1218,12 +1217,8 @@ async function dispatch(
         if (code === "whop_checkout_upstream_error") {
           return accountJson({ error: "whop_checkout_upstream_error" }, 502);
         }
-        return accountJson(
-          ran.result.json && typeof ran.result.json === "object"
-            ? ran.result.json
-            : { error: "upstream_error" },
-          ran.result.status,
-        );
+        // CQ B2: never pass through upstream body/status — allowlisted `{error}` only.
+        return accountJson({ error: "upstream_error" }, 502);
       }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
@@ -1444,48 +1439,8 @@ async function dispatch(
         entity_id = body.entity_id;
       }
 
-      // Worker pre-check on generate/rotate: 0 upstream mutation when ineligible.
-      if (body.action === "generate" || body.action === "rotate") {
-        const preRan = await runBearer(
-          ctx!,
-          env,
-          fetchImpl,
-          opts,
-          "GET",
-          accountReferralsPath(),
-        );
-        if (preRan instanceof Response) return mapUnauthenticated(preRan);
-        const preMapped = mapUpstreamResult(preRan.result);
-        if (preMapped instanceof Response) return preMapped;
-        const preBuilt = buildReferralsDto(preMapped.json, undefined, Date.now());
-        if (preBuilt.ok && !preBuilt.dto.eligible) {
-          return accountJson(
-            {
-              error: "referral_ineligible",
-              reason_code: preBuilt.dto.reason_code ?? "bsi_referral_ineligible",
-            },
-            403,
-          );
-        }
-        // Also honor raw upstream eligibility if builder said eligible but predicate disagrees.
-        const raw = asRecord(preMapped.json) ?? {};
-        const pred = canGenerateCourseReferrals(
-          {
-            eligibility_type: raw.eligibility_type,
-            canonical_tier: raw.canonical_tier,
-            foundations_coach_expires_at: raw.foundations_coach_expires_at,
-            role_slug: raw.role_slug,
-          },
-          Date.now(),
-        );
-        if (!pred.eligible) {
-          return accountJson(
-            { error: "referral_ineligible", reason_code: pred.reason_code },
-            403,
-          );
-        }
-      }
-
+      // CQ B3: generate/rotate/revoke = exactly 1 upstream mutation.
+      // Drop eligibility pre-check + earnings GET; rely on upstream 403.
       const upstreamPayload: Record<string, unknown> = { action: body.action };
       if (entity_id !== undefined) upstreamPayload.entity_id = entity_id;
 
@@ -1510,20 +1465,8 @@ async function dispatch(
       }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      // CR2 200 reuses CR1 builder (may also fetch earnings in parallel for parity).
-      const earnRan = await runBearer(
-        ran.ctx,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountReferralEarningsPath(),
-      );
-      let earningsJson: unknown = undefined;
-      if (!(earnRan instanceof Response) && earnRan.result.kind === "ok") {
-        earningsJson = earnRan.result.json;
-      }
-      const built = buildReferralsDto(mapped.json, earningsJson, Date.now());
+      // CR2 200 reuses CR1 builder — mutation response body only (no earnings GET).
+      const built = buildReferralsDto(mapped.json, undefined, Date.now());
       if (!built.ok) {
         return accountJson({ error: "upstream_error" }, 502);
       }

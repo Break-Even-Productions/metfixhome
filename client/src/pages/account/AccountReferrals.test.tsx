@@ -240,4 +240,75 @@ describe("AccountReferrals PR D", () => {
       ).toBe(true),
     );
   });
+
+  it("P-DB-11 / CR-X3: GIFT1 Essentials gift + generate then revoke after rotate", async () => {
+    const actions: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+      if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+      if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+      if (url.includes("/api/account/referrals") && method === "GET") {
+        return jsonResponse({
+          eligible: true,
+          eligibility_type: "organization",
+          join_code: null,
+          course_links: [],
+          course_links_dropped: 0,
+          join_code_dropped: false,
+          earnings: {
+            pending_cents: 1200,
+            ready_cents: 3400,
+            paid_total_cents: 10000,
+            currency: "USD",
+          },
+        });
+      }
+      if (url.includes("/api/account/referral-code") && method === "POST") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { action?: string };
+        actions.push(body.action ?? "");
+        if (body.action === "revoke") {
+          return jsonResponse({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: null,
+            course_links: [],
+            course_links_dropped: 0,
+          });
+        }
+        return jsonResponse({
+          eligible: true,
+          eligibility_type: "organization",
+          join_code: JOIN,
+          course_links: [LINK],
+          course_links_dropped: 0,
+        });
+      }
+      if (url.includes("/api/account/course-gifts")) {
+        return jsonResponse({
+          items: [
+            {
+              code: "GIFT1",
+              course_title: "MetFix Essentials",
+              course_slug: "metfix-essentials",
+              status: "available",
+            },
+          ],
+        });
+      }
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mount();
+    await waitFor(() => expect(screen.getByText("GIFT1")).toBeTruthy());
+    expect(screen.getByText(/MetFix Essentials/i)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("generate-referral"));
+    await waitFor(() => expect(actions).toContain("generate"));
+    await waitFor(() => expect(screen.getByText("Rotate")).toBeTruthy());
+    fireEvent.click(screen.getByText("Rotate"));
+    await waitFor(() => expect(actions).toContain("rotate"));
+    fireEvent.click(screen.getByText("Revoke"));
+    await waitFor(() => expect(actions).toEqual(["generate", "rotate", "revoke"]));
+  });
 });

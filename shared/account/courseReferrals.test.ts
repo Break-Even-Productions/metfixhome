@@ -7,7 +7,7 @@ import {
   estimateMatchesIntegerBounds,
   isAllowedReferralUrl,
   isBadCommissionBps,
-  mapFoundationCertifiedAlias,
+  shapeEarnings,
 } from "./courseReferrals";
 import { BEP_WHOP_COMPANY_ID } from "./whop";
 
@@ -97,18 +97,91 @@ describe("canGenerateCourseReferrals (CR-ELIG-1/2)", () => {
     ).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
   });
 
-  it("maps foundation_certified alias once", () => {
-    expect(mapFoundationCertifiedAlias("foundation_certified")).toBe(
-      "foundations_coach",
-    );
+  it("rejects eligibility_type aliases (organization_owner / foundation_certified)", () => {
+    expect(
+      canGenerateCourseReferrals(
+        {
+          eligibility_type: "organization_owner",
+          foundations_coach_expires_at: new Date(NOW + 1000).toISOString(),
+        },
+        NOW,
+      ),
+    ).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
+    expect(
+      canGenerateCourseReferrals(
+        {
+          eligibility_type: "foundation_certified",
+          foundations_coach_expires_at: new Date(NOW + 1000).toISOString(),
+        },
+        NOW,
+      ),
+    ).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
+  });
+
+  it("coach grant >3y ago is ineligible even if BSI expires_at is far future", () => {
+    const granted = "2020-01-15T12:00:00.000Z";
     const r = canGenerateCourseReferrals(
       {
-        role_slug: "foundation_certified",
-        foundations_coach_expires_at: new Date(NOW + 1000).toISOString(),
+        eligibility_type: "foundations_coach",
+        foundations_coach_granted_at: granted,
+        foundations_coach_expires_at: "2035-01-15T12:00:00.000Z",
       },
       NOW,
     );
-    expect(r).toEqual({ eligible: true, eligibility_type: "foundations_coach" });
+    expect(r).toEqual({
+      eligible: false,
+      reason_code: "bsi_referral_coach_expired",
+    });
+  });
+});
+
+describe("shapeEarnings (N2 OVERRIDE — BSI §2.4)", () => {
+  it("accepts exact BSI documented payload (lowercase currency, non-cents keys)", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(
+      shapeEarnings({
+        currency: "usd",
+        pending: 1200,
+        ready: 3400,
+        paid_total: 10000,
+        connect_status: "active",
+      }),
+    ).toEqual({
+      pending_cents: 1200,
+      ready_cents: 3400,
+      paid_total_cents: 10000,
+      currency: "USD",
+    });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("omits + logs on bad shape — never throws / never signals 502", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(shapeEarnings({ pending_cents: 1 })).toBeNull();
+    expect(spy).toHaveBeenCalled();
+    const logged = JSON.parse(String(spy.mock.calls[0]?.[0]));
+    expect(logged).toEqual({
+      event: "referral_earnings_omitted",
+      reason: "bad_shape",
+    });
+    spy.mockRestore();
+  });
+
+  it("buildReferralsDto never 502s on bad earnings", () => {
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        canonical_tier: "organization_owner",
+        join_code: null,
+        course_links: [],
+      },
+      { garbage: true },
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (built.ok) expect(built.dto.earnings).toBeUndefined();
   });
 });
 
