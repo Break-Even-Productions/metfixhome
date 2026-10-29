@@ -6,6 +6,28 @@ const FORBIDDEN_WHOP_SUBSTRINGS = ["curie"];
 const BIZ_ID_RE = /biz_[A-Za-z0-9]+/g;
 
 /**
+ * CR3 / CL2 checkout URL gate (CR-CO-1 / CL-RET-1).
+ * Absolute https, host `whop.com` or `*.whop.com`, no userinfo, no non-default port.
+ * Opaque: never parse IDs from the URL. Company is asserted by BSI.
+ */
+export function isWhopCheckoutUrl(raw: unknown): raw is string {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 2048) return false;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:" || u.username !== "" || u.password !== "") return false;
+  if (u.port !== "" && u.port !== "443") return false;
+  const host = u.hostname.toLowerCase();
+  if (!(WHOP_ALLOWED_HOSTS.has(host) || host.endsWith(".whop.com"))) return false;
+  // CR-WHOP-1: reject non-BEP checkout hosts/paths.
+  if (FORBIDDEN_WHOP_SUBSTRINGS.some((s) => u.href.toLowerCase().includes(s))) return false;
+  return true;
+}
+
+/**
  * Outbound billing / Whop URL gate (DP-WHOP-1 / T19).
  *
  * R3-N2: Reject non-default HTTPS ports (`u.port !== "" && u.port !== "443"`).

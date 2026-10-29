@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { BEP_WHOP_COMPANY_ID } from "./whop";
-import { sanitizeExternalBillingUrl } from "./url-allowlist";
+import { isWhopCheckoutUrl, sanitizeExternalBillingUrl } from "./url-allowlist";
+
+describe("isWhopCheckoutUrl (CR-CO-1 / CL-RET-1)", () => {
+  it("accepts whop.com and *.whop.com https", () => {
+    expect(isWhopCheckoutUrl("https://whop.com/checkout/x")).toBe(true);
+    expect(isWhopCheckoutUrl("https://pay.whop.com/checkout/x")).toBe(true);
+  });
+
+  it("CL-T2 rejects hostile URLs", () => {
+    for (const evil of [
+      "https://evil.example",
+      "https://whop.com.evil.com",
+      "http://whop.com",
+      "https://u@whop.com",
+      "javascript:alert(1)",
+      "https://whop.com:8443/x",
+      "https://evilwhop.com",
+    ]) {
+      expect(isWhopCheckoutUrl(evil), evil).toBe(false);
+    }
+  });
+});
 
 describe("sanitizeExternalBillingUrl (DP-WHOP-1 / T19)", () => {
   it("allows whop.com and *.whop.com in whop_only mode", () => {

@@ -103,11 +103,11 @@ describe("computeLtvBudget / evaluateCourseCertificateEligibility (DP-T-CERT3 LT
           course_price_cents: COURSE_A,
           completed: true,
           certificate_claimed: true,
-          claim_method: "ltv",
+          claim_method: "redeem_ltv",
         },
         10000,
       ),
-    ).toEqual({ status: "claimed", method: "ltv" });
+    ).toEqual({ status: "claimed", method: "redeem_ltv" });
   });
 
   it("incomplete courses return incomplete status", () => {

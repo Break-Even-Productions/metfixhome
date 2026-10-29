@@ -207,7 +207,7 @@ const LTV300_SPEND = {
       course_title: "Course A",
       allocated_cents: 15000,
       claimed_at: "2026-01-01T00:00:00Z",
-      claim_method: "ltv",
+      claim_method: "redeem_ltv",
     },
     {
       course_id: 3,
@@ -215,7 +215,7 @@ const LTV300_SPEND = {
       course_title: "Course C",
       allocated_cents: 5000,
       claimed_at: "2026-01-02T00:00:00Z",
-      claim_method: "ltv",
+      claim_method: "redeem_ltv",
     },
   ],
   canonical_tier: "metfix_pro",
@@ -484,7 +484,7 @@ describe("worker/account routes", () => {
     expect(formatUsdFromCents(1234)).toBe("$12.34");
   });
 
-  it("DP-T-5 / DP-T-CERT3 LTV300 spend + alias; CERT3 insufficient shortfall", async () => {
+  it("DP-T-5 / DP-T-CERT3 LTV300 spend + alias (legacy claim-certificate route removed)", async () => {
     const sess = await withSession(h);
     const budget = computeLtvBudget(30000, 20000);
     expect(budget.available_certificate_ltv_cents).toBe(10000);
@@ -493,17 +493,6 @@ describe("worker/account routes", () => {
     const { fetchImpl } = makeFetchMock([
       async ({ path }) => {
         if (path.endsWith("/me/spend")) return Response.json(LTV300_SPEND);
-        if (path.includes("/claim-certificate")) {
-          return Response.json(
-            {
-              error: "insufficient_ltv",
-              required_cents: 20000,
-              available_cents: 10000,
-              shortfall_cents: 10000,
-            },
-            { status: 400 },
-          );
-        }
         return new Response(null, { status: 404 });
       },
     ]);
@@ -532,7 +521,8 @@ describe("worker/account routes", () => {
       "in_person_seminar",
     );
 
-    const claim = await callAccount(
+    // CQ B1: legacy /claim-certificate Worker route is gone (404 not_found).
+    const gone = await callAccount(
       h,
       "/api/account/courses/2/claim-certificate",
       {
@@ -542,13 +532,8 @@ describe("worker/account routes", () => {
       },
       fetchImpl,
     );
-    expect(claim.status).toBe(400);
-    expect(await claim.json()).toEqual({
-      error: "insufficient_ltv",
-      required_cents: 20000,
-      available_cents: 10000,
-      shortfall_cents: 10000,
-    });
+    expect(gone.status).toBe(404);
+    expect(await gone.json()).toEqual({ error: "not_found" });
   });
 
   it("DP-T-12 profile ignores member_id; upstream /profiles/me", async () => {
@@ -905,8 +890,8 @@ describe("worker/account routes", () => {
       },
       {
         method: "POST",
-        path: "/api/account/courses/1/claim-certificate",
-        body: JSON.stringify({ method: "ltv" }),
+        path: "/api/account/courses/1/claim",
+        body: JSON.stringify({ path: "redeem_ltv" }),
       },
       { method: "PATCH", path: "/api/account/profile", body: JSON.stringify({ bio: "x" }) },
       { method: "PUT", path: "/api/account/favorites/articles/a1", body: "{}" },
@@ -1308,94 +1293,178 @@ describe("worker/account routes", () => {
     expect(keys[3]).toBe("acct:123");
   });
 
-  it("pin: upstream 409 → { error: already_claimed } (status map, opaque body)", async () => {
+  it("CL-T6 / W-N14 / W-N27: repeat allocated_cents must be 0; missing/non-int/neg → 502", async () => {
     const sess = await withSession(h);
-    const { fetchImpl } = makeFetchMock([
-      async ({ path, method }) => {
-        if (path.includes("/claim-certificate") && method === "POST") {
-          // Opaque upstream conflict — must not echo; pin status→already_claimed.
-          return Response.json({ message: "bsi_certificate_already_claimed" }, { status: 409 });
-        }
-        return new Response(null, { status: 404 });
-      },
-    ]);
-    const res = await callAccount(
-      h,
-      "/api/account/courses/10/claim-certificate",
-      {
-        method: "POST",
-        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ method: "ltv" }),
-      },
-      fetchImpl,
-    );
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "already_claimed" });
+    const repeatBody = (allocated: unknown) => ({
+      course_id: 10,
+      already_claimed: true,
+      ...(allocated !== undefined ? { allocated_cents: allocated } : {}),
+      claim_method: "redeem_ltv",
+      claimed_at: "2026-06-01T12:00:00+00:00",
+      available_certificate_ltv_cents: 0,
+      available_ltv_cents: 0,
+      claimed_courses_value_cents: 20000,
+      foundations_coach: null,
+    });
+    const claimOnce = async (allocated: unknown, idemSuffix: string) => {
+      const { fetchImpl } = makeFetchMock([
+        async ({ path, method }) => {
+          if (path.includes("/claim-certificate") && method === "POST") {
+            return Response.json(repeatBody(allocated));
+          }
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      return callAccount(
+        h,
+        "/api/account/courses/10/claim",
+        {
+          method: "POST",
+          headers: {
+            ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+            "Idempotency-Key": `550e8400-e29b-41d4-a716-44665544${idemSuffix}`,
+          },
+          body: JSON.stringify({ path: "redeem_ltv" }),
+        },
+        fetchImpl,
+      );
+    };
+
+    const ok = await claimOnce(0, "0000");
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ already_claimed: true });
+
+    // W-N14 nonzero / W-N27 missing, string, float, negative, unsafe → 502, no checkout_url.
+    for (const [alloc, suf] of [
+      [20000, "0001"],
+      [undefined, "0002"],
+      ["0", "0003"],
+      [0.5, "0004"],
+      [-1, "0005"],
+      [Number.MAX_SAFE_INTEGER + 1, "0006"],
+    ] as const) {
+      const bad = await claimOnce(alloc, suf);
+      expect(bad.status, `allocated=${String(alloc)}`).toBe(502);
+      expect(await bad.json()).toEqual({ error: "upstream_error" });
+    }
   });
 
-  it("DP-T-CERT3b: 409 double claim; claimed>total → available 0", async () => {
+  it("W-N26 / CQ F1: legacy 'ltv' claim_method → 200, method null, one log", async () => {
     const sess = await withSession(h);
-    let claims = 0;
-    const { fetchImpl } = makeFetchMock([
-      async ({ path, method }) => {
-        if (path.includes("/claim-certificate") && method === "POST") {
-          claims += 1;
-          if (claims > 1) {
-            return Response.json({ error: "already_claimed" }, { status: 409 });
+    const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/spend")) {
+            return Response.json({
+              total_ltv_cents: 30000,
+              claimed_courses_value_cents: 20000,
+              claimed_certificates: [
+                {
+                  course_id: 1,
+                  course_slug: "a",
+                  course_title: "Course A",
+                  allocated_cents: 15000,
+                  claimed_at: "2026-01-01T00:00:00Z",
+                  claim_method: "ltv",
+                },
+                {
+                  course_id: 3,
+                  course_slug: "c",
+                  course_title: "Course C",
+                  allocated_cents: 5000,
+                  claimed_at: "2026-01-02T00:00:00Z",
+                  claim_method: "redeem_ltv",
+                },
+              ],
+              canonical_tier: "metfix_pro",
+              foundations_coach: {},
+            });
           }
-          return Response.json({ ok: true, foundations_coach: { seminar_checked_in: false } });
-        }
-        if (path.endsWith("/me/spend")) {
-          return Response.json({
-            total_ltv_cents: 30000,
-            claimed_courses_value_cents: 50000,
-            claimed_certificates: [],
-            canonical_tier: "metfix_pro",
-            foundations_coach: {},
-          });
-        }
-        return new Response(null, { status: 404 });
-      },
-    ]);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/ltv-certificates",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        claimed_certificates: Array<{ course_id: number; claim_method: string | null }>;
+      };
+      expect(body.claimed_certificates).toHaveLength(2);
+      expect(body.claimed_certificates[0]).toMatchObject({
+        course_id: 1,
+        claim_method: null,
+      });
+      expect(body.claimed_certificates[1]).toMatchObject({
+        course_id: 3,
+        claim_method: "redeem_ltv",
+      });
+      const logs = spyWarn.mock.calls
+        .map((c) => {
+          try {
+            return JSON.parse(String(c[0])) as { event?: string };
+          } catch {
+            return null;
+          }
+        })
+        .filter((l) => l?.event === "ltv_row_method_unknown");
+      expect(logs).toHaveLength(1);
+    } finally {
+      spyWarn.mockRestore();
+    }
+  });
 
-    const first = await callAccount(
-      h,
-      "/api/account/courses/10/claim-certificate",
-      {
-        method: "POST",
-        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ method: "ltv" }),
-      },
-      fetchImpl,
-    );
-    expect(first.status).toBe(200);
-
-    const second = await callAccount(
-      h,
-      "/api/account/courses/10/claim-certificate",
-      {
-        method: "POST",
-        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ method: "ltv" }),
-      },
-      fetchImpl,
-    );
-    expect(second.status).toBe(409);
-    expect(await second.json()).toEqual({ error: "already_claimed" });
-
-    const ltv = await callAccount(
-      h,
-      "/api/account/ltv-certificates",
-      { headers: { Cookie: sess.cookie } },
-      fetchImpl,
-    );
-    expect(ltv.status).toBe(200);
-    const body = (await ltv.json()) as {
-      available_certificate_ltv_cents: number;
-      claimed_courses_value_cents: number;
+  it("CL-T19 / CQ N1: 409 ClaimInProgressBody vs 503 ClaimLockTimeoutBody exact keys", async () => {
+    const sess = await withSession(h);
+    const postClaim = async (upstream: Response, idem: string) => {
+      const { fetchImpl } = makeFetchMock([
+        async ({ path, method }) => {
+          if (path.includes("/claim-certificate") && method === "POST") return upstream;
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      return callAccount(
+        h,
+        "/api/account/courses/10/claim",
+        {
+          method: "POST",
+          headers: {
+            ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+            "Idempotency-Key": idem,
+          },
+          body: JSON.stringify({ path: "redeem_ltv" }),
+        },
+        fetchImpl,
+      );
     };
-    expect(body.available_certificate_ltv_cents).toBe(0);
-    expect(body.claimed_courses_value_cents).toBe(50000);
+
+    const r409 = await postClaim(
+      Response.json(
+        { code: "bsi_idempotency_key_in_progress" },
+        { status: 409 },
+      ),
+      "550e8400-e29b-41d4-a716-446655440010",
+    );
+    expect(r409.status).toBe(409);
+    const b409 = (await r409.json()) as Record<string, unknown>;
+    expect(b409).toEqual({ error: "claim_in_progress" });
+    expect(Object.keys(b409).sort()).toEqual(["error"]);
+
+    const r503 = await postClaim(
+      Response.json({ code: "bsi_claim_lock_timeout" }, { status: 503 }),
+      "550e8400-e29b-41d4-a716-446655440011",
+    );
+    expect(r503.status).toBe(503);
+    const b503 = (await r503.json()) as Record<string, unknown>;
+    expect(b503).toEqual({
+      error: "claim_in_progress",
+      reason_code: "claim_in_progress",
+    });
+    expect(Object.keys(b503).sort()).toEqual(["error", "reason_code"]);
   });
 
   it("DP-T-16: 5242880 pass / 5242881 reject; gif/SVG reject; png/webp pass", async () => {

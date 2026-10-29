@@ -32,6 +32,10 @@ jobs:
       - name: Typecheck worker
         run: npm run check:worker
 
+      # 1.2.10 CQ 59cf5b29 S2 / 1.2.9 F2: root `npm run check` gates client + shared tsc at merge.
+      - name: Typecheck client and shared
+        run: npm run check
+
       - name: Unit and mount tests
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 

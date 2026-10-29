@@ -676,19 +676,9 @@ describe("PR D course referrals + checkout", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({
-      attempt_id: "cca_9f8e7d6c5b4a3f2e1d0c9b8a",
-      course_id: 20231,
       checkout_url: "https://whop.com/checkout/plan_course_essentials/?d2c=true&a=cfexample9",
-      course_price_cents: 20000,
-      currency: "USD",
-      attribution: {
-        attribution_source: "primary_org",
-        bsi_ref_slug: "cfexample9",
-        whop_affiliate_code: "cfexample9",
-        commission_percent: 15,
-        commission_bps: 1500,
-      },
     });
+    expect(Object.keys(body).sort()).toEqual(["checkout_url"]);
     const s = JSON.stringify(body);
     for (const leak of [
       "whop_checkout_config_id",
@@ -807,53 +797,94 @@ describe("PR D course referrals + checkout", () => {
       expect(res.status, evil).toBe(502);
     }
 
+    // LR-1: known whop_company_id when present must be BEP; non-BEP → 502.
     const { fetchImpl: fBiz } = makeFetchMock([
       async () => Response.json({ ...CHECKOUT_OK, whop_company_id: "biz_OTHER" }),
     ]);
-    expect(
-      (
-        await callAccount(
-          h,
-          "/api/account/courses/20231/purchase-checkout",
-          {
-            method: "POST",
-            headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-            body: JSON.stringify({}),
-          },
-          fBiz,
-        )
-      ).status,
-    ).toBe(502);
+    const bizRes = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fBiz,
+    );
+    expect(bizRes.status).toBe(502);
+    expect(await bizRes.json()).toEqual({ error: "upstream_error" });
   });
 
-  it("CR-ATTEMPT-1 rejects bad attempt_id", async () => {
+  it("CR-CO-T1: success keys exactly [checkout_url]; extras ignored; missing url 502", async () => {
     const sess = await withSession(h);
-    const badIds = [
-      "cca_" + "a".repeat(23),
-      "cca_" + "a".repeat(33),
-      "cca_9F8E7d6c5b4a3f2e1d0c9b8a",
-      "cc_" + "a".repeat(24),
-      "CCA_" + "a".repeat(24),
-      "cca_" + "g".repeat(24),
-      null,
-      123,
-    ];
-    for (const attempt_id of badIds) {
-      const { fetchImpl } = makeFetchMock([
-        async () => Response.json({ ...CHECKOUT_OK, attempt_id }),
-      ]);
-      const res = await callAccount(
-        h,
-        "/api/account/courses/20231/purchase-checkout",
-        {
-          method: "POST",
-          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-          body: JSON.stringify({}),
-        },
-        fetchImpl,
-      );
-      expect(res.status, String(attempt_id)).toBe(502);
-    }
+    const ok = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([async () => Response.json(CHECKOUT_OK)]).fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    assertNoStore(ok);
+    const body = await ok.json();
+    expect(Object.keys(body).sort()).toEqual(["checkout_url"]);
+    expect(body).not.toHaveProperty("attempt_id");
+    expect(body).not.toHaveProperty("attribution");
+    expect(body).not.toHaveProperty("course_price_cents");
+
+    // LR-1: unknown extras ignored; known non-BEP whop_company_id → 502.
+    const extraOk = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([
+        async () =>
+          Response.json({
+            checkout_url: CHECKOUT_OK.checkout_url,
+            attempt_id: "cca_" + "a".repeat(24),
+            junk: true,
+          }),
+      ]).fetchImpl,
+    );
+    expect(extraOk.status).toBe(200);
+    expect(await extraOk.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+
+    const extraBadCo = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([
+        async () =>
+          Response.json({
+            checkout_url: CHECKOUT_OK.checkout_url,
+            whop_company_id: "biz_OTHER",
+          }),
+      ]).fetchImpl,
+    );
+    expect(extraBadCo.status).toBe(502);
+
+    const missing = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([async () => Response.json({ attempt_id: "cca_" + "a".repeat(24) })]).fetchImpl,
+    );
+    expect(missing.status).toBe(502);
   });
 
   it("T-CR3 CSRF before limiter; cross-origin; T-CR4 no-store; CR5 429", async () => {
@@ -930,7 +961,7 @@ describe("PR D course referrals + checkout", () => {
     expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
   });
 
-  it("W2 checkout attribution mismatch → 502", async () => {
+  it("CR-CO-T1: attribution mismatch ignored when checkout_url valid (W2 retired)", async () => {
     const sess = await withSession(h);
     const { fetchImpl } = makeFetchMock([
       async () =>
@@ -953,7 +984,8 @@ describe("PR D course referrals + checkout", () => {
       },
       fetchImpl,
     );
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
   });
 
   it("CR2 200 returns CR1 DTO via same builder; exactly 1 upstream call", async () => {
@@ -1110,44 +1142,26 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
     expect(upstreamBody).not.toHaveProperty("commission_bps");
   });
 
-  it("T-CR6 / CR-COALESCE-3: unknown attribution_source → 502; all 4 sources pass", async () => {
+  it("T-CR6 / CR-COALESCE-3: CR3 forwards bsi_ref; browser body is exactly {checkout_url}", async () => {
     const sess = await withSession(h);
-    const bad = await callAccount(
-      h,
-      "/api/account/courses/20231/purchase-checkout",
-      {
-        method: "POST",
-        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({}),
-      },
-      makeFetchMock([
-        async () =>
-          Response.json({
-            ...CHECKOUT_OK,
-            attribution: { ...CHECKOUT_OK.attribution, attribution_source: "client_override" },
-          }),
-      ]).fetchImpl,
-    );
-    expect(bad.status).toBe(502);
-
     for (const attribution_source of [
       "primary_org",
       "explicit_slug",
       "bsi_ref_cookie",
       "none",
+      "client_override",
     ] as const) {
-      const { fetchImpl } = makeFetchMock([
-        async () =>
-          Response.json({
+      const { fetchImpl, recorded } = makeFetchMock([
+        async ({ bodyText }) => {
+          expect(JSON.parse(bodyText)).toEqual({ bsi_ref: "cfexample9" });
+          return Response.json({
             ...CHECKOUT_OK,
             attribution: {
               ...CHECKOUT_OK.attribution,
               attribution_source,
-              ...(attribution_source === "none"
-                ? { bsi_ref_slug: null, whop_affiliate_code: null, commission_percent: 0, commission_bps: 0 }
-                : {}),
             },
-          }),
+          });
+        },
       ]);
       const res = await callAccount(
         h,
@@ -1160,21 +1174,21 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
         fetchImpl,
       );
       expect(res.status, attribution_source).toBe(200);
-      const body = await res.json();
-      expect(body.attribution.attribution_source).toBe(attribution_source);
+      expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+      expect(recorded).toHaveLength(1);
     }
   });
 
-  it("CR-ATTEMPT-1 rejects whitespace / cca- / ccb_ / uppercase@32", async () => {
+  it("CR-CO-T1: attempt_id junk ignored when checkout_url valid", async () => {
     const sess = await withSession(h);
-    const badIds = [
+    const junkIds = [
       "cca_" + "a".repeat(24) + "\n",
       " cca_" + "a".repeat(24),
       "cca-" + "a".repeat(24),
       "ccb_" + "a".repeat(24),
       "cca_" + "A".repeat(32),
     ];
-    for (const attempt_id of badIds) {
+    for (const attempt_id of junkIds) {
       const res = await callAccount(
         h,
         "/api/account/courses/20231/purchase-checkout",
@@ -1185,7 +1199,8 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
         },
         makeFetchMock([async () => Response.json({ ...CHECKOUT_OK, attempt_id })]).fetchImpl,
       );
-      expect(res.status, JSON.stringify(attempt_id)).toBe(502);
+      expect(res.status, JSON.stringify(attempt_id)).toBe(200);
+      expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
     }
   });
 

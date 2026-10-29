@@ -5,11 +5,21 @@
 import {
   BSI_REF_RE,
   COURSE_ID_RE,
-  buildCheckoutDto,
+  buildCheckoutUrlDto,
+  buildClaimCheckoutUrlDto,
   buildReferralsDto,
   emitDropLogs,
   logEarningsUpstreamOmitted,
 } from "../shared/account/courseReferrals";
+import {
+  buildClaimOptionsDto,
+  isValidIdempotencyKey,
+  mapClaimIneligible,
+  mapRedeemLtvSuccess,
+  type ClaimInProgressBody,
+  type ClaimLockTimeoutBody,
+  type ClaimPathId,
+} from "../shared/account/claimOptions";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
@@ -19,7 +29,7 @@ import {
   resolveAccountCanonicalTier,
   type LegacySubscriptionSource,
 } from "../shared/account/tiers";
-import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
+import { isWhopCheckoutUrl, sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import {
   accountCancelDuplicatePath,
   accountClaimCertificatePath,
@@ -48,6 +58,8 @@ import {
   accountReferralsPath,
   accountSpendPath,
   accountSubscriptionsPath,
+  certificateClaimOptionsPath,
+  certificatePrepayCheckoutPath,
 } from "../shared/account/bsi-paths";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
@@ -344,7 +356,13 @@ async function runBearer(
   opts: { baseUrl?: string } | undefined,
   method: string,
   path: string,
-  init?: { body?: string | ArrayBuffer; contentType?: string; query?: string },
+  init?: {
+    body?: string | ArrayBuffer;
+    contentType?: string;
+    query?: string;
+    /** Extra request headers (e.g. Idempotency-Key). Never logs values. */
+    extraHeaders?: Record<string, string>;
+  },
 ): Promise<{ ctx: ActingContext; result: BsiHttpResult } | Response> {
   return runUserBsiCall(ctx, env, fetchImpl, opts, (access) => {
     const bearer = bsiAccountBearerHeaders(access, init?.contentType);
@@ -355,6 +373,11 @@ async function runBearer(
       "User-Agent": bearer["User-Agent"],
     };
     if (bearer["Content-Type"]) headers["Content-Type"] = bearer["Content-Type"];
+    if (init?.extraHeaders) {
+      for (const [k, v] of Object.entries(init.extraHeaders)) {
+        headers[k] = v;
+      }
+    }
     return accountBsiFetch(
       bsiUrl(env, path, opts, init?.query),
       {
@@ -594,6 +617,8 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
   const claimedList = Array.isArray(obj.claimed_certificates) ? obj.claimed_certificates : [];
   const claimed_certificates: Record<string, unknown>[] = [];
   let claimedSum = 0;
+  // 1.2.9 CQ F1: unknown/`'ltv'` method → keep row, method null, log once (replaces 1.2.8 502).
+  let loggedUnknownMethod = false;
   for (const row of claimedList) {
     const r = asRecord(row);
     if (!r) continue;
@@ -602,15 +627,34 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
         ? r.allocated_cents
         : null;
     if (allocated == null || allocated < 0) continue;
-    if (r.claim_method === "ltv") claimedSum += allocated;
+    const cm = r.claim_method;
+    const knownMethod =
+      cm === "redeem_ltv" ||
+      cm === "prepay_credit" ||
+      cm === "buy_outright" ||
+      cm === "direct_purchase";
+    const claimMethod = knownMethod ? cm : null;
+    if (cm != null && !knownMethod && !loggedUnknownMethod) {
+      loggedUnknownMethod = true;
+      console.warn(
+        JSON.stringify({
+          event: "ltv_row_method_unknown",
+          keys: ["claim_method"],
+          course_id:
+            typeof r.course_id === "number" && Number.isSafeInteger(r.course_id)
+              ? r.course_id
+              : null,
+        }),
+      );
+    }
+    claimedSum += allocated;
     claimed_certificates.push({
       course_id: r.course_id ?? null,
       course_slug: strOrNull(r.course_slug),
       course_title: strOrNull(r.course_title),
       allocated_cents: allocated,
       claimed_at: strOrNull(r.claimed_at),
-      claim_method:
-        r.claim_method === "ltv" || r.claim_method === "direct_purchase" ? r.claim_method : null,
+      claim_method: claimMethod,
       certificate_url: typeof r.certificate_url === "string" ? r.certificate_url : undefined,
     });
   }
@@ -663,7 +707,10 @@ function shapeCourses(raw: unknown): Record<string, unknown> | null {
       purchased_directly: boolOrFalse(r.purchased_directly),
       certificate_claimed: boolOrFalse(r.certificate_claimed),
       certificate_claim_method:
-        r.certificate_claim_method === "ltv" || r.certificate_claim_method === "direct_purchase"
+        r.certificate_claim_method === "redeem_ltv" ||
+        r.certificate_claim_method === "prepay_credit" ||
+        r.certificate_claim_method === "buy_outright" ||
+        r.certificate_claim_method === "direct_purchase"
           ? r.certificate_claim_method
           : null,
       certificate_url: typeof r.certificate_url === "string" ? r.certificate_url : null,
@@ -764,14 +811,19 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && (rest === "ltv-certificates" || rest === "spend")) {
     return { id: "DP5", method: "GET", params: {}, limiter: "read" };
   }
-  const claim = rest.match(/^courses\/([^/]+)\/claim-certificate$/);
-  if (method === "POST" && claim) {
-    return { id: "DP6", method: "POST", params: { courseId: claim[1]! }, limiter: "write" };
-  }
   // CR3: purchase-checkout + checkout aliases under /api/account/courses/
   const purchase = rest.match(/^courses\/([^/]+)\/(purchase-checkout|checkout)$/);
   if (method === "POST" && purchase) {
     return { id: "DP7", method: "POST", params: { courseId: purchase[1]! }, limiter: "write" };
+  }
+  // CL1 — three-path claim options (single route, N4)
+  if (method === "GET" && rest === "certificate-claim-options") {
+    return { id: "CL1", method: "GET", params: {}, limiter: "read" };
+  }
+  // CL2 — three-path claim mutation
+  const claimPath = rest.match(/^courses\/([^/]+)\/claim$/);
+  if (method === "POST" && claimPath) {
+    return { id: "CL2", method: "POST", params: { courseId: claimPath[1]! }, limiter: "write" };
   }
   if (method === "GET" && rest === "profile") {
     return { id: "DP12", method: "GET", params: {}, limiter: "read" };
@@ -1116,37 +1168,8 @@ async function dispatch(
       if (shaped instanceof Response) return shaped;
       return accountJson(shaped, 200);
     }
-    case "DP6": {
-      const courseId = match.params.courseId!;
-      if (!POSITIVE_INT_RE.test(courseId)) {
-        return accountJson({ error: "invalid_request" }, 400);
-      }
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const body = asRecord(parsed.json);
-      if (!body || body.method !== "ltv") {
-        return accountJson({ error: "invalid_request" }, 400);
-      }
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountClaimCertificatePath(courseId),
-        { body: JSON.stringify({ method: "ltv" }), contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      if (obj.foundations_coach) {
-        obj.foundations_coach = normalizeFoundationsCoachStatus(obj.foundations_coach);
-      }
-      return accountJson(obj, mapped.status);
-    }
     case "DP7": {
-      // CR3 — server-side course checkout coalescing (renamed from PR B DP7).
+      // CR3 — exactly `{ checkout_url }` (lead ruling A / CR-CO-1 / N1 ignore extras).
       const courseId = match.params.courseId!;
       if (!COURSE_ID_RE.test(courseId)) {
         return accountJson({ error: "invalid_request" }, 400);
@@ -1199,21 +1222,197 @@ async function dispatch(
         if (code === "whop_checkout_upstream_error") {
           return accountJson({ error: "whop_checkout_upstream_error" }, 502);
         }
-        // CQ B2: never pass through upstream body/status — allowlisted `{error}` only.
         return accountJson({ error: "upstream_error" }, 502);
       }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
 
-      const built = buildCheckoutDto(mapped.json, BEP_WHOP_COMPANY_ID);
-      if (!built.ok) {
+      const built = buildCheckoutUrlDto(mapped.json, BEP_WHOP_COMPANY_ID);
+      if (!built.ok || !isWhopCheckoutUrl(built.dto.checkout_url)) {
         return accountJson({ error: "upstream_error" }, 502);
       }
-      // N9: sanitize gate only — pass original checkout_url byte-for-byte when accepted.
-      if (!sanitizeExternalBillingUrl(built.dto.checkout_url, "whop_only")) {
+      // LR-1: log unknown extra keys by name only (no values).
+      const upstreamObj = asRecord(mapped.json);
+      if (upstreamObj) {
+        const extras = Object.keys(upstreamObj).filter((k) => k !== "checkout_url");
+        if (extras.length > 0) {
+          console.warn(JSON.stringify({ event: "checkout_extra_keys", keys: extras }));
+        }
+      }
+      const dto = { checkout_url: built.dto.checkout_url } satisfies {
+        checkout_url: string;
+      };
+      return accountJson(dto, 200);
+    }
+    case "CL1": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        certificateClaimOptionsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const built = buildClaimOptionsDto(mapped.json);
+      if (!built.ok) {
+        console.warn(
+          JSON.stringify({ event: "claim_options_rejected", reason: built.reason }),
+        );
         return accountJson({ error: "upstream_error" }, 502);
+      }
+      for (const log of built.logs) {
+        console.warn(JSON.stringify(log));
       }
       return accountJson(built.dto, 200);
+    }
+    case "CL2": {
+      const courseId = match.params.courseId!;
+      if (!COURSE_ID_RE.test(courseId)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const pathRaw = body?.path;
+      const CLAIM_PATHS = new Set(["redeem_ltv", "prepay_credit", "buy_outright"]);
+      if (typeof pathRaw !== "string" || !CLAIM_PATHS.has(pathRaw)) {
+        return accountJson({ error: "invalid_claim_path" }, 400);
+      }
+      const claimPath = pathRaw as ClaimPathId;
+      // Exact header read — no trim, no case fold (CL-IDEM-1 / Q-G).
+      const idemKey = request.headers.get("Idempotency-Key");
+      if (!isValidIdempotencyKey(idemKey)) {
+        return accountJson({ error: "invalid_idempotency_key" }, 400);
+      }
+
+      let upstreamPath: string;
+      let upstreamBody: Record<string, string>;
+      if (claimPath === "redeem_ltv") {
+        upstreamPath = accountClaimCertificatePath(courseId);
+        upstreamBody = { method: "redeem_ltv" };
+      } else if (claimPath === "prepay_credit") {
+        upstreamPath = certificatePrepayCheckoutPath(courseId);
+        upstreamBody = {};
+      } else {
+        upstreamPath = accountCourseCheckoutPath(courseId);
+        upstreamBody = {};
+      }
+
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        upstreamPath,
+        {
+          body: JSON.stringify(upstreamBody),
+          contentType: "application/json",
+          extraHeaders: { "Idempotency-Key": idemKey },
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+
+      if (ran.result.kind === "http") {
+        const code = upstreamErrorCode(ran.result.json);
+        const status = ran.result.status;
+
+        if (status === 409 && code === "bsi_idempotency_key_in_progress") {
+          const dto = { error: "claim_in_progress" } satisfies ClaimInProgressBody;
+          return accountJson(dto, 409);
+        }
+        if (status === 409 && code === "idempotency_key_mismatch") {
+          return accountJson({ error: "idempotency_key_mismatch" }, 409);
+        }
+        // Lead ruling (E): only bsi_already_claimed maps; bare already_claimed → 502.
+        if (status === 409 && code === "bsi_already_claimed") {
+          const dto = { already_claimed: true } satisfies { already_claimed: boolean };
+          return accountJson(dto, 200);
+        }
+        // LR-3 / 1.2.10 CQ N1: lock timeout → ClaimLockTimeoutBody (distinct from 409).
+        if (status === 503 && code === "bsi_claim_lock_timeout") {
+          const dto = {
+            error: "claim_in_progress",
+            reason_code: "claim_in_progress",
+          } satisfies ClaimLockTimeoutBody;
+          return accountJson(dto, 503);
+        }
+        if (status === 400 && code === "bsi_idempotency_key_invalid") {
+          return accountJson({ error: "invalid_idempotency_key" }, 400);
+        }
+        if (status === 404 && code === "bsi_course_not_found") {
+          return accountJson({ error: "course_not_found" }, 404);
+        }
+        if (status === 400 && code === "bsi_invalid_course_price") {
+          return accountJson({ error: "invalid_course_price" }, 400);
+        }
+        if (status === 422 && code === "whop_company_mismatch") {
+          return accountJson({ error: "whop_company_mismatch" }, 422);
+        }
+        if (status === 402 || status === 403) {
+          const mapped = mapClaimIneligible(code);
+          if (mapped) {
+            const dto = {
+              error: mapped.error,
+              reason_code: mapped.reason_code,
+            } satisfies { error: "claim_ineligible"; reason_code: string };
+            return accountJson(dto, status);
+          }
+          return accountJson({ error: "upstream_error" }, 502);
+        }
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const raw = asRecord(mapped.json) ?? {};
+
+      // Duplicate / repeat claim (CL-REPEAT-1 / §R120 / W-N14 / 1.2.9 F3):
+      // allocated_cents must be exactly 0; missing / non-integer / negative / nonzero → 502, no charge.
+      if (raw.already_claimed === true) {
+        if (
+          typeof raw.allocated_cents !== "number" ||
+          !Number.isSafeInteger(raw.allocated_cents) ||
+          raw.allocated_cents !== 0
+        ) {
+          console.warn(
+            JSON.stringify({
+              event: "claim_repeat_allocated_invalid",
+              keys: ["allocated_cents"],
+            }),
+          );
+          return accountJson({ error: "upstream_error" }, 502);
+        }
+        // N17: legacy direct_purchase on repeat claim_method — log once; never outbound.
+        if (raw.claim_method === "direct_purchase") {
+          console.warn(
+            JSON.stringify({ event: "legacy_claimed_via_mapped", keys: ["claim_method"] }),
+          );
+        }
+        const dto = { already_claimed: true } satisfies { already_claimed: boolean };
+        return accountJson(dto, 200);
+      }
+
+      if (claimPath === "redeem_ltv") {
+        const redeemed = mapRedeemLtvSuccess(mapped.json);
+        if (!redeemed.ok) {
+          return accountJson({ error: "upstream_error" }, 502);
+        }
+        return accountJson(redeemed.dto, 200);
+      }
+
+      // LR-4: prepay/buy idempotent replay — map BSI stored body the same way (checkout_url).
+      const built = buildClaimCheckoutUrlDto(mapped.json, BEP_WHOP_COMPANY_ID);
+      if (!built.ok || !isWhopCheckoutUrl(built.dto.checkout_url)) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      const dto = { checkout_url: built.dto.checkout_url } satisfies {
+        checkout_url: string;
+      };
+      return accountJson(dto, 200);
     }
     case "DP12": {
       // Ignore client-supplied member_id / user_id (T2).

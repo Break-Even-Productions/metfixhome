@@ -13,7 +13,12 @@ export function LtvVisualizer({ ltv }: Props) {
         budget.total_ltv_cents
       : 0;
   const availablePct = Math.max(0, 100 - allocatedPct);
-  const claimedLtv = ltv.claimed_certificates.filter((c) => c.claim_method === "ltv");
+  const claimedLtv = ltv.claimed_certificates.filter(
+    (c) =>
+      c.claim_method === "redeem_ltv" ||
+      c.claim_method === "prepay_credit" ||
+      c.claim_method === "buy_outright",
+  );
 
   return (
     <section className="account-card" aria-labelledby="ltv-visualizer-heading">

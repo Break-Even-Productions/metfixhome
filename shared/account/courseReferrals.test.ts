@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  ATTEMPT_ID_RE,
-  buildCheckoutDto,
+  buildCheckoutUrlDto,
+  buildClaimCheckoutUrlDto,
   buildReferralsDto,
   canGenerateCourseReferrals,
   estimateMatchesIntegerBounds,
@@ -636,56 +636,53 @@ describe("buildReferralsDto", () => {
   });
 });
 
-describe("buildCheckoutDto + attempt_id (CR-ATTEMPT-1 / CR-COALESCE-4)", () => {
-  const base = {
-    attempt_id: "cca_9f8e7d6c5b4a3f2e1d0c9b8a",
-    course_id: 20231,
-    checkout_url: "https://whop.com/checkout/plan_course_essentials/?d2c=true&a=cfexample9",
-    whop_company_id: BEP_WHOP_COMPANY_ID,
-    whop_product_id: "prod_course_essentials",
-    whop_plan_id: "plan_course_essentials",
-    whop_checkout_config_id: "ch_cfg_01J",
-    course_price_cents: 20000,
-    currency: "USD",
-    attribution: {
-      attribution_source: "primary_org",
-      payee_entity_id: 42,
-      bsi_ref_slug: "cfexample9",
-      whop_affiliate_code: "cfexample9",
-      commission_percent: 15,
-      commission_bps: 1500,
-    },
-  };
+describe("buildCheckoutUrlDto (CR-CO-1 / lead ruling A)", () => {
+  const url = "https://whop.com/checkout/plan_course_essentials/?d2c=true&a=cfexample9";
 
-  it("§4.2 fixture passes and strips internals", () => {
-    const built = buildCheckoutDto(base, BEP_WHOP_COMPANY_ID);
+  it("returns exactly { checkout_url }; ignores extras (LR-1)", () => {
+    const built = buildCheckoutUrlDto(
+      {
+        checkout_url: url,
+        attempt_id: "cca_9f8e7d6c5b4a3f2e1d0c9b8a",
+        whop_company_id: BEP_WHOP_COMPANY_ID,
+        course_price_cents: 20000,
+        attribution: { attribution_source: "primary_org" },
+      },
+      BEP_WHOP_COMPANY_ID,
+    );
     expect(built.ok).toBe(true);
     if (!built.ok) return;
-    expect(built.dto.attempt_id).toBe("cca_9f8e7d6c5b4a3f2e1d0c9b8a");
-    const s = JSON.stringify(built.dto);
-    expect(s).not.toContain("whop_checkout_config_id");
-    expect(s).not.toContain("payee_entity_id");
-    expect(s).not.toContain("whop_company_id");
-    expect(s).not.toContain("whop_product_id");
-    expect(s).not.toContain("whop_plan_id");
+    expect(Object.keys(built.dto).sort()).toEqual(["checkout_url"]);
+    expect(built.dto.checkout_url).toBe(url);
   });
 
-  it("attempt_id edges", () => {
-    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(24))).toBe(true);
-    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(32))).toBe(true);
-    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(28))).toBe(true);
-    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(23))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(33))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("cca_9F8E7d6c5b4a3f2e1d0c9b8a")).toBe(false);
-    expect(ATTEMPT_ID_RE.test("cc_" + "a".repeat(24))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("CCA_" + "a".repeat(24))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(24) + "\n")).toBe(false);
-    expect(ATTEMPT_ID_RE.test(" cca_" + "a".repeat(24))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("cca-" + "a".repeat(24))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("ccb_" + "a".repeat(24))).toBe(false);
-    expect(ATTEMPT_ID_RE.test("cca_" + "A".repeat(32))).toBe(false);
+  it("non-BEP whop_company_id → fail; missing company ok", () => {
+    expect(
+      buildCheckoutUrlDto(
+        { checkout_url: url, whop_company_id: "biz_OTHER" },
+        BEP_WHOP_COMPANY_ID,
+      ).ok,
+    ).toBe(false);
+    expect(buildCheckoutUrlDto({ checkout_url: url }, BEP_WHOP_COMPANY_ID).ok).toBe(true);
   });
 
+  it("missing checkout_url → fail", () => {
+    expect(buildCheckoutUrlDto({ attempt_id: "x" }, BEP_WHOP_COMPANY_ID).ok).toBe(false);
+    expect(buildCheckoutUrlDto(null, BEP_WHOP_COMPANY_ID).ok).toBe(false);
+  });
+
+  it("CL2 buy builder is separate and also ignores extras", () => {
+    const built = buildClaimCheckoutUrlDto(
+      { checkout_url: url, whop_plan_id: "plan_x" },
+      BEP_WHOP_COMPANY_ID,
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(Object.keys(built.dto)).toEqual(["checkout_url"]);
+  });
+});
+
+describe("course link row drops (identity)", () => {
   it("N1: non-object + incomplete identity fields → bad_row (not bad_price)", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const built = buildReferralsDto(
@@ -766,40 +763,5 @@ describe("buildCheckoutDto + attempt_id (CR-ATTEMPT-1 / CR-COALESCE-4)", () => {
       "commission_mismatch",
     ]);
     warn.mockRestore();
-  });
-
-  it("wrong company → 502", () => {
-    expect(buildCheckoutDto({ ...base, whop_company_id: "biz_OTHER" }, BEP_WHOP_COMPANY_ID).ok).toBe(
-      false,
-    );
-  });
-
-  it("W2 attribution percent mismatch → 502", () => {
-    expect(
-      buildCheckoutDto(
-        {
-          ...base,
-          attribution: { ...base.attribution, commission_percent: 20, commission_bps: 1500 },
-        },
-        BEP_WHOP_COMPANY_ID,
-      ).ok,
-    ).toBe(false);
-  });
-
-  it("none with 0/0 passes", () => {
-    const built = buildCheckoutDto(
-      {
-        ...base,
-        attribution: {
-          attribution_source: "none",
-          bsi_ref_slug: null,
-          whop_affiliate_code: null,
-          commission_percent: 0,
-          commission_bps: 0,
-        },
-      },
-      BEP_WHOP_COMPANY_ID,
-    );
-    expect(built.ok).toBe(true);
   });
 });

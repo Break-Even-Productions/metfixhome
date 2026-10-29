@@ -30,13 +30,15 @@ function walkFiles(dir: string, pred: (name: string) => boolean): string[] {
 function scanLines(
   files: string[],
   re: RegExp,
-  opts?: { allow?: (file: string, line: string) => boolean },
+  opts?: { allow?: (file: string, line: string) => boolean; maxLineLen?: number },
 ): string[] {
   const failures: string[] = [];
+  const maxLen = opts?.maxLineLen;
   for (const file of files) {
     const lines = readFileSync(file, "utf8").split("\n");
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
+      if (maxLen != null && line.length > maxLen) continue;
       if (!re.test(line)) continue;
       if (opts?.allow?.(file, line)) continue;
       failures.push(`${relative(REPO_ROOT, file)}:${i + 1}: ${line.trim().slice(0, 120)}`);
@@ -150,11 +152,21 @@ describe("account.repo-scan", () => {
     }
   });
 
-  it("N1: client/ does not import shared account URL allowlist module", () => {
+  it("N1: client/ only imports isWhopCheckoutUrl from shared URL allowlist (CL openWhopCheckout)", () => {
     const files = walkFiles(join(REPO_ROOT, "client/src"), SRC_PRED).filter(
       (f) => !/\.test\.(ts|tsx)$/.test(f),
     );
-    const failures = scanLines(files, /@shared\/account\/url-allowlist|sanitizeExternalBillingUrl/);
+    const failures = scanLines(files, /@shared\/account\/url-allowlist|sanitizeExternalBillingUrl/, {
+      allow: (file, line) => {
+        const rel = relative(REPO_ROOT, file);
+        // PR D N2: openWhopCheckout may import isWhopCheckoutUrl only.
+        return (
+          rel === "client/src/lib/account.ts" &&
+          /isWhopCheckoutUrl/.test(line) &&
+          !/sanitizeExternalBillingUrl/.test(line)
+        );
+      },
+    });
     expect(failures, failures.join("\n")).toEqual([]);
   });
 
@@ -276,5 +288,147 @@ describe("account.repo-scan", () => {
       namespace_id: "27114",
       simple: { limit: 10, period: 60 },
     });
+  });
+
+  it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.10 N23–N25)", () => {
+    // 1.2.9 N20 + 1.2.10 N25: A OR B (B excludes a `bps` multiplier inside the parens).
+    const CENTS_DIV_A =
+      /_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
+    const CENTS_DIV_B =
+      /\((?![^()\n]*\w*bps\b)[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
+    const hitsMoney = (s: string) => CENTS_DIV_A.test(s) || CENTS_DIV_B.test(s);
+    // N24/N25: bps multiplier (either operand order, ±parens) and `* 2` are advisory — not gating.
+    const isAdvisoryBpsOrNumericMul = (s: string) =>
+      /\b\w*_cents\b[^\n]*\*\s*\w*bps\b|\b\w*bps\b[^\n]*\*\s*[^\n]*\b\w*_cents\b/.test(s) ||
+      /\b\w*_cents\b\s*\*\s*\d+\s*\/\s*100\b/.test(s);
+
+    // Gating positives that MUST match A|B.
+    expect(hitsMoney("x_cents / 100")).toBe(true);
+    expect(hitsMoney("(price_cents) / 100")).toBe(true);
+    expect(hitsMoney("(a_cents+b_cents)/100")).toBe(true);
+    expect(hitsMoney("Math.trunc(x_cents)/100")).toBe(true);
+    expect(hitsMoney("Math.floor(course.course_price_cents / 100)")).toBe(true);
+    expect(hitsMoney("(price_cents - fee)/100")).toBe(true);
+    expect(hitsMoney("(price_cents * qty)/100")).toBe(true);
+
+    // Must-not-flag negatives.
+    expect(hitsMoney("commission_bps / 100")).toBe(false);
+    expect(hitsMoney("x_cents * commission_bps / 100")).toBe(false);
+    expect(hitsMoney("price_cents - commission_bps / 100")).toBe(false);
+    expect(hitsMoney("x_cents / 100.5")).toBe(false);
+    // N25: parenthesised bps multiplier — B excludes; A also misses cents-first form.
+    expect(hitsMoney("(x_cents * commission_bps) / 100")).toBe(false);
+    // N24: numeric multiplier — advisory (scanner may or may not hit; never gating).
+    expect(hitsMoney("x_cents * 2 / 100")).toBe(false);
+    // N3 nested-parens loophole (accepted miss).
+    expect(hitsMoney("((price_cents - fee))/100")).toBe(false);
+
+    // Advisory (either operand order): A may hit bps-second forms; never gating.
+    expect(isAdvisoryBpsOrNumericMul("commission_bps * x_cents / 100")).toBe(true);
+    expect(isAdvisoryBpsOrNumericMul("(commission_bps * x_cents)/100")).toBe(true);
+    expect(isAdvisoryBpsOrNumericMul("(x_cents * commission_bps) / 100")).toBe(true);
+    expect(isAdvisoryBpsOrNumericMul("x_cents * 2 / 100")).toBe(true);
+
+    const dirs = [
+      join(REPO_ROOT, "client/src/pages/account"),
+      join(REPO_ROOT, "shared/account"),
+      join(REPO_ROOT, "client/src/lib"),
+    ];
+    const files = dirs
+      .flatMap((d) => walkFiles(d, SRC_PRED))
+      .filter((f) => {
+        const rel = relative(REPO_ROOT, f);
+        if (/\.test\.(ts|tsx)$/.test(rel)) return false;
+        if (rel.endsWith("LtvVisualizer.tsx")) return false;
+        if (rel.includes("daily-fix")) return false;
+        return true;
+      });
+
+    // N23: never skip lines; >400 chars listed for review only (never fail the build).
+    const longLineReview: string[] = [];
+    const gatingHits: string[] = [];
+    for (const file of files) {
+      const rel = relative(REPO_ROOT, file);
+      if (rel.endsWith("shared/account/ltv.ts")) continue;
+      const lines = readFileSync(file, "utf8").split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        if (!hitsMoney(line)) continue;
+        if (line.includes("formatUsdFromCents")) continue;
+        if (isAdvisoryBpsOrNumericMul(line)) continue;
+        const loc = `${rel}:${i + 1}: ${line.trim().slice(0, 120)}`;
+        if (line.length > 400) {
+          longLineReview.push(loc);
+          continue;
+        }
+        gatingHits.push(loc);
+      }
+    }
+    if (longLineReview.length > 0) {
+      // Review-only: surface in test output without failing.
+      console.info(
+        JSON.stringify({ event: "money_scan_long_line_review", lines: longLineReview }),
+      );
+    }
+    expect(gatingHits, gatingHits.join("\n")).toEqual([]);
+
+    const toFixedHits = scanLines(files, /\.toFixed\s*\(/, {
+      allow: (file) => relative(REPO_ROOT, file).endsWith("shared/account/ltv.ts"),
+    });
+    expect(toFixedHits, toFixedHits.join("\n")).toEqual([]);
+
+    const intlPatterns = [
+      /\bIntl\s*\.\s*NumberFormat\b/,
+      /\bNumberFormat\s*\(/,
+      /=\s*Intl\b/,
+      /\{[^}]*\bNumberFormat\b[^}]*\}\s*=\s*Intl\b/,
+    ];
+    for (const re of intlPatterns) {
+      const hits = scanLines(files, re, {
+        allow: (file) => relative(REPO_ROOT, file).endsWith("shared/account/ltv.ts"),
+      });
+      expect(hits, hits.join("\n")).toEqual([]);
+    }
+
+    const localeHits = scanLines(files, /\.toLocaleString\(\s*[^,)]+,/, {
+      allow: (file) => relative(REPO_ROOT, file).endsWith("shared/account/ltv.ts"),
+    });
+    expect(localeHits, localeHits.join("\n")).toEqual([]);
+
+    // Exactly one formatUsdFromCents definition.
+    const defRe = /(?:export\s+)?function\s+formatUsdFromCents\b/;
+    const defs = scanLines(
+      walkFiles(join(REPO_ROOT, "shared"), SRC_PRED).filter(
+        (f) => !/\.test\.(ts|tsx)$/.test(relative(REPO_ROOT, f)),
+      ),
+      defRe,
+    );
+    expect(defs).toHaveLength(1);
+  });
+
+  it("CQ B1: no claimCertificate / method: 'ltv' in production sources", () => {
+    const files = ["client/src", "worker", "shared"]
+      .flatMap((d) => walkFiles(join(REPO_ROOT, d), SRC_PRED))
+      .filter((f) => !/\.test\.(ts|tsx)$/.test(relative(REPO_ROOT, f)));
+    const claimHits = scanLines(files, /\bclaimCertificate\b/);
+    expect(claimHits, claimHits.join("\n")).toEqual([]);
+    const methodHits = scanLines(files, /method\s*:\s*['"]ltv['"]/);
+    expect(methodHits, methodHits.join("\n")).toEqual([]);
+  });
+
+  it("item 12: exactly one sanitizeReturnPath implementation + lib re-export", () => {
+    const implRe =
+      /(export\s+)?(async\s+)?function\s+sanitizeReturnPath\b|\b(const|let|var)\s+sanitizeReturnPath\s*=/;
+    const files = ["client/src", "worker", "shared"]
+      .flatMap((d) => walkFiles(join(REPO_ROOT, d), SRC_PRED))
+      .filter((f) => !/\.test\.(ts|tsx)$/.test(relative(REPO_ROOT, f)));
+    const implHits = scanLines(files, implRe);
+    expect(implHits).toHaveLength(1);
+    expect(implHits[0]).toContain("shared/account/returnPath.ts");
+
+    const lib = readFileSync(join(REPO_ROOT, "client/src/lib/account.ts"), "utf8");
+    expect(lib).toMatch(
+      /export\s*\{\s*sanitizeReturnPath\s*\}\s*from\s*['"][^'"]*shared\/account\/returnPath['"]/,
+    );
   });
 });
