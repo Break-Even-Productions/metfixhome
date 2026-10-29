@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  canGenerateCourseReferrals,
-  type ReferralsDto,
-} from "@shared/account/courseReferrals";
+import { type ReferralsDto } from "@shared/account/courseReferrals";
 import { formatUsdFromCents } from "@shared/account/ltv";
 import {
   loadCourseGifts,
@@ -25,8 +22,9 @@ function commissionBadge(percent: number): string {
 }
 
 /**
- * R2-N3/N6: no client defaults (??0 / ??USD / missing eligible ≠ eligible).
+ * E4 / R2-N3/N6: no client defaults (??0 / ??USD / missing eligible ≠ eligible).
  * Incomplete earnings → omit; missing eligible → not eligible.
+ * course_links_dropped: copy Worker number only (no ?? 0).
  */
 function asDto(payload: ReferralsPayload): ReferralsDto {
   const eligible = payload.eligible === true;
@@ -50,6 +48,10 @@ function asDto(payload: ReferralsPayload): ReferralsDto {
       connect_status: e.connect_status,
     };
   }
+  const course_links_dropped =
+    typeof payload.course_links_dropped === "number"
+      ? payload.course_links_dropped
+      : Number.NaN;
   return {
     eligible,
     eligibility_type: eligible ? (payload.eligibility_type ?? null) : null,
@@ -58,13 +60,13 @@ function asDto(payload: ReferralsPayload): ReferralsDto {
     foundations_coach_expires_at: payload.foundations_coach_expires_at ?? null,
     join_code: payload.join_code ?? null,
     course_links: payload.course_links ?? [],
-    course_links_dropped: payload.course_links_dropped ?? 0,
+    course_links_dropped,
     join_code_dropped: payload.join_code_dropped === true,
     ...(earnings ? { earnings } : {}),
   };
 }
 
-export default function AccountReferrals({ nowMs }: Props) {
+export default function AccountReferrals(_props: Props) {
   const [data, setData] = useState<ReferralsDto | null>(null);
   const [gifts, setGifts] = useState<CourseGiftsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,17 +102,11 @@ export default function AccountReferrals({ nowMs }: Props) {
       setBusy(true);
       setError(null);
       try {
+        // R3-N2: single preserve path lives in referralCodeAction / preserveReferralEarnings.
         const next = await referralCodeAction(action, {
           previousEarnings: data?.earnings,
         });
-        // CR-EARN-T3 / CQ-CR-E5: CR2 omits earnings — keep prior panel values.
-        setData((prev) => {
-          const dto = asDto(next);
-          if (dto.earnings == null && prev?.earnings) {
-            return { ...dto, earnings: prev.earnings };
-          }
-          return dto;
-        });
+        setData(asDto(next));
       } catch {
         setError(`Could not ${action} referral code.`);
       } finally {
@@ -128,23 +124,8 @@ export default function AccountReferrals({ nowMs }: Props) {
     }
   }, []);
 
-  const now = nowMs ?? Date.now();
-  // Shared predicate (CQ-CR-E8: coach needs foundations_coach blob). Worker DTO is
-  // authoritative when the client lacks that blob.
-  const pred = data
-    ? canGenerateCourseReferrals(
-        {
-          eligibility_type: data.eligibility_type,
-        },
-        now,
-      )
-    : null;
-  const eligible = Boolean(
-    data?.eligible === true &&
-      (pred?.eligible ||
-        data.eligibility_type === "organization" ||
-        data.eligibility_type === "foundations_coach"),
-  );
+  // R3-N1: Worker `eligible` is authoritative — no client canGenerate re-check.
+  const eligible = data?.eligible === true;
   const showMutedNotice = Boolean(
     data && (data.course_links_dropped > 0 || data.join_code_dropped),
   );

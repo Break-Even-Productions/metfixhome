@@ -611,6 +611,19 @@ export async function setFavorite(
   });
 }
 
+/**
+ * R3-N2 / CR-EARN-T3: single helper — CR2 omits earnings; keep prior panel values.
+ */
+export function preserveReferralEarnings(
+  next: ReferralsPayload,
+  previous: ReferralsPayload["earnings"] | undefined,
+): ReferralsPayload {
+  if (next.earnings == null && previous) {
+    return { ...next, earnings: previous };
+  }
+  return next;
+}
+
 export async function referralCodeAction(
   action: "generate" | "rotate" | "revoke",
   opts?: { previousEarnings?: ReferralsPayload["earnings"] },
@@ -620,17 +633,13 @@ export async function referralCodeAction(
     method: "POST",
     body: { action },
   });
-  // R2-N2: keep previous earnings after generate/rotate when mutation omits them.
-  if (
-    (action === "generate" || action === "rotate") &&
-    next.earnings == null &&
-    opts?.previousEarnings
-  ) {
-    next.earnings = opts.previousEarnings;
-  }
-  cache.set("referrals", next);
+  const merged =
+    action === "generate" || action === "rotate"
+      ? preserveReferralEarnings(next, opts?.previousEarnings)
+      : next;
+  cache.set("referrals", merged);
   inflight.delete("referrals");
-  return next;
+  return merged;
 }
 
 export async function updateNotifications(

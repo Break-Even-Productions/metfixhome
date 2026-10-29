@@ -461,10 +461,11 @@ export function buildReferralsDto(
       !whop_affiliate_code ||
       !whop_plan_id
     ) {
+      // N1: incomplete identity fields → bad_row (not bad_price).
       course_links_dropped += 1;
       logs.push({
         event: "course_link_dropped",
-        reason: "bad_price",
+        reason: "bad_row",
         course_id,
       });
       continue;

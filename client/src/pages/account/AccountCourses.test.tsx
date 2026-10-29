@@ -204,6 +204,10 @@ describe("AccountCourses (P-DB-7, P-DB-8, CERT)", () => {
     fireEvent.click(btn);
     await waitFor(() => expect(bodies.length).toBe(1));
     expect(bodies[0]).toEqual({ bsi_ref: "cfexample9" });
-    await waitFor(() => expect(screen.getByTestId("attribution-source").textContent).toBe("primary_org"));
+    await waitFor(() =>
+      expect(screen.getByTestId("attribution-source").textContent).toBe(
+        "Your primary organization",
+      ),
+    );
   });
 });

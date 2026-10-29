@@ -628,6 +628,49 @@ describe("buildCheckoutDto + attempt_id (CR-ATTEMPT-1 / CR-COALESCE-4)", () => {
     expect(ATTEMPT_ID_RE.test("cca_" + "A".repeat(32))).toBe(false);
   });
 
+  it("N1: non-object + incomplete identity fields → bad_row (not bad_price)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: CONTRACT_JOIN,
+        course_links: [
+          null,
+          "skip-me",
+          { ...CONTRACT_LINK, course_id: 10, course_slug: "" },
+          { ...CONTRACT_LINK, course_id: 11, whop_plan_id: "" },
+          { ...CONTRACT_LINK, course_id: 12, course_title: null },
+          CONTRACT_LINK,
+        ],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.dto.course_links.map((c) => c.course_id)).toEqual([CONTRACT_LINK.course_id]);
+    expect(built.dto.course_links_dropped).toBe(5);
+    expect(built.logs.map((l) => l.reason)).toEqual([
+      "bad_row",
+      "bad_row",
+      "bad_row",
+      "bad_row",
+      "bad_row",
+    ]);
+    expect(built.logs[0]).toEqual({
+      event: "course_link_dropped",
+      reason: "bad_row",
+      course_id: null,
+    });
+    expect(built.logs[2]).toEqual({
+      event: "course_link_dropped",
+      reason: "bad_row",
+      course_id: 10,
+    });
+    warn.mockRestore();
+  });
+
   it("CR-COMM-2 bad_price / bad_currency / bad_join_url + multi-fault first reason", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const built = buildReferralsDto(

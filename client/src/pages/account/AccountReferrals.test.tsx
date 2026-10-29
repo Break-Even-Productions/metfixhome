@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
-import { clearAccountCache } from "@/lib/account";
+import { clearAccountCache, preserveReferralEarnings } from "@/lib/account";
 import AccountReferrals from "./AccountReferrals";
 import { OVERVIEW_FIXTURE, jsonResponse } from "../../../test/account/testFixtures";
 
@@ -425,5 +425,68 @@ describe("AccountReferrals PR D", () => {
     await waitFor(() => expect(actions).toContain("rotate"));
     fireEvent.click(screen.getByText("Revoke"));
     await waitFor(() => expect(actions).toEqual(["generate", "rotate", "revoke"]));
+  });
+
+  it("R3-N1: missing eligible is not eligible (Worker flag only)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+        if (url.includes("/api/account/referrals")) {
+          return jsonResponse({
+            eligibility_type: "organization",
+            join_code: JOIN,
+            course_links: [LINK],
+            course_links_dropped: 0,
+          });
+        }
+        if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+        return jsonResponse({});
+      }),
+    );
+    mount();
+    await waitFor(() => expect(screen.getByTestId("referrals-locked")).toBeTruthy());
+    expect(screen.queryByTestId("generate-referral")).toBeNull();
+    expect(screen.queryByTestId("join-code-card")).toBeNull();
+  });
+
+  it("E4 / R3-N1 / R3-N2 static: no ??0 dropped default; trust eligible; single preserve helper", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const referralsSrc = readFileSync(join(import.meta.dirname, "AccountReferrals.tsx"), "utf8");
+    const accountSrc = readFileSync(join(import.meta.dirname, "../../lib/account.ts"), "utf8");
+    expect(referralsSrc).not.toMatch(/course_links_dropped\s*\?\?\s*0/);
+    expect(referralsSrc).toMatch(/eligible\s*===\s*true/);
+    expect(referralsSrc).not.toMatch(/canGenerateCourseReferrals/);
+    expect(referralsSrc).not.toMatch(/prev\?\.earnings/);
+    expect(accountSrc).toMatch(/export function preserveReferralEarnings/);
+    expect(accountSrc).toMatch(/preserveReferralEarnings\(next,\s*opts\?\.previousEarnings\)/);
+  });
+
+  it("R3-N2: preserveReferralEarnings keeps prior panel when CR2 omits", () => {
+    const previous = {
+      pending_cents: 1,
+      ready_cents: 2,
+      paid_total_cents: 3,
+      currency: "usd",
+      connect_status: "active" as const,
+    };
+    const next = {
+      eligible: true,
+      eligibility_type: "organization" as const,
+      join_code: null,
+      course_links: [],
+      course_links_dropped: 0,
+    };
+    expect(preserveReferralEarnings(next, previous).earnings).toEqual(previous);
+    expect(
+      preserveReferralEarnings(
+        { ...next, earnings: { ...previous, pending_cents: 99 } },
+        previous,
+      ).earnings?.pending_cents,
+    ).toBe(99);
   });
 });

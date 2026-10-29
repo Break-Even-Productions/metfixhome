@@ -14,6 +14,7 @@ import {
   type CourseItem,
   type LtvCertificates,
 } from "@/lib/account";
+import { friendlyAttributionLabel } from "@/lib/attributionLabel";
 import { readStoredBsiRef } from "@/lib/referralAttribution";
 import DashboardLayout from "./DashboardLayout";
 import { LtvVisualizer } from "./LtvVisualizer";
@@ -125,7 +126,8 @@ export default function AccountCourses() {
       const bsi_ref = readStoredBsiRef() ?? undefined;
       const res = await purchaseCourseCheckout(course.id, bsi_ref ? { bsi_ref } : undefined);
       if (res.attribution?.attribution_source) {
-        setAttributionSource(res.attribution.attribution_source);
+        // N7: wire value unchanged on API; display uses friendly label.
+        setAttributionSource(friendlyAttributionLabel(res.attribution.attribution_source));
       }
       if (!assignBillingUrl(res.checkout_url, "whop_only")) {
         setError("Checkout unavailable.");
