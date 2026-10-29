@@ -298,16 +298,21 @@ describe("account.repo-scan", () => {
     });
   });
 
-  it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.11)", () => {
-    // 1.2.11 A: bps×cents either order is advisory (negative lookbehind).
-    // 1.2.11 B / N29: exempt bps only when multiplied; `*` next to `/` ignored (/* bps */).
+  it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.12 frozen)", () => {
+    // FROZEN (1.2.12): patterns A|B unchanged from 1.2.11.
+    // A: bps×cents either order is advisory (negative lookbehind).
+    // B / N29: exempt bps only when multiplied; `*` next to `/` ignored (/* bps */).
     const CENTS_DIV_A =
       /(?<!\w*bps[ \t]*(?<!\/)\*(?!\/)[ \t]*\(?[ \t]*\w*)_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
     const CENTS_DIV_B =
       /\((?![^()\n]*(?:(?<!\/)\*(?!\/)[ \t]*\w*bps\b|\b\w*bps[ \t]*(?<!\/)\*(?!\/)))[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
     const hitsMoney = (s: string) => CENTS_DIV_A.test(s) || CENTS_DIV_B.test(s);
+    // N31 advisory detector (never fails the build) — bps×cents / *N /100 forms that A|B miss.
+    const ADVISORY_RE =
+      /(?:\b\w*_cents\b[ \t]*\*[ \t]*(?:\d+|\w*bps\b)|\([^()\n]*\b\w*_cents\b[^()\n]*\*[ \t]*\w*bps\b[^()\n]*\)|\([^()\n]*\b\w*bps\b[^()\n]*\*[ \t]*[^()\n]*\b\w*_cents\b[^()\n]*\)|\b\w*bps\b[ \t]*\*[ \t]*\w*_cents\b)[ \t]*\/[ \t]*100(?![\w.])/;
+    const hitsAdvisory = (s: string) => ADVISORY_RE.test(s) && !hitsMoney(s);
 
-    // Exactly 24 fixtures (12 gating + 12 non-gating), rev 1.2.11 node-tested.
+    // Exactly 24 fixtures (12 gating + 12 non-gating), frozen; plus N35/N33 extras.
     const gatingFixtures = [
       "x_cents / 100",
       "(price_cents) / 100",
@@ -344,6 +349,10 @@ describe("account.repo-scan", () => {
     for (const s of nongatingFixtures) {
       expect(hitsMoney(s), `nongating hit: ${s}`).toBe(false);
     }
+    // N35: accepted false-positive — B flags; fixture asserts the hit (app must avoid this form).
+    expect(hitsMoney("commission_bps*(x_cents)/100")).toBe(true);
+    // N33: known gap left to review — not flagged.
+    expect(hitsMoney("(price_cents - fee) * bps / 100")).toBe(false);
 
     const dirs = [
       join(REPO_ROOT, "client/src/pages/account"),
@@ -360,8 +369,10 @@ describe("account.repo-scan", () => {
         return true;
       });
 
-    // N23: never skip; >400 chars review-only (never fail). S-D2: MONEY-SCAN-LONGLINE: + step summary.
+    // N23: never skip; >400 chars review-only (never fail). S-D2: MONEY-SCAN-LONGLINE:.
+    // N31: advisory hits → MONEY-SCAN-ADVISORY: (never fail).
     const longLineReview: string[] = [];
+    const advisoryHits: string[] = [];
     const gatingHits: string[] = [];
     for (const file of files) {
       const rel = relative(REPO_ROOT, file);
@@ -369,29 +380,48 @@ describe("account.repo-scan", () => {
       const lines = readFileSync(file, "utf8").split("\n");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]!;
-        if (!hitsMoney(line)) continue;
         if (line.includes("formatUsdFromCents")) continue;
         const loc = `${rel}:${i + 1}: ${line.trim().slice(0, 120)}`;
-        if (line.length > 400) {
-          longLineReview.push(loc);
+        if (hitsMoney(line)) {
+          if (line.length > 400) {
+            longLineReview.push(loc);
+          } else {
+            gatingHits.push(loc);
+          }
           continue;
         }
-        gatingHits.push(loc);
+        if (hitsAdvisory(line)) {
+          advisoryHits.push(loc);
+        }
       }
     }
     for (const loc of longLineReview) {
       console.warn(`MONEY-SCAN-LONGLINE: ${loc}`);
     }
-    if (longLineReview.length > 0 && process.env.GITHUB_STEP_SUMMARY) {
-      appendFileSync(
-        process.env.GITHUB_STEP_SUMMARY,
-        [
+    for (const loc of advisoryHits) {
+      console.warn(`MONEY-SCAN-ADVISORY: ${loc}`);
+    }
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      const sections: string[] = [];
+      if (longLineReview.length > 0) {
+        sections.push(
           "### Money scan — long lines (review only, N23 / S-D2)",
           "",
           ...longLineReview.map((l) => `- \`${l.replace(/`/g, "'")}\``),
           "",
-        ].join("\n"),
-      );
+        );
+      }
+      if (advisoryHits.length > 0) {
+        sections.push(
+          "### Money scan — advisory (N31, never fails)",
+          "",
+          ...advisoryHits.map((l) => `- \`${l.replace(/`/g, "'")}\``),
+          "",
+        );
+      }
+      if (sections.length > 0) {
+        appendFileSync(process.env.GITHUB_STEP_SUMMARY, sections.join("\n"));
+      }
     }
     expect(gatingHits, gatingHits.join("\n")).toEqual([]);
 
