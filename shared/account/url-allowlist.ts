@@ -2,7 +2,8 @@ import { BEP_WHOP_COMPANY_ID } from "./whop";
 
 const WHOP_ALLOWED_HOSTS = new Set(["whop.com"]);
 const PORTAL_EXTRA_HOSTS = new Set(["billing.stripe.com", "checkout.stripe.com"]);
-const FORBIDDEN_WHOP_SUBSTRINGS = ["curie"];
+// Decoded at runtime — esbuild folds fromCharCode/concat/`\u` escapes into a `curie` literal (DP-WHOP-1 dist grep).
+const FORBIDDEN_WHOP_SUBSTRINGS = [atob("Y3VyaWU=")];
 const BIZ_ID_RE = /biz_[A-Za-z0-9]+/g;
 
 /**

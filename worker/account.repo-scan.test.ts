@@ -3,7 +3,15 @@
  * manus, dangerouslySetInnerHTML in account/member pages, Rule-4 test hooks,
  * BEP biz pin, dist/ scan, COACH1 100000, CERT2 shared ltv import.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  mkdtempSync,
+  rmSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -290,44 +298,52 @@ describe("account.repo-scan", () => {
     });
   });
 
-  it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.10 N23–N25)", () => {
-    // 1.2.9 N20 + 1.2.10 N25: A OR B (B excludes a `bps` multiplier inside the parens).
+  it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.11)", () => {
+    // 1.2.11 A: bps×cents either order is advisory (negative lookbehind).
+    // 1.2.11 B / N29: exempt bps only when multiplied; `*` next to `/` ignored (/* bps */).
     const CENTS_DIV_A =
-      /_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
+      /(?<!\w*bps[ \t]*(?<!\/)\*(?!\/)[ \t]*\(?[ \t]*\w*)_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
     const CENTS_DIV_B =
-      /\((?![^()\n]*\w*bps\b)[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
+      /\((?![^()\n]*(?:(?<!\/)\*(?!\/)[ \t]*\w*bps\b|\b\w*bps[ \t]*(?<!\/)\*(?!\/)))[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
     const hitsMoney = (s: string) => CENTS_DIV_A.test(s) || CENTS_DIV_B.test(s);
-    // N24/N25: bps multiplier (either operand order, ±parens) and `* 2` are advisory — not gating.
-    const isAdvisoryBpsOrNumericMul = (s: string) =>
-      /\b\w*_cents\b[^\n]*\*\s*\w*bps\b|\b\w*bps\b[^\n]*\*\s*[^\n]*\b\w*_cents\b/.test(s) ||
-      /\b\w*_cents\b\s*\*\s*\d+\s*\/\s*100\b/.test(s);
 
-    // Gating positives that MUST match A|B.
-    expect(hitsMoney("x_cents / 100")).toBe(true);
-    expect(hitsMoney("(price_cents) / 100")).toBe(true);
-    expect(hitsMoney("(a_cents+b_cents)/100")).toBe(true);
-    expect(hitsMoney("Math.trunc(x_cents)/100")).toBe(true);
-    expect(hitsMoney("Math.floor(course.course_price_cents / 100)")).toBe(true);
-    expect(hitsMoney("(price_cents - fee)/100")).toBe(true);
-    expect(hitsMoney("(price_cents * qty)/100")).toBe(true);
-
-    // Must-not-flag negatives.
-    expect(hitsMoney("commission_bps / 100")).toBe(false);
-    expect(hitsMoney("x_cents * commission_bps / 100")).toBe(false);
-    expect(hitsMoney("price_cents - commission_bps / 100")).toBe(false);
-    expect(hitsMoney("x_cents / 100.5")).toBe(false);
-    // N25: parenthesised bps multiplier — B excludes; A also misses cents-first form.
-    expect(hitsMoney("(x_cents * commission_bps) / 100")).toBe(false);
-    // N24: numeric multiplier — advisory (scanner may or may not hit; never gating).
-    expect(hitsMoney("x_cents * 2 / 100")).toBe(false);
-    // N3 nested-parens loophole (accepted miss).
-    expect(hitsMoney("((price_cents - fee))/100")).toBe(false);
-
-    // Advisory (either operand order): A may hit bps-second forms; never gating.
-    expect(isAdvisoryBpsOrNumericMul("commission_bps * x_cents / 100")).toBe(true);
-    expect(isAdvisoryBpsOrNumericMul("(commission_bps * x_cents)/100")).toBe(true);
-    expect(isAdvisoryBpsOrNumericMul("(x_cents * commission_bps) / 100")).toBe(true);
-    expect(isAdvisoryBpsOrNumericMul("x_cents * 2 / 100")).toBe(true);
+    // Exactly 24 fixtures (12 gating + 12 non-gating), rev 1.2.11 node-tested.
+    const gatingFixtures = [
+      "x_cents / 100",
+      "(price_cents) / 100",
+      "(a_cents+b_cents)/100",
+      "Math.trunc(x_cents)/100",
+      "Math.floor(course.course_price_cents / 100)",
+      "(price_cents - fee)/100",
+      "(price_cents * qty)/100",
+      "(price_cents - bps)/100",
+      "(price_cents - commission_bps)/100",
+      "(price_cents + fee_bps)/100",
+      "(price_cents /* bps */)/100",
+      "foo(price_cents, rate)/100",
+    ];
+    const nongatingFixtures = [
+      "commission_bps / 100",
+      "x_cents * commission_bps / 100",
+      "price_cents - commission_bps / 100",
+      "x_cents / 100.5",
+      "x_cents * 2 / 100",
+      "(x_cents * commission_bps) / 100",
+      "(commission_bps * x_cents)/100",
+      "commission_bps * x_cents / 100",
+      "commission_bps*x_cents/100",
+      "((price_cents - fee))/100",
+      "(Math.round(price_cents) * 2)/100",
+      "(x_cents) / 1000",
+    ];
+    expect(gatingFixtures).toHaveLength(12);
+    expect(nongatingFixtures).toHaveLength(12);
+    for (const s of gatingFixtures) {
+      expect(hitsMoney(s), `gating miss: ${s}`).toBe(true);
+    }
+    for (const s of nongatingFixtures) {
+      expect(hitsMoney(s), `nongating hit: ${s}`).toBe(false);
+    }
 
     const dirs = [
       join(REPO_ROOT, "client/src/pages/account"),
@@ -344,7 +360,7 @@ describe("account.repo-scan", () => {
         return true;
       });
 
-    // N23: never skip lines; >400 chars listed for review only (never fail the build).
+    // N23: never skip; >400 chars review-only (never fail). S-D2: MONEY-SCAN-LONGLINE: + step summary.
     const longLineReview: string[] = [];
     const gatingHits: string[] = [];
     for (const file of files) {
@@ -355,7 +371,6 @@ describe("account.repo-scan", () => {
         const line = lines[i]!;
         if (!hitsMoney(line)) continue;
         if (line.includes("formatUsdFromCents")) continue;
-        if (isAdvisoryBpsOrNumericMul(line)) continue;
         const loc = `${rel}:${i + 1}: ${line.trim().slice(0, 120)}`;
         if (line.length > 400) {
           longLineReview.push(loc);
@@ -364,10 +379,18 @@ describe("account.repo-scan", () => {
         gatingHits.push(loc);
       }
     }
-    if (longLineReview.length > 0) {
-      // Review-only: surface in test output without failing.
-      console.info(
-        JSON.stringify({ event: "money_scan_long_line_review", lines: longLineReview }),
+    for (const loc of longLineReview) {
+      console.warn(`MONEY-SCAN-LONGLINE: ${loc}`);
+    }
+    if (longLineReview.length > 0 && process.env.GITHUB_STEP_SUMMARY) {
+      appendFileSync(
+        process.env.GITHUB_STEP_SUMMARY,
+        [
+          "### Money scan — long lines (review only, N23 / S-D2)",
+          "",
+          ...longLineReview.map((l) => `- \`${l.replace(/`/g, "'")}\``),
+          "",
+        ].join("\n"),
       );
     }
     expect(gatingHits, gatingHits.join("\n")).toEqual([]);

@@ -32,7 +32,7 @@ jobs:
       - name: Typecheck worker
         run: npm run check:worker
 
-      # 1.2.10 CQ 59cf5b29 S2 / 1.2.9 F2: root `npm run check` gates client + shared tsc at merge.
+      # 1.2.11 / CQ S2: root `npm run check` gates client + shared tsc at merge.
       - name: Typecheck client and shared
         run: npm run check
 
