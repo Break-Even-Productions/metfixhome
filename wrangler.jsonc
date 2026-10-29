@@ -165,7 +165,11 @@
 			// AUTH-HOST allowlist for Worker Previews: previews.vars applies to every
 			// preview (branch/PR), not only the staging branch. Exact hostnames only.
 			// Never copy into top-level / production vars.
-			"STAGING_AUTH_HOSTS": "staging-metfixhome.wispy-mode-982d.workers.dev"
+			"STAGING_AUTH_HOSTS": "staging-metfixhome.wispy-mode-982d.workers.dev",
+			// Preview-only BSI origin (Ethan: purchase/data-change tests use staging BSI).
+			// resolveBsiOrigin honors this only when it equals exactly this value AND the
+			// request Host is in STAGING_AUTH_HOSTS. Never copy into top-level / production vars.
+			"BSI_ORIGIN": "https://brokenstaging.wpengine.com"
 		},
 		"kv_namespaces": [
 			{

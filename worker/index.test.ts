@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
+import { parseJsonc } from "./test/parse-jsonc";
 import { handleRequest, type Env } from "./index";
 import { assertBsiHost } from "./upstream";
 import { cacheTtlSeconds, cutDescription, nextDfxMidnight } from "../shared/daily-fix";
@@ -219,7 +220,15 @@ afterEach(() => {
 describe("W1 wrangler.jsonc", () => {
   it("matches Spec assets config", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      main: string;
+      assets: {
+        directory: string;
+        binding: string;
+        not_found_handling: string;
+        run_worker_first: string[];
+      };
+    };
     expect(json.main).toBe("worker/index.ts");
     expect(json.assets.directory).toBe("./dist/public");
     expect(json.assets.binding).toBe("ASSETS");
@@ -342,12 +351,9 @@ describe("Worker HTML / API / sitemap", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
     const body = await res.text();
     expect(body).not.toContain('"belly"');
-    const wrangler = JSON.parse(
-      readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8").replace(
-        /\/\/.*$/gm,
-        "",
-      ),
-    );
+    const wrangler = parseJsonc(
+      readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8"),
+    ) as { assets: { run_worker_first: string[] } };
     expect(wrangler.assets.run_worker_first).not.toContain("/__dfcache/*");
   });
 
