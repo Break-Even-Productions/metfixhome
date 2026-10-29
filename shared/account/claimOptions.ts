@@ -1,6 +1,6 @@
 /**
- * Certificate claim-options DTO builder (CL-DTO-1 / CL-REASON-1 / CL-MONEY-1 / CL-CREDIT-1).
- * Fail closed with 502-shaped errors — this screen moves money.
+ * Certificate claim-options DTO builder (CL-DTO-1 / CL-REASON-1 / CL-MONEY-1).
+ * errata d6: no credit{} / promo fields (DR-13/DR-21). Fail closed — this screen moves money.
  */
 import { formatUsdFromCents, toNonNegativeSafeCents } from "./ltv";
 import { parseIsoInstantToUtcZ } from "./dates";
@@ -46,13 +46,14 @@ export const CLAIM_REASON_CODES = CLAIM_INELIGIBLE_REASONS;
 
 export const CLAIM_REASON_COPY: Record<ClaimIneligibleReason, string> = {
   legacy_stripe_member:
-    "Credit prepay is for Whop subscribers. Your plan is billed through our old system.",
+    "Certificate prepay is for Whop subscribers. Your plan is billed through our old system.",
   not_completed: "Finish the course to claim its certificate.",
   insufficient_ltv: "Your past spending doesn't cover this certificate yet.",
   already_claimed: "",
-  not_subscriber: "Credit prepay needs an active MetFix subscription on Whop.",
-  no_shortfall: "Your past spending already covers this. Use Redeem instead.",
-  membership_not_renewing: "Credit prepay needs a renewing subscription.",
+  not_subscriber: "Certificate prepay needs an active MetFix subscription on Whop.",
+  no_shortfall:
+    "This option isn't needed. Your lifetime spend already covers this certificate.",
+  membership_not_renewing: "Prepay needs a renewing subscription.",
   course_not_purchasable: "This course can't be bought right now.",
 };
 
@@ -85,12 +86,6 @@ export type ClaimOptionsDto = {
     claimed_value_cents: number;
     available_cents: number;
   };
-  credit: {
-    balance_cents: number;
-    days_granted: number;
-    pending_promo_cents: number;
-    promo_state: "none" | "waiting_to_apply" | "applied_to_next_renewal";
-  };
   courses: ClaimCourseDto[];
 };
 
@@ -117,7 +112,8 @@ export type BuildClaimOptionsResult =
 const PATH_ORDER: ClaimPathId[] = ["redeem_ltv", "prepay_credit", "buy_outright"];
 const COMPLETION = new Set(["not_started", "in_progress", "completed"]);
 const CLAIMED_VIA = new Set(["redeem_ltv", "prepay_credit", "buy_outright"]);
-const PROMO = new Set(["none", "waiting_to_apply", "applied_to_next_renewal"]);
+/** After stripStrayFields: only these top-level keys may remain (errata d6 §DTO). */
+const TOP_KEYS = new Set(["currency", "ltv", "courses"]);
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
@@ -144,41 +140,31 @@ function dateOrNull(v: unknown): string | null | "bad" {
 }
 
 /**
- * Validate and allowlist the BSI §DTO claim-options body.
- * Q-D: promo_state === 'none' && pending_promo_cents > 0 → zero cents, log, keep 200.
+ * Validate and allowlist the BSI §DTO claim-options body (errata d6 / rev1.32).
+ * Promo/credit fields must already be stripped (DR-15/DR-22); remaining extras → 502.
  */
 export function buildClaimOptionsDto(raw: unknown): BuildClaimOptionsResult {
   const logs: ClaimOptionsLog[] = [];
   const obj = asRecord(raw);
   if (!obj) return reject("bad_shape");
 
-  for (const k of ["currency", "ltv", "credit", "courses"] as const) {
+  for (const k of Object.keys(obj)) {
+    if (!TOP_KEYS.has(k)) return reject("bad_shape");
+  }
+  for (const k of ["currency", "ltv", "courses"] as const) {
     if (!(k in obj)) return reject("bad_shape");
   }
 
   if (obj.currency !== "usd") return reject("bad_enum");
 
   const ltvRaw = asRecord(obj.ltv);
-  const creditRaw = asRecord(obj.credit);
-  if (!ltvRaw || !creditRaw || !Array.isArray(obj.courses)) return reject("bad_shape");
+  if (!ltvRaw || !Array.isArray(obj.courses)) return reject("bad_shape");
 
   const total = money(ltvRaw.total_ltv_cents);
   const claimed = money(ltvRaw.claimed_value_cents);
   const available = money(ltvRaw.available_cents);
   if (total == null || claimed == null || available == null) return reject("bad_money");
   if (available !== Math.max(0, total - claimed)) return reject("bad_money");
-
-  const balance = money(creditRaw.balance_cents);
-  const days = money(creditRaw.days_granted);
-  let pending = money(creditRaw.pending_promo_cents);
-  const promo_state = creditRaw.promo_state;
-  if (balance == null || days == null || pending == null) return reject("bad_money");
-  if (typeof promo_state !== "string" || !PROMO.has(promo_state)) return reject("bad_enum");
-
-  if (promo_state === "none" && pending > 0) {
-    logs.push({ event: "promo_state_mismatch" });
-    pending = 0;
-  }
 
   const courses: ClaimCourseDto[] = [];
   let legacyClaimedViaLogged = false;
@@ -313,12 +299,6 @@ export function buildClaimOptionsDto(raw: unknown): BuildClaimOptionsResult {
         claimed_value_cents: claimed,
         available_cents: available,
       },
-      credit: {
-        balance_cents: balance,
-        days_granted: days,
-        pending_promo_cents: pending,
-        promo_state: promo_state as ClaimOptionsDto["credit"]["promo_state"],
-      },
       courses,
     },
     logs,
@@ -403,7 +383,8 @@ export function mapClaimIneligible(
 
 export const PATH_TITLES: Record<ClaimPathId, string> = {
   redeem_ltv: "Redeem with LTV",
-  prepay_credit: "Prepay with credit",
+  /** Wire id stays prepay_credit; label must avoid "credit" (errata d6 DR-19/DR-23). */
+  prepay_credit: "Certificate prepay",
   /** Prefer `buyOutrightTitle(price_cents)` for the card label (DP-T-CERT1). */
   buy_outright: "Option 1 direct purchase",
 };

@@ -38,12 +38,6 @@ const CHECKOUT_URL = "https://whop.com/checkout/plan_test_checkout";
 const CLAIM_OPTIONS = {
   currency: "usd",
   ltv: { total_ltv_cents: 30000, claimed_value_cents: 20000, available_cents: 10000 },
-  credit: {
-    balance_cents: 0,
-    days_granted: 0,
-    pending_promo_cents: 0,
-    promo_state: "none",
-  },
   courses: [
     {
       course_id: 20,

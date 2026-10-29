@@ -32,12 +32,6 @@ describe("buildClaimOptionsDto", () => {
     const raw = {
       currency: "usd",
       ltv: { total_ltv_cents: 25000, claimed_value_cents: 0, available_cents: 25000 },
-      credit: {
-        balance_cents: 0,
-        days_granted: 0,
-        pending_promo_cents: 0,
-        promo_state: "none",
-      },
       courses: [
         {
           course_id: 1,
@@ -73,12 +67,6 @@ describe("buildClaimOptionsDto", () => {
     const raw = {
       currency: "usd",
       ltv: { total_ltv_cents: 0, claimed_value_cents: 0, available_cents: 0 },
-      credit: {
-        balance_cents: 0,
-        days_granted: 0,
-        pending_promo_cents: 0,
-        promo_state: "none",
-      },
       courses: [
         {
           course_id: 1,
@@ -162,12 +150,6 @@ describe("legacy claimed_via mapping (N17)", () => {
     const raw = {
       currency: "usd",
       ltv: { total_ltv_cents: 0, claimed_value_cents: 0, available_cents: 0 },
-      credit: {
-        balance_cents: 0,
-        days_granted: 0,
-        pending_promo_cents: 0,
-        promo_state: "none",
-      },
       courses: [course("direct_purchase"), { ...course("direct_purchase"), course_id: 2 }],
     };
     const built = buildClaimOptionsDto(raw);
@@ -239,17 +221,11 @@ describe("CL-ERR-1 CLAIM_REASON_BY_UPSTREAM", () => {
   });
 });
 
-describe("CL-T13 / CL-T14 claim-options DTO maps", () => {
-  it("CL-T13: CLF redeem shortfall 8000; no credit combine", () => {
+describe("CL-T13 claim-options DTO maps (errata d6)", () => {
+  it("CL-T13: CLF redeem shortfall 8000; no credit object / no combine", () => {
     const raw = {
       currency: "usd",
       ltv: { total_ltv_cents: 30000, claimed_value_cents: 8000, available_cents: 22000 },
-      credit: {
-        balance_cents: 1300,
-        days_granted: 12,
-        pending_promo_cents: 1300,
-        promo_state: "waiting_to_apply",
-      },
       courses: [
         {
           course_id: 1,
@@ -283,40 +259,4 @@ describe("CL-T13 / CL-T14 claim-options DTO maps", () => {
     expect(json).not.toContain("$233");
   });
 
-  it("CL-T14: promo copy states; none+1300 zeros pending + one promo_state_mismatch log", () => {
-    const baseCourse = {
-      course_id: 1,
-      slug: "x",
-      title: "X",
-      completion_status: "completed" as const,
-      completed_at: "2026-01-01T00:00:00Z",
-      price_cents: 100,
-      already_claimed: false,
-      claimed_at: null,
-      claimed_via: null,
-      access_expires_at: null,
-      paths: [
-        path("redeem_ltv", true, 0, 100, null),
-        path("prepay_credit", false, 0, 100, "no_shortfall"),
-        path("buy_outright", true, 100, 100, null),
-      ],
-    };
-    const mismatch = buildClaimOptionsDto({
-      currency: "usd",
-      ltv: { total_ltv_cents: 100, claimed_value_cents: 0, available_cents: 100 },
-      credit: {
-        balance_cents: 0,
-        days_granted: 0,
-        pending_promo_cents: 1300,
-        promo_state: "none",
-      },
-      courses: [baseCourse],
-    });
-    expect(mismatch.ok).toBe(true);
-    if (!mismatch.ok) return;
-    expect(mismatch.dto.credit.pending_promo_cents).toBe(0);
-    expect(JSON.stringify(mismatch.dto)).not.toContain("1300");
-    expect(mismatch.logs).toEqual([{ event: "promo_state_mismatch" }]);
-    expect(Object.keys(mismatch.logs[0]!).sort()).toEqual(["event"]);
-  });
 });

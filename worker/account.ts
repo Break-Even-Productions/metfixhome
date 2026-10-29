@@ -20,6 +20,7 @@ import {
   type ClaimLockTimeoutBody,
   type ClaimPathId,
 } from "../shared/account/claimOptions";
+import { emitStrayFieldLogs, stripStrayFields } from "./stripStrayFields";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
@@ -1255,6 +1256,12 @@ async function dispatch(
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
 
+      // errata d6 DR-24/DR-28: strip stray fields before CR3 checkout DTO.
+      {
+        const stripped = stripStrayFields(mapped.json);
+        emitStrayFieldLogs(stripped.strayKeys);
+        mapped.json = stripped.body;
+      }
       const built = buildCheckoutUrlDto(mapped.json, BEP_WHOP_COMPANY_ID);
       if (!built.ok || !isWhopCheckoutUrl(built.dto.checkout_url)) {
         return accountJson({ error: "upstream_error" }, 502);
@@ -1284,6 +1291,12 @@ async function dispatch(
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
+      // errata d6 DR-15/DR-22/DR-24: strip promo/credit strays before CL1 validation.
+      {
+        const stripped = stripStrayFields(mapped.json);
+        emitStrayFieldLogs(stripped.strayKeys);
+        mapped.json = stripped.body;
+      }
       const built = buildClaimOptionsDto(mapped.json);
       if (!built.ok) {
         console.warn(
@@ -1372,6 +1385,14 @@ async function dispatch(
         if (status === 400 && code === "bsi_idempotency_key_invalid") {
           return accountJson({ error: "invalid_idempotency_key" }, 400);
         }
+        // errata d6 DR-26: S<=0 prepay → 409 claim_unavailable / no_shortfall (final).
+        if (status === 400 && code === "bsi_prepay_invalid_shortfall") {
+          console.warn(JSON.stringify({ event: "prepay_invalid_shortfall" }));
+          return accountJson(
+            { error: "claim_unavailable", reason_code: "no_shortfall" },
+            409,
+          );
+        }
         if (status === 404 && code === "bsi_course_not_found") {
           return accountJson({ error: "course_not_found" }, 404);
         }
@@ -1397,6 +1418,12 @@ async function dispatch(
 
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
+      // errata d6 DR-24: strip stray fields on every CL2 success body.
+      {
+        const stripped = stripStrayFields(mapped.json);
+        emitStrayFieldLogs(stripped.strayKeys);
+        mapped.json = stripped.body;
+      }
       const raw = asRecord(mapped.json) ?? {};
 
       // Duplicate / repeat claim (CL-REPEAT-1 / §R120 / W-N14 / 1.2.9 F3):
@@ -1624,6 +1651,11 @@ async function dispatch(
         // CR-EARN-1: upstream fail → omit earnings + PII-free log; never 502.
         logEarningsUpstreamOmitted();
       }
+      {
+        const stripped = stripStrayFields(refMapped.json);
+        emitStrayFieldLogs(stripped.strayKeys);
+        refMapped.json = stripped.body;
+      }
       const built = buildReferralsDto(refMapped.json, earningsJson, Date.now());
       if (!built.ok) {
         return accountJson({ error: "upstream_error" }, 502);
@@ -1678,6 +1710,11 @@ async function dispatch(
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
       // CR2 200 reuses CR1 builder — mutation response body only (no earnings GET).
+      {
+        const stripped = stripStrayFields(mapped.json);
+        emitStrayFieldLogs(stripped.strayKeys);
+        mapped.json = stripped.body;
+      }
       const built = buildReferralsDto(mapped.json, undefined, Date.now());
       if (!built.ok) {
         return accountJson({ error: "upstream_error" }, 502);

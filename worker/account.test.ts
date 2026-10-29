@@ -2013,12 +2013,6 @@ describe("worker/account routes", () => {
     const CLF = {
       currency: "usd",
       ltv: { total_ltv_cents: 30000, claimed_value_cents: 8000, available_cents: 22000 },
-      credit: {
-        balance_cents: 1300,
-        days_granted: 12,
-        pending_promo_cents: 1300,
-        promo_state: "waiting_to_apply",
-      },
       courses: [
         {
           course_id: 1,
@@ -2583,11 +2577,14 @@ describe("worker/account routes", () => {
       }
 
       try {
-        for (const k of ["currency", "ltv", "credit", "courses"] as const) {
+        for (const k of ["currency", "ltv", "courses"] as const) {
           await rejectCase(`bad_shape missing ${k}`, (raw) => {
             delete raw[k];
           }, "bad_shape");
         }
+        await rejectCase("bad_shape unknown top-level key", (raw) => {
+          raw.bonus_periods = 2;
+        }, "bad_shape");
         for (const k of courseKeys) {
           await rejectCase(`bad_shape missing course.${k}`, (raw) => {
             const course = (raw.courses as Record<string, unknown>[])[0]!;
@@ -2603,9 +2600,6 @@ describe("worker/account routes", () => {
         }, "bad_enum");
         await rejectCase("bad_enum claimed_via ltv", (raw) => {
           (raw.courses as Record<string, unknown>[])[0]!.claimed_via = "ltv";
-        }, "bad_enum");
-        await rejectCase("bad_enum promo_state", (raw) => {
-          (raw.credit as Record<string, unknown>).promo_state = "later";
         }, "bad_enum");
 
         await rejectCase("bad_path missing path", (raw) => {
@@ -2685,11 +2679,9 @@ describe("worker/account routes", () => {
           (raw.ltv as Record<string, unknown>).available_cents = 21999;
         }, "bad_money");
 
-        // Injected ids never appear on a valid DTO.
+        // Injected ids on a course never appear on the allowlisted DTO.
         spyWarn.mockClear();
         const injected = deep(CLF) as Record<string, unknown>;
-        injected.whop_plan_id = "plan_injected";
-        injected.membership_id = "mem_injected";
         (injected.courses as Record<string, unknown>[])[0]!.whop_plan_id = "plan_course";
         (injected.courses as Record<string, unknown>[])[0]!.membership_id = 42;
         const { fetchImpl } = makeFetchMock([
@@ -2821,7 +2813,7 @@ describe("worker/account routes", () => {
       // CL1 claim-options: success + 502 rejection bodies.
       for (const upstream of [
         CLF,
-        { currency: "USD", ltv: {}, credit: {}, courses: [], membership_id: 1 },
+        { currency: "USD", ltv: {}, courses: [], membership_id: 1 },
       ]) {
         const { fetchImpl } = makeFetchMock([
           async ({ path }) => {
@@ -2873,6 +2865,147 @@ describe("worker/account routes", () => {
       expect(await r2.json()).toStrictEqual(b1);
       expect(recorded[1]!.headers["idempotency-key"]).toBe(K);
       expect(recorded[1]!.bodyText).toBe(recorded[0]!.bodyText);
+    });
+
+    it("CL-T16 / errata d6 DR-26: 400 bsi_prepay_invalid_shortfall → 409 claim_unavailable/no_shortfall", async () => {
+      const sess = await withSession(h);
+      const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fetchImpl, recorded } = makeFetchMock([
+          async ({ method }) => {
+            if (method === "POST") {
+              return Response.json(
+                {
+                  code: "bsi_prepay_invalid_shortfall",
+                  message: "shortfall S<=0",
+                  data: { status: 400 },
+                },
+                { status: 400 },
+              );
+            }
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const res = await callAccount(
+          h,
+          "/api/account/courses/10/claim",
+          {
+            method: "POST",
+            headers: claimHeaders(sess, K),
+            body: JSON.stringify({ path: "prepay_credit" }),
+          },
+          fetchImpl,
+        );
+        expect(res.status).toBe(409);
+        assertNoStore(res);
+        const body = await res.json();
+        expect(body).toEqual({
+          error: "claim_unavailable",
+          reason_code: "no_shortfall",
+        });
+        expect(recorded).toHaveLength(1);
+        expect(JSON.stringify(body)).not.toMatch(/bsi_|shortfall S|message/);
+        const logs = spyWarn.mock.calls.map((c) => {
+          try {
+            return JSON.parse(String(c[0])) as Record<string, unknown>;
+          } catch {
+            return null;
+          }
+        });
+        expect(logs.filter((l) => l?.event === "prepay_invalid_shortfall")).toHaveLength(1);
+      } finally {
+        spyWarn.mockRestore();
+      }
+    });
+
+    it("CL-T-PROMO-1: stray promo/credit stripped; DOM-free body; no apply refs", async () => {
+      const sess = await withSession(h);
+      const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        // (a) no promo → 200
+        spyWarn.mockClear();
+        {
+          const { fetchImpl } = makeFetchMock([
+            async ({ path }) => {
+              if (path.endsWith("/me/certificate-claim-options")) return Response.json(CLF);
+              return new Response(null, { status: 404 });
+            },
+          ]);
+          const res = await callAccount(
+            h,
+            "/api/account/certificate-claim-options",
+            { headers: { Cookie: sess.cookie } },
+            fetchImpl,
+          );
+          expect(res.status).toBe(200);
+          const body = (await res.json()) as Record<string, unknown>;
+          expect(body).not.toHaveProperty("credit");
+          expect(Object.keys(body).sort()).toEqual(["courses", "currency", "ltv"]);
+          expect(
+            spyWarn.mock.calls.filter((c) => String(c[0]).includes("stray_")),
+          ).toHaveLength(0);
+        }
+
+        // (b)+(e) credit + promo strays → 200, stripped, logged by name
+        spyWarn.mockClear();
+        {
+          const planted = {
+            ...CLF,
+            credit: {
+              balance_cents: 1300,
+              days_granted: 12,
+              promo_state: "waiting_to_apply",
+              pending_promo_cents: 1300,
+            },
+            promo_foo: {},
+          };
+          const { fetchImpl } = makeFetchMock([
+            async ({ path }) => {
+              if (path.endsWith("/me/certificate-claim-options")) return Response.json(planted);
+              return new Response(null, { status: 404 });
+            },
+          ]);
+          const res = await callAccount(
+            h,
+            "/api/account/certificate-claim-options",
+            { headers: { Cookie: sess.cookie } },
+            fetchImpl,
+          );
+          expect(res.status).toBe(200);
+          const body = (await res.json()) as Record<string, unknown>;
+          const json = JSON.stringify(body);
+          expect(body).not.toHaveProperty("credit");
+          expect(json).not.toMatch(/promo_state|pending_promo|1300|\$13/);
+          const stray = spyWarn.mock.calls
+            .map((c) => {
+              try {
+                return JSON.parse(String(c[0])) as { event?: string; key?: string };
+              } catch {
+                return null;
+              }
+            })
+            .filter((l) => l?.event?.startsWith("stray_"));
+          expect(stray.length).toBeGreaterThanOrEqual(2);
+          expect(stray.every((l) => typeof l!.key === "string")).toBe(true);
+          expect(JSON.stringify(stray)).not.toMatch(/1300|waiting/);
+        }
+
+        // (f) static: no apply references in worker claim options surface
+        const { readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+        const { fileURLToPath } = await import("node:url");
+        const root = join(fileURLToPath(new URL("..", import.meta.url)));
+        for (const rel of [
+          "worker/account.ts",
+          "shared/account/claimOptions.ts",
+          "client/src/pages/account/AccountCourses.tsx",
+        ]) {
+          const src = readFileSync(join(root, rel), "utf8");
+          expect(src, rel).not.toMatch(/credit-apply|apply_credit|auto_apply|autoapply/i);
+        }
+      } finally {
+        spyWarn.mockRestore();
+      }
     });
   });
 });

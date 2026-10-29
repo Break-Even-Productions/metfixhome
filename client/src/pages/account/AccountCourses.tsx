@@ -25,18 +25,6 @@ import DashboardLayout from "./DashboardLayout";
 import { LtvVisualizer } from "./LtvVisualizer";
 import { FoundationsCoachCard } from "./FoundationsCoachCard";
 
-function promoLine(credit: ClaimOptionsDto["credit"]): string | null {
-  if (credit.promo_state === "none" || credit.pending_promo_cents <= 0) return null;
-  const amount = formatUsdFromCents(credit.pending_promo_cents);
-  if (credit.promo_state === "waiting_to_apply") {
-    return `${amount} off your next renewal, waiting to be applied.`;
-  }
-  if (credit.promo_state === "applied_to_next_renewal") {
-    return `${amount} off your next renewal is set.`;
-  }
-  return null;
-}
-
 function ClaimPathCard(props: {
   path: ClaimPathDto;
   busy: boolean;
@@ -82,7 +70,6 @@ function ClaimScreen(props: {
 }) {
   const { course, options, busy, message, error, onClaim, onBack } = props;
   const access = formatAccessUntilLine(course.access_expires_at);
-  const promo = promoLine(options.credit);
 
   return (
     <div>
@@ -93,11 +80,7 @@ function ClaimScreen(props: {
 
       <p className="account-mono">
         {formatUsdFromCents(options.ltv.available_cents)} available
-        {options.credit.balance_cents > 0 || options.credit.days_granted > 0
-          ? ` · credit ${formatUsdFromCents(options.credit.balance_cents)} · ${options.credit.days_granted} days granted`
-          : null}
       </p>
-      {promo ? <p className="account-mono">{promo}</p> : null}
 
       {error ? <p className="account-error">{error}</p> : null}
       {message ? <p role="status">{message}</p> : null}
@@ -257,6 +240,17 @@ export default function AccountCourses() {
       if (status === 409 && body?.error === "claim_in_progress") {
         // errata d5 DR-12: 409 ClaimInProgressBody is transient → keep key.
         setError("Still working on it. Try again in a few seconds.");
+      } else if (
+        status === 409 &&
+        body?.error === "claim_unavailable" &&
+        body?.reason_code === "no_shortfall"
+      ) {
+        // errata d6 DR-26: final 409 claim_unavailable/no_shortfall → clear key + CL1 refresh.
+        refreshClaimOptionsBackground();
+        setError(
+          "This option isn't needed. Your lifetime spend already covers this certificate.",
+        );
+        clearIdempotencyKey();
       } else if (status === 503 && body?.error === "claim_in_progress") {
         // errata d5 DR-12: 503 ClaimLockTimeoutBody is transient → keep key.
         setError("Still working on it. Try again in a few seconds.");
@@ -309,7 +303,7 @@ export default function AccountCourses() {
   return (
     <DashboardLayout
       title="My Courses & Certificates"
-      description="Claim certificates with subscription LTV, credit prepay, or buy outright."
+      description="Claim certificates with lifetime spend, certificate prepay, or buy outright."
     >
       {activeCourse && claimOptions ? (
         <ClaimScreen
