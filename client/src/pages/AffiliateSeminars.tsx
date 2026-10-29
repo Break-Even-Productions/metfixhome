@@ -1,5 +1,5 @@
 /**
- * AffiliateSeminars.tsx - MetFix "Earned Authority" Design System
+ * AffiliateSeminars.tsx — F1 style parity (cream / ink / gold)
  * Real seminar data from brokenscience.org/metfix/foundations/
  */
 
@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import CopyrightText from "@/components/CopyrightText";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import "./affiliate-seminars.css";
 
 function useIsDesktop(breakpoint = 900) {
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= breakpoint : true);
@@ -152,7 +153,7 @@ function SyllabusAccordion() {
       {SYLLABUS_MODULES.map((mod, i) => (
         <div
           key={i}
-          style={{ borderBottom: i < SYLLABUS_MODULES.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
+          style={{ borderBottom: i < SYLLABUS_MODULES.length - 1 ? "1px solid var(--color-line)" : "none" }}
         >
           <button
             onClick={() => setOpen(open === i ? null : i)}
@@ -162,12 +163,12 @@ function SyllabusAccordion() {
               textAlign: "left",
             }}
           >
-            <span style={{ fontFamily: "'DM Mono'", fontSize: "0.55rem", color: "rgba(201,169,110,0.5)", letterSpacing: "0.1em", minWidth: "1.5rem", flexShrink: 0 }}>{mod.num}</span>
-            <span style={{ fontFamily: "'DM Sans'", fontSize: "0.9rem", color: open === i ? "#C9A96E" : "rgba(239,239,239,0.8)", lineHeight: 1.4, flex: 1, transition: "color 0.2s" }}>{mod.title}</span>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "0.55rem", color: "var(--color-accent-text)", letterSpacing: "0.1em", minWidth: "1.5rem", flexShrink: 0 }}>{mod.num}</span>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "0.9rem", color: open === i ? "var(--color-accent-text)" : "var(--color-ink)", lineHeight: 1.4, flex: 1, transition: "color 0.2s" }}>{mod.title}</span>
             <ChevronDown
               size={14}
               style={{
-                color: "rgba(201,169,110,0.6)", flexShrink: 0,
+                color: "var(--color-accent)", flexShrink: 0,
                 transform: open === i ? "rotate(180deg)" : "rotate(0deg)",
                 transition: "transform 0.25s ease",
               }}
@@ -179,8 +180,8 @@ function SyllabusAccordion() {
             transition: "max-height 0.3s ease",
           }}>
             <p style={{
-              fontFamily: "'DM Sans'", fontSize: "0.85rem", lineHeight: 1.75,
-              color: "rgba(239,239,239,0.5)", paddingBottom: "1rem",
+              fontFamily: "var(--font-sans)", fontSize: "0.85rem", lineHeight: 1.75,
+              color: "var(--color-muted)", paddingBottom: "1rem",
               paddingLeft: "2.5rem", margin: 0,
             }}>{mod.desc}</p>
           </div>
@@ -242,25 +243,18 @@ export default function AffiliateSeminars() {
   });
 
   return (
-    <div style={{ background: "#0A0A0A", color: "#EFEFEF", minHeight: "100vh", overflowX: "hidden", maxWidth: "100vw" }}>
+    <div className="seminars-page page-stack">
 
       {/* ═══ NAV ══════════════════════════════════════════════════ */}
 
       {/* ═══ HERO ═════════════════════════════════════════════════ */}
-      <section className="affiliate-seminars-hero" style={{
-        background: "#0A0A0A",
-        paddingTop: "9rem",
-        paddingBottom: "5rem",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
+      <section className="section-card section-card--paper affiliate-seminars-hero" style={{
+        background: "var(--color-paper)",
+        paddingTop: "3rem",
+        paddingBottom: "3.5rem",
         position: "relative",
         overflow: "hidden",
       }}>
-        {/* Dark gradient overlay — stronger on left so text stays readable */}
-        <div style={{
-          position: "absolute", inset: 0,
-          backgroundImage: "linear-gradient(to right, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.6) 55%, rgba(10,10,10,0.3) 100%)",
-          pointerEvents: "none",
-        }} />
         <div className="container">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "4rem", alignItems: "center" }}>
             <div>
@@ -272,7 +266,7 @@ export default function AffiliateSeminars() {
                   Foundations{" "}
                   <span className="display-serif-italic text-gold">Seminar.</span>
                 </h1>
-                <p style={{ fontSize: "1.05rem", lineHeight: 1.8, color: "rgba(239,239,239,0.6)", marginBottom: "2rem", fontWeight: 300, maxWidth: "520px" }}>
+                <p style={{ fontSize: "1.05rem", lineHeight: 1.8, color: "var(--color-muted)", marginBottom: "2rem", fontWeight: 300, maxWidth: "520px" }}>
                   The two-day weekend capstone. Hands-on, practical, transformative. Held at MetFix affiliate gyms worldwide. Coaches who complete Foundations leave with the tools, the framework, and the community to change their practice and their community's health.
                 </p>
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
@@ -286,8 +280,8 @@ export default function AffiliateSeminars() {
               </Reveal>
             </div>
             <Reveal direction="right" delay={100}>
-              <div style={{ border: "1px solid rgba(255,255,255,0.08)", background: "#0D0D0D", padding: "2.5rem" }}>
-                <div style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.5rem" }}>Syllabus — 2 Powerful Days of Learning</div>
+              <div style={{ border: "1px solid var(--color-line)", background: "var(--color-paper)", padding: "2.5rem" }}>
+                <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.6rem", letterSpacing: "0.15em", color: "var(--color-accent-text)", textTransform: "uppercase", marginBottom: "1.5rem" }}>Syllabus — 2 Powerful Days of Learning</div>
                 <SyllabusAccordion />
               </div>
             </Reveal>
@@ -296,7 +290,7 @@ export default function AffiliateSeminars() {
       </section>
 
       {/* ═══ LECTURE VIDEO ══════════════════════════════════════ */}
-      <section style={{ background: "#050505", borderBottom: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-cream-2)", borderBottom: "1px solid var(--color-line)", overflow: "hidden" }}>
         <div className="container" style={{ paddingTop: "5rem", paddingBottom: "5rem" }}>
           <Reveal>
             <div className="rule" style={{ marginBottom: "1.5rem" }}>
@@ -306,12 +300,12 @@ export default function AffiliateSeminars() {
               Watch a live{" "}
               <span className="display-serif-italic text-gold">lecture.</span>
             </h2>
-            <p style={{ fontSize: "0.95rem", lineHeight: 1.75, color: "rgba(239,239,239,0.45)", maxWidth: "520px", marginBottom: "3rem", fontWeight: 300 }}>
+            <p style={{ fontSize: "0.95rem", lineHeight: 1.75, color: "var(--color-muted)", maxWidth: "520px", marginBottom: "3rem", fontWeight: 300 }}>
               This is the real thing — a full lecture from an actual Foundations Seminar. Get a feel for the depth, the science, and the teaching style before you register.
             </p>
           </Reveal>
           <Reveal delay={80}>
-            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", border: "1px solid var(--color-line)" }}>
               <iframe
                 src="https://www.youtube.com/embed/9Ss4spDtgq0?rel=0&modestbranding=1&color=white"
                 title="MetFix Foundations Seminar — Live Lecture"
@@ -325,7 +319,7 @@ export default function AffiliateSeminars() {
       </section>
 
       {/* ═══ VIDEO TESTIMONIALS ════════════════════════════════ */}
-      <section style={{ background: "#050505", borderBottom: "1px solid rgba(255,255,255,0.06)", overflow: "hidden" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-cream-2)", borderBottom: "1px solid var(--color-line)", overflow: "hidden" }}>
         <div className="container" style={{ paddingTop: "5rem", paddingBottom: "5rem" }}>
           <Reveal>
             <div className="rule" style={{ marginBottom: "1.5rem" }}>
@@ -335,7 +329,7 @@ export default function AffiliateSeminars() {
               From coaches to{" "}
               <span className="display-serif-italic text-gold">physicians worldwide.</span>
             </h2>
-            <p style={{ fontSize: "0.95rem", lineHeight: 1.75, color: "rgba(239,239,239,0.45)", maxWidth: "520px", marginBottom: "3.5rem", fontWeight: 300 }}>
+            <p style={{ fontSize: "0.95rem", lineHeight: 1.75, color: "var(--color-muted)", maxWidth: "520px", marginBottom: "3.5rem", fontWeight: 300 }}>
               Foundations is making a measurable difference. Here is what participants have to say.
             </p>
           </Reveal>
@@ -345,7 +339,7 @@ export default function AffiliateSeminars() {
             const featured = { id: "XH_cwT9dMcM", name: "Theresa Sbarra", gym: "MetFix Victor, NY", quote: "It was really cool to understand the mechanisms and biomechanical processes behind why science doesn't make you healthy." };
             return (
               <Reveal>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr", marginBottom: "1.5rem", border: "1px solid rgba(255,255,255,0.08)", background: "#0D0D0D", overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", marginBottom: "1.5rem", border: "1px solid var(--color-line)", background: "var(--color-paper)", overflow: "hidden" }}>
                   <div style={{ position: "relative", paddingBottom: "50%", height: 0, overflow: "hidden" }}>
                     <iframe
                       src={`https://www.youtube.com/embed/${featured.id}?rel=0&modestbranding=1&color=white`}
@@ -355,13 +349,13 @@ export default function AffiliateSeminars() {
                       style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
                     />
                   </div>
-                  <div className="featured-caption" style={{ padding: "2rem 2.5rem", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: "2rem", flexWrap: "wrap" }}>
-                    <p style={{ fontFamily: "'Playfair Display'", fontStyle: "italic", fontSize: "1.05rem", color: "rgba(239,239,239,0.85)", lineHeight: 1.65, flex: 1, minWidth: "200px", margin: 0 }}>
+                  <div className="featured-caption" style={{ padding: "2rem 2.5rem", borderTop: "1px solid var(--color-line)", display: "flex", alignItems: "center", gap: "2rem", flexWrap: "wrap" }}>
+                    <p style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "1.05rem", color: "var(--color-ink)", lineHeight: 1.65, flex: 1, minWidth: "200px", margin: 0 }}>
                       &ldquo;{featured.quote}&rdquo;
                     </p>
                     <div style={{ flexShrink: 0 }}>
-                      <div style={{ fontFamily: "'DM Mono'", fontSize: "0.65rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase" }}>{featured.name}</div>
-                      <div style={{ fontFamily: "'DM Mono'", fontSize: "0.55rem", letterSpacing: "0.1em", color: "rgba(239,239,239,0.3)", textTransform: "uppercase", marginTop: "0.3rem" }}>{featured.gym}</div>
+                      <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.65rem", letterSpacing: "0.12em", color: "var(--color-accent-text)", textTransform: "uppercase" }}>{featured.name}</div>
+                      <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.55rem", letterSpacing: "0.1em", color: "var(--color-muted)", textTransform: "uppercase", marginTop: "0.3rem" }}>{featured.gym}</div>
                     </div>
                   </div>
                 </div>
@@ -370,14 +364,14 @@ export default function AffiliateSeminars() {
           })()}
 
           {/* Three smaller videos below */}
-          <div className="video-testimonials-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "rgba(255,255,255,0.06)" }}>
+          <div className="video-testimonials-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "var(--color-line)" }}>
             {[
               { id: "BKJR8l5sZ0s", name: "Jen Crichton, MD", gym: "Petra Health MetFix, Canada", quote: "As a physician, there is no better feeling than leading someone back to their best metabolic health." },
               { id: "jq-gVWs3ZSs", name: "Liang Kong", gym: "CrossFit Kongfusion, China", quote: "We're only on the first day, but it already broke my mind." },
               { id: "tQH39Lt3Fb8", name: "MetFix Attendee", gym: "Foundations Seminar", quote: "Two days that change how you coach, train, and think about health." },
             ].map((v, i) => (
               <Reveal key={i} delay={i * 80}>
-                <div style={{ background: "#0D0D0D", display: "flex", flexDirection: "column" }}>
+                <div style={{ background: "var(--color-paper)", display: "flex", flexDirection: "column" }}>
                   <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", flexShrink: 0 }}>
                     <iframe
                       src={`https://www.youtube.com/embed/${v.id}?rel=0&modestbranding=1&color=white`}
@@ -387,12 +381,12 @@ export default function AffiliateSeminars() {
                       style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
                     />
                   </div>
-                  <div style={{ padding: "1.25rem 1.5rem", borderTop: "1px solid rgba(255,255,255,0.06)", flex: 1 }}>
-                    <p style={{ fontFamily: "'Playfair Display'", fontStyle: "italic", fontSize: "0.875rem", color: "rgba(239,239,239,0.75)", lineHeight: 1.6, marginBottom: "0.875rem" }}>
+                  <div style={{ padding: "1.25rem 1.5rem", borderTop: "1px solid var(--color-line)", flex: 1 }}>
+                    <p style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "0.875rem", color: "var(--color-ink)", lineHeight: 1.6, marginBottom: "0.875rem" }}>
                       &ldquo;{v.quote}&rdquo;
                     </p>
-                    <div style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase" }}>{v.name}</div>
-                    <div style={{ fontFamily: "'DM Mono'", fontSize: "0.55rem", letterSpacing: "0.1em", color: "rgba(239,239,239,0.3)", textTransform: "uppercase", marginTop: "0.25rem" }}>{v.gym}</div>
+                    <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.6rem", letterSpacing: "0.12em", color: "var(--color-accent-text)", textTransform: "uppercase" }}>{v.name}</div>
+                    <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.55rem", letterSpacing: "0.1em", color: "var(--color-muted)", textTransform: "uppercase", marginTop: "0.25rem" }}>{v.gym}</div>
                   </div>
                 </div>
               </Reveal>
@@ -401,7 +395,7 @@ export default function AffiliateSeminars() {
         </div>
       </section>
       {/* ═══ WHAT TO EXPECT ═══════════════════════════════════════ */}
-      <section style={{ background: "#0D0D0D", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-paper)", borderBottom: "1px solid var(--color-line)" }}>
         <div className="container" style={{ paddingTop: "5rem", paddingBottom: "5rem" }}>
           <Reveal>
             <div className="rule"><span className="label-mono">What to Expect</span></div>
@@ -419,12 +413,12 @@ export default function AffiliateSeminars() {
                   gridTemplateColumns: "3rem 1fr 2fr",
                   gap: "2rem",
                   padding: "2rem 0",
-                  borderBottom: i < WHAT_TO_EXPECT.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                  borderBottom: i < WHAT_TO_EXPECT.length - 1 ? "1px solid var(--color-line)" : "none",
                   alignItems: "start",
                 }} className="expect-row">
-                  <span style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.15em", color: "rgba(201,169,110,0.5)", textTransform: "uppercase", paddingTop: "0.25rem" }}>{item.num}</span>
+                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "0.6rem", letterSpacing: "0.15em", color: "var(--color-accent-text)", textTransform: "uppercase", paddingTop: "0.25rem" }}>{item.num}</span>
                   <h3 className="display-serif" style={{ fontSize: "clamp(1rem, 2vw, 1.25rem)", lineHeight: 1.3, margin: 0 }}>{item.title}</h3>
-                  <p className="expect-desc" style={{ fontSize: "0.9rem", lineHeight: 1.8, color: "rgba(239,239,239,0.5)", fontWeight: 300, margin: 0 }}>{item.desc}</p>
+                  <p className="expect-desc" style={{ fontSize: "0.9rem", lineHeight: 1.8, color: "var(--color-muted)", fontWeight: 300, margin: 0 }}>{item.desc}</p>
                 </div>
               </Reveal>
             ))}
@@ -433,7 +427,7 @@ export default function AffiliateSeminars() {
       </section>
 
       {/* ═══ CALENDAR ═════════════════════════════════════════════ */}
-      <section id="calendar" style={{ background: "#080808", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" id="calendar" style={{ background: "var(--color-cream-2)", borderBottom: "1px solid var(--color-line)" }}>
         <div className="container" style={{ paddingTop: "5rem", paddingBottom: "5rem" }}>
           <Reveal>
             <div className="rule"><span className="label-mono">2026 Schedule</span></div>
@@ -441,7 +435,7 @@ export default function AffiliateSeminars() {
               Find a seminar{" "}
               <span className="display-serif-italic text-gold">near you.</span>
             </h2>
-            <p style={{ fontSize: "0.95rem", lineHeight: 1.75, color: "rgba(239,239,239,0.45)", maxWidth: "520px", marginBottom: "2.5rem", fontWeight: 300 }}>
+            <p style={{ fontSize: "0.95rem", lineHeight: 1.75, color: "var(--color-muted)", maxWidth: "520px", marginBottom: "2.5rem", fontWeight: 300 }}>
               Foundations Seminars are held at MetFix affiliate gyms worldwide. Each seminar is limited in size to ensure a hands-on, high-quality experience.
             </p>
           </Reveal>
@@ -452,19 +446,9 @@ export default function AffiliateSeminars() {
               {(["all", "USA", "International"] as const).map(f => (
                 <button
                   key={f}
+                  type="button"
                   onClick={() => setFilter(f)}
-                  style={{
-                    fontFamily: "'DM Mono'",
-                    fontSize: "0.6rem",
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    padding: "0.5rem 1.25rem",
-                    border: filter === f ? "1px solid #C9A96E" : "1px solid rgba(255,255,255,0.12)",
-                    background: filter === f ? "rgba(201,169,110,0.1)" : "transparent",
-                    color: filter === f ? "#C9A96E" : "rgba(239,239,239,0.4)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
+                  className={`sem-filter-btn${filter === f ? " is-active" : ""}`}
                 >
                   {f === "all" ? "All Locations" : f}
                 </button>
@@ -473,37 +457,34 @@ export default function AffiliateSeminars() {
           </Reveal>
 
           {/* Seminar list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1px", background: "rgba(255,255,255,0.06)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1px", background: "var(--color-line)" }}>
             {filtered.map((s, i) => (
               <Reveal key={s.id} delay={i * 50}>
                 <div className="seminar-row" style={{
-                  background: "#080808",
+                  background: "var(--color-paper)",
                   display: "grid",
                   gridTemplateColumns: "auto 1fr auto",
                   gap: "2rem",
                   alignItems: "center",
                   padding: "1.75rem 2rem",
                   transition: "background 0.2s",
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "#0D0D0D")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "#080808")}
-                >
+                }}>
                   {/* Date */}
                   <div className="seminar-date" style={{ minWidth: "140px", overflow: "hidden" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-                      <Calendar size={12} style={{ color: "#C9A96E", flexShrink: 0 }} />
-                      <span style={{ fontFamily: "'Playfair Display'", fontWeight: 700, fontSize: "0.95rem", color: "#EFEFEF" }}>{s.date}</span>
+                      <Calendar size={12} style={{ color: "var(--color-accent-text)", flexShrink: 0 }} />
+                      <span style={{ fontFamily: "var(--font-serif)", fontWeight: 700, fontSize: "0.95rem", color: "var(--color-ink)" }}>{s.date}</span>
                     </div>
                     <div style={{
                       display: "inline-block",
-                      fontFamily: "'DM Mono'",
+                      fontFamily: "var(--font-sans)",
                       fontSize: "0.5rem",
                       letterSpacing: "0.1em",
                       textTransform: "uppercase",
                       padding: "0.2rem 0.5rem",
-                      background: s.status === "open" ? "rgba(201,169,110,0.1)" : "rgba(255,255,255,0.05)",
-                      color: s.status === "open" ? "#C9A96E" : "rgba(239,239,239,0.3)",
-                      border: s.status === "open" ? "1px solid rgba(201,169,110,0.25)" : "1px solid rgba(255,255,255,0.08)",
+                      background: s.status === "open" ? "color-mix(in srgb, var(--color-accent) 12%, transparent)" : "var(--color-line)",
+                      color: s.status === "open" ? "var(--color-accent-text)" : "var(--color-muted)",
+                      border: s.status === "open" ? "1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)" : "1px solid var(--color-line)",
                     }}>
                       {s.status === "open" ? "Registration Open" : "Announced"}
                     </div>
@@ -512,10 +493,10 @@ export default function AffiliateSeminars() {
                   {/* Location */}
                   <div className="seminar-location">
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-                      <MapPin size={12} style={{ color: "rgba(239,239,239,0.3)", flexShrink: 0 }} />
-                      <span style={{ fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "1rem", color: "#EFEFEF" }}>{s.city}</span>
+                      <MapPin size={12} style={{ color: "var(--color-muted)", flexShrink: 0 }} />
+                      <span style={{ fontFamily: "var(--font-sans)", fontWeight: 600, fontSize: "1rem", color: "var(--color-ink)" }}>{s.city}</span>
                     </div>
-                    <div style={{ fontFamily: "'DM Sans'", fontSize: "0.8rem", color: "rgba(239,239,239,0.4)", fontWeight: 300, paddingLeft: "1.25rem" }}>
+                    <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.8rem", color: "var(--color-muted)", fontWeight: 300, paddingLeft: "1.25rem" }}>
                       @ {s.venue}
                     </div>
                   </div>
@@ -536,7 +517,7 @@ export default function AffiliateSeminars() {
           </div>
 
           <Reveal delay={100}>
-            <p style={{ fontFamily: "'DM Mono'", fontSize: "0.58rem", letterSpacing: "0.1em", color: "rgba(239,239,239,0.2)", textTransform: "uppercase", marginTop: "1.5rem" }}>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "0.58rem", letterSpacing: "0.1em", color: "var(--color-muted)", textTransform: "uppercase", marginTop: "1.5rem" }}>
               More dates announced throughout the year · Check back for updates
             </p>
           </Reveal>
@@ -544,7 +525,7 @@ export default function AffiliateSeminars() {
       </section>
 
       {/* ═══ PREREQUISITES ════════════════════════════════════════ */}
-      <section style={{ background: "#0D0D0D", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-paper)", borderBottom: "1px solid var(--color-line)" }}>
         <div className="container" style={{ paddingTop: "5rem", paddingBottom: "5rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "4rem", alignItems: "center" }}>
             <Reveal direction="left">
@@ -554,7 +535,7 @@ export default function AffiliateSeminars() {
                   Foundations is{" "}
                   <span className="display-serif-italic text-gold">a critical step in your education.</span>
                 </h2>
-                <p style={{ fontSize: "1rem", lineHeight: 1.8, color: "rgba(239,239,239,0.6)", marginBottom: "2rem", fontWeight: 300 }}>
+                <p style={{ fontSize: "1rem", lineHeight: 1.8, color: "var(--color-muted)", marginBottom: "2rem", fontWeight: 300 }}>
                   To get the most out of Foundations, we recommend completing the MetFix online curriculum first. The seminar is designed to apply and deepen what you've already learned, not to introduce it it for the first time.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem", marginBottom: "2.5rem" }}>
@@ -572,33 +553,32 @@ export default function AffiliateSeminars() {
                       style={{
                         display: "flex", alignItems: "center", gap: "1rem",
                         padding: "0.875rem 1rem",
-                        background: item.active ? "rgba(201,169,110,0.08)" : "rgba(255,255,255,0.02)",
-                        border: item.active ? "1px solid rgba(201,169,110,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        background: item.active ? "color-mix(in srgb, var(--color-accent) 8%, transparent)" : "var(--color-cream)",
+                        border: item.active ? "1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)" : "1px solid var(--color-line)",
                         textDecoration: "none",
                         transition: "background 0.2s",
                       }}
-                      onMouseEnter={e => { if (!item.active) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
-                      onMouseLeave={e => { if (!item.active) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                      onMouseEnter={e => { if (!item.active) e.currentTarget.style.background = "var(--color-cream-2)"; }}
+                      onMouseLeave={e => { if (!item.active) e.currentTarget.style.background = "var(--color-cream)"; }}
                     >
-                      <span style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.1em", color: item.active ? "#C9A96E" : "rgba(239,239,239,0.3)", minWidth: "1.5rem" }}>{item.step}</span>
+                      <span style={{ fontFamily: "var(--font-sans)", fontSize: "0.6rem", letterSpacing: "0.1em", color: item.active ? "var(--color-accent-text)" : "var(--color-muted)", minWidth: "1.5rem" }}>{item.step}</span>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontFamily: "'DM Sans'", fontWeight: 600, fontSize: "0.9rem", color: item.active ? "#EFEFEF" : "rgba(239,239,239,0.7)" }}>{item.label}</div>
-                        <div style={{ fontFamily: "'DM Sans'", fontSize: "0.75rem", color: "rgba(239,239,239,0.3)", fontWeight: 300 }}>{item.note}</div>
+                        <div style={{ fontFamily: "var(--font-sans)", fontWeight: 600, fontSize: "0.9rem", color: item.active ? "var(--color-ink)" : "var(--color-muted)" }}>{item.label}</div>
+                        <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.75rem", color: "var(--color-muted)", fontWeight: 300 }}>{item.note}</div>
                       </div>
-                      {item.active && <span style={{ fontFamily: "'DM Mono'", fontSize: "0.55rem", letterSpacing: "0.1em", color: "#C9A96E", textTransform: "uppercase" }}>↓ Register</span>}
+                      {item.active && <span style={{ fontFamily: "var(--font-sans)", fontSize: "0.55rem", letterSpacing: "0.1em", color: "var(--color-accent-text)", textTransform: "uppercase" }}>↓ Register</span>}
                     </a>
                   ))}
                 </div>
               </div>
             </Reveal>
             <Reveal direction="right" delay={100}>
-              <div style={{ position: "relative", overflow: "hidden", minHeight: "400px", background: "#111" }}>
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(10,10,10,0.8) 0%, rgba(10,10,10,0.2) 60%)" }} />
-                <div style={{ position: "absolute", bottom: "2rem", left: "2rem", right: "2rem" }}>
-                  <blockquote style={{ fontFamily: "'Playfair Display'", fontStyle: "italic", fontSize: "1.1rem", color: "#EFEFEF", lineHeight: 1.6, marginBottom: "0.75rem" }}>
+              <div className="sem-panel" style={{ position: "relative", overflow: "hidden", minHeight: "400px", padding: "2rem", display: "flex", alignItems: "flex-end" }}>
+                <div>
+                  <blockquote style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "1.1rem", color: "var(--color-ink)", lineHeight: 1.6, marginBottom: "0.75rem" }}>
                     "Foundations didn't just teach me. It changed how I think about every client I've ever worked with."
                   </blockquote>
-                  <div style={{ fontFamily: "'DM Mono'", fontSize: "0.55rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase" }}>MetFix Coach, Columbus, OH</div>
+                  <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.55rem", letterSpacing: "0.12em", color: "var(--color-accent-text)", textTransform: "uppercase" }}>MetFix Coach, Columbus, OH</div>
                 </div>
               </div>
             </Reveal>
@@ -607,7 +587,7 @@ export default function AffiliateSeminars() {
       </section>
 
       {/* ═══ HOST A SEMINAR ═══════════════════════════════════════ */}
-      <section style={{ background: "#080808", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-cream-2)", borderBottom: "1px solid var(--color-line)" }}>
         <div className="container" style={{ paddingTop: "5rem", paddingBottom: "5rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "4rem", alignItems: "center" }}>
             <Reveal direction="left">
@@ -617,10 +597,10 @@ export default function AffiliateSeminars() {
                   Bring Foundations{" "}
                   <span className="display-serif-italic text-gold">to your gym.</span>
                 </h2>
-                <p style={{ fontSize: "1rem", lineHeight: 1.8, color: "rgba(239,239,239,0.6)", marginBottom: "2rem", fontWeight: 300 }}>
+                <p style={{ fontSize: "1rem", lineHeight: 1.8, color: "var(--color-muted)", marginBottom: "2rem", fontWeight: 300 }}>
                   MetFix affiliate gyms can apply to host a Foundations Seminar. Hosting puts your facility on the global MetFix map, drives coach traffic to your gym, and positions you as a hub for metabolic health education in your community.
                 </p>
-                <p style={{ fontSize: "0.9rem", lineHeight: 1.75, color: "rgba(239,239,239,0.4)", marginBottom: "2.5rem", fontWeight: 300 }}>
+                <p style={{ fontSize: "0.9rem", lineHeight: 1.75, color: "var(--color-muted)", marginBottom: "2.5rem", fontWeight: 300 }}>
                   Hosting is available exclusively to MetFix affiliates. If you're not yet an affiliate, start there.
                 </p>
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
@@ -635,8 +615,8 @@ export default function AffiliateSeminars() {
             </Reveal>
             <Reveal direction="right" delay={100}>
               <div>
-              <div style={{ padding: "2rem", border: "1px solid rgba(255,255,255,0.08)", background: "#0D0D0D" }}>
-                <div style={{ fontFamily: "'DM Mono'", fontSize: "0.6rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.5rem" }}>Host Benefits</div>
+              <div style={{ padding: "2rem", border: "1px solid var(--color-line)", background: "var(--color-paper)" }}>
+                <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.6rem", letterSpacing: "0.15em", color: "var(--color-accent-text)", textTransform: "uppercase", marginBottom: "1.5rem" }}>Host Benefits</div>
                 {[
                   "Listed on the global MetFix seminar calendar",
                   "Coaches travel to your facility from your region",
@@ -646,8 +626,8 @@ export default function AffiliateSeminars() {
                   "Find 10 participants and we will come to you",
                 ].map((b, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", marginBottom: "0.875rem" }}>
-                    <span style={{ color: "#C9A96E", flexShrink: 0, marginTop: "0.1rem", fontSize: "0.8rem" }}>✓</span>
-                    <span style={{ fontFamily: "'DM Sans'", fontSize: "0.875rem", color: "rgba(239,239,239,0.65)", lineHeight: 1.5 }}>{b}</span>
+                    <span style={{ color: "var(--color-accent-text)", flexShrink: 0, marginTop: "0.1rem", fontSize: "0.8rem" }}>✓</span>
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "0.875rem", color: "var(--color-muted)", lineHeight: 1.5 }}>{b}</span>
                   </div>
                 ))}
               </div>
@@ -657,7 +637,7 @@ export default function AffiliateSeminars() {
         </div>
       </section>
       {/* ═══ BOTTOM CTA ═══════════════════════════════════════════ */}
-      <section style={{ background: "#0A0A0A" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-cream)" }}>
         <div className="container" style={{ paddingTop: "6rem", paddingBottom: "6rem", textAlign: "center" }}>
           <Reveal>
             <div className="rule" style={{ justifyContent: "center" }}><span className="label-mono">Ready to Attend?</span></div>
@@ -665,7 +645,7 @@ export default function AffiliateSeminars() {
               Start with the{" "}
               <span className="display-serif-italic text-gold">free class.</span>
             </h2>
-            <p style={{ fontSize: "1rem", lineHeight: 1.75, color: "rgba(239,239,239,0.5)", maxWidth: "480px", margin: "0 auto 2.5rem", fontWeight: 300 }}>
+            <p style={{ fontSize: "1rem", lineHeight: 1.75, color: "var(--color-muted)", maxWidth: "480px", margin: "0 auto 2.5rem", fontWeight: 300 }}>
               Every Foundations attendee starts with What Is MetFix? The free foundational course that sets the stage for everything that follows.
             </p>
             <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
@@ -681,79 +661,46 @@ export default function AffiliateSeminars() {
       </section>
 
       {/* ═══ STICKY MOBILE CTA BAR ══════════════════════════════ */}
-      <div style={{
-        display: isDesktop ? "none" : "flex",
-        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
-        background: "rgba(10,10,10,0.97)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-        borderTop: "1px solid rgba(255,255,255,0.08)",
-        padding: "0.875rem 1.5rem",
-        paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom))",
-        gap: "0.75rem", alignItems: "center",
-      }}>
+      <div
+        className="sem-sticky-cta"
+        style={{
+          display: isDesktop ? "none" : "flex",
+        }}
+      >
         <a href="https://brokenscience.org/metfix/foundations/" target="_blank" rel="noopener noreferrer"
           className="btn-primary" style={{ flex: 1, justifyContent: "center", fontSize: "0.85rem" }}>
           Register for Foundations <ExternalLink size={13} />
         </a>
-        <Link href="/become-an-affiliate"
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0.625rem 1rem", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(239,239,239,0.7)", textDecoration: "none", fontFamily: "'DM Mono'", fontSize: "0.65rem", letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+        <Link href="/become-an-affiliate" className="sem-sticky-link">
           Affiliate
         </Link>
       </div>
 
-      {/* ═══ FOOTER ═══════════════════════════════════════════════ */}
-      <footer style={{ background: "#080808", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "2.5rem", paddingBottom: "2rem" }} className="footer-mobile-pad">
+      {/* ═══ FOOTER (inline until F2 SiteFooter) ═══════════════════ */}
+      <footer
+        style={{
+          background: "var(--color-cream-2)",
+          borderTop: "1px solid var(--color-line)",
+          paddingTop: "2.5rem",
+          paddingBottom: "2rem",
+        }}
+        className="footer-mobile-pad"
+      >
         <div className="container">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
             <div>
-              <div style={{ fontFamily: "'DM Sans'", fontWeight: 800, fontSize: "1rem", letterSpacing: "0.15em", color: "#EFEFEF", textTransform: "uppercase" }}>MetFix</div>
-              <div style={{ fontFamily: "'DM Mono'", fontSize: "0.5rem", letterSpacing: "0.18em", color: "#C9A96E", textTransform: "uppercase" }}>The Metabolic Fix</div>
+              <div style={{ fontFamily: "var(--font-sans)", fontWeight: 800, fontSize: "1rem", letterSpacing: "0.15em", color: "var(--color-ink)", textTransform: "uppercase" }}>MetFix</div>
+              <div style={{ fontFamily: "var(--font-sans)", fontSize: "0.5rem", letterSpacing: "0.18em", color: "var(--color-accent-text)", textTransform: "uppercase" }}>The Metabolic Fix</div>
             </div>
             <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap" }}>
-              <Link href="/" style={{ fontFamily: "'DM Sans'", fontSize: "0.8rem", color: "rgba(239,239,239,0.4)", textDecoration: "none" }}>← Home</Link>
-              <Link href="/classes" style={{ fontFamily: "'DM Sans'", fontSize: "0.8rem", color: "rgba(239,239,239,0.4)", textDecoration: "none" }}>All Courses</Link>
-              <Link href="/become-an-affiliate" style={{ fontFamily: "'DM Sans'", fontSize: "0.8rem", color: "rgba(239,239,239,0.4)", textDecoration: "none" }}>Become an Affiliate</Link>
+              <Link href="/" style={{ fontFamily: "var(--font-sans)", fontSize: "0.8rem", color: "var(--color-muted)", textDecoration: "none" }}>← Home</Link>
+              <Link href="/classes" style={{ fontFamily: "var(--font-sans)", fontSize: "0.8rem", color: "var(--color-muted)", textDecoration: "none" }}>All Courses</Link>
+              <Link href="/become-an-affiliate" style={{ fontFamily: "var(--font-sans)", fontSize: "0.8rem", color: "var(--color-muted)", textDecoration: "none" }}>Become an Affiliate</Link>
             </div>
             <CopyrightText variant="compact" />
           </div>
         </div>
       </footer>
-      <style>{`
-        /* ── Mobile ≤ 767px ─────────────────────────────────── */
-        @media (max-width: 767px) {
-          /* Hero */
-          .affiliate-seminars-hero { padding-top: 6rem !important; padding-bottom: 3rem !important; }
-
-          /* Video testimonials: 3-col → 1-col */
-          .video-testimonials-grid { grid-template-columns: 1fr !important; }
-
-          /* What to Expect rows: 3-col → 2-col (num + title), hide description */
-          .expect-row { grid-template-columns: 2.5rem 1fr !important; gap: 1rem !important; padding: 1.25rem 0 !important; }
-          .expect-row .expect-desc { display: none !important; }
-
-          /* Seminar rows: 3-col → stacked 2-row */
-          .seminar-row {
-            grid-template-columns: 1fr auto !important;
-            grid-template-rows: auto auto !important;
-            gap: 0.75rem 1rem !important;
-            padding: 1.25rem 1rem !important;
-          }
-          .seminar-date { grid-column: 1 / 2; grid-row: 1; min-width: 0 !important; }
-          .seminar-location { grid-column: 1 / 2; grid-row: 2; }
-          .seminar-cta { grid-column: 2 / 3; grid-row: 1 / 3; align-self: center; }
-
-          /* Stats grid */
-          .seminar-stats-grid { grid-template-columns: 1fr 1fr !important; }
-
-          /* Featured video caption: stack vertically */
-          .featured-caption { flex-direction: column !important; gap: 0.75rem !important; padding: 1.25rem !important; }
-        }
-
-        /* ── Small phones ≤ 480px ───────────────────────────── */
-        @media (max-width: 480px) {
-          .seminar-cta { font-size: 0.7rem !important; padding: 0.5rem 0.875rem !important; }
-          .expect-row { padding: 1rem 0 !important; }
-        }
-      `}</style>
     </div>
   );
 }
