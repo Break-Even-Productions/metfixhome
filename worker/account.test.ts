@@ -2503,6 +2503,23 @@ describe("worker/account routes", () => {
         expect(upper.status).toBe(400);
         expect(await upper.json()).toEqual({ error: "invalid_idempotency_key" });
         expect(recorded).toHaveLength(0);
+
+        // CL-T20: interior-space key → 400 (Worker does not normalize).
+        recorded.length = 0;
+        const interior = `${K.slice(0, 8)} ${K.slice(9)}`;
+        const spaced = await callAccount(
+          h,
+          "/api/account/courses/10/claim",
+          {
+            method: "POST",
+            headers: claimHeaders(sess, interior),
+            body: JSON.stringify({ path: "redeem_ltv" }),
+          },
+          fetchImpl,
+        );
+        expect(spaced.status).toBe(400);
+        expect(await spaced.json()).toEqual({ error: "invalid_idempotency_key" });
+        expect(recorded).toHaveLength(0);
       } finally {
         spyWarn.mockRestore();
         spyLog.mockRestore();
@@ -2510,15 +2527,36 @@ describe("worker/account routes", () => {
       }
     });
 
-    it("CL-DTO-1: claim_options_rejected → 502 upstream_error + one log", async () => {
+    it("CL-DTO-1: claim_options_rejected reasons + event keys + allowlist", async () => {
       const sess = await withSession(h);
       const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      try {
+
+      const deep = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+      const courseKeys = [
+        "course_id",
+        "slug",
+        "title",
+        "completion_status",
+        "completed_at",
+        "price_cents",
+        "already_claimed",
+        "claimed_at",
+        "claimed_via",
+        "access_expires_at",
+        "paths",
+      ] as const;
+
+      async function rejectCase(
+        label: string,
+        mutate: (raw: Record<string, unknown>) => void,
+        reason: string,
+      ) {
+        spyWarn.mockClear();
+        const raw = deep(CLF) as Record<string, unknown>;
+        mutate(raw);
         const { fetchImpl } = makeFetchMock([
           async ({ path }) => {
-            if (path.endsWith("/me/certificate-claim-options")) {
-              return Response.json({ currency: "USD", ltv: {}, credit: {}, courses: [] });
-            }
+            if (path.endsWith("/me/certificate-claim-options")) return Response.json(raw);
             return new Response(null, { status: 404 });
           },
         ]);
@@ -2528,8 +2566,8 @@ describe("worker/account routes", () => {
           { headers: { Cookie: sess.cookie } },
           fetchImpl,
         );
-        expect(res.status).toBe(502);
-        expect(await res.json()).toEqual({ error: "upstream_error" });
+        expect(res.status, label).toBe(502);
+        expect(await res.json(), label).toEqual({ error: "upstream_error" });
         const logs = spyWarn.mock.calls
           .map((c) => {
             try {
@@ -2539,39 +2577,188 @@ describe("worker/account routes", () => {
             }
           })
           .filter((l) => l?.event === "claim_options_rejected");
-        expect(logs).toHaveLength(1);
-        expect(logs[0]).toMatchObject({ event: "claim_options_rejected", reason: "bad_enum" });
+        expect(logs, label).toHaveLength(1);
+        expect(logs[0], label).toEqual({ event: "claim_options_rejected", reason });
+        expect(Object.keys(logs[0]!).sort(), label).toEqual(["event", "reason"]);
+      }
+
+      try {
+        for (const k of ["currency", "ltv", "credit", "courses"] as const) {
+          await rejectCase(`bad_shape missing ${k}`, (raw) => {
+            delete raw[k];
+          }, "bad_shape");
+        }
+        for (const k of courseKeys) {
+          await rejectCase(`bad_shape missing course.${k}`, (raw) => {
+            const course = (raw.courses as Record<string, unknown>[])[0]!;
+            delete course[k];
+          }, "bad_shape");
+        }
+
+        await rejectCase("bad_enum currency USD", (raw) => {
+          raw.currency = "USD";
+        }, "bad_enum");
+        await rejectCase("bad_enum completion_status", (raw) => {
+          (raw.courses as Record<string, unknown>[])[0]!.completion_status = "done";
+        }, "bad_enum");
+        await rejectCase("bad_enum claimed_via ltv", (raw) => {
+          (raw.courses as Record<string, unknown>[])[0]!.claimed_via = "ltv";
+        }, "bad_enum");
+        await rejectCase("bad_enum promo_state", (raw) => {
+          (raw.credit as Record<string, unknown>).promo_state = "later";
+        }, "bad_enum");
+
+        await rejectCase("bad_path missing path", (raw) => {
+          (raw.courses as Record<string, unknown>[])[0]!.paths = [
+            {
+              path: "redeem_ltv",
+              eligible: false,
+              shortfall_cents: 8000,
+              price_cents: 30000,
+              reason_code: "insufficient_ltv",
+            },
+            {
+              path: "prepay_credit",
+              eligible: true,
+              shortfall_cents: 8000,
+              price_cents: 30000,
+              reason_code: null,
+            },
+          ];
+        }, "bad_path");
+        await rejectCase("bad_path reordered", (raw) => {
+          (raw.courses as Record<string, unknown>[])[0]!.paths = [
+            {
+              path: "buy_outright",
+              eligible: true,
+              shortfall_cents: 30000,
+              price_cents: 30000,
+              reason_code: null,
+            },
+            {
+              path: "redeem_ltv",
+              eligible: false,
+              shortfall_cents: 8000,
+              price_cents: 30000,
+              reason_code: "insufficient_ltv",
+            },
+            {
+              path: "prepay_credit",
+              eligible: true,
+              shortfall_cents: 8000,
+              price_cents: 30000,
+              reason_code: null,
+            },
+          ];
+        }, "bad_path");
+
+        await rejectCase("bad_money available 21999", (raw) => {
+          (raw.ltv as Record<string, unknown>).available_cents = 21999;
+        }, "bad_money");
+
+        // Injected ids never appear on a valid DTO.
+        spyWarn.mockClear();
+        const injected = deep(CLF) as Record<string, unknown>;
+        injected.whop_plan_id = "plan_injected";
+        injected.membership_id = "mem_injected";
+        (injected.courses as Record<string, unknown>[])[0]!.whop_plan_id = "plan_course";
+        (injected.courses as Record<string, unknown>[])[0]!.membership_id = 42;
+        const { fetchImpl } = makeFetchMock([
+          async ({ path }) => {
+            if (path.endsWith("/me/certificate-claim-options")) return Response.json(injected);
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const ok = await callAccount(
+          h,
+          "/api/account/certificate-claim-options",
+          { headers: { Cookie: sess.cookie } },
+          fetchImpl,
+        );
+        expect(ok.status).toBe(200);
+        const body = (await ok.json()) as Record<string, unknown>;
+        expect(body).not.toHaveProperty("whop_plan_id");
+        expect(body).not.toHaveProperty("membership_id");
+        expect(JSON.stringify(body)).not.toMatch(/whop_plan_id|membership_id|plan_injected|mem_injected/);
       } finally {
         spyWarn.mockRestore();
       }
     });
 
-    it("CL-LEAK-1: every claim response body has 0 biz_/cca_/membership_id/attempt (checkout_url excluded)", async () => {
+    it("CL-LEAK-1: spec regex on every claim POST + claim-options body", async () => {
       const sess = await withSession(h);
+      // Spec rev1.2.3 / S7 — verbatim.
       const LEAK =
         /\b(biz|cus|sub|mem|plan|prod|ch)_[A-Za-z0-9]{6,}\b|\bcca_[a-f0-9]+\b|\bmembership_id\b|\battempt_id\b/;
-      const cases: Array<{ path: string; upstream: Response }> = [
+
+      function assertClean(label: string, body: unknown) {
+        const clone =
+          body && typeof body === "object" && !Array.isArray(body)
+            ? { ...(body as Record<string, unknown>) }
+            : body;
+        if (clone && typeof clone === "object" && !Array.isArray(clone)) {
+          delete (clone as Record<string, unknown>).checkout_url;
+        }
+        expect(JSON.stringify(clone), label).not.toMatch(LEAK);
+      }
+
+      const claimCases: Array<{ label: string; path: string; upstream: Response }> = [
         {
+          label: "prepay 200 extras",
           path: "prepay_credit",
           upstream: Response.json({
             checkout_url: CHECKOUT,
             attempt_id: "cca_deadbeefdeadbeefdeadbeef",
             membership_id: 9,
+            whop_company_id: "biz_u15G8d34g9c0B0",
           }),
         },
         {
+          label: "buy 200",
+          path: "buy_outright",
+          upstream: Response.json({ checkout_url: CHECKOUT }),
+        },
+        {
+          label: "redeem 200",
           path: "redeem_ltv",
           upstream: Response.json({ already_claimed: false, claim_method: "redeem_ltv" }),
         },
         {
+          label: "402",
           path: "redeem_ltv",
           upstream: Response.json(
             { code: "bsi_insufficient_certificate_ltv", data: { shortfall_cents: 1 } },
             { status: 402 },
           ),
         },
+        {
+          label: "403",
+          path: "redeem_ltv",
+          upstream: Response.json({ code: "bsi_course_not_completed" }, { status: 403 }),
+        },
+        {
+          label: "404",
+          path: "redeem_ltv",
+          upstream: new Response(null, { status: 404 }),
+        },
+        {
+          label: "409 in_progress",
+          path: "redeem_ltv",
+          upstream: Response.json({ code: "bsi_idempotency_key_in_progress" }, { status: 409 }),
+        },
+        {
+          label: "503 lock",
+          path: "redeem_ltv",
+          upstream: Response.json({ code: "bsi_claim_lock_timeout" }, { status: 503 }),
+        },
+        {
+          label: "418 → 502",
+          path: "redeem_ltv",
+          upstream: Response.json({ code: "whatever", membership_id: "mem_leak" }, { status: 418 }),
+        },
       ];
-      for (const c of cases) {
+
+      for (const c of claimCases) {
         const { fetchImpl } = makeFetchMock([
           async ({ method }) => {
             if (method === "POST") return c.upstream;
@@ -2588,10 +2775,27 @@ describe("worker/account routes", () => {
           },
           fetchImpl,
         );
-        const body = (await res.json()) as Record<string, unknown>;
-        const clone = { ...body };
-        delete clone.checkout_url;
-        expect(JSON.stringify(clone), c.path).not.toMatch(LEAK);
+        assertClean(c.label, await res.json());
+      }
+
+      // CL1 claim-options: success + 502 rejection bodies.
+      for (const upstream of [
+        CLF,
+        { currency: "USD", ltv: {}, credit: {}, courses: [], membership_id: 1 },
+      ]) {
+        const { fetchImpl } = makeFetchMock([
+          async ({ path }) => {
+            if (path.endsWith("/me/certificate-claim-options")) return Response.json(upstream);
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const res = await callAccount(
+          h,
+          "/api/account/certificate-claim-options",
+          { headers: { Cookie: sess.cookie } },
+          fetchImpl,
+        );
+        assertClean(`CL1 ${res.status}`, await res.json());
       }
     });
 

@@ -403,8 +403,14 @@ describe("account.repo-scan", () => {
 
   it("CI-CHECK-1: ci.yml runs npm run check as a required step", () => {
     const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
-    expect(ci).toMatch(/^\s+run:\s*npm run check\s*$/m);
-    expect(ci).not.toMatch(/npm run check[\s\S]{0,80}continue-on-error:\s*true/);
+    // Isolate the Typecheck step that runs `npm run check`.
+    const step =
+      ci.match(
+        /- name:\s*Typecheck client and shared\n([\s\S]*?)(?=\n\s+- name:|\n\s+-\s*$|$)/,
+      )?.[1] ?? "";
+    expect(step).toMatch(/^\s+run:\s*npm run check\s*$/m);
+    expect(step).not.toMatch(/continue-on-error:\s*true/);
+    expect(step).not.toMatch(/^\s+if:/m);
   });
 
   it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.12 frozen)", () => {

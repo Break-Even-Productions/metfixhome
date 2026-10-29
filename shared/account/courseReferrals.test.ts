@@ -522,6 +522,36 @@ describe("buildReferralsDto", () => {
     warn.mockRestore();
   });
 
+  it("CR-ORDER-1: join_code bad percent + bad join_url → one mismatch, no bad_join_url", () => {
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: {
+          ...CONTRACT_JOIN,
+          commission_percent: 20,
+          commission_bps: 1500,
+          join_url: "https://evil.example/x",
+        },
+        course_links: [CONTRACT_LINK],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.dto.join_code).toBeNull();
+    expect(built.dto.join_code_dropped).toBe(true);
+    expect(built.logs).toEqual([
+      {
+        event: "course_link_dropped",
+        reason: "join_code_commission_mismatch",
+        course_id: null,
+      },
+    ]);
+    expect(built.logs.some((l) => l.reason === "bad_join_url")).toBe(false);
+  });
+
   it("CR-ORDER-T2: join_code.commission_bps -1 → 502, 0 events", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const built = buildReferralsDto(

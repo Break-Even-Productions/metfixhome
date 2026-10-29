@@ -387,6 +387,45 @@ describe("PR D course referrals + checkout", () => {
     spy.mockRestore();
   });
 
+  it("CR-ORDER-T1 route: valid join + bad percent + bps 10001 → 502 no-store, 0 drops", async () => {
+    const sess = await withSession(h);
+    const warns: unknown[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      warns.push(typeof msg === "string" ? JSON.parse(msg) : msg);
+    });
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) {
+          return Response.json({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: JOIN,
+            course_links: [
+              link({ course_id: 1 }),
+              link({ course_id: 2, commission_percent: 20, commission_bps: 1500 }),
+              link({ course_id: 3, commission_bps: 10001 }),
+            ],
+          });
+        }
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "upstream_error" });
+    assertNoStore(res);
+    expect(warns.filter((w) => (w as { event?: string }).event === "course_link_dropped")).toEqual(
+      [],
+    );
+    spy.mockRestore();
+  });
+
   it("CR-ELIG-4: exactly 1 upstream POST; {error,reason_code} only; no leak; both routes", async () => {
     const sess = await withSession(h);
     const cases: Array<{

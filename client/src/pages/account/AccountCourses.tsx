@@ -226,8 +226,9 @@ export default function AccountCourses() {
     setBusy(true);
     setError(null);
     setMessage(null);
-    // errata d3 DR-7 / S-R4-1: one key per attempt; different option → new key;
-    // same option after in-progress / network error reuses the key.
+    // errata d3/d4 DR-7 / S-R4-1: one key per attempt; different option → new key.
+    // Keep key only for network throw, 409 in_progress, and 503 in_progress.
+    // Final HTTP (incl. 418/502) clears → same-option retry gets a NEW key.
     if (!idemRef.current || lastClaimPathRef.current !== path) {
       idemRef.current = crypto.randomUUID();
     }
@@ -257,6 +258,7 @@ export default function AccountCourses() {
         // Keep key for same-option retry (errata d3 DR-7 / S-R4-1).
         setError("Still working on it. Try again in a few seconds.");
       } else if (status === 503 && body?.error === "claim_in_progress") {
+        // DR-7 / D7_503: keep key for same-option retry (in_progress is not final).
         setError("Still working on it. Try again in a few seconds.");
         if (lockRefetchTimerRef.current != null) {
           clearTimeout(lockRefetchTimerRef.current);
@@ -280,11 +282,12 @@ export default function AccountCourses() {
         clearIdempotencyKey();
       } else if (status === 502) {
         // Item 13: one background CL1 re-fetch after CL2 502; never retry POST.
+        // DR-7 / D7_502: 502 is final → clear key so same-option retry is NEW.
         refreshClaimOptionsBackground();
         setError("Something went wrong. Check your claim status.");
         clearIdempotencyKey();
       } else if (typeof status === "number") {
-        // B-R4-1 / errata d3 DR-7: clear only on a final HTTP status.
+        // B-R4-1 / DR-7 / D7final: clear on final HTTP (incl. 418); keep only when no status.
         setError("Claim failed.");
         clearIdempotencyKey();
       } else {
