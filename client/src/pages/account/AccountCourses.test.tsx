@@ -434,7 +434,7 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     consoleError.mockRestore();
   });
 
-  it("B-R4-1 / errata d5 DR-12: thrown fetch keeps Idempotency-Key; retry same key both requests", async () => {
+  it("B-R4-1 / errata d3 DR-7 / d5 DR-12: thrown fetch keeps Idempotency-Key; retry same key both requests", async () => {
     let claimPosts = 0;
     const idemKeys: string[] = [];
     vi.stubGlobal(

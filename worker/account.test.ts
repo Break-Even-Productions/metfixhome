@@ -2731,17 +2731,16 @@ describe("worker/account routes", () => {
         expect(JSON.stringify(clone), label).not.toMatch(LEAK);
       }
 
-      // S-R7-1 / r2.12 L484 planted positives.
-      expect(JSON.stringify({ whop_company_id: "biz_u15G8d34g9c0B0" })).toMatch(LEAK);
-      {
-        const planted = {
-          checkout_url: "https://whop.com/checkout/biz_u15G8d34g9c0B0/plan_x",
-          ok: true,
-        };
-        const clone = { ...planted };
-        delete clone.checkout_url;
-        expect(JSON.stringify(clone)).not.toMatch(LEAK);
-      }
+      // S-R7-1 / S-R7b-1 / r2.12 L484 planted positives.
+      expect(
+        JSON.stringify({ whop_company_id: "biz_u15G8d34g9c0B0" }),
+        "planted biz_ outside checkout_url fails",
+      ).toMatch(LEAK);
+      // Must go through assertClean (not inline delete) so dropping the
+      // checkout_url exemption makes this fail.
+      assertClean("planted checkout_url-only biz_ passes", {
+        checkout_url: "https://whop.com/checkout/biz_u15G8d34g9c0B0/plan_x",
+      });
 
       const claimCases: Array<{ label: string; path: string; upstream: Response }> = [
         {
