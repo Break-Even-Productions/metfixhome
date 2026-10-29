@@ -40,11 +40,15 @@ jobs:
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
       # CL-MONEY-SCAN-1 / N-R3-1: fail job on gating violation OR zero matched tests.
+      # Vitest may ANSI-color the summary (`Tests … 1 passed`); strip before grep.
       - name: CL-MONEY-SCAN-1 — frozen money scan
+        env:
+          NO_COLOR: "1"
         run: |
           set -o pipefail
           out=$(npx vitest run worker/account.repo-scan.test.ts -t "CL-MONEY-SCAN-1" 2>&1 | tee /dev/stderr)
-          echo "$out" | grep -qE 'Tests[[:space:]]+[1-9][0-9]* passed' || {
+          plain=$(printf '%s\n' "$out" | sed $'s/\x1b\\[[0-9;]*m//g')
+          printf '%s\n' "$plain" | grep -qE 'Tests[^[:digit:]]*[1-9][0-9]*[[:space:]]+passed' || {
             echo "N-R3-1 FAIL: zero CL-MONEY-SCAN-1 tests matched" >&2
             exit 1
           }
