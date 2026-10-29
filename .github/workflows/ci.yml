@@ -46,12 +46,15 @@ jobs:
           NO_COLOR: "1"
         run: |
           set -o pipefail
-          out=$(npx vitest run worker/account.repo-scan.test.ts -t "CL-MONEY-SCAN-1" 2>&1 | tee /dev/stderr)
+          out=$(npx vitest run worker/account.repo-scan.test.ts -t "CL-MONEY-SCAN-1" 2>&1)
+          status=$?
+          printf '%s\n' "$out"
           plain=$(printf '%s\n' "$out" | sed $'s/\x1b\\[[0-9;]*m//g')
           printf '%s\n' "$plain" | grep -qE 'Tests[^[:digit:]]*[1-9][0-9]*[[:space:]]+passed' || {
             echo "N-R3-1 FAIL: zero CL-MONEY-SCAN-1 tests matched" >&2
             exit 1
           }
+          exit "$status"
 
       - name: Pages — no data-testid
         run: |

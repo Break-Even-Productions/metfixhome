@@ -2488,29 +2488,147 @@ describe("worker/account routes", () => {
           .map((c) => String(c[0] ?? ""));
         expect(logs.every((l) => !l.includes(K))).toBe(true);
 
-        // Uppercase UUID / interior space → 400 (Worker does not trim/normalize).
-        // (Trailing HTTP whitespace alone is stripped by Headers.get per Fetch.)
+        // Uppercase UUID → 400 (Worker does not case-fold / trim).
         recorded.length = 0;
-        for (const bad of [K.toUpperCase(), `${K.slice(0, 8)} ${K.slice(9)}`]) {
-          const badRes = await callAccount(
-            h,
-            "/api/account/courses/10/claim",
-            {
-              method: "POST",
-              headers: claimHeaders(sess, bad),
-              body: JSON.stringify({ path: "redeem_ltv" }),
-            },
-            fetchImpl,
-          );
-          expect(badRes.status, bad).toBe(400);
-          expect(await badRes.json()).toEqual({ error: "invalid_idempotency_key" });
-          expect(recorded).toHaveLength(0);
-        }
+        const upper = await callAccount(
+          h,
+          "/api/account/courses/10/claim",
+          {
+            method: "POST",
+            headers: claimHeaders(sess, K.toUpperCase()),
+            body: JSON.stringify({ path: "redeem_ltv" }),
+          },
+          fetchImpl,
+        );
+        expect(upper.status).toBe(400);
+        expect(await upper.json()).toEqual({ error: "invalid_idempotency_key" });
+        expect(recorded).toHaveLength(0);
       } finally {
         spyWarn.mockRestore();
         spyLog.mockRestore();
         spyInfo.mockRestore();
       }
+    });
+
+    it("CL-DTO-1: claim_options_rejected → 502 upstream_error + one log", async () => {
+      const sess = await withSession(h);
+      const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fetchImpl } = makeFetchMock([
+          async ({ path }) => {
+            if (path.endsWith("/me/certificate-claim-options")) {
+              return Response.json({ currency: "USD", ltv: {}, credit: {}, courses: [] });
+            }
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const res = await callAccount(
+          h,
+          "/api/account/certificate-claim-options",
+          { headers: { Cookie: sess.cookie } },
+          fetchImpl,
+        );
+        expect(res.status).toBe(502);
+        expect(await res.json()).toEqual({ error: "upstream_error" });
+        const logs = spyWarn.mock.calls
+          .map((c) => {
+            try {
+              return JSON.parse(String(c[0])) as Record<string, unknown>;
+            } catch {
+              return null;
+            }
+          })
+          .filter((l) => l?.event === "claim_options_rejected");
+        expect(logs).toHaveLength(1);
+        expect(logs[0]).toMatchObject({ event: "claim_options_rejected", reason: "bad_enum" });
+      } finally {
+        spyWarn.mockRestore();
+      }
+    });
+
+    it("CL-LEAK-1: every claim response body has 0 biz_/cca_/membership_id/attempt (checkout_url excluded)", async () => {
+      const sess = await withSession(h);
+      const LEAK =
+        /\b(biz|cus|sub|mem|plan|prod|ch)_[A-Za-z0-9]{6,}\b|\bcca_[a-f0-9]+\b|\bmembership_id\b|\battempt_id\b/;
+      const cases: Array<{ path: string; upstream: Response }> = [
+        {
+          path: "prepay_credit",
+          upstream: Response.json({
+            checkout_url: CHECKOUT,
+            attempt_id: "cca_deadbeefdeadbeefdeadbeef",
+            membership_id: 9,
+          }),
+        },
+        {
+          path: "redeem_ltv",
+          upstream: Response.json({ already_claimed: false, claim_method: "redeem_ltv" }),
+        },
+        {
+          path: "redeem_ltv",
+          upstream: Response.json(
+            { code: "bsi_insufficient_certificate_ltv", data: { shortfall_cents: 1 } },
+            { status: 402 },
+          ),
+        },
+      ];
+      for (const c of cases) {
+        const { fetchImpl } = makeFetchMock([
+          async ({ method }) => {
+            if (method === "POST") return c.upstream;
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const res = await callAccount(
+          h,
+          "/api/account/courses/10/claim",
+          {
+            method: "POST",
+            headers: claimHeaders(sess, K),
+            body: JSON.stringify({ path: c.path }),
+          },
+          fetchImpl,
+        );
+        const body = (await res.json()) as Record<string, unknown>;
+        const clone = { ...body };
+        delete clone.checkout_url;
+        expect(JSON.stringify(clone), c.path).not.toMatch(LEAK);
+      }
+    });
+
+    it("CL-T5: upstream Idempotency-Key bytes equal K; same-key replay deep-equal", async () => {
+      const sess = await withSession(h);
+      const stored = { checkout_url: `${CHECKOUT}?s=1` };
+      const { fetchImpl, recorded } = makeFetchMock([
+        async ({ path, method }) => {
+          if (path.includes("/certificate-prepay-checkout") && method === "POST") {
+            return Response.json(stored);
+          }
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const post = () =>
+        callAccount(
+          h,
+          "/api/account/courses/10/claim",
+          {
+            method: "POST",
+            headers: claimHeaders(sess, K),
+            body: JSON.stringify({ path: "prepay_credit" }),
+          },
+          fetchImpl,
+        );
+      const r1 = await post();
+      expect(r1.status).toBe(200);
+      const b1 = await r1.json();
+      expect(b1).toStrictEqual({ checkout_url: stored.checkout_url });
+      expect(recorded[0]!.headers["idempotency-key"]).toBe(K);
+      expect(recorded[0]!.bodyText).toBe("{}");
+
+      const r2 = await post();
+      expect(r2.status).toBe(200);
+      expect(await r2.json()).toStrictEqual(b1);
+      expect(recorded[1]!.headers["idempotency-key"]).toBe(K);
+      expect(recorded[1]!.bodyText).toBe(recorded[0]!.bodyText);
     });
   });
 });

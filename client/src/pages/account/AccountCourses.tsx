@@ -127,6 +127,8 @@ export default function AccountCourses() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const idemRef = useRef<string | null>(null);
+  /** Last claim path that owns `idemRef` (errata d3 DR-7 / S-R4-1). */
+  const lastClaimPathRef = useRef<ClaimPathId | null>(null);
   const inflightRef = useRef(false);
   const lockRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
@@ -213,15 +215,23 @@ export default function AccountCourses() {
     }
   }
 
+  function clearIdempotencyKey() {
+    idemRef.current = null;
+    lastClaimPathRef.current = null;
+  }
+
   async function onClaimPath(path: ClaimPathId) {
     if (activeCourseId == null || inflightRef.current) return;
     inflightRef.current = true;
     setBusy(true);
     setError(null);
     setMessage(null);
-    if (!idemRef.current) {
+    // errata d3 DR-7 / S-R4-1: one key per attempt; different option → new key;
+    // same option after in-progress / network error reuses the key.
+    if (!idemRef.current || lastClaimPathRef.current !== path) {
       idemRef.current = crypto.randomUUID();
     }
+    lastClaimPathRef.current = path;
     const key = idemRef.current;
     try {
       // B1 / S1: outcome from claim POST alone — no claim-options GET before redirect.
@@ -234,16 +244,16 @@ export default function AccountCourses() {
         return;
       }
       // redeem_ltv (or already_claimed) success — single success copy (CQ nit).
-      // S-R3-1: clear key on success so the next claim gets a new key; failed
-      // CL1 refresh must not clear/rotate mid-attempt (already cleared here once).
+      // errata d3 DR-7: clear key on final HTTP success so the next claim is a new attempt.
       setMessage("Certificate claimed");
-      idemRef.current = null;
+      clearIdempotencyKey();
       refreshClaimOptionsBackground();
       void refreshLists().catch(() => undefined);
     } catch (err) {
       const status = (err as { status?: number })?.status;
       const body = (err as { body?: { error?: string; reason_code?: string } })?.body;
       if (status === 409 && body?.error === "claim_in_progress") {
+        // Keep key for same-option retry (errata d3 DR-7 / S-R4-1).
         setError("Still working on it. Try again in a few seconds.");
       } else if (status === 503 && body?.error === "claim_in_progress") {
         setError("Still working on it. Try again in a few seconds.");
@@ -256,25 +266,29 @@ export default function AccountCourses() {
         }, 1500);
       } else if (body?.error === "idempotency_key_mismatch") {
         setError("That request changed. Please start the claim again.");
-        idemRef.current = null;
+        clearIdempotencyKey();
       } else if (body?.error === "claim_ineligible") {
         refreshClaimOptionsBackground();
         setError(null);
-        idemRef.current = null;
+        clearIdempotencyKey();
       } else if (body?.error === "course_not_found") {
         setError("Course not found.");
-        idemRef.current = null;
+        clearIdempotencyKey();
       } else if (body?.error === "invalid_course_price") {
         setError("This course can't be claimed right now.");
-        idemRef.current = null;
+        clearIdempotencyKey();
       } else if (status === 502) {
         // Item 13: one background CL1 re-fetch after CL2 502; never retry POST.
         refreshClaimOptionsBackground();
         setError("Something went wrong. Check your claim status.");
-        idemRef.current = null;
-      } else {
+        clearIdempotencyKey();
+      } else if (typeof status === "number") {
+        // B-R4-1 / errata d3 DR-7: clear only on a final HTTP status.
         setError("Claim failed.");
-        idemRef.current = null;
+        clearIdempotencyKey();
+      } else {
+        // Thrown fetch / network error (no HTTP status) — keep key for retry.
+        setError("Claim failed.");
       }
     } finally {
       inflightRef.current = false;
@@ -305,7 +319,7 @@ export default function AccountCourses() {
             setActiveCourseId(null);
             setError(null);
             setMessage(null);
-            idemRef.current = null;
+            clearIdempotencyKey();
           }}
         />
       ) : (

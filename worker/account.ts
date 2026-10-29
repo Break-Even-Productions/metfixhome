@@ -627,7 +627,7 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
   const claimedList = Array.isArray(obj.claimed_certificates) ? obj.claimed_certificates : [];
   const claimed_certificates: Record<string, unknown>[] = [];
   let claimedSum = 0;
-  // PD-S4 / errata d2: never silently drop a bad allocated_cents row.
+  // errata d3 DR-4: may drop a bad allocated_cents row when total is valid (logged once).
   const claimedOverrideValid =
     typeof obj.claimed_courses_value_cents === "number" &&
     Number.isSafeInteger(obj.claimed_courses_value_cents) &&
@@ -668,7 +668,7 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
         );
         return accountJson({ error: "upstream_error" }, 502);
       }
-      // Branch A (QA ed5a / S-R3-2 amend): drop bad row + log once {event, course_id}.
+      // Branch A (errata d3 DR-4): drop bad row + log once {event, course_id}.
       // No allocated_cents:null in the response. Types stay number|null for null-safety.
       if (!loggedBadAllocated) {
         loggedBadAllocated = true;

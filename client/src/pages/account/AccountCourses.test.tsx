@@ -434,6 +434,109 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     consoleError.mockRestore();
   });
 
+  it("B-R4-1 / errata d3 DR-7: thrown fetch keeps Idempotency-Key; retry same key both requests", async () => {
+    let claimPosts = 0;
+    const idemKeys: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+        if (url.includes("/courses/20/claim") && method === "POST") {
+          claimPosts += 1;
+          const key = new Headers(init?.headers).get("Idempotency-Key");
+          if (key) idemKeys.push(key);
+          if (claimPosts === 1) throw new TypeError("network offline");
+          return jsonResponse({ already_claimed: false });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(redeemButton()).toBeTruthy());
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(1));
+    await waitFor(() => expect(screen.getByText(/Claim failed/i)).toBeTruthy());
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(2));
+    expect(idemKeys).toHaveLength(2);
+    expect(idemKeys[1]).toBe(idemKeys[0]);
+    await waitFor(() => expect(screen.getByText("Certificate claimed")).toBeTruthy());
+  });
+
+  it("S-R4-1 / errata d3 DR-7: after 409, same option keeps key; different option → new key", async () => {
+    let claimPosts = 0;
+    const idemKeys: string[] = [];
+    const paths: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+        if (url.includes("/courses/20/claim") && method === "POST") {
+          claimPosts += 1;
+          const key = new Headers(init?.headers).get("Idempotency-Key");
+          if (key) idemKeys.push(key);
+          try {
+            paths.push(JSON.parse(String(init?.body ?? "{}")).path);
+          } catch {
+            paths.push("?");
+          }
+          if (claimPosts <= 2) {
+            return jsonResponse({ error: "claim_in_progress" }, 409);
+          }
+          return jsonResponse({ checkout_url: CHECKOUT_URL });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(redeemButton()).toBeTruthy());
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(1));
+    await waitFor(() => expect(screen.getByText(/Still working on it/i)).toBeTruthy());
+    // Same option retry → keep key.
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(2));
+    expect(idemKeys[1]).toBe(idemKeys[0]);
+    expect(paths[0]).toBe("redeem_ltv");
+    expect(paths[1]).toBe("redeem_ltv");
+    // Different option same course → new key.
+    fireEvent.click(buyOutrightButton());
+    await waitFor(() => expect(claimPosts).toBe(3));
+    expect(paths[2]).toBe("buy_outright");
+    expect(idemKeys[2]).toBeTruthy();
+    expect(idemKeys[2]).not.toBe(idemKeys[0]);
+  });
+
   it("CL-T19: double-click claim posts once; 502 re-fetches CL1 once, never retries POST", async () => {
     let claimPosts = 0;
     let optionsGets = 0;

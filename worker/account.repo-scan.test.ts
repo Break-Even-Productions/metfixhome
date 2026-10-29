@@ -20,6 +20,83 @@ import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
+/** Frozen 1.2.12 money-scan matchers (shared by CL-MONEY-SCAN-1 + CL-SCAN-REVIEW-1). */
+function moneyScanMatchers() {
+  const CENTS_DIV_A =
+    /(?<!\w*bps[ \t]*(?<!\/)\*(?!\/)[ \t]*\(?[ \t]*\w*)_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
+  const CENTS_DIV_B =
+    /\((?![^()\n]*(?:(?<!\/)\*(?!\/)[ \t]*\w*bps\b|\b\w*bps[ \t]*(?<!\/)\*(?!\/)))[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
+  const hitsMoney = (s: string) => CENTS_DIV_A.test(s) || CENTS_DIV_B.test(s);
+  const ADVISORY_RE =
+    /(?:\b\w*_cents\b[ \t]*\*[ \t]*(?:\d+|\w*bps\b)|\([^()\n]*\b\w*_cents\b[^()\n]*\*[ \t]*\w*bps\b[^()\n]*\)|\([^()\n]*\b\w*bps\b[^()\n]*\*[ \t]*[^()\n]*\b\w*_cents\b[^()\n]*\)|\b\w*bps\b[ \t]*\*[ \t]*\w*_cents\b)[ \t]*\/[ \t]*100(?![\w.])/;
+  const hitsAdvisory = (s: string) => ADVISORY_RE.test(s) && !hitsMoney(s);
+  return { hitsMoney, hitsAdvisory };
+}
+
+/** errata d3 DR-3: remove only the identifier; keep scanning call args. */
+function scrubFormatUsdName(line: string): string {
+  return line.replace(/\bformatUsdFromCents\b/g, "");
+}
+
+/**
+ * Shared money-scan loop (CL-SCAN-REVIEW-1 / S-R4-3): real files → gating / LONGLINE / advisory.
+ * When `emit`, writes MONEY-SCAN-* warns and one-entry-per-line `$GITHUB_STEP_SUMMARY`.
+ */
+function runMoneyScanOnFiles(
+  files: string[],
+  opts?: { emit?: boolean; root?: string },
+): { gatingHits: string[]; longLineReview: string[]; advisoryHits: string[] } {
+  const { hitsMoney, hitsAdvisory } = moneyScanMatchers();
+  const root = opts?.root ?? REPO_ROOT;
+  const longLineReview: string[] = [];
+  const advisoryHits: string[] = [];
+  const gatingHits: string[] = [];
+  for (const file of files) {
+    const rel = relative(root, file);
+    if (rel.endsWith("shared/account/ltv.ts")) continue;
+    const lines = readFileSync(file, "utf8").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const scrubbed = scrubFormatUsdName(line);
+      const loc = `${rel}:${i + 1}: ${line.trim().slice(0, 120)}`;
+      if (hitsMoney(scrubbed)) {
+        // errata d3 DR-2: long line with a real hit still fails (+ LONGLINE).
+        if (line.length > 400) longLineReview.push(loc);
+        gatingHits.push(loc);
+        continue;
+      }
+      if (hitsAdvisory(scrubbed)) advisoryHits.push(loc);
+    }
+  }
+  if (opts?.emit) {
+    for (const loc of longLineReview) console.warn(`MONEY-SCAN-LONGLINE: ${loc}`);
+    for (const loc of advisoryHits) console.warn(`MONEY-SCAN-ADVISORY: ${loc}`);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      const sections: string[] = [];
+      if (longLineReview.length > 0) {
+        sections.push(
+          "### Money scan — long lines (fail + LONGLINE)",
+          "",
+          ...longLineReview.map((l) => `- \`${l.replace(/`/g, "'")}\``),
+          "",
+        );
+      }
+      if (advisoryHits.length > 0) {
+        sections.push(
+          "### Money scan — advisory (N31, never fails)",
+          "",
+          ...advisoryHits.map((l) => `- \`${l.replace(/`/g, "'")}\``),
+          "",
+        );
+      }
+      if (sections.length > 0) {
+        appendFileSync(process.env.GITHUB_STEP_SUMMARY, sections.join("\n"));
+      }
+    }
+  }
+  return { gatingHits, longLineReview, advisoryHits };
+}
+
 function walkFiles(dir: string, pred: (name: string) => boolean): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -276,7 +353,7 @@ describe("account.repo-scan", () => {
     expect(src).not.toMatch(/bsiJsonHeaders\(/);
   });
 
-  it("DP-T-CFG1 / CL3: wrangler CL1=READ / CL2=WRITE limiter ids lockstep (top + previews)", () => {
+  it("DP-T-CFG1: wrangler prod account limiter ids 27112-27114", () => {
     const raw = readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8");
     const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
     const byName = Object.fromEntries(
@@ -296,6 +373,16 @@ describe("account.repo-scan", () => {
       namespace_id: "27114",
       simple: { limit: 10, period: 60 },
     });
+  });
+
+  it("CL3: CL1=READ / CL2=WRITE limiter lockstep (top + previews)", () => {
+    const raw = readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8");
+    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const byName = Object.fromEntries(
+      (json.ratelimits as Array<{ name: string; namespace_id: string; simple: { limit: number; period: number } }>).map(
+        (r) => [r.name, r],
+      ),
+    );
     const prev = Object.fromEntries(
       (
         json.previews.ratelimits as Array<{
@@ -309,25 +396,20 @@ describe("account.repo-scan", () => {
     expect(prev.ACCOUNT_WRITE_LIMITER.namespace_id).toBe("27213");
     expect(prev.ACCOUNT_READ_LIMITER.simple).toEqual(byName.ACCOUNT_READ_LIMITER.simple);
     expect(prev.ACCOUNT_WRITE_LIMITER.simple).toEqual(byName.ACCOUNT_WRITE_LIMITER.simple);
-    // CL1 → read limiter; CL2 → write limiter (route match in account.ts).
     const accountSrc = readFileSync(join(REPO_ROOT, "worker/account.ts"), "utf8");
     expect(accountSrc).toMatch(/id:\s*"CL1"[\s\S]*?limiter:\s*"read"/);
     expect(accountSrc).toMatch(/id:\s*"CL2"[\s\S]*?limiter:\s*"write"/);
   });
 
+  it("CI-CHECK-1: ci.yml runs npm run check as a required step", () => {
+    const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
+    expect(ci).toMatch(/^\s+run:\s*npm run check\s*$/m);
+    expect(ci).not.toMatch(/npm run check[\s\S]{0,80}continue-on-error:\s*true/);
+  });
+
   it("CL-T21 / CL-MONEY-SCAN-1: no *_cents / 100 outside formatUsdFromCents (1.2.12 frozen)", () => {
     // FROZEN (1.2.12): patterns A|B unchanged from 1.2.11.
-    // A: bps×cents either order is advisory (negative lookbehind).
-    // B / N29: exempt bps only when multiplied; `*` next to `/` ignored (/* bps */).
-    const CENTS_DIV_A =
-      /(?<!\w*bps[ \t]*(?<!\/)\*(?!\/)[ \t]*\(?[ \t]*\w*)_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
-    const CENTS_DIV_B =
-      /\((?![^()\n]*(?:(?<!\/)\*(?!\/)[ \t]*\w*bps\b|\b\w*bps[ \t]*(?<!\/)\*(?!\/)))[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
-    const hitsMoney = (s: string) => CENTS_DIV_A.test(s) || CENTS_DIV_B.test(s);
-    // N31 advisory detector (never fails the build) — bps×cents / *N /100 forms that A|B miss.
-    const ADVISORY_RE =
-      /(?:\b\w*_cents\b[ \t]*\*[ \t]*(?:\d+|\w*bps\b)|\([^()\n]*\b\w*_cents\b[^()\n]*\*[ \t]*\w*bps\b[^()\n]*\)|\([^()\n]*\b\w*bps\b[^()\n]*\*[ \t]*[^()\n]*\b\w*_cents\b[^()\n]*\)|\b\w*bps\b[ \t]*\*[ \t]*\w*_cents\b)[ \t]*\/[ \t]*100(?![\w.])/;
-    const hitsAdvisory = (s: string) => ADVISORY_RE.test(s) && !hitsMoney(s);
+    const { hitsMoney } = moneyScanMatchers();
 
     // Exactly 24 fixtures (12 gating + 12 non-gating), frozen; plus N35/N33 extras.
     const gatingFixtures = [
@@ -366,10 +448,17 @@ describe("account.repo-scan", () => {
     for (const s of nongatingFixtures) {
       expect(hitsMoney(s), `nongating hit: ${s}`).toBe(false);
     }
-    // N35: accepted false-positive — B flags; fixture asserts the hit (app must avoid this form).
     expect(hitsMoney("commission_bps*(x_cents)/100")).toBe(true);
-    // N33: known gap left to review — not flagged.
     expect(hitsMoney("(price_cents - fee) * bps / 100")).toBe(false);
+
+    // errata d3 DR-3: scrub only the formatUsdFromCents *name*; args stay scanned.
+    // formatUsdFromCents(price_cents / 100) must FAIL (args still hit).
+    expect(hitsMoney(scrubFormatUsdName('formatUsdFromCents(price_cents / 100)'))).toBe(true);
+    expect(hitsMoney(scrubFormatUsdName('formatUsdFromCents(x)'))).toBe(false);
+    // errata d3 DR-2 / S-R4-2: long line with a real hit gates (+ LONGLINE warn).
+    const plantedLong = `${"x".repeat(380)} price_cents / 100 ${"y".repeat(40)}`;
+    expect(plantedLong.length).toBeGreaterThan(400);
+    expect(hitsMoney(scrubFormatUsdName(plantedLong))).toBe(true);
 
     const dirs = [
       join(REPO_ROOT, "client/src/pages/account"),
@@ -386,75 +475,7 @@ describe("account.repo-scan", () => {
         return true;
       });
 
-    // QA ed5a: skip only formatUsdFromCents(...) call text, not the whole line.
-    // Long line (>400) with a real money hit → FAIL + MONEY-SCAN-LONGLINE:.
-    // N31: advisory hits → MONEY-SCAN-ADVISORY: (never fail).
-    const scrubFormatUsd = (line: string) =>
-      line.replace(/formatUsdFromCents\s*\([^()]*\)/g, "");
-    // Planted fixtures (both required).
-    const plantedLong =
-      `${"x".repeat(380)} price_cents / 100 ${"y".repeat(40)}`;
-    expect(plantedLong.length).toBeGreaterThan(400);
-    expect(hitsMoney(scrubFormatUsd(plantedLong))).toBe(true);
-    const plantedFormatSkip =
-      'const n = formatUsdFromCents(price_cents / 100); const ok = "safe";';
-    expect(hitsMoney(scrubFormatUsd(plantedFormatSkip))).toBe(false);
-    const plantedFormatRemain =
-      "formatUsdFromCents(x); price_cents / 100 // leftover";
-    expect(hitsMoney(scrubFormatUsd(plantedFormatRemain))).toBe(true);
-
-    const longLineReview: string[] = [];
-    const advisoryHits: string[] = [];
-    const gatingHits: string[] = [];
-    for (const file of files) {
-      const rel = relative(REPO_ROOT, file);
-      if (rel.endsWith("shared/account/ltv.ts")) continue;
-      const lines = readFileSync(file, "utf8").split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]!;
-        const scrubbed = scrubFormatUsd(line);
-        const loc = `${rel}:${i + 1}: ${line.trim().slice(0, 120)}`;
-        if (hitsMoney(scrubbed)) {
-          // Longline with real hit still fails the build (QA ed5a).
-          if (line.length > 400) {
-            longLineReview.push(loc);
-          }
-          gatingHits.push(loc);
-          continue;
-        }
-        if (hitsAdvisory(scrubbed)) {
-          advisoryHits.push(loc);
-        }
-      }
-    }
-    for (const loc of longLineReview) {
-      console.warn(`MONEY-SCAN-LONGLINE: ${loc}`);
-    }
-    for (const loc of advisoryHits) {
-      console.warn(`MONEY-SCAN-ADVISORY: ${loc}`);
-    }
-    if (process.env.GITHUB_STEP_SUMMARY) {
-      const sections: string[] = [];
-      if (longLineReview.length > 0) {
-        sections.push(
-          "### Money scan — long lines (fail + LONGLINE)",
-          "",
-          ...longLineReview.map((l) => `- \`${l.replace(/`/g, "'")}\``),
-          "",
-        );
-      }
-      if (advisoryHits.length > 0) {
-        sections.push(
-          "### Money scan — advisory (N31, never fails)",
-          "",
-          ...advisoryHits.map((l) => `- \`${l.replace(/`/g, "'")}\``),
-          "",
-        );
-      }
-      if (sections.length > 0) {
-        appendFileSync(process.env.GITHUB_STEP_SUMMARY, sections.join("\n"));
-      }
-    }
+    const { gatingHits } = runMoneyScanOnFiles(files, { emit: true, root: REPO_ROOT });
     expect(gatingHits, gatingHits.join("\n")).toEqual([]);
 
     const toFixedHits = scanLines(files, /\.toFixed\s*\(/, {
@@ -480,7 +501,6 @@ describe("account.repo-scan", () => {
     });
     expect(localeHits, localeHits.join("\n")).toEqual([]);
 
-    // Exactly one formatUsdFromCents definition.
     const defRe = /(?:export\s+)?function\s+formatUsdFromCents\b/;
     const defs = scanLines(
       walkFiles(join(REPO_ROOT, "shared"), SRC_PRED).filter(
@@ -491,59 +511,63 @@ describe("account.repo-scan", () => {
     expect(defs).toHaveLength(1);
   });
 
-  it("CL-SCAN-REVIEW-1: MONEY-SCAN-ADVISORY:/LONGLINE: prefixes + one-entry-per-line summary", () => {
-    const CENTS_DIV_A =
-      /(?<!\w*bps[ \t]*(?<!\/)\*(?!\/)[ \t]*\(?[ \t]*\w*)_cents\b(?:[ \t()+\-]|\w*_cents\b)*\/[ \t]*100(?![\w.])/;
-    const CENTS_DIV_B =
-      /\((?![^()\n]*(?:(?<!\/)\*(?!\/)[ \t]*\w*bps\b|\b\w*bps[ \t]*(?<!\/)\*(?!\/)))[^()\n]*\b\w*_cents\b[^()\n]*\)[ \t]*\/[ \t]*100(?![\w.])/;
-    const hitsMoney = (s: string) => CENTS_DIV_A.test(s) || CENTS_DIV_B.test(s);
-    const ADVISORY_RE =
-      /(?:\b\w*_cents\b[ \t]*\*[ \t]*(?:\d+|\w*bps\b)|\([^()\n]*\b\w*_cents\b[^()\n]*\*[ \t]*\w*bps\b[^()\n]*\)|\([^()\n]*\b\w*bps\b[^()\n]*\*[ \t]*[^()\n]*\b\w*_cents\b[^()\n]*\)|\b\w*bps\b[ \t]*\*[ \t]*\w*_cents\b)[ \t]*\/[ \t]*100(?![\w.])/;
-    const hitsAdvisory = (s: string) => ADVISORY_RE.test(s) && !hitsMoney(s);
-
-    const longLine = `${"z".repeat(380)} price_cents / 100 ${"w".repeat(40)}`;
-    const advisoryLine = "x_cents * commission_bps / 100";
-    expect(longLine.length).toBeGreaterThan(400);
-    expect(hitsMoney(longLine)).toBe(true);
-    expect(hitsAdvisory(advisoryLine)).toBe(true);
-
+  it("CL-SCAN-REVIEW-1: real scanner on planted temp files (400 vs 401, summary, clean exit)", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const summaryDir = mkdtempSync(join(tmpdir(), "money-scan-summary-"));
-    const summaryPath = join(summaryDir, "summary.md");
+    const plantDir = mkdtempSync(join(tmpdir(), "money-scan-plant-"));
+    const summaryPath = join(plantDir, "summary.md");
     writeFileSync(summaryPath, "");
     const prev = process.env.GITHUB_STEP_SUMMARY;
     process.env.GITHUB_STEP_SUMMARY = summaryPath;
     try {
-      const longLoc = `planted.ts:1: ${longLine.trim().slice(0, 120)}`;
-      const advLoc = `planted.ts:2: ${advisoryLine}`;
-      console.warn(`MONEY-SCAN-LONGLINE: ${longLoc}`);
-      console.warn(`MONEY-SCAN-ADVISORY: ${advLoc}`);
-      appendFileSync(
-        summaryPath,
-        [
-          "### Money scan — long lines (fail + LONGLINE)",
-          "",
-          `- \`${longLoc.replace(/`/g, "'")}\``,
-          "",
-          "### Money scan — advisory (N31, never fails)",
-          "",
-          `- \`${advLoc.replace(/`/g, "'")}\``,
-          "",
-        ].join("\n"),
+      // 401-char real hit → LONGLINE + gating.
+      const longHit = `${"z".repeat(380)} price_cents / 100 ${"w".repeat(40)}`;
+      expect(longHit.length).toBeGreaterThan(400);
+      // 400-char real hit → gating only (not LONGLINE).
+      const hit = "price_cents / 100";
+      const exactly400 = `${"a".repeat(400 - hit.length)}${hit}`;
+      expect(exactly400.length).toBe(400);
+      // Clean long line (no money hit) → exit 0, 0 LONGLINE.
+      const cleanLong = `${"c".repeat(420)} // no cents div`;
+      expect(cleanLong.length).toBeGreaterThan(400);
+      const advisory = "x_cents * commission_bps / 100";
+
+      const longFile = join(plantDir, "long-hit.ts");
+      const shortFile = join(plantDir, "exact-400.ts");
+      const cleanFile = join(plantDir, "clean-long.ts");
+      const advFile = join(plantDir, "advisory.ts");
+      writeFileSync(longFile, `${longHit}\n`);
+      writeFileSync(shortFile, `${exactly400}\n`);
+      writeFileSync(cleanFile, `${cleanLong}\n`);
+      writeFileSync(advFile, `${advisory}\n`);
+
+      const result = runMoneyScanOnFiles(
+        [longFile, shortFile, cleanFile, advFile],
+        { emit: true, root: plantDir },
       );
+
+      expect(result.gatingHits.some((h) => h.includes("long-hit.ts:1:"))).toBe(true);
+      expect(result.gatingHits.some((h) => h.includes("exact-400.ts:1:"))).toBe(true);
+      expect(result.longLineReview).toHaveLength(1);
+      expect(result.longLineReview[0]).toContain("long-hit.ts:1:");
+      expect(result.advisoryHits).toHaveLength(1);
+      expect(result.advisoryHits[0]).toContain("advisory.ts:1:");
+      // Clean long line alone does not fail / does not LONGLINE.
+      expect(result.longLineReview.every((h) => !h.includes("clean-long.ts"))).toBe(true);
+      expect(result.gatingHits.every((h) => !h.includes("clean-long.ts"))).toBe(true);
+
       const warns = warn.mock.calls.map((c) => String(c[0]));
-      expect(warns.some((w) => w.startsWith("MONEY-SCAN-LONGLINE:"))).toBe(true);
-      expect(warns.some((w) => w.startsWith("MONEY-SCAN-ADVISORY:"))).toBe(true);
+      expect(warns.filter((w) => w.startsWith("MONEY-SCAN-LONGLINE:"))).toHaveLength(1);
+      expect(warns.filter((w) => w.startsWith("MONEY-SCAN-ADVISORY:"))).toHaveLength(1);
       const summary = readFileSync(summaryPath, "utf8");
       const entryLines = summary.split("\n").filter((l) => l.startsWith("- `"));
       expect(entryLines).toHaveLength(2);
-      expect(entryLines[0]).toContain("planted.ts:1:");
-      expect(entryLines[1]).toContain("planted.ts:2:");
+      expect(entryLines[0]).toContain("long-hit.ts:1:");
+      expect(entryLines[1]).toContain("advisory.ts:1:");
     } finally {
       warn.mockRestore();
       if (prev === undefined) delete process.env.GITHUB_STEP_SUMMARY;
       else process.env.GITHUB_STEP_SUMMARY = prev;
-      rmSync(summaryDir, { recursive: true, force: true });
+      rmSync(plantDir, { recursive: true, force: true });
     }
   });
 

@@ -499,23 +499,47 @@ describe("buildReferralsDto", () => {
     expect(built).toEqual({ ok: false, error: "upstream_error" });
   });
 
-  it("W1 order: bad percent + later bad bps → 502, 0 drops", () => {
+  it("CR-ORDER-T1: join_code valid + rows [valid, bad percent, bps 10001] → 502, 0 drops", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const built = buildReferralsDto(
       {
         eligible: true,
         eligibility_type: "organization",
+        join_code: CONTRACT_JOIN,
         course_links: [
-          { ...CONTRACT_LINK, course_id: 1, commission_percent: 20, commission_bps: 1500 },
-          { ...CONTRACT_LINK, course_id: 2, commission_bps: 10001 },
+          { ...CONTRACT_LINK, course_id: 1 },
+          { ...CONTRACT_LINK, course_id: 2, commission_percent: 20, commission_bps: 1500 },
+          { ...CONTRACT_LINK, course_id: 3, commission_bps: 10001 },
         ],
       },
       undefined,
       NOW,
     );
-    expect(built.ok).toBe(false);
+    expect(built).toEqual({ ok: false, error: "upstream_error" });
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("course_link_dropped"))).toHaveLength(
+      0,
+    );
+    warn.mockRestore();
   });
 
-  it("multi-fault row logs first reason only", () => {
+  it("CR-ORDER-T2: join_code.commission_bps -1 → 502, 0 events", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: { ...CONTRACT_JOIN, commission_bps: -1 },
+        course_links: [CONTRACT_LINK],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built).toEqual({ ok: false, error: "upstream_error" });
+    expect(warn.mock.calls).toHaveLength(0);
+    warn.mockRestore();
+  });
+
+  it("CR-ORDER-T3 / CR-ORDER-1: bad percent + evil share_url + bad estimate → one commission_mismatch", () => {
     const built = buildReferralsDto(
       {
         eligible: true,
@@ -526,7 +550,7 @@ describe("buildReferralsDto", () => {
             commission_percent: 20,
             course_price_cents: -1,
             currency: "usd",
-            share_url: "http://evil.example",
+            share_url: "https://evil.example",
             estimated_commission_cents: 999,
           },
         ],
@@ -536,7 +560,65 @@ describe("buildReferralsDto", () => {
     );
     expect(built.ok).toBe(true);
     if (!built.ok) return;
-    expect(built.logs[0]!.reason).toBe("commission_mismatch");
+    expect(built.dto.course_links_dropped).toBe(1);
+    expect(built.logs).toEqual([
+      {
+        event: "course_link_dropped",
+        reason: "commission_mismatch",
+        course_id: CONTRACT_LINK.course_id,
+      },
+    ]);
+  });
+
+  it("CR-ORDER-T4: price → currency → share_url → estimate precedence", () => {
+    const cases: Array<{
+      label: string;
+      row: Partial<typeof CONTRACT_LINK>;
+      reason: string;
+    }> = [
+      {
+        label: "bad price + currency",
+        row: { course_price_cents: -5, currency: "usd" },
+        reason: "bad_price",
+      },
+      {
+        label: "only currency + share_url",
+        row: { currency: "usd", share_url: "http://evil.example/x" },
+        reason: "bad_currency",
+      },
+      {
+        label: "only share_url + estimate",
+        row: { share_url: "http://evil.example/x", estimated_commission_cents: 9999 },
+        reason: "bad_share_url",
+      },
+      {
+        label: "bad price + estimate",
+        row: { course_price_cents: -5, estimated_commission_cents: 9999 },
+        reason: "bad_price",
+      },
+      {
+        label: "bad currency + estimate",
+        row: { currency: "usd", estimated_commission_cents: 9999 },
+        reason: "bad_currency",
+      },
+    ];
+    for (const c of cases) {
+      const built = buildReferralsDto(
+        {
+          eligible: true,
+          eligibility_type: "organization",
+          course_links: [{ ...CONTRACT_LINK, course_id: 9, ...c.row }],
+        },
+        undefined,
+        NOW,
+      );
+      expect(built.ok, c.label).toBe(true);
+      if (!built.ok) continue;
+      expect(built.dto.course_links_dropped, c.label).toBe(1);
+      expect(built.logs, c.label).toEqual([
+        { event: "course_link_dropped", reason: c.reason, course_id: 9 },
+      ]);
+    }
   });
 
   it("W1: only currency + share_url bad → bad_currency", () => {
