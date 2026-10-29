@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -6,12 +6,14 @@ import { Route, Router, Switch } from "wouter";
 import { getRouterBase } from "@/const";
 import ErrorBoundary from "./components/ErrorBoundary";
 import GlobalNav from "./components/GlobalNav";
+import { JoinFlowProvider } from "./contexts/JoinFlowContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import BecomeAnAffiliate from "./pages/BecomeAnAffiliate";
 import Classes from "./pages/Classes";
 import AffiliateSeminars from "./pages/AffiliateSeminars";
 import Login from "./pages/Login";
+import JoinPage from "./pages/join/JoinPage";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./pages/posts/PostsPage";
 import LibraryPage from "./pages/library/LibraryPage";
@@ -24,17 +26,27 @@ import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
+import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
 const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
 import { useLocation } from "wouter";
 
+function BsiRefCapture() {
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
+    captureBsiRef(window.location.search, sessionStorage);
+  }, []);
+  return null;
+}
+
 function AppRoutes() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/login"} component={Login} />
+      <Route path={"/join"} component={JoinPage} />
       <Route path={"/become-an-affiliate"} component={BecomeAnAffiliate} />
       <Route path={"/classes"} component={Classes} />
       <Route path={"/courses"} component={Classes} />
@@ -82,9 +94,12 @@ function AppShell() {
     location === "/account" ||
     location.startsWith("/account/") ||
     location === "/members" ||
-    location.startsWith("/members/");
+    location.startsWith("/members/") ||
+    location === "/join" ||
+    location.startsWith("/join?");
   return (
     <>
+      <BsiRefCapture />
       {hideGlobalNav ? null : <GlobalNav />}
       <AppRoutes />
     </>
@@ -94,11 +109,13 @@ function AppShell() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark">
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router base={getRouterBase()}>
-            <AppShell />
+            <JoinFlowProvider>
+              <AppShell />
+            </JoinFlowProvider>
           </Router>
         </TooltipProvider>
       </ThemeProvider>

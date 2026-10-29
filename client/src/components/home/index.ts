@@ -1,0 +1,10 @@
+export { AudienceTabs } from "./AudienceTabs";
+export { HomeHero } from "./HomeHero";
+export { HomeClasses } from "./HomeClasses";
+export { HomeFoundations } from "./HomeFoundations";
+export { HomeExperts } from "./HomeExperts";
+export { HomeResources } from "./HomeResources";
+export { HomeTestimonials } from "./HomeTestimonials";
+export { HomeFaq } from "./HomeFaq";
+export { HomeTargetKept } from "./HomeTargetKept";
+export { Reveal } from "./Reveal";

@@ -25,8 +25,27 @@ import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
 import { DAILY_FIX_BFF_URL, resetDailyFixDayCache } from "@/pages/the-daily-fix/data";
 import TheDailyFixPage from "@/pages/the-daily-fix/TheDailyFixPage";
+import type { PostsPageCache } from "@/lib/fetchPostsPage";
 import PostDetailPage from "./PostDetailPage";
 import PostsPage from "./PostsPage";
+
+/** Per-test cache inject (Rule 4 — no test-only reset production export). */
+const postsPageTestCache: PostsPageCache = {
+  resolved: new Map(),
+  inflight: new Map(),
+};
+
+vi.mock("@/lib/fetchPostsPage", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/fetchPostsPage")>(
+      "@/lib/fetchPostsPage",
+    );
+  return {
+    ...actual,
+    fetchPostsPage: (page: number, signal?: AbortSignal) =>
+      actual.fetchPostsPage(page, signal, postsPageTestCache),
+  };
+});
 
 /** Sample titles used in A6-shaped mocks (must render when fetched). */
 const SAMPLE_TITLES = [
@@ -214,6 +233,8 @@ beforeEach(() => {
   openAddressBar("/");
   localStorage.clear();
   resetDailyFixDayCache();
+  postsPageTestCache.resolved.clear();
+  postsPageTestCache.inflight.clear();
   document.head.innerHTML = `
     <meta name="description" content="">
     <meta name="robots" content="">
@@ -231,6 +252,8 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  postsPageTestCache.resolved.clear();
+  postsPageTestCache.inflight.clear();
 });
 
 describe("Posts page mount", () => {

@@ -59,7 +59,8 @@ export default function DashboardLayout({ title, description, children }: Props)
           clearAccountCache();
           window.location.assign(
             getMetfixLoginUrl(
-              sanitizeReturnPath(`${window.location.pathname}${window.location.search}`),
+              sanitizeReturnPath(`${window.location.pathname}${window.location.search}`) ??
+                "/account",
             ),
           );
           return;

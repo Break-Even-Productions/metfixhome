@@ -80,6 +80,17 @@ describe("account.repo-scan", () => {
       },
     });
     expect(failures, failures.join("\n")).toEqual([]);
+
+    // CR-WHOP-1: sole biz_ literal is BEP in shared/account/whop.ts
+    const bizFailures = scanLines(files, /biz_[A-Za-z0-9]+/, {
+      allow: (file, line) => {
+        const rel = relative(REPO_ROOT, file);
+        if (rel === "shared/account/whop.ts" && line.includes("biz_u15G8d34g9c0B0")) return true;
+        if (rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) return true;
+        return false;
+      },
+    });
+    expect(bizFailures, bizFailures.join("\n")).toEqual([]);
   });
 
   it("DP-WHOP-1: only BEP biz_ literal lives in shared/account/whop.ts; planted foreign fails", () => {

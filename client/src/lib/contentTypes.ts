@@ -47,17 +47,19 @@ export type SiteSettings = {
 export const DEFAULT_COPYRIGHT_TEXT =
   "© 2026 MetFix. The Metabolic Fix. All rights reserved.";
 
-/** Fallback top-nav links when Sanity is unavailable or empty. */
-export const DEFAULT_NAV_LINKS: NavLink[] = [
-  { label: "Classes", href: "/classes", openInNewTab: false },
+/** Fallback top-nav links when Sanity is unavailable or empty (§3a route map). */
+export const DEFAULT_NAV_LINKS = [
   { label: "Library", href: "/library", openInNewTab: false },
+  { label: "Courses", href: "/courses", openInNewTab: false },
+  { label: "Programs", href: "/#membership-section", openInNewTab: false },
   { label: "Daily Fix", href: "/the-daily-fix", openInNewTab: false },
+  { label: "Affiliate Seminars", href: "/affiliate-seminars", openInNewTab: false },
+  { label: "Become an Affiliate", href: "/become-an-affiliate", openInNewTab: false },
   {
-    label: "Seminars",
-    href: "https://brokenscience.org/metfix/seminar-calendar/",
+    label: "Find a Gym",
+    href: "https://brokenscience.org/metfix/metfix-map/",
     openInNewTab: true,
   },
-  { label: "Affiliate", href: "/become-an-affiliate", openInNewTab: false },
-  { label: "About", href: "/#about", openInNewTab: false },
+  { label: "About", href: "https://whatis.metfix.org/", openInNewTab: true },
   { label: "Shop", href: "https://brokenscience.org/shop/", openInNewTab: true },
-];
+] as const satisfies readonly NavLink[];

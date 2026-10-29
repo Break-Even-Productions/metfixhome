@@ -1,0 +1,18 @@
+{
+  "spec": "metfix-pr-e-home-port-acceptance.rev1.0.12",
+  "fonts": [
+    {
+      "family": "Playfair Display",
+      "files": ["playfair-display/playfair-display-latin-400-normal.woff2"],
+      "sha256": "51c8eae79bf05bbcc1811da8cb56ff69d87d40bafdce8282fea8a43259b4afcb",
+      "ofl": "playfair-display/OFL.txt"
+    },
+    {
+      "family": "Plus Jakarta Sans",
+      "files": ["plus-jakarta-sans/plus-jakarta-sans-latin-400-normal.woff2"],
+      "sha256": "cf1300338d5db6340c61d3e549d482298897791d327c156509e1968c84e0f143",
+      "ofl": "plus-jakarta-sans/OFL.txt"
+    }
+  ],
+  "note": "Vendored woff2 SHA-256 + SIL OFL 1.1 per family (T-E-58 / E-T-FONTS1). CI never regenerates."
+}

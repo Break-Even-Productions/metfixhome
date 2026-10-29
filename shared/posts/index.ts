@@ -5,7 +5,6 @@ export {
   PAGE_RE,
   MAX_PAGE,
   BSI_ORIGIN,
-  BSI_POSTS_BASE,
   IMAGE_HOST,
   MAX_UPSTREAM_BYTES,
   EXCERPT_MAX,
@@ -13,6 +12,9 @@ export {
   DESC_MAX,
   CACHE_ORIGIN,
 } from "./constants";
+
+/** Worker posts upstream base — not for client imports (PX1 / wp-json). */
+export { BSI_POSTS_BASE } from "./bsi";
 
 export type {
   Post,

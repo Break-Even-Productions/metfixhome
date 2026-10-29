@@ -32,6 +32,9 @@ jobs:
       - name: Typecheck worker
         run: npm run check:worker
 
+      - name: Typecheck client
+        run: npm run check
+
       - name: Unit and mount tests
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
@@ -40,6 +43,19 @@ jobs:
         env:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
+
+      - name: WJ-WHOP-1 / WT-J1 repo+dist scan (after build:cf)
+        run: MFX_REQUIRE_DIST=1 npx vitest run join.repo-scan
+        env:
+          MFX_REQUIRE_DIST: "1"
+
+      - name: Bundle must not contain test-recaptcha-token
+        run: |
+          if grep -RInF 'test-recaptcha-token' dist/public; then
+            echo "test-recaptcha-token found in dist/public" >&2
+            exit 1
+          fi
+          echo "ok: no test-recaptcha-token in bundle"
 
       - name: No Sanity token in dist
         run: |
@@ -76,10 +92,11 @@ jobs:
           # Source: any biz_ outside shared/account/whop.ts (and tests) fails.
           hits=$(grep -RInE --exclude-dir=node_modules --exclude-dir=dist --exclude='*.test.ts' --exclude='*.test.tsx' -e 'biz_[A-Za-z0-9]+' client worker shared wrangler.jsonc || true)
           bad=$(printf '%s\n' "$hits" | grep -v '^shared/account/whop.ts:' | grep -v "$BEP" || true)
-          # Also fail if BEP appears outside whop.ts
+          # Also fail if BEP appears outside whop.ts (source count must be 1)
           bep_elsewhere=$(printf '%s\n' "$hits" | grep "$BEP" | grep -v '^shared/account/whop.ts:' || true)
-          if [ -n "$bad" ] || [ -n "$bep_elsewhere" ]; then
-            echo "DP-WHOP-1 failed: unexpected biz_ literals:" >&2
+          bep_in_whop=$(printf '%s\n' "$hits" | grep '^shared/account/whop.ts:' | grep -c "$BEP" || true)
+          if [ -n "$bad" ] || [ -n "$bep_elsewhere" ] || [ "$bep_in_whop" != "1" ]; then
+            echo "DP-WHOP-1 failed: unexpected biz_ literals (BEP defs in whop.ts=$bep_in_whop):" >&2
             printf '%s\n%s\n' "$bad" "$bep_elsewhere" >&2
             exit 1
           fi
@@ -89,6 +106,25 @@ jobs:
             exit 1
           fi
           echo "DP-WHOP-1 ok: sole biz_ literal in shared/account/whop.ts"
+
+      - name: CR-COMM — no commission_policy in dist/public
+        run: |
+          if grep -RInE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'commission_policy' dist/public; then
+            echo "CR-COMM failed: commission_policy found in dist/public" >&2
+            exit 1
+          fi
+          echo "CR-COMM ok: no commission_policy in dist/public"
+
+      - name: CR N3 — exactly one sanitizeReturnPath definition
+        run: |
+          defs=$(grep -RInE --exclude-dir=node_modules --exclude-dir=dist --exclude='*.test.ts' --exclude='*.test.tsx' -e 'function sanitizeReturnPath|const sanitizeReturnPath' shared client worker || true)
+          count=$(printf '%s\n' "$defs" | grep -c . || true)
+          if [ "$count" != "1" ]; then
+            echo "Expected 1 sanitizeReturnPath definition, got $count:" >&2
+            printf '%s\n' "$defs" >&2
+            exit 1
+          fi
+          echo "ok: one sanitizeReturnPath definition"
 
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk
@@ -120,3 +156,70 @@ jobs:
 
       - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm run test:workers; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
+
+  # Required: Playwright visual + axe (PR F T-F-60 / LR-F16). Separate job.
+  # Uses the official Playwright image matching the exact @playwright/test pin.
+  test-playwright:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-jammy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Typecheck client (T-F-58)
+        run: npm run check
+
+      - name: Build static site
+        run: npm run build:cf
+        env:
+          VITE_SANITY_PROJECT_ID: etg9lezr
+          VITE_SANITY_DATASET: production
+
+      - name: Assert Playwright + axe pins (T-F-60)
+        run: |
+          node -e '
+            const p = require("./package.json");
+            for (const k of ["@playwright/test", "@axe-core/playwright", "axe-core"]) {
+              const v = p.devDependencies[k];
+              if (!/^\d+\.\d+\.\d+$/.test(v)) {
+                console.error("T-F-60: " + k + " must be exact, got " + v);
+                process.exit(1);
+              }
+            }
+            console.log("T-F-60 ok: exact pins");
+          '
+
+      - name: Assert hide-recaptcha is tests-only (T-F-62)
+        run: |
+          test -f tests/visual/fixtures/hide-recaptcha.css
+          # Scope: production client sources only (exclude *.test.*). Fail on any
+          # grecaptcha-badge mention or hide rule outside tests/visual/fixtures.
+          if grep -RIn --include='*.css' --include='*.tsx' --include='*.ts' \
+            --exclude='*.test.ts' --exclude='*.test.tsx' \
+            'grecaptcha-badge' client/; then
+            echo "T-F-62 failed: grecaptcha-badge must not live in client/ production sources" >&2
+            exit 1
+          fi
+          echo "T-F-62 ok"
+
+      - name: Assert no Playwright snapshot-update flags (T-F-68 / FS-2)
+        run: |
+          node tests/ci/checkUpdateSnapshots.mjs --self-test
+          node tests/ci/checkUpdateSnapshots.mjs
+          if ! grep -q 'updateSnapshots: process.env.CI ? "none"' playwright.config.ts; then
+            echo "T-F-68: playwright.config.ts must set updateSnapshots none under CI" >&2
+            exit 1
+          fi
+          echo "T-F-68 ok: updateSnapshots gated none under CI"
+
+      - name: Assert VISUAL_HOOK_PATTERN scope (T-F-65 / ER-1)
+        run: node tests/ci/scanVisualHooks.mjs
+
+      - name: Playwright a11y + visual
+        run: npx playwright test
+        env:
+          CI: true

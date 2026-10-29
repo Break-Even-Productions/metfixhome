@@ -27,6 +27,7 @@ import { LoginThrottleDO } from "./do/login-throttle";
 import { OauthStateDO } from "./do/oauth-state";
 import { SessionDO } from "./do/session";
 import { DAILY_FIX_CSP } from "./csp";
+import { handleJoinRoutes } from "./join";
 import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import { handleAccountRoutes } from "./account";
@@ -145,8 +146,17 @@ export async function handleRequest(
       bsiBaseUrl,
     });
   }
-  // Account dashboard + public member profiles (before /api/* catch-all)
-  if (path.startsWith("/api/account") || path.startsWith("/api/members/")) {
+  // Join onboarding + Whop checkout BEFORE account catch-all (which 404s unknown /api/account/*)
+  if (path === "/api/account/onboarding" || path === "/api/billing/whop/checkout-session") {
+    const joinRes = await handleJoinRoutes(request, env, { fetchImpl, bsiBaseUrl });
+    if (joinRes) return joinRes;
+  }
+  // Account dashboard + public member profiles + course checkout (before /api/* catch-all)
+  if (
+    path.startsWith("/api/account") ||
+    path.startsWith("/api/members/") ||
+    path.startsWith("/api/courses/")
+  ) {
     const accountRes = await handleAccountRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (accountRes) return accountRes;
   }

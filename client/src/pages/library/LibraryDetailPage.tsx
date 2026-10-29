@@ -11,6 +11,8 @@ import {
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import NotFound from "@/pages/NotFound";
+import { UpgradePrompt } from "@/components/UpgradePrompt";
+import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
 import { JoinModal } from "./JoinModal";
 import { fetchLibraryItem } from "./api";
 import "./library.css";
@@ -44,6 +46,7 @@ export default function LibraryDetailPage({
   params?: { type?: string; id?: string };
 }) {
   const hookParams = useParams<{ type?: string; id?: string }>();
+  const joinFlow = useJoinFlowOptional();
   const typeRaw = routeParams?.type ?? hookParams.type;
   const id = useMemo(
     () => parseId(routeParams?.id ?? hookParams.id),
@@ -157,9 +160,19 @@ export default function LibraryDetailPage({
             <strong>Members-only</strong>
             Sign in with an entitled MetFix account to read this resource on metfix.org.
             <div className="library-modal-actions" style={{ marginTop: "1rem" }}>
-              <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                Log in / Join
-              </a>
+              {joinFlow ? (
+                <button
+                  type="button"
+                  className="library-btn library-btn-gold"
+                  onClick={() => joinFlow.openJoinFlow()}
+                >
+                  Start my free month
+                </button>
+              ) : (
+                <a className="library-btn library-btn-gold" href={joinCtaHref()}>
+                  Log in / Join
+                </a>
+              )}
               <button
                 type="button"
                 className="library-btn library-btn-ghost"
@@ -168,6 +181,7 @@ export default function LibraryDetailPage({
                 Why is this locked?
               </button>
             </div>
+            {/* B6: one CTA only — join button above; no second UpgradePrompt */}
           </div>
         ) : isPreview ? (
           <div className="library-preview-wrap">
@@ -176,11 +190,10 @@ export default function LibraryDetailPage({
             </div>
             <div className="library-preview-fade">
               <div className="library-preview-fade-inner">
-                <h2>Continue with MetFix</h2>
-                <p>You’re seeing a preview. Join or sign in for the full piece.</p>
-                <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                  Log in / Join
-                </a>
+                <UpgradePrompt
+                  title="Continue with MetFix"
+                  body="You’re seeing a preview. Join or sign in for the full piece."
+                />
               </div>
             </div>
           </div>

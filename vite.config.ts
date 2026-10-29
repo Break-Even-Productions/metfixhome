@@ -42,6 +42,8 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: path.resolve(import.meta.dirname, "dist/public"),
       emptyOutDir: true,
+      // ER-1 / T-F-65: classify own vs vendor chunks for hook-scan scope.
+      manifest: true,
     },
     test: {
       // V12(b): do not write node_modules/.vite/vitest/results.json during npm test.
@@ -53,6 +55,8 @@ export default defineConfig(({ mode }) => {
         "../shared/**/*.test.ts",
         "../worker/**/*.test.ts",
         "../tools/pr2/gates/**/*.test.ts",
+        "../tests/visual/**/*.test.ts",
+        "../tests/ci/**/*.test.ts",
       ],
       exclude: ["../worker/**/*.workers.test.ts", "**/node_modules/**"],
     },
