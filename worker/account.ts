@@ -8,11 +8,13 @@ import {
   buildCheckoutDto,
   buildReferralsDto,
   emitDropLogs,
-  sanitizeReturnPath,
+  logEarningsUpstreamOmitted,
 } from "../shared/account/courseReferrals";
+import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
+  extractSubscriptionTierItems,
   normalizeCanonicalTier,
   resolveAccountCanonicalTier,
   type LegacySubscriptionSource,
@@ -492,26 +494,6 @@ function shapeConversion(raw: unknown): Record<string, unknown> | undefined {
   }
   if (typeof obj.stripe_period_end === "string") out.stripe_period_end = obj.stripe_period_end;
   return out;
-}
-
-/**
- * R3-B2: one shared extractor for overview + LTV tier resolution.
- * Accepts top-level `subscription_items` or nested `subscriptions.items`
- * (never bare `items`, which may be unrelated lists).
- */
-function extractSubscriptionTierItems(
-  obj: Record<string, unknown>,
-): Array<{ tier: unknown; legacy_source: unknown; status: unknown }> {
-  const subsRaw = asRecord(obj.subscriptions);
-  const rows = Array.isArray(obj.subscription_items)
-    ? obj.subscription_items
-    : Array.isArray(subsRaw?.items)
-      ? (subsRaw!.items as unknown[])
-      : [];
-  return rows.map((row) => {
-    const r = asRecord(row) ?? {};
-    return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
-  });
 }
 
 function shapeOverview(raw: unknown): Record<string, unknown> | null {
@@ -1227,12 +1209,11 @@ async function dispatch(
       if (!built.ok) {
         return accountJson({ error: "upstream_error" }, 502);
       }
-      const safeUrl = sanitizeExternalBillingUrl(built.dto.checkout_url, "whop_only");
-      if (!safeUrl) {
+      // N9: sanitize gate only — pass original checkout_url byte-for-byte when accepted.
+      if (!sanitizeExternalBillingUrl(built.dto.checkout_url, "whop_only")) {
         return accountJson({ error: "upstream_error" }, 502);
       }
-      // Pass through original checkout_url string when sanitize accepts (rebuild is ok for whop).
-      return accountJson({ ...built.dto, checkout_url: safeUrl }, 200);
+      return accountJson(built.dto, 200);
     }
     case "DP12": {
       // Ignore client-supplied member_id / user_id (T2).
@@ -1411,6 +1392,9 @@ async function dispatch(
       let earningsJson: unknown = undefined;
       if (earnRan.result.kind === "ok") {
         earningsJson = earnRan.result.json;
+      } else {
+        // CR-EARN-1: upstream fail → omit earnings + PII-free log; never 502.
+        logEarningsUpstreamOmitted();
       }
       const built = buildReferralsDto(refMapped.json, earningsJson, Date.now());
       if (!built.ok) {

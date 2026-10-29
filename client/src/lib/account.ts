@@ -4,8 +4,11 @@
  */
 import { getMetfixLoginUrl } from "@/const";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+
+export { sanitizeReturnPath };
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -173,6 +176,7 @@ export type ReferralsPayload = {
     ready_cents?: number;
     paid_total_cents?: number;
     currency?: string;
+    connect_status?: "none" | "pending" | "active";
   };
   /** @deprecated PR B stub field — prefer join_code.slug */
   referral_code?: string | null;
@@ -262,14 +266,6 @@ function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
   });
 }
 
-/** Same rules as Login safeNextPath / Worker sanitizeReturn. */
-export function sanitizeReturnPath(raw: string | null | undefined): string {
-  if (!raw || raw.length > 512) return "/account";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/account";
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return "/account";
-  return raw;
-}
-
 function redirectToLogin(currentPath?: string): never {
   clearAccountCache();
   const path =
@@ -277,7 +273,7 @@ function redirectToLogin(currentPath?: string): never {
     (typeof window !== "undefined"
       ? `${window.location.pathname}${window.location.search}`
       : "/account");
-  const next = sanitizeReturnPath(path);
+  const next = sanitizeReturnPath(path) ?? "/account";
   if (typeof window !== "undefined") {
     window.location.assign(getMetfixLoginUrl(next));
   }
@@ -617,12 +613,24 @@ export async function setFavorite(
 
 export async function referralCodeAction(
   action: "generate" | "rotate" | "revoke",
+  opts?: { previousEarnings?: ReferralsPayload["earnings"] },
 ): Promise<ReferralsPayload> {
-  return accountMutate("/api/account/referral-code", {
+  // N5: seed cache with returned DTO (do not invalidate then refetch).
+  const next = await accountMutate<ReferralsPayload>("/api/account/referral-code", {
     method: "POST",
     body: { action },
-    invalidate: ["referrals"],
   });
+  // R2-N2: keep previous earnings after generate/rotate when mutation omits them.
+  if (
+    (action === "generate" || action === "rotate") &&
+    next.earnings == null &&
+    opts?.previousEarnings
+  ) {
+    next.earnings = opts.previousEarnings;
+  }
+  cache.set("referrals", next);
+  inflight.delete("referrals");
+  return next;
 }
 
 export async function updateNotifications(

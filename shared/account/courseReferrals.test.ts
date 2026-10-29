@@ -7,6 +7,7 @@ import {
   estimateMatchesIntegerBounds,
   isAllowedReferralUrl,
   isBadCommissionBps,
+  mapFoundationCertifiedAlias,
   shapeEarnings,
 } from "./courseReferrals";
 import { BEP_WHOP_COMPANY_ID } from "./whop";
@@ -37,12 +38,23 @@ const CONTRACT_LINK = {
   share_url: "https://brokenscience.org/courses/metfix-essentials/?bsi_ref=cfexample9",
 };
 
+/** Active coach grant for normalizeFoundationsCoachStatus (CQ-CR-E8). */
+function coachGrant(expiresAt: string, grantedAt = "2024-01-15T12:00:00.000Z") {
+  return {
+    seminar_checked_in: true,
+    granted_at: grantedAt,
+    expires_at: expiresAt,
+    metfix_essentials_completed: false,
+    metfix_essentials_certificate_claimed: false,
+  };
+}
+
 describe("canGenerateCourseReferrals (CR-ELIG-1/2)", () => {
-  it("organization is eligible even with expired coach", () => {
+  it("organization is eligible even with expired coach object", () => {
     const r = canGenerateCourseReferrals(
       {
         eligibility_type: "organization",
-        foundations_coach_expires_at: "2020-01-01T00:00:00.000Z",
+        foundations_coach: coachGrant("2020-01-01T00:00:00.000Z"),
       },
       NOW,
     );
@@ -55,22 +67,22 @@ describe("canGenerateCourseReferrals (CR-ELIG-1/2)", () => {
     ).toEqual({ eligible: true, eligibility_type: "organization" });
   });
 
-  it("coach expires_at = now+1ms → eligible", () => {
+  it("coach expires_at = now+1ms via normalizer → eligible", () => {
     const r = canGenerateCourseReferrals(
       {
         eligibility_type: "foundations_coach",
-        foundations_coach_expires_at: new Date(NOW + 1).toISOString(),
+        foundations_coach: coachGrant(new Date(NOW + 1).toISOString()),
       },
       NOW,
     );
     expect(r).toEqual({ eligible: true, eligibility_type: "foundations_coach" });
   });
 
-  it("coach expires_at === now → bsi_referral_coach_expired", () => {
+  it("coach expires_at === now via normalizer → bsi_referral_coach_expired", () => {
     const r = canGenerateCourseReferrals(
       {
         eligibility_type: "foundations_coach",
-        foundations_coach_expires_at: new Date(NOW).toISOString(),
+        foundations_coach: coachGrant(new Date(NOW).toISOString()),
       },
       NOW,
     );
@@ -80,9 +92,9 @@ describe("canGenerateCourseReferrals (CR-ELIG-1/2)", () => {
     });
   });
 
-  it("coach expires_at null → ineligible", () => {
+  it("coach claim without foundations_coach object → ineligible (CQ-CR-E8)", () => {
     const r = canGenerateCourseReferrals(
-      { eligibility_type: "foundations_coach", foundations_coach_expires_at: null },
+      { eligibility_type: "foundations_coach" },
       NOW,
     );
     expect(r).toEqual({
@@ -97,78 +109,165 @@ describe("canGenerateCourseReferrals (CR-ELIG-1/2)", () => {
     ).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
   });
 
-  it("rejects eligibility_type aliases (organization_owner / foundation_certified)", () => {
+  it("CR-ELIG-1 W5: unexpired foundation_certified role_slug → foundations_coach", () => {
+    expect(mapFoundationCertifiedAlias("foundation_certified")).toBe("foundations_coach");
+    const expires = new Date(NOW + 1000).toISOString();
+    const r = canGenerateCourseReferrals(
+      {
+        role_slug: "foundation_certified",
+        foundations_coach: coachGrant(expires),
+      },
+      NOW,
+    );
+    expect(r).toEqual({ eligible: true, eligibility_type: "foundations_coach" });
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        role_slug: "foundation_certified",
+        foundations_coach: coachGrant(expires),
+        foundations_coach_expires_at: expires,
+        join_code: null,
+        course_links: [],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (built.ok) {
+      expect(built.dto.eligibility_type).toBe("foundations_coach");
+      expect(JSON.stringify(built.dto)).not.toContain("foundation_certified");
+    }
+  });
+
+  it("CR-ELIG-1 W5: expired foundation_certified → bsi_referral_coach_expired", () => {
+    expect(
+      canGenerateCourseReferrals(
+        {
+          role_slug: "foundation_certified",
+          foundations_coach: coachGrant(new Date(NOW - 1).toISOString()),
+        },
+        NOW,
+      ),
+    ).toEqual({ eligible: false, reason_code: "bsi_referral_coach_expired" });
+  });
+
+  it("organization_owner as eligibility_type alone is not a coach alias", () => {
     expect(
       canGenerateCourseReferrals(
         {
           eligibility_type: "organization_owner",
-          foundations_coach_expires_at: new Date(NOW + 1000).toISOString(),
-        },
-        NOW,
-      ),
-    ).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
-    expect(
-      canGenerateCourseReferrals(
-        {
-          eligibility_type: "foundation_certified",
-          foundations_coach_expires_at: new Date(NOW + 1000).toISOString(),
         },
         NOW,
       ),
     ).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
   });
 
-  it("coach grant >3y ago is ineligible even if BSI expires_at is far future", () => {
-    const granted = "2020-01-15T12:00:00.000Z";
+  it("CQ-CR-E8: incomplete foundations_coach (no grant) → ineligible", () => {
     const r = canGenerateCourseReferrals(
       {
         eligibility_type: "foundations_coach",
-        foundations_coach_granted_at: granted,
-        foundations_coach_expires_at: "2035-01-15T12:00:00.000Z",
+        foundations_coach: { seminar_checked_in: false },
       },
       NOW,
     );
-    expect(r).toEqual({
-      eligible: false,
-      reason_code: "bsi_referral_coach_expired",
-    });
+    expect(r).toEqual({ eligible: false, reason_code: "bsi_referral_ineligible" });
+  });
+
+  it("static: foundation_certified only inside mapFoundationCertifiedAlias", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./courseReferrals.ts", import.meta.url)), "utf8");
+    expect(src).toMatch(/function mapFoundationCertifiedAlias/);
+    const withoutMap = src.replace(
+      /export function mapFoundationCertifiedAlias[\s\S]*?\n\}/,
+      "export function mapFoundationCertifiedAlias(){return null}",
+    );
+    expect(withoutMap).not.toMatch(/foundation_certified/);
+  });
+
+  it("static: no local Date.parse expiry fallback in canGenerate", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./courseReferrals.ts", import.meta.url)), "utf8");
+    const fn = src.match(
+      /export function canGenerateCourseReferrals[\s\S]*?\n\}/,
+    )?.[0] ?? "";
+    expect(fn).toContain("normalizeFoundationsCoachStatus");
+    expect(fn).not.toMatch(/foundations_coach_expires_at/);
+    expect(fn).not.toMatch(/computeThreeYearExpiryIso/);
   });
 });
 
-describe("shapeEarnings (N2 OVERRIDE — BSI §2.4)", () => {
-  it("accepts exact BSI documented payload (lowercase currency, non-cents keys)", () => {
+describe("shapeEarnings (CR-EARN-1 — BSI §2.4)", () => {
+  it("maps real BSI shape; currency stays lowercase; connect_status required", () => {
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(
       shapeEarnings({
         currency: "usd",
-        pending: 1200,
-        ready: 3400,
-        paid_total: 10000,
+        pending: 1250,
+        ready: 3000,
+        paid_total: 0,
         connect_status: "active",
       }),
     ).toEqual({
-      pending_cents: 1200,
-      ready_cents: 3400,
-      paid_total_cents: 10000,
-      currency: "USD",
+      pending_cents: 1250,
+      ready_cents: 3000,
+      paid_total_cents: 0,
+      currency: "usd",
+      connect_status: "active",
     });
+    expect(shapeEarnings({
+      currency: "usd",
+      pending: 0,
+      ready: 0,
+      paid_total: 0,
+      connect_status: "none",
+    })?.connect_status).toBe("none");
+    expect(shapeEarnings({
+      currency: "usd",
+      pending: 1,
+      ready: 2,
+      paid_total: 3,
+      connect_status: "pending",
+    })?.connect_status).toBe("pending");
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
-  it("omits + logs on bad shape — never throws / never signals 502", () => {
+  it("omits + logs bad_shape — never throws / never signals 502", () => {
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(shapeEarnings({ pending_cents: 1 })).toBeNull();
-    expect(spy).toHaveBeenCalled();
+    const cases = [
+      { pending: 1 },
+      { currency: "USD", pending: 1, ready: 1, paid_total: 1, connect_status: "active" },
+      { currency: "us", pending: 1, ready: 1, paid_total: 1, connect_status: "active" },
+      { currency: "usd", pending: -1, ready: 1, paid_total: 1, connect_status: "active" },
+      { currency: "usd", pending: 1.5, ready: 1, paid_total: 1, connect_status: "active" },
+      { currency: "usd", pending: 1, ready: 1, paid_total: 1, connect_status: "restricted" },
+      // No *_cents aliases (CQ-CR-E3)
+      {
+        currency: "usd",
+        pending_cents: 1,
+        ready_cents: 1,
+        paid_total_cents: 1,
+        connect_status: "active",
+      },
+      "nope",
+    ];
+    for (const c of cases) {
+      expect(shapeEarnings(c)).toBeNull();
+    }
+    expect(spy.mock.calls.length).toBe(cases.length);
     const logged = JSON.parse(String(spy.mock.calls[0]?.[0]));
     expect(logged).toEqual({
       event: "referral_earnings_omitted",
       reason: "bad_shape",
     });
+    expect(Object.keys(logged).sort()).toEqual(["event", "reason"]);
     spy.mockRestore();
   });
 
   it("buildReferralsDto never 502s on bad earnings", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const built = buildReferralsDto(
       {
         eligible: true,
@@ -182,6 +281,7 @@ describe("shapeEarnings (N2 OVERRIDE — BSI §2.4)", () => {
     );
     expect(built.ok).toBe(true);
     if (built.ok) expect(built.dto.earnings).toBeUndefined();
+    spy.mockRestore();
   });
 });
 
@@ -270,10 +370,11 @@ describe("buildReferralsDto", () => {
         commission_policy: { commission_percent: 25, commission_bps: 2500 },
       },
       {
-        pending_cents: 0,
-        ready_cents: 100,
-        paid_total_cents: 500,
-        currency: "USD",
+        currency: "usd",
+        pending: 0,
+        ready: 100,
+        paid_total: 500,
+        connect_status: "active",
       },
       NOW,
     );
@@ -284,6 +385,71 @@ describe("buildReferralsDto", () => {
     expect(JSON.stringify(built.dto)).not.toContain("commission_policy");
     expect(JSON.stringify(built.dto)).not.toContain("payee_entity_id");
     expect(built.dto.course_links_dropped).toBe(0);
+    expect(built.dto.join_code_dropped).toBe(false);
+    expect(built.dto.earnings).toEqual({
+      pending_cents: 0,
+      ready_cents: 100,
+      paid_total_cents: 500,
+      currency: "usd",
+      connect_status: "active",
+    });
+  });
+
+  it("W3 join_code_dropped true only on commission mismatch; bad join_url leaves false", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mismatch = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: { ...CONTRACT_JOIN, commission_percent: 20, commission_bps: 1500 },
+        course_links: [CONTRACT_LINK],
+      },
+      undefined,
+      NOW,
+    );
+    expect(mismatch.ok).toBe(true);
+    if (mismatch.ok) {
+      expect(mismatch.dto.join_code).toBeNull();
+      expect(mismatch.dto.join_code_dropped).toBe(true);
+      expect(mismatch.dto.course_links).toHaveLength(1);
+      expect(mismatch.logs).toContainEqual({
+        event: "course_link_dropped",
+        reason: "join_code_commission_mismatch",
+        course_id: null,
+      });
+    }
+    const badUrl = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: { ...CONTRACT_JOIN, join_url: "http://evil.example/x" },
+        course_links: [CONTRACT_LINK],
+      },
+      undefined,
+      NOW,
+    );
+    expect(badUrl.ok).toBe(true);
+    if (badUrl.ok) {
+      expect(badUrl.dto.join_code).not.toBeNull();
+      expect(badUrl.dto.join_code?.join_url).toBeNull();
+      expect(badUrl.dto.join_code_dropped).toBe(false);
+    }
+    const upstreamNull = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: null,
+        course_links: [],
+      },
+      undefined,
+      NOW,
+    );
+    expect(upstreamNull.ok).toBe(true);
+    if (upstreamNull.ok) {
+      expect(upstreamNull.dto.join_code_dropped).toBe(false);
+      expect(typeof upstreamNull.dto.join_code_dropped).toBe("boolean");
+    }
+    warn.mockRestore();
   });
 
   it("CR-DROP-T1: keeps 50 and 3000, drops 51", () => {

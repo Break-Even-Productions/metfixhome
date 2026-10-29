@@ -24,10 +24,35 @@ function commissionBadge(percent: number): string {
   return `${percent}% referral commission`;
 }
 
+/**
+ * R2-N3/N6: no client defaults (??0 / ??USD / missing eligible ≠ eligible).
+ * Incomplete earnings → omit; missing eligible → not eligible.
+ */
 function asDto(payload: ReferralsPayload): ReferralsDto {
+  const eligible = payload.eligible === true;
+  let earnings: ReferralsDto["earnings"] | undefined;
+  const e = payload.earnings;
+  if (
+    e &&
+    typeof e.pending_cents === "number" &&
+    typeof e.ready_cents === "number" &&
+    typeof e.paid_total_cents === "number" &&
+    typeof e.currency === "string" &&
+    (e.connect_status === "none" ||
+      e.connect_status === "pending" ||
+      e.connect_status === "active")
+  ) {
+    earnings = {
+      pending_cents: e.pending_cents,
+      ready_cents: e.ready_cents,
+      paid_total_cents: e.paid_total_cents,
+      currency: e.currency,
+      connect_status: e.connect_status,
+    };
+  }
   return {
-    eligible: payload.eligible !== false,
-    eligibility_type: payload.eligibility_type ?? null,
+    eligible,
+    eligibility_type: eligible ? (payload.eligibility_type ?? null) : null,
     reason_code: payload.reason_code ?? null,
     payee_display_name: payload.payee_display_name ?? null,
     foundations_coach_expires_at: payload.foundations_coach_expires_at ?? null,
@@ -35,14 +60,7 @@ function asDto(payload: ReferralsPayload): ReferralsDto {
     course_links: payload.course_links ?? [],
     course_links_dropped: payload.course_links_dropped ?? 0,
     join_code_dropped: payload.join_code_dropped === true,
-    earnings: payload.earnings
-      ? {
-          pending_cents: payload.earnings.pending_cents ?? 0,
-          ready_cents: payload.earnings.ready_cents ?? 0,
-          paid_total_cents: payload.earnings.paid_total_cents ?? 0,
-          currency: payload.earnings.currency ?? "USD",
-        }
-      : undefined,
+    ...(earnings ? { earnings } : {}),
   };
 }
 
@@ -76,19 +94,31 @@ export default function AccountReferrals({ nowMs }: Props) {
     };
   }, []);
 
-  const onAction = useCallback(async (action: "generate" | "rotate" | "revoke") => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await referralCodeAction(action);
-      setData(asDto(next));
-    } catch {
-      setError(`Could not ${action} referral code.`);
-    } finally {
-      setBusy(false);
-    }
-  }, [busy]);
+  const onAction = useCallback(
+    async (action: "generate" | "rotate" | "revoke") => {
+      if (busy) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const next = await referralCodeAction(action, {
+          previousEarnings: data?.earnings,
+        });
+        // CR-EARN-T3 / CQ-CR-E5: CR2 omits earnings — keep prior panel values.
+        setData((prev) => {
+          const dto = asDto(next);
+          if (dto.earnings == null && prev?.earnings) {
+            return { ...dto, earnings: prev.earnings };
+          }
+          return dto;
+        });
+      } catch {
+        setError(`Could not ${action} referral code.`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, data?.earnings],
+  );
 
   const copy = useCallback(async (text: string) => {
     try {
@@ -99,16 +129,22 @@ export default function AccountReferrals({ nowMs }: Props) {
   }, []);
 
   const now = nowMs ?? Date.now();
+  // Shared predicate (CQ-CR-E8: coach needs foundations_coach blob). Worker DTO is
+  // authoritative when the client lacks that blob.
   const pred = data
     ? canGenerateCourseReferrals(
         {
           eligibility_type: data.eligibility_type,
-          foundations_coach_expires_at: data.foundations_coach_expires_at,
         },
         now,
       )
     : null;
-  const eligible = Boolean(data?.eligible && pred?.eligible);
+  const eligible = Boolean(
+    data?.eligible === true &&
+      (pred?.eligible ||
+        data.eligibility_type === "organization" ||
+        data.eligibility_type === "foundations_coach"),
+  );
   const showMutedNotice = Boolean(
     data && (data.course_links_dropped > 0 || data.join_code_dropped),
   );
@@ -152,6 +188,17 @@ export default function AccountReferrals({ nowMs }: Props) {
         </section>
       ) : null}
 
+      {data?.earnings ? (
+        <section className="account-card" data-testid="referrals-earnings">
+          <h2>Earnings</h2>
+          <p className="account-mono font-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+            Pending {formatUsdFromCents(data.earnings.pending_cents)} · Ready{" "}
+            {formatUsdFromCents(data.earnings.ready_cents)} · Paid{" "}
+            {formatUsdFromCents(data.earnings.paid_total_cents)}
+          </p>
+        </section>
+      ) : null}
+
       {eligible && data ? (
         <>
           {showMutedNotice ? (
@@ -159,7 +206,9 @@ export default function AccountReferrals({ nowMs }: Props) {
               className="account-muted"
               data-testid="referrals-dropped-notice"
             >
-              Some course links couldn&apos;t be shown right now.
+              {data.join_code_dropped
+                ? "Your join link couldn't be shown right now."
+                : "Some course links couldn't be shown right now."}
             </p>
           ) : null}
 
@@ -236,24 +285,17 @@ export default function AccountReferrals({ nowMs }: Props) {
 
           {data.course_links.length > 0 ? (
             <section className="account-card">
-              <h2>Course links</h2>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "1rem" }}>
+              <h2>Course referral links</h2>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.75rem" }}>
                 {data.course_links.map((link) => (
-                  <li key={link.course_id} data-testid={`course-link-${link.course_id}`}>
-                    <p style={{ fontWeight: 600 }}>{link.course_title}</p>
-                    <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                      {formatUsdFromCents(link.course_price_cents)}
-                    </p>
-                    <p className="account-mono font-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-                      {commissionBadge(link.commission_percent)}
-                    </p>
-                    <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                  <li key={link.course_id} className="account-course-card">
+                    <div className="account-course-card__title">{link.course_title}</div>
+                    <div className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                      {formatUsdFromCents(link.course_price_cents)} ·{" "}
+                      {commissionBadge(link.commission_percent)} · est.{" "}
                       {formatUsdFromCents(link.estimated_commission_cents)}
-                    </p>
-                    <p
-                      className="account-mono"
-                      style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "0.8rem", wordBreak: "break-all" }}
-                    >
+                    </div>
+                    <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
                       {link.share_url}
                     </p>
                     <button

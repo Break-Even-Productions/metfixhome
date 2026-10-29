@@ -38,6 +38,31 @@ export type SubscriptionTierInput = {
   items?: ReadonlyArray<SubscriptionTierItem>;
 };
 
+function asRecord(v: unknown): Record<string, unknown> | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  return v as Record<string, unknown>;
+}
+
+/**
+ * R3-B2 / PR D: one shared extractor for overview + LTV + referrals.
+ * Accepts top-level `subscription_items` or nested `subscriptions.items`
+ * (never bare `items`, which may be unrelated lists).
+ */
+export function extractSubscriptionTierItems(
+  obj: Record<string, unknown>,
+): SubscriptionTierItem[] {
+  const subsRaw = asRecord(obj.subscriptions);
+  const rows = Array.isArray(obj.subscription_items)
+    ? obj.subscription_items
+    : Array.isArray(subsRaw?.items)
+      ? (subsRaw!.items as unknown[])
+      : [];
+  return rows.map((row) => {
+    const r = asRecord(row) ?? {};
+    return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
+  });
+}
+
 function itemStatus(item: SubscriptionTierItem): string {
   return typeof item.status === "string" ? item.status.toLowerCase() : "";
 }

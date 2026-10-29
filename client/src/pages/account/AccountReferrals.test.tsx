@@ -74,7 +74,7 @@ function mount() {
 }
 
 describe("AccountReferrals PR D", () => {
-  it("locked card names both paths; expired shows mono date; 0 POSTs", async () => {
+  it("CR-ELIG-3: locked card names both paths; renew link; 0 POSTs", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = (init?.method ?? "GET").toUpperCase();
@@ -101,8 +101,122 @@ describe("AccountReferrals PR D", () => {
     expect(screen.getByText(/Organization Owner/i)).toBeTruthy();
     expect(screen.getAllByText(/Foundations Coach/i).length).toBeGreaterThan(0);
     expect(screen.getByText("2025-01-01T00:00:00.000Z").className).toMatch(/font-mono|account-mono/);
+    expect(screen.getByText(/Renew qualification/i).closest("a")?.getAttribute("href")).toBe(
+      "/account/courses",
+    );
     expect(screen.queryByTestId("generate-referral")).toBeNull();
+    expect(screen.queryByText("Rotate")).toBeNull();
     expect(fetchMock.mock.calls.every((c) => (c[1] as RequestInit)?.method !== "POST")).toBe(true);
+  });
+
+  it("CR-DROP-1: muted notice has no alert role; CR-COMM-3 bare generate has 0%", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+        if (url.includes("/api/account/referrals")) {
+          return jsonResponse({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: null,
+            join_code_dropped: true,
+            course_links: [],
+            course_links_dropped: 0,
+          });
+        }
+        if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+        return jsonResponse({});
+      }),
+    );
+    mount();
+    await waitFor(() => expect(screen.getByTestId("referrals-dropped-notice")).toBeTruthy());
+    const notice = screen.getByTestId("referrals-dropped-notice");
+    expect(notice.getAttribute("role")).toBeNull();
+    expect(notice.className).toMatch(/muted/);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("CR-URL-1: bad join_url hides copy; clipboard unused", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+        if (url.includes("/api/account/referrals")) {
+          return jsonResponse({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: { ...JOIN, join_url: null },
+            course_links: [],
+            course_links_dropped: 0,
+            join_code_dropped: false,
+          });
+        }
+        if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+        return jsonResponse({});
+      }),
+    );
+    mount();
+    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    expect(screen.queryByText("Copy Referral Link")).toBeNull();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("CR-EARN-T3: earnings panel survives generate without earnings in response", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+      if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+      if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+      if (url.includes("/api/account/referrals") && method === "GET") {
+        return jsonResponse({
+          eligible: true,
+          eligibility_type: "organization",
+          join_code: null,
+          course_links: [],
+          course_links_dropped: 0,
+          join_code_dropped: false,
+          earnings: {
+            pending_cents: 1250,
+            ready_cents: 3000,
+            paid_total_cents: 0,
+            currency: "usd",
+            connect_status: "active",
+          },
+        });
+      }
+      if (url.includes("/api/account/referral-code") && method === "POST") {
+        return jsonResponse({
+          eligible: true,
+          eligibility_type: "organization",
+          join_code: JOIN,
+          course_links: [LINK],
+          course_links_dropped: 0,
+          join_code_dropped: false,
+        });
+      }
+      if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mount();
+    await waitFor(() => expect(screen.getByTestId("referrals-earnings")).toBeTruthy());
+    expect(screen.getByTestId("referrals-earnings").textContent).toMatch(/\$12\.50/);
+    expect(screen.getByTestId("referrals-earnings").textContent).toMatch(/\$30\.00/);
+    fireEvent.click(screen.getByTestId("generate-referral"));
+    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    expect(screen.getByTestId("referrals-earnings").textContent).toMatch(/\$12\.50/);
   });
 
   it("[t451u] shows stored percents, never policy 25%", async () => {
@@ -261,7 +375,8 @@ describe("AccountReferrals PR D", () => {
             pending_cents: 1200,
             ready_cents: 3400,
             paid_total_cents: 10000,
-            currency: "USD",
+            currency: "usd",
+            connect_status: "active",
           },
         });
       }

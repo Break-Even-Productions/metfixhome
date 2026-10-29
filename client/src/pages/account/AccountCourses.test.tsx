@@ -160,7 +160,7 @@ describe("AccountCourses (P-DB-7, P-DB-8, CERT)", () => {
     expect(screen.getAllByText(/in-person seminar check-in/i).length).toBeGreaterThan(0);
   });
 
-  it("CR-COALESCE: buy posts purchase-checkout with bsi_ref once (busy lock)", async () => {
+  it("CR-COALESCE-1: buy posts purchase-checkout with bsi_ref once (busy lock)", async () => {
     const bodies: unknown[] = [];
     sessionStorage.setItem("mfx_bsi_ref", "cfexample9");
     vi.spyOn(await import("@/lib/account"), "assignBillingUrl").mockReturnValue(true);

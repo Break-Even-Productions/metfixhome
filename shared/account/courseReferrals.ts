@@ -5,11 +5,9 @@
  * Coach expiry + tier resolution come from #21 shared modules — do not re-copy.
  */
 
+import { normalizeFoundationsCoachStatus } from "./foundations-coach";
 import {
-  computeThreeYearExpiryIso,
-  normalizeFoundationsCoachStatus,
-} from "./foundations-coach";
-import {
+  extractSubscriptionTierItems,
   isOrganizationOwnerTier,
   resolveAccountCanonicalTier,
   type SubscriptionTierItem,
@@ -39,18 +37,19 @@ export type DropReason =
   | "bad_price"
   | "bad_currency"
   | "bad_share_url"
+  | "bad_row"
   | "join_code_commission_mismatch"
   | "bad_join_url";
 
 export type CanGenerateInput = {
-  /** Canonical only: `'organization' | 'foundations_coach'`. No aliases. */
+  /** Canonical: `'organization' | 'foundations_coach'`. Role-slug aliases go through the map. */
   eligibility_type?: unknown;
   canonical_tier?: unknown;
   subscription_items?: ReadonlyArray<SubscriptionTierItem>;
-  foundations_coach_expires_at?: unknown;
-  foundations_coach_granted_at?: unknown;
-  /** Full foundations-coach payload when available (preferred over bare expires). */
+  /** Full foundations-coach payload — required for coach path (CQ-CR-E8). */
   foundations_coach?: unknown;
+  /** Legacy role-slug alias only — mapped once via mapFoundationCertifiedAlias. */
+  role_slug?: unknown;
 };
 
 export type CanGenerateResult =
@@ -58,8 +57,29 @@ export type CanGenerateResult =
   | { eligible: false; reason_code: Exclude<ReferralReasonCode, null> };
 
 /**
- * CR-ELIG-1: org first (via shared tier resolver); coach only when unexpired
- * under foundations-coach (+3y clamp). No eligibility_type aliases.
+ * CR-ELIG-1 / W5 / MC34: single map for the legacy role slug.
+ * The legacy slug literal appears only inside this function body.
+ */
+export function mapFoundationCertifiedAlias(
+  raw: unknown,
+): "foundations_coach" | null {
+  if (raw === "foundation_certified" || raw === "foundations_coach") {
+    return "foundations_coach";
+  }
+  return null;
+}
+
+function isCoachEligibilityClaim(input: CanGenerateInput): boolean {
+  return (
+    mapFoundationCertifiedAlias(input.eligibility_type) === "foundations_coach" ||
+    mapFoundationCertifiedAlias(input.role_slug) === "foundations_coach" ||
+    input.foundations_coach != null
+  );
+}
+
+/**
+ * CR-ELIG-1: org first (shared tier resolver); coach ONLY via
+ * `normalizeFoundationsCoachStatus` (CQ-CR-E8 — no local expiry math).
  */
 export function canGenerateCourseReferrals(
   input: CanGenerateInput,
@@ -74,60 +94,23 @@ export function canGenerateCourseReferrals(
     return { eligible: true, eligibility_type: "organization" };
   }
 
-  if (input.eligibility_type !== "foundations_coach" && input.foundations_coach == null) {
+  if (!isCoachEligibilityClaim(input)) {
     return { eligible: false, reason_code: "bsi_referral_ineligible" };
   }
 
-  // Prefer full #21 normalizer when a coach object (or grant fields) is present.
-  if (input.foundations_coach != null && typeof input.foundations_coach === "object") {
-    const coach = normalizeFoundationsCoachStatus(input.foundations_coach, nowMs);
-    if (coach.active) {
-      return { eligible: true, eligibility_type: "foundations_coach" };
-    }
-    if (coach.expires_at != null && Date.parse(coach.expires_at) <= nowMs) {
-      return { eligible: false, reason_code: "bsi_referral_coach_expired" };
-    }
+  // CQ-CR-E8: no coach object → ineligible (do not rebuild expiry from bare fields).
+  if (input.foundations_coach == null || typeof input.foundations_coach !== "object") {
     return { eligible: false, reason_code: "bsi_referral_ineligible" };
   }
 
-  const grantedAt =
-    typeof input.foundations_coach_granted_at === "string"
-      ? input.foundations_coach_granted_at
-      : null;
-  const expiresRaw =
-    typeof input.foundations_coach_expires_at === "string"
-      ? input.foundations_coach_expires_at
-      : null;
-
-  if (!expiresRaw && !grantedAt) {
-    return { eligible: false, reason_code: "bsi_referral_ineligible" };
-  }
-
-  // Clamp: earlier of (BSI expires_at, granted_at + 3y). >3y window → ineligible/expired.
-  let effectiveExpires = expiresRaw;
-  if (grantedAt) {
-    const computed = computeThreeYearExpiryIso(grantedAt);
-    if (computed) {
-      effectiveExpires =
-        effectiveExpires == null
-          ? computed
-          : Date.parse(computed) <= Date.parse(effectiveExpires)
-            ? computed
-            : effectiveExpires;
-    }
-  }
-
-  if (!effectiveExpires) {
-    return { eligible: false, reason_code: "bsi_referral_ineligible" };
-  }
-  const t = Date.parse(effectiveExpires);
-  if (!Number.isFinite(t)) {
-    return { eligible: false, reason_code: "bsi_referral_ineligible" };
-  }
-  if (nowMs < t) {
+  const coach = normalizeFoundationsCoachStatus(input.foundations_coach, nowMs);
+  if (coach.active) {
     return { eligible: true, eligibility_type: "foundations_coach" };
   }
-  return { eligible: false, reason_code: "bsi_referral_coach_expired" };
+  if (coach.expires_at != null) {
+    return { eligible: false, reason_code: "bsi_referral_coach_expired" };
+  }
+  return { eligible: false, reason_code: "bsi_referral_ineligible" };
 }
 
 const ALLOWED_REFERRAL_HOSTS = new Set([
@@ -150,13 +133,6 @@ export function isAllowedReferralUrl(raw: unknown): boolean {
   if (u.username !== "" || u.password !== "") return false;
   if (u.port !== "") return false;
   return ALLOWED_REFERRAL_HOSTS.has(u.hostname);
-}
-
-/** Return-path allowlist (relative path only). */
-export function sanitizeReturnPath(raw: unknown): string | null {
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > 512) return null;
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return null;
-  return raw;
 }
 
 /** Bad bps → page-fatal 502. Accepts 0..10000 inclusive integers only. */
@@ -229,11 +205,17 @@ export type ReferralsDto = {
     pending_cents: number;
     ready_cents: number;
     paid_total_cents: number;
+    /** Lowercase 3-letter ISO (BSI §2.4); never case-folded. */
     currency: string;
+    connect_status: "none" | "pending" | "active";
   };
   /** Enforce: never present on client DTO. */
   commission_policy?: never;
 };
+
+export type ConnectStatus = "none" | "pending" | "active";
+const CONNECT_STATUSES = new Set<string>(["none", "pending", "active"]);
+const EARNINGS_CURRENCY_RE = /^[a-z]{3}$/;
 
 export type DropLogEvent = {
   event: "course_link_dropped";
@@ -275,12 +257,9 @@ export function buildReferralsDto(
     {
       eligibility_type: obj.eligibility_type,
       canonical_tier: obj.canonical_tier,
-      foundations_coach_expires_at: obj.foundations_coach_expires_at,
-      foundations_coach_granted_at: obj.foundations_coach_granted_at,
       foundations_coach: obj.foundations_coach,
-      subscription_items: Array.isArray(obj.subscription_items)
-        ? (obj.subscription_items as SubscriptionTierItem[])
-        : undefined,
+      role_slug: obj.role_slug,
+      subscription_items: extractSubscriptionTierItems(obj),
     },
     nowMs,
   );
@@ -392,10 +371,11 @@ export function buildReferralsDto(
   for (const row of rawLinks) {
     const r = asRecord(row);
     if (!r) {
+      // N1: non-object rows → bad_row + skipped log (no course_id).
       course_links_dropped += 1;
       logs.push({
         event: "course_link_dropped",
-        reason: "bad_price",
+        reason: "bad_row",
         course_id: null,
       });
       continue;
@@ -529,11 +509,10 @@ export function buildReferralsDto(
 }
 
 /**
- * OVERRIDE CQ N2: earnings is optional. Accept BSI GET /me/referral-earnings
- * per account-api-gaps rev1.3.18 §2.4:
- * `{ currency:'usd', pending, ready, paid_total, connect_status }`.
- * Lowercase currency → uppercase. Units are integer cents.
- * Unknown/bad shape → omit earnings + log reason; never 502.
+ * CR-EARN-1 (spec 1.1.5 / CQ rev1.1.5): map BSI GET /me/referral-earnings §2.4
+ * `{ currency:'usd', pending, ready, paid_total, connect_status }` only —
+ * no `*_cents` aliases. Currency stays lowercase; `"USD"` → bad_shape.
+ * Reasons: `upstream_error` | `bad_shape` only. Never 502.
  */
 export function shapeEarnings(
   raw: unknown,
@@ -542,18 +521,26 @@ export function shapeEarnings(
   const obj = asRecord(raw);
   if (!obj) {
     console.warn(
-      JSON.stringify({ event: "referral_earnings_omitted", reason: "non_object" }),
+      JSON.stringify({ event: "referral_earnings_omitted", reason: "bad_shape" }),
     );
     return null;
   }
-  const src = asRecord(obj.earnings) ?? obj;
+  // Strict §2.4 keys only — reject nested {earnings:{...}} wrappers and *_cents.
+  const pending = safeNonNegInt(obj.pending);
+  const ready = safeNonNegInt(obj.ready);
+  const paid = safeNonNegInt(obj.paid_total);
+  const currency = strField(obj.currency);
+  const connect = strField(obj.connect_status);
 
-  // BSI §2.4 documented keys (not *_cents). Also accept already-normalized *_cents.
-  const pending = safeNonNegInt(src.pending ?? src.pending_cents);
-  const ready = safeNonNegInt(src.ready ?? src.ready_cents);
-  const paid = safeNonNegInt(src.paid_total ?? src.paid_total_cents);
-  const currencyRaw = strField(src.currency);
-  if (pending == null || ready == null || paid == null || !currencyRaw) {
+  if (
+    pending == null ||
+    ready == null ||
+    paid == null ||
+    !currency ||
+    !EARNINGS_CURRENCY_RE.test(currency) ||
+    !connect ||
+    !CONNECT_STATUSES.has(connect)
+  ) {
     console.warn(
       JSON.stringify({
         event: "referral_earnings_omitted",
@@ -562,23 +549,23 @@ export function shapeEarnings(
     );
     return null;
   }
-  const currency = currencyRaw.toUpperCase();
-  if (!CURRENCY_RE.test(currency)) {
-    console.warn(
-      JSON.stringify({
-        event: "referral_earnings_omitted",
-        reason: "bad_currency",
-      }),
-    );
-    return null;
-  }
-  // connect_status is accepted upstream but not exposed on the client DTO.
   return {
     pending_cents: pending,
     ready_cents: ready,
     paid_total_cents: paid,
     currency,
+    connect_status: connect as ConnectStatus,
   };
+}
+
+/** Log helper for upstream earnings GET failures (CR-EARN-1). */
+export function logEarningsUpstreamOmitted(): void {
+  console.warn(
+    JSON.stringify({
+      event: "referral_earnings_omitted",
+      reason: "upstream_error",
+    }),
+  );
 }
 
 export type CheckoutAttributionDto = {

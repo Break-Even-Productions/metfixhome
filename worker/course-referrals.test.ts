@@ -272,8 +272,11 @@ describe("PR D course referrals + checkout", () => {
         pending_cents: 0,
         ready_cents: 100,
         paid_total_cents: 500,
-        currency: "USD",
+        currency: "usd",
+        connect_status: "active",
       });
+      expect(body.join_code_dropped).toBe(false);
+      expect(typeof body.course_links_dropped).toBe("number");
       const s = JSON.stringify(body);
       expect(s).not.toContain("commission_policy");
       expect(s).not.toContain("payee_entity_id");
@@ -384,42 +387,174 @@ describe("PR D course referrals + checkout", () => {
     spy.mockRestore();
   });
 
-  it("CR2 generate maps 403 reason_code; ≤1 upstream mutation (CQ B3)", async () => {
+  it("CR-ELIG-4: exactly 1 upstream POST; {error,reason_code} only; no leak; both routes", async () => {
     const sess = await withSession(h);
-    let posts = 0;
-    let gets = 0;
+    const cases: Array<{
+      path: string;
+      action: string;
+      code: "bsi_referral_ineligible" | "bsi_referral_coach_expired";
+    }> = [
+      {
+        path: "/api/account/referral-code",
+        action: "generate",
+        code: "bsi_referral_coach_expired",
+      },
+      {
+        path: "/api/account/referral-code",
+        action: "generate",
+        code: "bsi_referral_ineligible",
+      },
+      {
+        path: "/api/account/course-referrals",
+        action: "rotate",
+        code: "bsi_referral_ineligible",
+      },
+      {
+        path: "/api/account/course-referrals",
+        action: "rotate",
+        code: "bsi_referral_coach_expired",
+      },
+    ];
+    for (const c of cases) {
+      let posts = 0;
+      let other = 0;
+      const canary = "leak-canary-xyz@example.com";
+      const { fetchImpl, recorded } = makeFetchMock([
+        async ({ path, method }) => {
+          if (path.includes("referral-code") && method === "POST") {
+            posts += 1;
+            return Response.json(
+              {
+                code: c.code,
+                message: "do-not-leak",
+                data: { payee_entity_id: 99 },
+                payee_entity_id: 99,
+                join_code: JOIN,
+                commission_policy: { commission_percent: 25 },
+                email: canary,
+                canary,
+              },
+              { status: 403 },
+            );
+          }
+          other += 1;
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        c.path,
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({ action: c.action }),
+        },
+        fetchImpl,
+      );
+      assertNoStore(res);
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(Object.keys(body).sort()).toEqual(["error", "reason_code"]);
+      expect(body).toEqual({
+        error: "referral_ineligible",
+        reason_code: c.code,
+      });
+      const blob = JSON.stringify(body);
+      expect(blob).not.toContain(canary);
+      expect(blob).not.toContain("payee_entity_id");
+      expect(blob).not.toContain("commission_policy");
+      expect(blob).not.toContain("do-not-leak");
+      expect(posts).toBe(1);
+      expect(other).toBe(0);
+      expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+    }
+  });
+
+  it("CR-ELIG-4 static: CR2 handler has no canGenerateCourseReferrals pre-check", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(REPO_ROOT, "worker/account.ts"), "utf8");
+    const caseBlock = src.match(/case "DP24w":[\s\S]*?case "DP25":/)?.[0] ?? "";
+    expect(caseBlock.length).toBeGreaterThan(100);
+    expect(caseBlock).not.toMatch(/canGenerateCourseReferrals/);
+  });
+
+  it("CR-EARN-1: upstream earnings fail → 200 omit + upstream_error log", async () => {
+    const sess = await withSession(h);
+    const warns: Record<string, unknown>[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      try {
+        warns.push(typeof msg === "string" ? JSON.parse(msg) : (msg as object));
+      } catch {
+        /* ignore */
+      }
+    });
     const { fetchImpl, recorded } = makeFetchMock([
-      async ({ path, method }) => {
-        if (path.includes("referral-code") && method === "POST") {
-          posts += 1;
-          return Response.json(
-            { code: "bsi_referral_coach_expired", message: "expired" },
-            { status: 403 },
-          );
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+        if (path.includes("referral-earnings")) {
+          return Response.json({ error: "boom" }, { status: 500 });
         }
-        if (method === "GET") gets += 1;
         return new Response(null, { status: 404 });
       },
     ]);
     const res = await callAccount(
       h,
-      "/api/account/referral-code",
-      {
-        method: "POST",
-        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ action: "generate" }),
-      },
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
       fetchImpl,
     );
-    assertNoStore(res);
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({
-      error: "referral_ineligible",
-      reason_code: "bsi_referral_coach_expired",
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).not.toHaveProperty("earnings");
+    expect(body.join_code?.slug).toBe("cfexample9");
+    expect(warns).toContainEqual({
+      event: "referral_earnings_omitted",
+      reason: "upstream_error",
     });
-    expect(posts).toBe(1);
-    expect(gets).toBe(0);
-    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(2);
+    spy.mockRestore();
+  });
+
+  it("CR-EARN-1: bad_shape earnings → 200 omit + bad_shape log", async () => {
+    const sess = await withSession(h);
+    const warns: Record<string, unknown>[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      try {
+        warns.push(typeof msg === "string" ? JSON.parse(msg) : (msg as object));
+      } catch {
+        /* ignore */
+      }
+    });
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+        if (path.includes("referral-earnings")) {
+          return Response.json({
+            currency: "USD",
+            pending: 1,
+            ready: 1,
+            paid_total: 1,
+            connect_status: "active",
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).not.toHaveProperty("earnings");
+    expect(warns).toContainEqual({
+      event: "referral_earnings_omitted",
+      reason: "bad_shape",
+    });
+    spy.mockRestore();
   });
 
   it("CQ B2: upstream 500 with payee/whop/commission_policy → only {error}", async () => {
@@ -683,7 +818,7 @@ describe("PR D course referrals + checkout", () => {
     }
   });
 
-  it("T-CR3 CSRF before limiter; T-CR4 no-store; CR5 429", async () => {
+  it("T-CR3 CSRF before limiter; cross-origin; T-CR4 no-store; CR5 429", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async () => Response.json(CHECKOUT_OK),
@@ -704,6 +839,26 @@ describe("PR D course referrals + checkout", () => {
     );
     expect(noCsrf.status).toBe(403);
     assertNoStore(noCsrf);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+
+    const crossOrigin = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: {
+          Cookie: sess.cookie,
+          Origin: "https://evil.example",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": sess.csrf,
+          "Sec-Fetch-Site": "cross-site",
+        },
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    expect(crossOrigin.status).toBe(403);
+    assertNoStore(crossOrigin);
     expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
 
     h.env.ACCOUNT_WRITE_LIMITER = countingLimiter(0);
