@@ -23,10 +23,12 @@ import {
 import { assetUrl, basePath, HOME_SCROLL_KEY, scrollToHomeSection } from "@/const";
 import CopyrightText from "@/components/CopyrightText";
 import { CmsLink } from "@/components/CmsLink";
+import { Membership } from "@/components/Membership";
 import { HighlightedHeadlineText } from "@/lib/highlightedText";
 import { useHomeContent } from "@/hooks/useSanityContent";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import type { HomeTestimonial } from "@/lib/homeTypes";
+import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
 import { Link } from "wouter";
 import { useEffect, useRef, useState } from "react";
 
@@ -476,6 +478,7 @@ export default function Home() {
   const [railVisible, setRailVisible] = useState(false);
   const [email, setEmail] = useState("");
   const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
+  const joinFlow = useJoinFlowOptional();
 
   useEffect(() => {
     const obs = new IntersectionObserver(
@@ -1187,6 +1190,18 @@ export default function Home() {
               </div>
             </Reveal>
           </div>
+        </div>
+      </section>
+
+      {/* ═══ MEMBERSHIP (WJ16 / WJ20) ═══════════════════════════════ */}
+      <section id="membership-section" style={{ background: "#0A0A0A", borderTop: "1px solid rgba(255,255,255,0.06)", padding: "4rem 1.25rem" }}>
+        <div className="container">
+          <Membership
+            onJoin={() => {
+              if (joinFlow) joinFlow.openJoinFlow();
+              else window.location.assign(basePath("/join"));
+            }}
+          />
         </div>
       </section>
 

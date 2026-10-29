@@ -113,6 +113,8 @@ export type Env = {
   ACCOUNT_READ_LIMITER?: RateLimitBinding;
   ACCOUNT_WRITE_LIMITER?: RateLimitBinding;
   ACCOUNT_PORTAL_LIMITER?: RateLimitBinding;
+  /** Whop checkout session mint — 10/60s (27115 / preview 27215). */
+  WHOP_CHECKOUT_LIMITER?: RateLimitBinding;
 };
 
 /** DP9 / DP42 / DP45 / T1: Bearer-only headers — TypeScript rejects X-API-Key. */
@@ -338,6 +340,54 @@ export function bsiAccountBearerHeaders(
     headers["Content-Type"] = contentType;
   }
   return headers;
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/onboarding — Bearer only (WJ21). */
+export async function bsiPostMeOnboarding(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/wp-json/bsi/v1/me/onboarding`;
+  return bsiFetch(
+    url,
+    {
+      method: "POST",
+      headers: bsiAccountBearerHeaders(accessToken, "application/json"),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 15_000),
+    },
+    fetchImpl,
+    env,
+  );
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/whop/checkout-session — Bearer only (WJ22). */
+export async function bsiPostWhopCheckoutSession(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const url = `${cfg.origin}/wp-json/bsi/v1/me/whop/checkout-session`;
+  return bsiFetch(
+    url,
+    {
+      method: "POST",
+      headers: bsiAccountBearerHeaders(accessToken, "application/json"),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 15_000),
+    },
+    fetchImpl,
+    env,
+  );
 }
 
 async function oauthTokenFetch(
