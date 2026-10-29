@@ -57,7 +57,7 @@ function fingerprintOnboarding(profile: JoinProfile): string {
 export function JoinFlow({
   open,
   onClose,
-  standalone = false,
+  standalone: _standalone = false,
   initialStep,
   returnFocusTo = null,
 }: JoinFlowProps) {
@@ -208,8 +208,6 @@ export function JoinFlow({
   if (!open) return null;
 
   const showProgress = step !== "path";
-  // `standalone` is reserved for page mount (vs modal); shell chrome is shared.
-  void standalone;
 
   return (
     <JoinShell

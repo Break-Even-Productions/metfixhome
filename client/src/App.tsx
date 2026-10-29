@@ -129,8 +129,7 @@ function AppShell() {
     location.startsWith("/account/") ||
     location === "/members" ||
     location.startsWith("/members/") ||
-    location === "/join" ||
-    location.startsWith("/join?");
+    location === "/join";
   return (
     <>
       {hideGlobalNav ? null : <GlobalNav />}

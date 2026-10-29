@@ -1,6 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,6 +17,8 @@ import {
 import { JoinFlow } from "./JoinFlow";
 import { JoinFlowProvider, useJoinFlow } from "@/contexts/JoinFlowContext";
 import * as session from "@/lib/session";
+
+const APP_TSX = readFileSync(join(process.cwd(), "client/src/App.tsx"), "utf8");
 
 afterEach(async () => {
   cleanup();
@@ -518,7 +522,23 @@ describe("WJ15 /join + useJoinFlow modal Esc focus", () => {
     const { default: JoinPage } = await import("@/pages/join/JoinPage");
     render(<JoinPage />);
     expect(await screen.findByRole("dialog", { name: /Join MetFix/i })).toBeTruthy();
-    expect(screen.getByText(/What’s your name/i)).toBeTruthy();
+    expect(screen.getByText(/What’s your name/i )).toBeTruthy();
+  });
+
+  it("/join?x=1 still routes to JoinPage (wouter pathname; no dead /join? startsWith)", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () => Response.json({ signed_in: false }),
+      }),
+    );
+    window.history.pushState({}, "", "/join?x=1");
+    expect(APP_TSX).not.toMatch(/startsWith\("\/join\?"\)/);
+    expect(APP_TSX).toMatch(/location === "\/join"/);
+    const { default: JoinPage } = await import("@/pages/join/JoinPage");
+    render(<JoinPage />);
+    expect(await screen.findByRole("dialog", { name: /Join MetFix/i })).toBeTruthy();
   });
 });
 

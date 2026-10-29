@@ -3,6 +3,7 @@
  * Never fetch /api/auth/me here; callers use loadMe() from session.ts.
  */
 import { getMetfixLoginUrl } from "@/const";
+import { fetchCsrf } from "@/lib/authRequest";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
@@ -259,21 +260,6 @@ function invalidateKeys(keys: CacheKey[]): void {
   for (const key of keys) {
     cache.delete(key);
     inflight.delete(key);
-  }
-}
-
-async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await globalThis.fetch("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
   }
 }
 
