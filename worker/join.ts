@@ -5,10 +5,10 @@
 import {
   isOnboardingRoleId,
   isWhopCheckoutPlan,
-  sanitizeWhopCheckoutUrl,
   type RoleId,
   type WhopCheckoutPlan,
 } from "../shared/join/membership-domain";
+import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import { sanitizeReturnPath } from "../shared/sanitize-return-path";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey } from "./auth/account-rate-limit";
@@ -311,7 +311,7 @@ export async function handleWhopCheckoutSession(
     return jsonPrivateNoStore({ error: "upstream_error" }, 502);
   }
   const checkoutRaw = (json as Record<string, unknown>).checkout_url;
-  const checkout_url = sanitizeWhopCheckoutUrl(checkoutRaw);
+  const checkout_url = sanitizeExternalBillingUrl(checkoutRaw, "whop_only");
   if (!checkout_url) {
     return jsonPrivateNoStore({ error: "upstream_error" }, 502);
   }

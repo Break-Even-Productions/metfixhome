@@ -75,9 +75,9 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
   });
 
   it("zero bare curie (case-insensitive) outside deny-guard allowlist files", () => {
-    // Deny-guards in membership-domain intentionally mention curie — exclude that file only.
+    // Deny-guards live in #21 shared/account/url-allowlist.ts (FORBIDDEN_WHOP_SUBSTRINGS).
     const cleaned = scanHits(withDist, /curie/i).filter(
-      (h) => !h.file.endsWith("shared/join/membership-domain.ts"),
+      (h) => !h.file.endsWith("shared/account/url-allowlist.ts"),
     );
     expect(cleaned).toEqual([]);
   });

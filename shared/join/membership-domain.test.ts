@@ -12,10 +12,10 @@ import {
   ONBOARDING_ROLE_IDS,
   parseJoinStepParam,
   resolveJoinStepTransition,
-  sanitizeWhopCheckoutUrl,
   showOrganizationOwnerCard,
 } from "./membership-domain";
 import { BEP_WHOP_COMPANY_ID, WHOP_ALLOWED_COMPANY_IDS } from "../account/whop";
+import { sanitizeExternalBillingUrl } from "../account/url-allowlist";
 import { sanitizeReturnPath } from "../sanitize-return-path";
 import { computeThreeYearExpiryIso } from "../account/foundations-coach";
 
@@ -142,17 +142,19 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(sanitizeReturnPath("javascript:alert(1)")).toBeNull();
   });
 
-  it("sanitizeWhopCheckoutUrl allowlists https *.whop.com and blocks curie", () => {
-    expect(sanitizeWhopCheckoutUrl("https://whop.com/c/x")).toBe("https://whop.com/c/x");
-    expect(sanitizeWhopCheckoutUrl("https://checkout.whop.com/x")).toBe(
+  it("Whop checkout URLs go through #21 sanitizeExternalBillingUrl(whop_only)", () => {
+    expect(sanitizeExternalBillingUrl("https://whop.com/c/x", "whop_only")).toBe(
+      "https://whop.com/c/x",
+    );
+    expect(sanitizeExternalBillingUrl("https://checkout.whop.com/x", "whop_only")).toBe(
       "https://checkout.whop.com/x",
     );
-    expect(sanitizeWhopCheckoutUrl("http://whop.com/x")).toBeNull();
-    expect(sanitizeWhopCheckoutUrl("https://evilwhop.com")).toBeNull();
-    expect(sanitizeWhopCheckoutUrl("https://whop.com.evil.io")).toBeNull();
-    expect(sanitizeWhopCheckoutUrl("https://u:p@whop.com")).toBeNull();
-    expect(sanitizeWhopCheckoutUrl("https://curie.whop.com/x")).toBeNull();
-    expect(sanitizeWhopCheckoutUrl("javascript:alert(1)")).toBeNull();
+    expect(sanitizeExternalBillingUrl("http://whop.com/x", "whop_only")).toBeNull();
+    expect(sanitizeExternalBillingUrl("https://evilwhop.com", "whop_only")).toBeNull();
+    expect(sanitizeExternalBillingUrl("https://whop.com.evil.io", "whop_only")).toBeNull();
+    expect(sanitizeExternalBillingUrl("https://u:p@whop.com", "whop_only")).toBeNull();
+    expect(sanitizeExternalBillingUrl("https://curie.whop.com/x", "whop_only")).toBeNull();
+    expect(sanitizeExternalBillingUrl("javascript:alert(1)", "whop_only")).toBeNull();
   });
 
   it("clampJoinDeepLink (B4) + facilityFlags (B3)", () => {
