@@ -6,7 +6,7 @@ describe("post-prose.css (PL1–PL3, PL7, PL8, PL11, PL13)", () => {
   const prose = fs.readFileSync(path.join(import.meta.dirname, "post-prose.css"), "utf8");
 
   it("shared body measure and DM Sans 16/26", () => {
-    expect(prose).toMatch(/max-width:\s*680px/);
+    expect(prose).toMatch(/max-width:\s*780px/);
     expect(prose).toMatch(/--post-font-sans:\s*"DM Sans"/);
     expect(prose).toMatch(/font-size:\s*16px/);
     expect(prose).toMatch(/line-height:\s*26px/);
@@ -26,7 +26,7 @@ describe("post-prose.css (PL1–PL3, PL7, PL8, PL11, PL13)", () => {
 
   it("PL13: author-right grid + aside classes live in post-prose.css", () => {
     expect(prose).toMatch(/\.post-reader-grid/);
-    expect(prose).toMatch(/minmax\(0,\s*2fr\)\s+minmax\(0,\s*1fr\)/);
+    expect(prose).toMatch(/minmax\(0,\s*780px\)\s+minmax\(14rem,\s*1fr\)/);
     expect(prose).toMatch(/\.post-author-card/);
   });
 });

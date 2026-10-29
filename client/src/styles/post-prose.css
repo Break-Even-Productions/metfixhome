@@ -12,7 +12,8 @@
 /*
  * Author-right layout.
  * DOM order: main → aside → comments (tablet/mobile: author above comments).
- * Desktop (≥1024): main | aside, comments under main; aside stretches so sticky works.
+ * Desktop (≥1024): main column up to 780px, aside takes the rest (at least 14rem).
+ * Aside stretches the full grid height so the author card can stick.
  */
 .post-reader-grid {
   display: grid;
@@ -29,9 +30,10 @@
 
 @media (min-width: 1024px) {
   .post-reader-grid:has(.post-reader-aside) {
-    /* Matches mockup lg:grid-cols-3 with main lg:col-span-2 (~797 / ~379 at 1280). */
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    /* Main measure ~780px; rail keeps at least 14rem and absorbs leftover width. */
+    grid-template-columns: minmax(0, 780px) minmax(14rem, 1fr);
     column-gap: 2.5rem;
+    justify-content: start;
   }
 
   .post-reader-grid:has(.post-reader-aside) .post-reader-main {
@@ -43,6 +45,8 @@
     grid-column: 2;
     grid-row: 1 / -1;
     align-self: stretch;
+    justify-self: end;
+    width: min(100%, 22rem);
   }
 
   .post-reader-grid:has(.post-reader-aside) .post-reader-comments {
@@ -54,6 +58,7 @@
     position: sticky;
     /* Clears fixed GlobalNav (4.5rem) with extra breathing room */
     top: 7.5rem;
+    z-index: 2;
   }
 }
 
@@ -102,7 +107,7 @@
 .post-reader-skeleton .post-skel-title {
   height: 1.7rem;
   width: min(28rem, 92%);
-  max-width: 680px;
+  max-width: 780px;
 }
 
 .post-reader-skeleton .post-skel-title-short {
@@ -118,7 +123,7 @@
 
 .post-reader-skeleton .post-skel-media {
   width: 100%;
-  max-width: 680px;
+  max-width: 780px;
   aspect-ratio: 16 / 9;
   border-radius: 0.5rem;
   margin-bottom: 0.4rem;
@@ -127,7 +132,7 @@
 .post-reader-skeleton .post-skel-line {
   height: 0.8rem;
   width: 100%;
-  max-width: 680px;
+  max-width: 780px;
 }
 
 .post-reader-skeleton .post-skel-line-short {
@@ -255,7 +260,7 @@
 /* —— Body measure + typography —— */
 .posts-detail-content,
 .library-reader-body {
-  max-width: 680px;
+  max-width: 780px;
   font-family: var(--post-font-sans);
   font-size: 16px;
   font-weight: 400;
@@ -426,7 +431,7 @@
 .resource-media-stage {
   position: relative;
   width: 100%;
-  max-width: 680px;
+  max-width: 780px;
   aspect-ratio: 16 / 9;
   border-radius: 0.5rem;
   overflow: hidden;
@@ -481,7 +486,7 @@
 }
 
 .post-detail-discussion {
-  max-width: 680px;
+  max-width: 780px;
   margin-top: 2.5rem;
   padding-top: 2.5rem;
   border-top: 1px solid var(--post-aside-border, rgba(23, 21, 18, 0.12));
