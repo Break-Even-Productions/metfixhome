@@ -509,7 +509,10 @@ export function mapDetailBody(
 function detailPostLike(body: Record<string, unknown>): unknown {
   const course = body.course;
   if (course && typeof course === "object" && !Array.isArray(course)) {
-    const item = { ...(course as Record<string, unknown>), type: "course" };
+    const item: Record<string, unknown> = {
+      ...(course as Record<string, unknown>),
+      type: "course",
+    };
     if (item.is_locked === true) {
       item.content = "";
       item.content_access_display = {
