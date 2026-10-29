@@ -6,7 +6,7 @@ import { getMetfixLoginUrl } from "@/const";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
-import { sanitizeReturnPath as sanitizeReturnPathShared } from "../../shared/sanitize-return-path";
+import { sanitizeReturnPath as sanitizeReturnPathShared } from "@shared/sanitize-return-path";
 
 export type AccountOverview = {
   user_id: number | string | null;
