@@ -179,13 +179,13 @@ describe("local auth helpers", () => {
         authOrigin: true,
       },
       {
-        // WHATWG URL collapses https default :443 to port ""; still accepted.
-        name: "Origin :443 (URL-normalized default port)",
+        // Raw Origin keeps :443; protocol//host omits it → reject (exact form).
+        name: "Origin :443 rejected (raw ≠ protocol//host)",
         env: stagingEnv,
         origin: `https://${PREVIEW_HOST}:443`,
         host: PREVIEW_HOST,
         authHost: true,
-        authOrigin: true,
+        authOrigin: false,
       },
       {
         name: "Origin :8443 rejected",
@@ -198,6 +198,31 @@ describe("local auth helpers", () => {
       {
         name: "Origin userinfo rejected",
         origin: "https://evil.com@metfix.org",
+        authOrigin: false,
+      },
+      {
+        name: "Origin user:pass rejected",
+        origin: "https://u:p@metfix.org",
+        authOrigin: false,
+      },
+      {
+        name: "Origin :password rejected",
+        origin: "https://:p@metfix.org",
+        authOrigin: false,
+      },
+      {
+        name: "Origin evilmetfix.org lookalike rejected",
+        origin: "https://evilmetfix.org",
+        authOrigin: false,
+      },
+      {
+        name: "Origin xmetfix.org lookalike rejected",
+        origin: "https://xmetfix.org",
+        authOrigin: false,
+      },
+      {
+        name: "Origin trailing slash rejected",
+        origin: "https://metfix.org/",
         authOrigin: false,
       },
       {

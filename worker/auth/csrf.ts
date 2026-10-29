@@ -37,16 +37,17 @@ function isDefaultOriginPort(port: string): boolean {
  * Production: https://metfix.org (case / one trailing-dot on hostname OK).
  * Staging: exact https://{STAGING_AUTH_HOSTS} (same trailing-dot rules).
  * LOCAL_AUTH: also http(s)://localhost|127.0.0.1 (any port).
- * Rejects userinfo / path / query / hash. Hostname is normalized once.
+ * Raw Origin must equal scheme://host (rejects trailing slash / userinfo / path).
+ * Hostname is normalized once for allowlist match.
  */
 export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
   if (!origin) return false;
   try {
     const u = new URL(origin);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    // Reject https://evil.com@metfix.org, paths, query, and hash.
-    if (u.username !== "" || u.password !== "") return false;
-    if (u.pathname !== "/" || u.search !== "" || u.hash !== "") return false;
+    // Exact Origin form: protocol//host (no trailing slash, userinfo, path, query, hash).
+    // Case-insensitive so https://MetFix.ORG still matches URL-lowercased host.
+    if (origin.toLowerCase() !== `${u.protocol}//${u.host}`) return false;
     // Normalize once (trailing-dot + case) for metfix.org and preview alike.
     const bare = normalizeHostname(u.hostname);
     if (!bare) return false;
