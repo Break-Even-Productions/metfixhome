@@ -33,7 +33,7 @@ jobs:
         run: npm run check:worker
 
       - name: Unit and mount tests
-        run: before=$(git status --porcelain --ignored --untracked-files=all); npm test -- --exclude '**/join.repo-scan.test.ts'; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
+        run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
       - name: Build static site
         run: npm run build:cf
@@ -42,7 +42,9 @@ jobs:
           VITE_SANITY_DATASET: production
 
       - name: WJ-WHOP-1 / WT-J1 repo+dist scan (after build:cf)
-        run: npx vitest run join.repo-scan
+        run: MFX_REQUIRE_DIST=1 npx vitest run join.repo-scan
+        env:
+          MFX_REQUIRE_DIST: "1"
 
       - name: Bundle must not contain test-recaptcha-token
         run: |

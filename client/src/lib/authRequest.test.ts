@@ -8,6 +8,7 @@ import {
   clearCsrfCache,
   csrfSessionKey,
   fetchCsrf,
+  noteCsrfSessionChange,
   postJsonWithCsrf,
 } from "./authRequest";
 
@@ -15,28 +16,23 @@ afterEach(() => {
   clearCsrfCache();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  document.cookie = "mfx_sid=; Max-Age=0; path=/";
 });
 
 beforeEach(() => {
   clearCsrfCache();
-  document.cookie = "mfx_sid=; Max-Age=0; path=/";
 });
 
 describe("csrfSessionKey", () => {
-  it("returns anon when no sid cookie", () => {
-    expect(csrfSessionKey("")).toBe("anon");
-    expect(csrfSessionKey("other=1")).toBe("anon");
-  });
-
-  it("reads mfx_sid and __Host-mfx_sid", () => {
-    expect(csrfSessionKey("mfx_sid=abc123; path=/")).toBe("abc123");
-    expect(csrfSessionKey("__Host-mfx_sid=host-sid")).toBe("host-sid");
+  it("returns a generation-tied key", () => {
+    const a = csrfSessionKey();
+    expect(a).toMatch(/^g\d+$/);
+    noteCsrfSessionChange();
+    expect(csrfSessionKey()).not.toBe(a);
   });
 });
 
 describe("fetchCsrf session binding (NB2)", () => {
-  it("caches token per session and refetches when sid changes", async () => {
+  it("caches token per session and refetches when session changes", async () => {
     let n = 0;
     vi.stubGlobal(
       "fetch",
@@ -46,12 +42,11 @@ describe("fetchCsrf session binding (NB2)", () => {
       }),
     );
 
-    document.cookie = "mfx_sid=sid-a; path=/";
     expect(await fetchCsrf()).toBe("tok-1");
     expect(await fetchCsrf()).toBe("tok-1");
     expect(n).toBe(1);
 
-    document.cookie = "mfx_sid=sid-b; path=/";
+    noteCsrfSessionChange();
     expect(await fetchCsrf()).toBe("tok-2");
     expect(n).toBe(2);
   });
@@ -65,7 +60,6 @@ describe("fetchCsrf session binding (NB2)", () => {
         return Response.json({ csrf: `tok-${n}` });
       }),
     );
-    document.cookie = "mfx_sid=sid-a; path=/";
     expect(await fetchCsrf()).toBe("tok-1");
     clearCsrfCache();
     expect(await fetchCsrf()).toBe("tok-2");
@@ -94,7 +88,6 @@ describe("postJsonWithCsrf (NB2)", () => {
       }),
     );
 
-    document.cookie = "mfx_sid=sid-a; path=/";
     const res = await postJsonWithCsrf("/api/account/onboarding", { first_name: "Pat" });
     expect(res.status).toBe(200);
     expect(tokensSeen).toEqual(["csrf-1", "csrf-2"]);

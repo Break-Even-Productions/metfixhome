@@ -1,28 +1,29 @@
 /**
  * Shared CSRF + reCAPTCHA helpers (CQ N1 / CQ r2 NB2).
- * CSRF cache is session-tied (sid cookie); cleared on auth change.
+ * CSRF cache is session-generation-tied; cleared on auth change (sign-in/out/new sid).
  * No Rule-4 test-token fallback — missing grecaptcha returns "".
  */
 
 type CsrfEntry = { token: string; sessionKey: string };
 
 let csrfCache: CsrfEntry | null = null;
+/** Bumped on sign-in/out/new sid so a cached token cannot outlive the session. */
+let csrfSessionGeneration = 0;
 
-/** Session key for CSRF binding: signed-in sid cookie, else "anon". */
-export function csrfSessionKey(cookieHeader?: string): string {
-  const raw =
-    cookieHeader ?? (typeof document !== "undefined" ? document.cookie : "");
-  const m = raw.match(/(?:^|;\s*)(?:__Host-)?mfx_sid=([^;]+)/);
-  if (!m?.[1]) return "anon";
-  try {
-    return decodeURIComponent(m[1]);
-  } catch {
-    return m[1];
-  }
+/** Current CSRF session binding key (opaque; not a cookie read). */
+export function csrfSessionKey(_cookieHeader?: string): string {
+  void _cookieHeader;
+  return `g${csrfSessionGeneration}`;
+}
+
+/** Call on sign-in/out or whenever the sid changes (NB2). */
+export function noteCsrfSessionChange(): void {
+  csrfSessionGeneration += 1;
+  csrfCache = null;
 }
 
 export function clearCsrfCache(): void {
-  csrfCache = null;
+  noteCsrfSessionChange();
 }
 
 export async function fetchCsrf(opts?: { force?: boolean }): Promise<string | null> {
