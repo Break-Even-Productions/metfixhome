@@ -7,7 +7,6 @@
 import { useEffect, useRef, useState } from "react";
 import { assetUrl } from "@/const";
 import CopyrightText from "@/components/CopyrightText";
-import { UpgradePrompt } from "@/components/UpgradePrompt";
 import type { Course } from "@/lib/contentTypes";
 import { useCourses } from "@/hooks/useSanityContent";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -745,21 +744,6 @@ export default function Classes() {
               </div>
             </div>
           </Reveal>
-        </div>
-      </section>
-
-      <section
-        style={{
-          background: "#0A0A0A",
-          borderTop: "1px solid rgba(255,255,255,0.06)",
-          padding: "3rem 1.25rem",
-        }}
-      >
-        <div className="container">
-          <UpgradePrompt
-            title="Unlock MetFix courses"
-            body="Start your free month for full course access including MetFix Essentials, or manage billing if you already have an account."
-          />
         </div>
       </section>
 

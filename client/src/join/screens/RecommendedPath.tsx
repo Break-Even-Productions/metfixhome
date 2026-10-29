@@ -4,6 +4,7 @@ import {
   ORG_AFFILIATE_NOTE,
   ORG_CARD_HEADER,
   PRO_CARD_HEADER,
+  showOrganizationOwnerCard,
 } from "@shared/join";
 import { fetchCsrf, postWhopCheckout } from "../api";
 import { recommendedArticles, recommendedCourses } from "../data";
@@ -111,8 +112,11 @@ export function RecommendedPath({
   const isClinician = profile.roles.includes("clinician");
   const isResponder = profile.roles.includes("first_responder");
   const showCoach = isCoach || isGym;
-  const showOrg =
-    profile.hasPhysicalGym === true || profile.hasPhysicalClinic === true;
+  const showOrg = showOrganizationOwnerCard(
+    profile.roles,
+    profile.hasPhysicalGym,
+    profile.hasPhysicalClinic,
+  );
 
   const [checkoutBusy, setCheckoutBusy] = useState<WhopPlan | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);

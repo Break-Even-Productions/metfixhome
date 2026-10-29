@@ -17,7 +17,6 @@ import { DetailReader } from "@/components/post-detail/DetailReader";
 import { PostReaderSkeleton } from "@/components/post-detail/PostReaderSkeleton";
 import { toDetailReaderModel } from "@/components/post-detail/types";
 import { SafeHtml } from "@/components/SafeHtml";
-import { UpgradePrompt } from "@/components/UpgradePrompt";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import NotFound from "@/pages/NotFound";
 import "@/styles/post-prose.css";
@@ -132,13 +131,7 @@ function DetailBody({ post }: { post: DetailPost }) {
     <>
       <DetailReader model={model}>
         <SafeHtml html={post.content} className="posts-detail-content" as="div" />
-        {/* WJ18: upgrade path for gated follow-ons */}
-        <div style={{ marginTop: "2rem" }}>
-          <UpgradePrompt
-            title="Get the full MetFix library"
-            body="Start your free month for courses, The Daily Fix archive, and cumulative LTV toward certificates."
-          />
-        </div>
+        {/* WJ18 + B6: Worker drops locked posts; unlocked detail has no upgrade prompt. */}
         {post.permalink ? (
           <a
             className="posts-external"

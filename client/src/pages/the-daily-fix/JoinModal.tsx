@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { buildLoginBody } from "@shared/join";
+import { getRecaptchaToken } from "@/lib/authRequest";
 import { clampClientRetryAfter } from "./comments";
 import { ensureRecaptchaScript, getRecaptchaToken } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
@@ -46,6 +48,7 @@ async function fetchCsrf(http: typeof fetch): Promise<string | null> {
     return null;
   }
 }
+
 function GoogleLogo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -164,7 +167,7 @@ export function JoinModal({
                     "Content-Type": "application/json",
                     "X-CSRF-Token": csrf,
                   },
-                  body: JSON.stringify({ identifier: id, password, recaptcha }),
+                  body: JSON.stringify(buildLoginBody({ identifier: id, password, recaptcha })),
                 });
                 if (res.status === 429) {
                   const wait = clampClientRetryAfter(res.headers.get("Retry-After"));

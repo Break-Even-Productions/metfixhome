@@ -1,6 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { resolveJoinStepTransition, type RoleId } from "@shared/join";
+import {
+  clampJoinDeepLink,
+  facilityFlagsForRoles,
+  parseJoinStepParam,
+  resolveJoinStepTransition,
+  type RoleId,
+} from "@shared/join";
 import { loadMe } from "@/lib/session";
 import { fetchCsrf, postOnboarding } from "./api";
 import { emptyProfile } from "./data";
@@ -32,12 +38,17 @@ export type JoinFlowProps = {
 };
 
 function fingerprintOnboarding(profile: JoinProfile): string {
+  const flags = facilityFlagsForRoles(
+    profile.roles,
+    profile.hasPhysicalGym,
+    profile.hasPhysicalClinic,
+  );
   return JSON.stringify({
     first_name: profile.firstName.trim(),
     last_name: profile.lastName.trim(),
     roles: [...profile.roles].sort(),
-    has_physical_gym: profile.hasPhysicalGym,
-    has_physical_clinic: profile.hasPhysicalClinic,
+    has_physical_gym: flags.has_physical_gym,
+    has_physical_clinic: flags.has_physical_clinic,
   });
 }
 
@@ -51,6 +62,7 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
   const [direction, setDirection] = useState<1 | -1>(1);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const savingRef = useRef(false);
   const lastSavedFp = useRef<string | null>(null);
@@ -64,16 +76,9 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
       const signedIn = me.status === "signed_in";
       setIsSignedIn(signedIn);
       const params = new URLSearchParams(window.location.search);
-      const stepParam = params.get("step");
-      const resumeStep: JoinStep | null =
-        stepParam === "roles" ||
-        stepParam === "path" ||
-        stepParam === "conditional" ||
-        stepParam === "auth" ||
-        stepParam === "name"
-          ? stepParam
-          : null;
+      const resumeStep = parseJoinStepParam(params.get("step"));
 
+      let nextRoles: RoleId[] = [];
       setProfile((prev) => {
         const next = { ...emptyProfile, ...prev };
         if (signedIn && me.status === "signed_in") {
@@ -81,17 +86,17 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
           if (!next.firstName && parts[0]) next.firstName = parts[0];
           if (!next.lastName && parts.length > 1) next.lastName = parts.slice(1).join(" ");
         }
+        nextRoles = next.roles;
         return next;
       });
 
-      if (initialStep) {
-        setStep(initialStep);
-      } else if (resumeStep) {
-        if (resumeStep === "auth" && signedIn) setStep("roles");
-        else setStep(resumeStep);
-      } else {
-        setStep("name");
-      }
+      const requested = initialStep ?? resumeStep;
+      setStep(
+        clampJoinDeepLink(requested, {
+          isSignedIn: signedIn,
+          roles: nextRoles,
+        }),
+      );
       setAuthView("choose");
       setPathView("plan");
       setDirection(1);
@@ -111,6 +116,7 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
   };
 
   const advanceFrom = async (from: JoinStep) => {
+    if (savingRef.current) return;
     const next = resolveJoinStepTransition(from, 1, {
       isSignedIn,
       roles: profile.roles,
@@ -118,45 +124,44 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
     if (!next) return;
 
     if (next === "path") {
-      // WJ9: persist onboarding once when entering RecommendedPath
       const fp = fingerprintOnboarding(profile);
-      if (lastSavedFp.current !== fp && !savingRef.current) {
+      if (lastSavedFp.current !== fp) {
         savingRef.current = true;
+        setSaving(true);
         setOnboardingError(null);
         try {
           const csrf = await fetchCsrf();
           if (!csrf) {
             setOnboardingError("Could not save your answers. Try again.");
-            savingRef.current = false;
             return;
           }
+          const flags = facilityFlagsForRoles(
+            profile.roles,
+            profile.hasPhysicalGym,
+            profile.hasPhysicalClinic,
+          );
           const result = await postOnboarding(
             {
               first_name: profile.firstName.trim(),
               last_name: profile.lastName.trim(),
               roles: profile.roles,
-              has_physical_gym: profile.roles.includes("gym_owner")
-                ? profile.hasPhysicalGym
-                : profile.hasPhysicalGym ?? null,
-              has_physical_clinic: profile.roles.includes("clinician")
-                ? profile.hasPhysicalClinic
-                : profile.hasPhysicalClinic ?? null,
+              has_physical_gym: flags.has_physical_gym,
+              has_physical_clinic: flags.has_physical_clinic,
             },
             csrf,
           );
           if (!result.ok) {
             setOnboardingError("Could not save your answers. Try again.");
-            savingRef.current = false;
             return;
           }
           lastSavedFp.current = fp;
           update({ completed: true });
         } catch {
           setOnboardingError("Could not save your answers. Try again.");
-          savingRef.current = false;
           return;
         } finally {
           savingRef.current = false;
+          setSaving(false);
         }
       }
     }
@@ -195,7 +200,10 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
   if (!open) return null;
 
   const showProgress = step !== "path";
-  const shell = (
+  // `standalone` is reserved for page mount (vs modal); shell chrome is shared.
+  void standalone;
+
+  return (
     <JoinShell
       onClose={onClose}
       onBack={step === "name" || (step === "path" && pathView === "plan") ? undefined : back}
@@ -254,12 +262,20 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
           {step === "roles" ? (
             <RolesScreen
               selected={profile.roles}
+              saving={saving}
               onToggle={(id: RoleId) => {
                 setProfile((prev) => {
                   const roles = prev.roles.includes(id)
                     ? prev.roles.filter((role) => role !== id)
                     : [...prev.roles, id];
-                  return { ...prev, roles };
+                  return {
+                    ...prev,
+                    roles,
+                    hasPhysicalGym: roles.includes("gym_owner") ? prev.hasPhysicalGym : null,
+                    hasPhysicalClinic: roles.includes("clinician")
+                      ? prev.hasPhysicalClinic
+                      : null,
+                  };
                 });
               }}
               onContinue={() => void advanceFrom("roles")}
@@ -270,6 +286,7 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
               roles={profile.roles}
               hasPhysicalGym={profile.hasPhysicalGym}
               hasPhysicalClinic={profile.hasPhysicalClinic}
+              saving={saving}
               onGym={(value) => update({ hasPhysicalGym: value })}
               onClinic={(value) => update({ hasPhysicalClinic: value })}
               onContinue={() => void advanceFrom("conditional")}
@@ -298,10 +315,4 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
       </AnimatePresence>
     </JoinShell>
   );
-
-  if (standalone) return shell;
-  return shell;
 }
-
-/** Re-export for tests */
-export { resolveJoinStepTransition };

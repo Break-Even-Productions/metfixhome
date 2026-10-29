@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { buildLoginBody, buildSignupBody } from "@shared/join";
 import { ensureRecaptchaScript } from "@/pages/the-daily-fix/recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
-import { fetchCsrf, getRecaptchaToken } from "../api";
+import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
 import type { AuthView } from "../types";
 import { Field, GhostButton, GoldButton, Kicker, Question, ScreenForm } from "../ui";
 
@@ -44,8 +45,10 @@ export function AuthScreen({
   onAuthenticated: (provider: "google" | "email", email?: string) => void;
 }) {
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const startGoogle = () => {
     // Worker Google start uses `return` (not return_to).
@@ -56,6 +59,7 @@ export function AuthScreen({
   const submitEmail = async (mode: "signin" | "signup") => {
     if (busy) return;
     setError(null);
+    setSuccess(null);
     setBusy(true);
     try {
       await ensureRecaptchaScript();
@@ -68,17 +72,8 @@ export function AuthScreen({
       const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
       const body =
         mode === "signup"
-          ? {
-              email: email.trim(),
-              password,
-              username: email.trim().split("@")[0]?.slice(0, 32) || "member",
-              recaptcha_token: recaptcha,
-            }
-          : {
-              identifier: email.trim(),
-              password,
-              recaptcha_token: recaptcha,
-            };
+          ? buildSignupBody({ username, email, recaptcha })
+          : buildLoginBody({ identifier: email, password, recaptcha });
       const res = await fetch(path, {
         method: "POST",
         credentials: "same-origin",
@@ -89,8 +84,18 @@ export function AuthScreen({
         },
         body: JSON.stringify(body),
       });
+      if (mode === "signup") {
+        if (res.status === 202 || res.ok) {
+          setSuccess("Check your email to finish creating your account.");
+          setPassword("");
+          onView("email-signin");
+          return;
+        }
+        setError("Could not create your account.");
+        return;
+      }
       if (!res.ok) {
-        setError(mode === "signup" ? "Could not create your account." : "Could not sign in.");
+        setError("Could not sign in.");
         return;
       }
       await refreshMeAfterAuthChange();
@@ -104,26 +109,40 @@ export function AuthScreen({
 
   if (view === "email-signin" || view === "email-signup") {
     const isSignup = view === "email-signup";
+    const canSubmit = isSignup
+      ? email.includes("@") && username.trim().length >= 1
+      : email.includes("@") && password.length >= 8;
     return (
       <ScreenForm onSubmit={() => void submitEmail(isSignup ? "signup" : "signin")}>
         <Kicker>{isSignup ? "Create your account." : `Welcome back${firstName ? `, ${firstName}` : ""}.`}</Kicker>
         <Question>{isSignup ? "Sign up with email" : "Sign in with email"}</Question>
         <div className="mt-10 space-y-4">
-          <Field label="Email" type="email" value={email} onChange={onEmail} autoFocus />
+          {isSignup ? (
+            <Field label="Username" type="text" value={username} onChange={setUsername} autoFocus />
+          ) : null}
           <Field
-            label="Password"
-            type="password"
-            value={password}
-            onChange={setPassword}
+            label="Email"
+            type="email"
+            value={email}
+            onChange={onEmail}
+            autoFocus={!isSignup}
           />
+          {!isSignup ? (
+            <Field label="Password" type="password" value={password} onChange={setPassword} />
+          ) : null}
         </div>
         {error ? (
           <p className="mt-4 text-sm text-red-700" role="alert">
             {error}
           </p>
         ) : null}
+        {success ? (
+          <p className="mt-4 text-sm text-emerald-800" role="status">
+            {success}
+          </p>
+        ) : null}
         <div className="mt-10 space-y-3">
-          <GoldButton type="submit" disabled={busy || !email.includes("@") || password.length < 8}>
+          <GoldButton type="submit" disabled={busy || !canSubmit}>
             {busy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
           </GoldButton>
           <GhostButton onClick={() => onView(isSignup ? "email-signin" : "email-signup")}>

@@ -33,6 +33,7 @@ export function ConditionalScreen({
   onGym,
   onClinic,
   onContinue,
+  saving = false,
 }: {
   roles: RoleId[];
   hasPhysicalGym: boolean | null;
@@ -40,6 +41,7 @@ export function ConditionalScreen({
   onGym: (value: boolean) => void;
   onClinic: (value: boolean) => void;
   onContinue: () => void;
+  saving?: boolean;
 }) {
   const askGym = roles.includes("gym_owner");
   const askClinic = roles.includes("clinician");
@@ -89,8 +91,8 @@ export function ConditionalScreen({
         ) : null}
       </div>
       <div className="mt-10">
-        <GoldButton disabled={!ready} onClick={onContinue}>
-          Continue
+        <GoldButton disabled={saving || !ready} onClick={onContinue}>
+          {saving ? "Saving…" : "Continue"}
         </GoldButton>
       </div>
     </div>

@@ -5,7 +5,7 @@ import { basePath } from "@/const";
 
 /**
  * WJ18: locked-content upgrade prompt.
- * Signed out → open JoinFlow (or /join). Signed in → /account/billing.
+ * Signed out → open JoinFlow (or /join). Signed in → /join until PR B billing lands.
  */
 export function UpgradePrompt({
   title = "Continue with MetFix",
@@ -18,7 +18,13 @@ export function UpgradePrompt({
   const [signedIn, setSignedIn] = useState(() => peekMe()?.status === "signed_in");
 
   useEffect(() => {
-    void loadMe().then((me) => setSignedIn(me.status === "signed_in"));
+    let cancelled = false;
+    void loadMe().then((me) => {
+      if (!cancelled) setSignedIn(me.status === "signed_in");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (signedIn) {
@@ -26,8 +32,8 @@ export function UpgradePrompt({
       <div className="upgrade-prompt" data-testid="upgrade-prompt">
         <h2>{title}</h2>
         <p>{body}</p>
-        <a className="library-btn library-btn-gold" href={basePath("/account/billing")}>
-          Manage billing
+        <a className="library-btn library-btn-gold" href={basePath("/join")}>
+          Manage membership
         </a>
       </div>
     );
