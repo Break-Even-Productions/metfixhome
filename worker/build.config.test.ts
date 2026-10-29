@@ -115,7 +115,13 @@ describe("B1/B5/B6/B7 build config", () => {
     const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
     const previews = json.previews;
     expect(previews).toBeTruthy();
-    expect(previews.vars).toEqual(json.vars);
+    // STAGING_AUTH_HOSTS is preview-only — must never appear in top-level / production vars.
+    expect(json.vars.STAGING_AUTH_HOSTS).toBeUndefined();
+    expect(previews.vars.STAGING_AUTH_HOSTS).toBe(
+      "staging-metfixhome.wispy-mode-982d.workers.dev",
+    );
+    const { STAGING_AUTH_HOSTS: _stagingOnly, ...previewVarsRest } = previews.vars;
+    expect(previewVarsRest).toEqual(json.vars);
     expect(previews.kv_namespaces).toEqual([
       {
         binding: "AUTH_SESSIONS",
