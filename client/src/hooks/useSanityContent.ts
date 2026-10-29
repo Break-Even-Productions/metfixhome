@@ -20,16 +20,49 @@ import {
   FALLBACK_TESTIMONIALS,
 } from "@/data/fallbackHome";
 
+/** Module-level memoised caches (B3) — one network fetch per query per page load. */
+let siteSettingsPromise: Promise<SiteSettings> | null = null;
+let homeContentPromise: Promise<{
+  home: HomePageContent;
+  homeCourses: HomeCourseCard[];
+  testimonials: HomeTestimonial[];
+  faqs: HomeFaq[];
+}> | null = null;
+
+export function getSiteSettingsOnce(): Promise<SiteSettings> {
+  if (!siteSettingsPromise) {
+    siteSettingsPromise = fetchSiteSettings();
+  }
+  return siteSettingsPromise;
+}
+
+export function getHomeContentOnce() {
+  if (!homeContentPromise) {
+    homeContentPromise = Promise.allSettled([
+      fetchHomePage(),
+      fetchHomeCourses(),
+      fetchTestimonials(),
+      fetchFaqs(),
+    ]).then(([page, courses, quotes, faqItems]) => ({
+      home: page.status === "fulfilled" ? page.value : FALLBACK_HOME,
+      homeCourses: courses.status === "fulfilled" ? courses.value : FALLBACK_HOME_COURSES,
+      testimonials: quotes.status === "fulfilled" ? quotes.value : FALLBACK_TESTIMONIALS,
+      faqs: faqItems.status === "fulfilled" ? faqItems.value : FALLBACK_FAQS,
+    }));
+  }
+  return homeContentPromise;
+}
+
 export function useSiteSettings() {
   const [settings, setSettings] = useState<SiteSettings>({
     copyrightText: DEFAULT_COPYRIGHT_TEXT,
-    navLinks: DEFAULT_NAV_LINKS,
+    navLinks: [...DEFAULT_NAV_LINKS],
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    fetchSiteSettings().then((data) => {
+    getSiteSettingsOnce().then((data) => {
       if (!cancelled) {
         setSettings(data);
         setLoading(false);
@@ -92,17 +125,15 @@ export function useHomeContent() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchHomePage(), fetchHomeCourses(), fetchTestimonials(), fetchFaqs()]).then(
-      ([page, courses, quotes, faqItems]) => {
-        if (!cancelled) {
-          setHome(page);
-          setHomeCourses(courses);
-          setTestimonials(quotes);
-          setFaqs(faqItems);
-          setLoading(false);
-        }
+    getHomeContentOnce().then((data) => {
+      if (!cancelled) {
+        setHome(data.home);
+        setHomeCourses(data.homeCourses);
+        setTestimonials(data.testimonials);
+        setFaqs(data.faqs);
+        setLoading(false);
       }
-    );
+    });
     return () => {
       cancelled = true;
     };

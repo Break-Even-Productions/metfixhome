@@ -1,19 +1,18 @@
 .daily-fix-page,
 .df-calendar-dialog {
-  --df-font-serif: var(--font-serif);
-  --df-font-sans: var(--font-sans);
-  --df-cream: var(--color-cream);
-  --df-cream-2: var(--color-cream-2);
-  --df-paper: var(--color-paper);
-  --df-ink: var(--color-ink);
-  --df-ink-2: var(--color-ink-2);
-  --df-accent: var(--color-accent);
-  --df-accent-2: var(--color-accent-2);
-  --df-accent-3: var(--color-accent-3);
-  --df-accent-text: var(--color-accent-text);
-  --df-muted: var(--color-muted);
-  --df-line: var(--color-line);
-  --df-ease: var(--ease-out-expo);
+  --df-font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+  --df-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --df-cream: #f3eee4;
+  --df-cream-2: #e9e1d2;
+  --df-paper: #faf7f1;
+  --df-ink: #171512;
+  --df-ink-2: #221f1b;
+  --df-accent: #c4a46c;
+  --df-accent-2: #b08d52;
+  --df-accent-3: #d4bc8a;
+  --df-muted: #6e675c;
+  --df-line: rgba(23, 21, 18, 0.1);
+  --df-ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .daily-fix-page {
@@ -156,7 +155,7 @@
   position: relative;
   overflow: hidden;
   min-height: 22rem;
-  background: var(--df-ink);
+  background: #171512;
 }
 
 .df-hero-video {
@@ -420,9 +419,9 @@ a.df-btn {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 1.75rem;
+  border-radius: 0.75rem;
   border: 2px solid var(--df-accent-3);
-  background: var(--df-ink);
+  background: #000;
   color: var(--df-accent-3);
 }
 
@@ -444,7 +443,7 @@ a.df-btn {
   font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
 }
 
 .df-heading {
@@ -670,7 +669,7 @@ a.df-btn {
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
 }
 
 .df-tab[aria-selected="true"] .df-tab-label {
@@ -753,21 +752,21 @@ a.df-btn {
 .df-skeleton-title {
   height: 2rem;
   width: min(16rem, 70%);
-  border-radius: 1.75rem;
+  border-radius: 0.5rem;
   background: var(--df-cream-2);
 }
 
 .df-skeleton-image {
   height: 10rem;
   width: 100%;
-  border-radius: 1.75rem;
+  border-radius: 1rem;
   background: var(--df-cream-2);
 }
 
 .df-skeleton-line {
   height: 0.85rem;
   width: 100%;
-  border-radius: 1.75rem;
+  border-radius: 0.4rem;
   background: var(--df-cream-2);
 }
 
@@ -1055,20 +1054,20 @@ a.df-btn {
   transform: rotate(180deg);
 }
 
-/* Portaled outside .daily-fix-page — use shared tokens directly. */
+/* Portaled outside .daily-fix-page, so no --df-* variables here. */
 .df-share-menu {
   min-width: 11rem;
-  border: 1px solid var(--color-line);
-  border-radius: 1.75rem;
+  border: 1px solid rgba(23, 21, 18, 0.1);
+  border-radius: 1rem;
   padding: 0.375rem;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
+  background: #faf7f1;
+  color: #171512;
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   box-shadow: 0 18px 40px rgba(23, 21, 18, 0.12);
 }
 
 .df-share-menu [data-slot="dropdown-menu-item"] {
-  border-radius: 1.75rem;
+  border-radius: 0.625rem;
   padding: 0.5rem 0.625rem;
   font-size: 13px;
   font-weight: 500;
@@ -1076,14 +1075,14 @@ a.df-btn {
 }
 
 .df-share-menu [data-slot="dropdown-menu-item"]:focus {
-  background: var(--color-cream-2);
-  color: var(--color-ink);
+  background: #e9e1d2;
+  color: #171512;
 }
 
 .df-share-menu [data-slot="dropdown-menu-item"] svg {
   width: 1rem;
   height: 1rem;
-  color: var(--color-muted);
+  color: #6e675c;
 }
 
 .df-watch {
@@ -1146,7 +1145,7 @@ a.df-btn {
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
 }
 
 .df-article {
@@ -1337,7 +1336,7 @@ a.df-article {
 }
 
 .df-share-menu [data-slot="dropdown-menu-radio-item"] {
-  border-radius: 1.75rem;
+  border-radius: 0.625rem;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
   font-size: 13px;
@@ -1346,8 +1345,8 @@ a.df-article {
 }
 
 .df-share-menu [data-slot="dropdown-menu-radio-item"]:focus {
-  background: var(--color-cream-2);
-  color: var(--color-ink);
+  background: #e9e1d2;
+  color: #171512;
 }
 
 .df-search-icon {
@@ -1463,7 +1462,7 @@ a.df-article {
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
 }
 
 .df-archive-item-text {
@@ -1474,7 +1473,7 @@ a.df-article {
   grid-column: 3;
   width: 3.25rem;
   height: 2.375rem;
-  border-radius: 1.75rem;
+  border-radius: 0.5rem;
   object-fit: cover;
   background: var(--df-cream-2);
 }
@@ -1501,7 +1500,7 @@ a.df-article {
 .df-archive-item:focus-visible {
   outline: 2px solid var(--df-accent-2);
   outline-offset: 2px;
-  border-radius: 1.75rem;
+  border-radius: 0.5rem;
 }
 
 .df-archive-title {
@@ -1534,8 +1533,7 @@ a.df-article {
   text-align: center;
 }
 
-.df-pill,
-.df-subscribe .df-pill {
+.df-pill {
   border-radius: 999px;
   background: var(--df-accent);
   padding: 0.25rem 0.75rem;
@@ -1543,7 +1541,6 @@ a.df-article {
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  /* Beat .df-subscribe cream inheritance on dark sections (T-F-32). */
   color: var(--df-ink);
 }
 
@@ -1812,7 +1809,7 @@ a.df-article {
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
 }
 
 .df-comment-type {
@@ -1828,7 +1825,7 @@ a.df-article {
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
   cursor: pointer;
   outline: none;
 }
@@ -1926,17 +1923,17 @@ a.df-article {
 }
 
 .df-comment-action-liked {
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
 }
 
 .df-comment-action-liked:hover:not(:disabled) {
-  color: var(--df-accent-text);
+  color: var(--df-accent-2);
   background: rgba(176, 141, 82, 0.12);
 }
 
 .df-comment-action-danger:hover:not(:disabled) {
-  color: var(--color-danger-text);
-  background: rgba(154, 74, 46, 0.08);
+  color: #8a2f2f;
+  background: rgba(138, 47, 47, 0.08);
 }
 
 .df-comment-action-icon {
@@ -2045,14 +2042,14 @@ a.df-article {
 }
 
 .df-join-form input[aria-invalid="true"] {
-  border-color: var(--color-danger-text);
+  border-color: #c44b3c;
 }
 
 .df-join-error {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--color-danger-text);
+  color: #c44b3c;
 }
 
 @keyframes df-join-shake {

@@ -2,9 +2,19 @@
  * Account dashboard + public member profile Worker routes (PR B / DP1–DP31).
  * Bearer-only BSI via runUserBsiCall + bsiAccountBearerHeaders (never shared API-key header).
  */
+import {
+  BSI_REF_RE,
+  COURSE_ID_RE,
+  buildCheckoutDto,
+  buildReferralsDto,
+  emitDropLogs,
+  logEarningsUpstreamOmitted,
+} from "../shared/account/courseReferrals";
+import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
+  extractSubscriptionTierItems,
   normalizeCanonicalTier,
   resolveAccountCanonicalTier,
   type LegacySubscriptionSource,
@@ -14,6 +24,7 @@ import {
   accountCancelDuplicatePath,
   accountClaimCertificatePath,
   accountConvertToWhopPath,
+  accountCourseCheckoutPath,
   accountCourseGiftsPath,
   accountEmailConfirmPath,
   accountEmailPath,
@@ -32,19 +43,21 @@ import {
   accountProfilesMeAttributesPath,
   accountProfilesMePath,
   accountProfilesMePicturePath,
-  accountPurchaseCheckoutPath,
   accountReferralCodePath,
   accountReferralEarningsPath,
+  accountReferralsPath,
   accountSpendPath,
   accountSubscriptionsPath,
 } from "../shared/account/bsi-paths";
+import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
+import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
-import { csrfForSid, sha256Hex, timingSafeEqualStr } from "./auth/crypto";
-import { isAllowedAuthOrigin } from "./auth/csrf";
+import { sha256Hex } from "./auth/crypto";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
 import { clientIp } from "./auth/throttle";
+import { requireSidCsrf } from "./auth/sid-guards";
 import {
   assertBsiHost,
   bsiAccountBearerHeaders,
@@ -72,6 +85,11 @@ const NOTIFICATION_PUT_KEYS = new Set([
   "preferences",
 ]);
 const NOTIFICATION_PREF_KEYS = new Set(["email_digest", "product_updates"]);
+
+const REFERRAL_INELIGIBLE_CODES = new Set([
+  "bsi_referral_ineligible",
+  "bsi_referral_coach_expired",
+]);
 
 /**
  * Editable profile attribute IDs (non-email). Common BSI attr slots for
@@ -154,47 +172,15 @@ async function resolveAccountSession(
   return resolved;
 }
 
-async function requireAccountCsrf(
-  request: Request,
-  env: Env,
-  sid: string,
-): Promise<Response | null> {
-  if (!env.CSRF_SECRET) {
-    return accountJson({ error: "unavailable" }, 503, { "Retry-After": "300" });
-  }
-  if (!isAllowedAuthOrigin(request.headers.get("Origin"), env)) {
-    return accountJson({ error: "forbidden" }, 403);
-  }
-  const sfs = request.headers.get("Sec-Fetch-Site");
-  if (sfs != null && sfs !== "same-origin") {
-    return accountJson({ error: "forbidden" }, 403);
-  }
-  const token = request.headers.get("X-CSRF-Token") ?? "";
-  const expected = await csrfForSid(env.CSRF_SECRET, sid);
-  if (!timingSafeEqualStr(token, expected)) {
-    return accountJson({ error: "forbidden" }, 403);
-  }
-  return null;
-}
-
 function limiterBinding(env: Env, kind: LimiterKind): RateLimitBinding | undefined {
   if (kind === "read") return env.ACCOUNT_READ_LIMITER;
   if (kind === "write") return env.ACCOUNT_WRITE_LIMITER;
   return env.ACCOUNT_PORTAL_LIMITER;
 }
 
-/**
- * CQ B3 / DP-T-CFG3 / R2-N3: per-user limiter key.
- * Prefer real `bsi_user_id`. Treat missing, `""`, and `"0"` (session.ts stores
- * `String(user_id ?? "0")`) as absent → hashed sid fallback. Never raw sid;
- * never `acct:0`.
- */
+/** Re-export shared key helper (single implementation in auth/account-rate-limit). */
 export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
-  const uid = ctx.record.bsi_user_id;
-  if (typeof uid === "string" && uid.length > 0 && uid !== "0") {
-    return `acct:${uid}`;
-  }
-  return `sid:${await sha256Hex(ctx.sid)}`;
+  return accountRateLimitKeyImpl(ctx);
 }
 
 function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
@@ -383,6 +369,12 @@ function mapUpstreamResult(result: BsiHttpResult): Response | { json: unknown; s
   return accountJson({ error: "unavailable" }, 503, { "Retry-After": "60" });
 }
 
+function upstreamErrorCode(json: unknown): string | null {
+  const obj = asRecord(json);
+  if (!obj) return null;
+  return typeof obj.code === "string" ? obj.code : null;
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   return v as Record<string, unknown>;
@@ -471,26 +463,6 @@ function shapeConversion(raw: unknown): Record<string, unknown> | undefined {
   }
   if (typeof obj.stripe_period_end === "string") out.stripe_period_end = obj.stripe_period_end;
   return out;
-}
-
-/**
- * R3-B2: one shared extractor for overview + LTV tier resolution.
- * Accepts top-level `subscription_items` or nested `subscriptions.items`
- * (never bare `items`, which may be unrelated lists).
- */
-function extractSubscriptionTierItems(
-  obj: Record<string, unknown>,
-): Array<{ tier: unknown; legacy_source: unknown; status: unknown }> {
-  const subsRaw = asRecord(obj.subscriptions);
-  const rows = Array.isArray(obj.subscription_items)
-    ? obj.subscription_items
-    : Array.isArray(subsRaw?.items)
-      ? (subsRaw!.items as unknown[])
-      : [];
-  return rows.map((row) => {
-    const r = asRecord(row) ?? {};
-    return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
-  });
 }
 
 function shapeOverview(raw: unknown): Record<string, unknown> | null {
@@ -719,6 +691,17 @@ function matchRoute(method: string, path: string): RouteMatch | null {
     };
   }
 
+  // CR3 alias: POST /api/courses/:courseId/checkout
+  const coursesCheckout = path.match(/^\/api\/courses\/([^/]+)\/checkout$/);
+  if (method === "POST" && coursesCheckout) {
+    return {
+      id: "DP7",
+      method: "POST",
+      params: { courseId: coursesCheckout[1]! },
+      limiter: "write",
+    };
+  }
+
   if (!path.startsWith("/api/account/")) return null;
 
   const rest = path.slice("/api/account/".length);
@@ -754,7 +737,8 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "POST" && claim) {
     return { id: "DP6", method: "POST", params: { courseId: claim[1]! }, limiter: "write" };
   }
-  const purchase = rest.match(/^courses\/([^/]+)\/purchase-checkout$/);
+  // CR3: purchase-checkout + checkout aliases under /api/account/courses/
+  const purchase = rest.match(/^courses\/([^/]+)\/(purchase-checkout|checkout)$/);
   if (method === "POST" && purchase) {
     return { id: "DP7", method: "POST", params: { courseId: purchase[1]! }, limiter: "write" };
   }
@@ -785,10 +769,12 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       limiter: "write",
     };
   }
-  if (method === "GET" && rest === "referrals") {
+  // CR1 aliases
+  if (method === "GET" && (rest === "referrals" || rest === "course-referrals")) {
     return { id: "DP24", method: "GET", params: {}, limiter: "read" };
   }
-  if (method === "POST" && rest === "referral-code") {
+  // CR2 aliases
+  if (method === "POST" && (rest === "referral-code" || rest === "course-referrals")) {
     return { id: "DP24w", method: "POST", params: {}, limiter: "write" };
   }
   if (method === "GET" && rest === "course-gifts") {
@@ -1129,29 +1115,74 @@ async function dispatch(
       return accountJson(obj, mapped.status);
     }
     case "DP7": {
+      // CR3 — server-side course checkout coalescing (renamed from PR B DP7).
       const courseId = match.params.courseId!;
-      if (!POSITIVE_INT_RE.test(courseId)) {
+      if (!COURSE_ID_RE.test(courseId)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+
+      // Allowlist body: only bsi_ref + return_path; drop client attribution overrides.
+      let bsi_ref: string | undefined;
+      if ("bsi_ref" in body) {
+        if (typeof body.bsi_ref !== "string" || !BSI_REF_RE.test(body.bsi_ref)) {
+          return accountJson({ error: "invalid_referral_code" }, 400);
+        }
+        bsi_ref = body.bsi_ref;
+      }
+      let return_path: string | undefined;
+      if ("return_path" in body) {
+        const sanitized = sanitizeReturnPath(body.return_path);
+        if (sanitized == null) {
+          return accountJson({ error: "invalid_request" }, 400);
+        }
+        return_path = sanitized;
+      }
+      const upstreamBody: Record<string, string> = {};
+      if (bsi_ref !== undefined) upstreamBody.bsi_ref = bsi_ref;
+      if (return_path !== undefined) upstreamBody.return_path = return_path;
+
       const ran = await runBearer(
         ctx!,
         env,
         fetchImpl,
         opts,
         "POST",
-        accountPurchaseCheckoutPath(courseId),
-        { body: "{}", contentType: "application/json" },
+        accountCourseCheckoutPath(courseId),
+        { body: JSON.stringify(upstreamBody), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "http") {
+        const code = upstreamErrorCode(ran.result.json);
+        if (
+          code === "bsi_course_not_found" ||
+          code === "bsi_course_whop_mapping_not_found"
+        ) {
+          return accountJson({ error: code }, 404);
+        }
+        if (code === "whop_company_mismatch") {
+          return accountJson({ error: "whop_company_mismatch" }, 422);
+        }
+        if (code === "whop_checkout_upstream_error") {
+          return accountJson({ error: "whop_checkout_upstream_error" }, 502);
+        }
+        // CQ B2: never pass through upstream body/status — allowlisted `{error}` only.
+        return accountJson({ error: "upstream_error" }, 502);
+      }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json);
-      const checkout = sanitizeExternalBillingUrl(
-        obj?.checkout_url ?? obj?.url,
-        "whop_only",
-      );
-      if (!checkout) return accountJson({ error: "bad_gateway" }, 502);
-      return accountJson({ checkout_url: checkout }, 200);
+
+      const built = buildCheckoutDto(mapped.json, BEP_WHOP_COMPANY_ID);
+      if (!built.ok) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      // N9: sanitize gate only — pass original checkout_url byte-for-byte when accepted.
+      if (!sanitizeExternalBillingUrl(built.dto.checkout_url, "whop_only")) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      return accountJson(built.dto, 200);
     }
     case "DP12": {
       // Ignore client-supplied member_id / user_id (T2).
@@ -1318,26 +1349,54 @@ async function dispatch(
       return accountJson({ favorited: desired }, 200);
     }
     case "DP24": {
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountReferralEarningsPath(),
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? {}, 200);
+      // CR1 — referrals + earnings merged; strip commission_policy / internal IDs.
+      const [refRan, earnRan] = await Promise.all([
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountReferralsPath()),
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountReferralEarningsPath()),
+      ]);
+      if (refRan instanceof Response) return mapUnauthenticated(refRan);
+      if (earnRan instanceof Response) return mapUnauthenticated(earnRan);
+      const refMapped = mapUpstreamResult(refRan.result);
+      if (refMapped instanceof Response) return refMapped;
+      let earningsJson: unknown = undefined;
+      if (earnRan.result.kind === "ok") {
+        earningsJson = earnRan.result.json;
+      } else {
+        // CR-EARN-1: upstream fail → omit earnings + PII-free log; never 502.
+        logEarningsUpstreamOmitted();
+      }
+      const built = buildReferralsDto(refMapped.json, earningsJson, Date.now());
+      if (!built.ok) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      emitDropLogs(built.logs);
+      return accountJson(built.dto, 200);
     }
     case "DP24w": {
+      // CR2 — generate / rotate / revoke referral code.
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json);
       if (!body || typeof body.action !== "string" || !REFERRAL_ACTIONS.has(body.action)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
+      let entity_id: number | undefined;
+      if ("entity_id" in body) {
+        if (
+          typeof body.entity_id !== "number" ||
+          !Number.isSafeInteger(body.entity_id) ||
+          body.entity_id < 1
+        ) {
+          return accountJson({ error: "invalid_request" }, 400);
+        }
+        entity_id = body.entity_id;
+      }
+
+      // CQ B3: generate/rotate/revoke = exactly 1 upstream mutation.
+      // Drop eligibility pre-check + earnings GET; rely on upstream 403.
+      const upstreamPayload: Record<string, unknown> = { action: body.action };
+      if (entity_id !== undefined) upstreamPayload.entity_id = entity_id;
+
       const ran = await runBearer(
         ctx!,
         env,
@@ -1345,12 +1404,27 @@ async function dispatch(
         opts,
         "POST",
         accountReferralCodePath(),
-        { body: JSON.stringify({ action: body.action }), contentType: "application/json" },
+        { body: JSON.stringify(upstreamPayload), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "http" && ran.result.status === 403) {
+        const code = upstreamErrorCode(ran.result.json);
+        if (code && REFERRAL_INELIGIBLE_CODES.has(code)) {
+          return accountJson(
+            { error: "referral_ineligible", reason_code: code },
+            403,
+          );
+        }
+      }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      // CR2 200 reuses CR1 builder — mutation response body only (no earnings GET).
+      const built = buildReferralsDto(mapped.json, undefined, Date.now());
+      if (!built.ok) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      emitDropLogs(built.logs);
+      return accountJson(built.dto, 200);
     }
     case "DP25": {
       const ran = await runBearer(
@@ -1553,7 +1627,7 @@ async function dispatch(
   }
 }
 
-/** Index entrypoint — null when path is not an account/members API route. */
+/** Index entrypoint — null when path is not an account/members/courses API route. */
 export async function handleAccountRoutes(
   request: Request,
   env: Env,
@@ -1561,7 +1635,13 @@ export async function handleAccountRoutes(
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
-  if (!(path.startsWith("/api/account") || path.startsWith("/api/members/"))) {
+  if (
+    !(
+      path.startsWith("/api/account") ||
+      path.startsWith("/api/members/") ||
+      path.startsWith("/api/courses/")
+    )
+  ) {
     return null;
   }
 
@@ -1592,7 +1672,7 @@ export async function handleAccountRoutes(
 
   if (match.method !== "GET" && match.method !== "HEAD") {
     if (!ctx) return accountJson({ error: "unauthenticated" }, 401);
-    const csrfFail = await requireAccountCsrf(request, env, ctx.sid);
+    const csrfFail = await requireSidCsrf(request, env, ctx.sid, accountJson);
     if (csrfFail) return csrfFail;
   }
 

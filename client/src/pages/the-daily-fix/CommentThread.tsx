@@ -595,6 +595,7 @@ export function CommentThread({
         <a
           className="df-btn df-btn-accent df-signin-to-comment"
           href={getMetfixLoginUrl("/the-daily-fix")}
+          role="status"
         >
           Sign In To Comment
         </a>

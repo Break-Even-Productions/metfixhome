@@ -69,7 +69,7 @@ function mapNavLinks(links: SanitySiteSettings["navLinks"]): NavLink[] {
       href: l.href,
       openInNewTab: Boolean(l.openInNewTab),
     }));
-  return mapped.length > 0 ? mapped : DEFAULT_NAV_LINKS;
+  return mapped.length > 0 ? mapped : [...DEFAULT_NAV_LINKS];
 }
 
 function mapCourse(doc: SanityCourseDoc): Course | null {
@@ -134,7 +134,7 @@ export async function fetchCourses(): Promise<Course[]> {
 
 export async function fetchSiteSettings(): Promise<SiteSettings> {
   if (!sanityClient || !isSanityConfigured) {
-    return { copyrightText: DEFAULT_COPYRIGHT_TEXT, navLinks: DEFAULT_NAV_LINKS };
+    return { copyrightText: DEFAULT_COPYRIGHT_TEXT, navLinks: [...DEFAULT_NAV_LINKS] };
   }
 
   try {
@@ -146,6 +146,6 @@ export async function fetchSiteSettings(): Promise<SiteSettings> {
     };
   } catch (err) {
     console.error("Failed to fetch site settings from Sanity", err);
-    return { copyrightText: DEFAULT_COPYRIGHT_TEXT, navLinks: DEFAULT_NAV_LINKS };
+    return { copyrightText: DEFAULT_COPYRIGHT_TEXT, navLinks: [...DEFAULT_NAV_LINKS] };
   }
 }

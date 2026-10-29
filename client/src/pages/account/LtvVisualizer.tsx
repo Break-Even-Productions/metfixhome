@@ -21,13 +21,13 @@ export function LtvVisualizer({ ltv }: Props) {
       <dl className="account-ltv-figures">
         <div>
           <dt>Total Subscription LTV</dt>
-          <dd className="account-mono">
+          <dd className="account-mono" style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>
             {formatUsdFromCents(budget.total_ltv_cents)}
           </dd>
         </div>
         <div>
           <dt>Allocated to Claimed Certificates</dt>
-          <dd className="account-mono">
+          <dd className="account-mono" style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>
             {formatUsdFromCents(budget.claimed_courses_value_cents)}
           </dd>
           {claimedLtv.length > 0 ? (
@@ -43,7 +43,7 @@ export function LtvVisualizer({ ltv }: Props) {
         </div>
         <div>
           <dt>Available Certificate LTV Balance</dt>
-          <dd className="account-mono">
+          <dd className="account-mono" style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>
             {formatUsdFromCents(budget.available_certificate_ltv_cents)}
           </dd>
         </div>

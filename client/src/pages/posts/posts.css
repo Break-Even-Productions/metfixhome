@@ -1,26 +1,21 @@
 /* Posts list + detail — class-based styles; reuse Daily Fix token feel (CQ24 / B1). */
 
 .posts-page {
-  --posts-font-serif: var(--font-serif);
-  --posts-font-sans: var(--font-sans);
-  --posts-cream: var(--color-cream);
-  --posts-cream-2: var(--color-cream-2);
-  --posts-paper: var(--color-paper);
-  --posts-ink: var(--color-ink);
-  --posts-ink-2: var(--color-ink-2);
-  --posts-ink-3: var(--color-ink-3);
-  --posts-accent: var(--color-accent);
-  --posts-accent-2: var(--color-accent-2);
-  --posts-accent-text: var(--color-accent-text);
-  --posts-muted: var(--color-muted);
-  --posts-line: var(--color-line);
-  --posts-ease: var(--ease-out-expo);
+  --posts-font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+  --posts-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --posts-cream: #f3eee4;
+  --posts-paper: #faf7f1;
+  --posts-ink: #171512;
+  --posts-accent: #c4a46c;
+  --posts-muted: #6e675c;
+  --posts-line: rgba(23, 21, 18, 0.1);
+  --posts-ease: cubic-bezier(0.16, 1, 0.3, 1);
 
   min-height: 100svh;
   padding: 5.25rem 1rem 2.5rem;
   background:
     radial-gradient(ellipse 80% 50% at 10% 0%, rgba(196, 164, 108, 0.12), transparent 55%),
-    linear-gradient(180deg, var(--posts-cream) 0%, var(--posts-cream-2) 100%);
+    linear-gradient(180deg, var(--posts-cream) 0%, #ebe4d6 100%);
   color: var(--posts-ink);
   font-family: var(--posts-font-sans);
   -webkit-font-smoothing: antialiased;
@@ -59,7 +54,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--posts-accent-text);
+  color: var(--posts-accent);
   font-weight: 600;
 }
 
@@ -118,7 +113,7 @@
 }
 
 .posts-retry:hover {
-  background: var(--posts-ink-2);
+  background: #2a2621;
 }
 
 .posts-empty {
@@ -156,16 +151,10 @@
   text-decoration: none;
   color: inherit;
   background: var(--posts-paper);
-  border-radius: 1.75rem;
+  border-radius: 1.25rem;
   overflow: hidden;
   border: 1px solid var(--posts-line);
   transition: transform 0.3s var(--posts-ease), box-shadow 0.3s var(--posts-ease);
-}
-
-@media (min-width: 768px) {
-  .posts-card {
-    border-radius: 2.5rem;
-  }
 }
 
 .posts-card:hover {
@@ -178,7 +167,7 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  background: var(--posts-cream-2);
+  background: #e4ddd0;
 }
 
 .posts-card-body {
@@ -195,7 +184,7 @@
 }
 
 .posts-card-category {
-  color: var(--posts-accent-text);
+  color: var(--posts-accent);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -241,7 +230,7 @@
 }
 
 .posts-pager-link:hover {
-  background: var(--posts-ink-2);
+  background: #2a2621;
 }
 
 .posts-pager-spacer {
@@ -272,15 +261,9 @@
   width: 100%;
   max-height: 28rem;
   object-fit: cover;
-  border-radius: 1.75rem;
+  border-radius: 1.25rem;
   margin-bottom: 1.75rem;
-  background: var(--posts-cream-2);
-}
-
-@media (min-width: 768px) {
-  .posts-detail-image {
-    border-radius: 2.5rem;
-  }
+  background: #e4ddd0;
 }
 
 .posts-detail-content {
@@ -303,7 +286,7 @@
 .posts-detail-content img {
   max-width: 100%;
   height: auto;
-  border-radius: 1.75rem;
+  border-radius: 0.75rem;
 }
 
 .posts-detail-content a {
@@ -326,5 +309,5 @@
 }
 
 .posts-external:hover {
-  background: var(--posts-accent-2);
+  background: #b08d52;
 }

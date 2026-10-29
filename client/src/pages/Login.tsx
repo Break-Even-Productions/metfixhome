@@ -1,12 +1,14 @@
 /**
  * Dedicated MetFix member login — visual language matches the member-access
- * design (cream/ink, Playfair + Plus Jakarta Sans). Auth posts to the
+ * design (dark canvas, Playfair + DM Sans, gold accent). Auth posts to the
  * same-origin Worker (/api/auth/*). No third-party telemetry.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { assetUrl, basePath } from "@/const";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { buildLoginBody, buildSignupBody } from "@shared/join";
+import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
 import { refreshMeAfterAuthChange } from "@/lib/session";
 import { clampClientRetryAfter } from "@/pages/the-daily-fix/comments";
 import { ensureRecaptchaScript } from "@/pages/the-daily-fix/recaptcha";
@@ -43,37 +45,6 @@ function GoogleLogo({ className }: { className?: string }) {
       />
     </svg>
   );
-}
-
-async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await fetch("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
-  }
-}
-
-async function getRecaptchaToken(action: string): Promise<string> {
-  const g = (
-    window as unknown as {
-      grecaptcha?: {
-        ready: (cb: () => void) => void;
-        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
-      };
-    }
-  ).grecaptcha;
-  const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
-    .__MFX_RECAPTCHA_SITE_KEY__;
-  if (!g || !siteKey) return "test-recaptcha-token";
-  await new Promise<void>((resolve) => g.ready(() => resolve()));
-  return g.execute(siteKey, { action });
 }
 
 function safeNextPath(raw: string | null): string {
@@ -179,7 +150,7 @@ export default function Login() {
           "Content-Type": "application/json",
           "X-CSRF-Token": csrf,
         },
-        body: JSON.stringify({ identifier: id, password, recaptcha }),
+        body: JSON.stringify(buildLoginBody({ identifier: id, password, recaptcha })),
       });
       if (res.status === 429) {
         const wait = clampClientRetryAfter(res.headers.get("Retry-After"));
@@ -236,7 +207,7 @@ export default function Login() {
           "Content-Type": "application/json",
           "X-CSRF-Token": csrf,
         },
-        body: JSON.stringify({ username: u, email: e, recaptcha }),
+        body: JSON.stringify(buildSignupBody({ username: u, email: e, recaptcha })),
       });
       if (res.status === 429) {
         const wait = clampClientRetryAfter(res.headers.get("Retry-After"));

@@ -107,6 +107,10 @@ export function loadMe(options?: { force?: boolean; signal?: AbortSignal }): Pro
 export function refreshMeAfterAuthChange(signal?: AbortSignal): Promise<MeState> {
   cached = null;
   inflight = null;
+  // CQ r2 NB2: CSRF tokens are session-tied — drop on sign-in/out.
+  void import("@/lib/authRequest")
+    .then((m) => m.clearCsrfCache())
+    .catch(() => undefined);
   return loadMe({ force: true, signal });
 }
 

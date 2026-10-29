@@ -241,19 +241,12 @@ export default function AccountBilling() {
                   border: item.is_duplicate_stripe
                     ? "1px solid #c45c3a"
                     : "1px solid var(--color-line)",
-                  borderRadius: "1.75rem",
+                  borderRadius: "0.5rem",
                   padding: "0.85rem",
                   background: item.is_duplicate_stripe ? "rgba(196,92,58,0.06)" : "transparent",
                 }}
               >
-                <div
-                  className="account-mono"
-                  style={
-                    item.is_duplicate_stripe
-                      ? { color: "var(--color-danger-text)" }
-                      : undefined
-                  }
-                >
+                <div className="account-mono">
                   {item.provider} · {item.tier} · {item.status}
                   {item.is_duplicate_stripe ? " · duplicate Stripe" : ""}
                 </div>

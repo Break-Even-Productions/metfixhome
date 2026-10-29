@@ -1,7 +1,5 @@
-import { assetUrl } from "@/const";
+import { assetUrl, METFIX_MAP_URL } from "@/const";
 import type { HomeCourseCard, HomeFaq, HomePageContent, HomeTestimonial } from "@/lib/homeTypes";
-
-const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";
 
 export const FALLBACK_HOME: HomePageContent = {
   hero: {

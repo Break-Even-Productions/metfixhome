@@ -5,15 +5,14 @@
   --login-card: #faf7f1;
   --login-ink: #171512;
   --login-ink-2: #221f1b;
-  --login-muted: #686158;
-
+  --login-muted: #6e675c;
   --login-line: rgba(23, 21, 18, 0.12);
   --login-accent: #0067b2;
   --login-accent-2: #00508a;
   --login-accent-soft: #3d8ec4;
   --login-serif: "Playfair Display", ui-serif, Georgia, serif;
-  --login-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  --login-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+  --login-sans: "Plus Jakarta Sans", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --login-mono: "DM Mono", ui-monospace, monospace;
   min-height: 100svh;
   background: var(--login-bg);
   color: var(--login-ink);

@@ -1,38 +1,45 @@
 /**
- * GlobalNav — shared navigation rendered on every page via App.tsx
- * Design: fixed top bar, dark glass, gold accents
- * Colors: #0A0A0A bg | #C9A96E gold | #EFEFEF text
- * Fonts: DM Sans (links) · DM Mono (labels)
+ * GlobalNav — restyled to beta Header (P-E-NAV).
+ * Audience tabs live on Home only. Search is an LR-4 link (no modal).
+ * Login returnTo via shared/account/returnPath (LR-8).
  */
-import { assetUrl, getMetfixLoginUrl, requestHomeScroll, scrollToHomeSection } from "@/const";
+import {
+  assetUrl,
+  getMetfixLoginUrl,
+  requestHomeScroll,
+  scrollToHomeSection,
+  SEARCH_HREF,
+} from "@/const";
+import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useSiteSettings } from "@/hooks/useSanityContent";
-import type { NavLink } from "@/lib/contentTypes";
-import { ArrowRight, Menu, Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { DEFAULT_NAV_LINKS, type NavLink } from "@/lib/contentTypes";
+import { expectedSearchHrefFromApp } from "@/style-parity/searchHref";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
+import { Menu, Search, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import "./global-nav.css";
 
-const SEARCH_ITEMS = [
-  { label: "What Is MetFix? Free Course", href: "https://whatis.metfix.org/", category: "Course" },
-  { label: "The Daily Fix: Free Daily Content", href: "/the-daily-fix", category: "Free" },
-  { label: "All Courses", href: "/courses", category: "Specialty" },
-  { label: "Resource Library", href: "/library", category: "Resource" },
-  { label: "Foundations Seminar: In-Person", href: "/affiliate-seminars", category: "Event" },
-  { label: "Become a MetFix Affiliate", href: "/become-an-affiliate", category: "Community" },
-  { label: "Broken Science Initiative", href: "https://brokenscience.org/", category: "Research" },
-  { label: "Shop", href: "https://brokenscience.org/shop/", category: "Shop" },
-];
+const ALLOWED_EXTERNAL_HOSTS = ["whatis.metfix.org", "brokenscience.org"] as const;
 
-function useIsDesktop(breakpoint = 900) {
-  const [isDesktop, setIsDesktop] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth >= breakpoint : true
-  );
-  useEffect(() => {
-    const handler = () => setIsDesktop(window.innerWidth >= breakpoint);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [breakpoint]);
-  return isDesktop;
-}
+/** F1-owned search href resolver (ER-11 / ER-14). */
+export const resolveSearchHref = expectedSearchHrefFromApp;
+/** Re-export for callers/tests that import from GlobalNav. */
+export { SEARCH_HREF };
+/** Alias for tests / callers expecting GLOBAL_NAV_SEARCH_HREF. */
+export const GLOBAL_NAV_SEARCH_HREF = SEARCH_HREF;
+
+const DROPPED_NAV_LABELS = new Set([
+  "find a doctor",
+  "partner with us",
+  "build a gym",
+  "our team",
+  "advisory board",
+  "scholarship",
+  "host a seminar",
+  "team seminar",
+]);
 
 function homeHashSection(href: string): string | null {
   const match = href.match(/^(?:https?:\/\/[^/]+)?\/?#([\w-]+)$/);
@@ -43,110 +50,88 @@ function isExternalHref(href: string): boolean {
   return /^https?:\/\//.test(href) || href.startsWith("mailto:");
 }
 
-function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [q, setQ] = useState("");
-  const filtered = SEARCH_ITEMS.filter(
-    (s) =>
-      s.label.toLowerCase().includes(q.toLowerCase()) ||
-      s.category.toLowerCase().includes(q.toLowerCase())
-  );
-  useEffect(() => {
-    if (open) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "";
-    return () => { document.body.style.overflow = ""; };
-  }, [open]);
-  if (!open) return null;
-  return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 200,
-        background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-        display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "8rem",
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", width: "min(640px, 90vw)", maxHeight: "60vh", overflow: "auto" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", alignItems: "center", padding: "1rem 1.25rem", borderBottom: "1px solid rgba(255,255,255,0.06)", gap: "0.75rem" }}>
-          <Search size={16} color="rgba(239,239,239,0.4)" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search courses, resources, events..."
-            autoFocus
-            style={{ flex: 1, background: "none", border: "none", outline: "none", fontFamily: "'DM Sans'", fontSize: "1rem", color: "#fdf6f6" }}
-          />
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(239,239,239,0.75)", cursor: "pointer" }}>
-            <X size={16} />
-          </button>
-        </div>
-        {filtered.map((item) => {
-          const external = item.href.startsWith("http");
-          const sharedStyle = {
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "0.875rem 1.25rem",
-            borderBottom: "1px solid rgba(255,255,255,0.04)",
-            textDecoration: "none",
-            transition: "background 0.15s",
-          } as const;
-          const hover = {
-            onMouseEnter: (e: React.MouseEvent<HTMLAnchorElement>) => {
-              e.currentTarget.style.background = "rgba(201,169,110,0.06)";
-            },
-            onMouseLeave: (e: React.MouseEvent<HTMLAnchorElement>) => {
-              e.currentTarget.style.background = "transparent";
-            },
-          };
-          const inner = (
-            <>
-              <span style={{ fontFamily: "'DM Sans'", fontSize: "0.9rem", color: "#fdf6f6" }}>{item.label}</span>
-              <span style={{ fontFamily: "'DM Mono'", fontSize: "0.7rem", letterSpacing: "0.12em", color: "#C9A96E", textTransform: "uppercase" }}>{item.category}</span>
-            </>
-          );
-          return external ? (
-            <a
-              key={item.label}
-              href={item.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={onClose}
-              style={sharedStyle}
-              {...hover}
-            >
-              {inner}
-            </a>
-          ) : (
-            <Link
-              key={item.label}
-              href={item.href}
-              onClick={onClose}
-              style={sharedStyle}
-              {...hover}
-            >
-              {inner}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
+function isAllowedNavHref(href: string): boolean {
+  if (href.startsWith("/") || href.startsWith("#")) return true;
+  try {
+    const url = new URL(href);
+    // Host allowlist only — never allow BSI REST path segments in nav hrefs (PX1 / E-T-SEC2).
+    return ALLOWED_EXTERNAL_HOSTS.some(
+      (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function loginHrefForLocation(pathname: string, search: string): string {
+  const candidate = `${pathname}${search}`;
+  const safe = sanitizeReturnPath(candidate) ?? "/";
+  return getMetfixLoginUrl(safe);
+}
+
+function isActiveRoute(location: string, href: string): boolean {
+  if (isExternalHref(href) || href.startsWith("/#") || href.startsWith("#")) return false;
+  const path = href.split("?")[0];
+  if (path === "/") return location === "/" || location === "";
+  return location === path || location.startsWith(`${path}/`);
+}
+
+/** §3a nav list — Sanity links filtered; dropped beta items removed. */
+export function navLinksFromSettings(links: readonly NavLink[] | undefined): NavLink[] {
+  const source = links && links.length > 0 ? links : DEFAULT_NAV_LINKS;
+  return [...source].filter(
+    (link) =>
+      isAllowedNavHref(link.href) && !DROPPED_NAV_LABELS.has(link.label.toLowerCase()),
   );
 }
 
+/** Exported for T-E-NAV-1 route checks. */
+export const GLOBAL_NAV_ITEMS: NavLink[] = navLinksFromSettings([...DEFAULT_NAV_LINKS]);
+
 export default function GlobalNav() {
-  const isDesktop = useIsDesktop(900);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const [location, setLocation] = useLocation();
   const { settings } = useSiteSettings();
-  const navLinks = settings.navLinks;
+  const navLinks = navLinksFromSettings(settings.navLinks);
+  const joinFlow = useJoinFlowOptional();
+  const menuId = useId();
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const mobilePanelRef = useRef<HTMLElement>(null);
+  const onHome = location === "/" || location === "";
+
+  useBodyScrollLock(mobileOpen);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        toggleRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const panel = mobilePanelRef.current;
+    const focusables = panel?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    focusables?.[0]?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
 
   const goToHomeSection = (sectionId: string, closeMenu?: () => void) => {
     closeMenu?.();
-    const onHome = location === "/" || location === "";
     if (onHome) {
       scrollToHomeSection(sectionId);
     } else {
@@ -155,19 +140,22 @@ export default function GlobalNav() {
     }
   };
 
-  const renderNavItem = (
-    item: NavLink,
-    style?: React.CSSProperties,
-    onNavigate?: () => void
-  ) => {
+  const openJoin = () => {
+    setMobileOpen(false);
+    if (joinFlow) joinFlow.openJoinFlow();
+    else window.location.assign("/join");
+  };
+
+  const renderNavItem = (item: NavLink, className: string, onNavigate?: () => void) => {
     const sectionId = homeHashSection(item.href);
+    const current = isActiveRoute(location, item.href);
     if (sectionId) {
       return (
         <a
           key={`${item.label}-${item.href}`}
           href={`/#${sectionId}`}
-          className="nav-link"
-          style={style}
+          className={className}
+          aria-current={current ? "page" : undefined}
           onClick={(e) => {
             e.preventDefault();
             goToHomeSection(sectionId, onNavigate);
@@ -183,10 +171,9 @@ export default function GlobalNav() {
         <a
           key={`${item.label}-${item.href}`}
           href={item.href}
-          target={item.openInNewTab ? "_blank" : undefined}
-          rel={item.openInNewTab ? "noopener noreferrer" : undefined}
-          className="nav-link"
-          style={style}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={className}
           onClick={onNavigate}
         >
           {item.label}
@@ -198,8 +185,8 @@ export default function GlobalNav() {
       <Link
         key={`${item.label}-${item.href}`}
         href={item.href}
-        className="nav-link"
-        style={style}
+        className={className}
+        aria-current={current ? "page" : undefined}
         onClick={onNavigate}
       >
         {item.label}
@@ -207,113 +194,98 @@ export default function GlobalNav() {
     );
   };
 
+  const loginHref =
+    typeof window !== "undefined"
+      ? loginHrefForLocation(window.location.pathname, window.location.search)
+      : getMetfixLoginUrl("/");
+
   return (
-    <>
-      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
-      <nav
-        style={{
-          position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-          background: "rgba(10,10,10,0.92)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-        }}
-      >
-        <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: "4.5rem" }}>
-          {/* Logo */}
-          <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", flexShrink: 0 }}>
-            <img src={assetUrl("/metfix-lockup.png")} alt="MetFix" style={{ height: "2.25rem", width: "auto", display: "block" }} />
+    <header className="global-nav">
+      <a href="#main" className="global-nav__skip">
+        Skip to content
+      </a>
+
+      <div className={`global-nav__primary${scrolled || mobileOpen ? " is-solid" : ""}`}>
+        <div className="global-nav__row">
+          <Link href="/" className="global-nav__logo" aria-label="MetFix">
+            <img
+              src={assetUrl("/MetFixLogoBlack.png")}
+              alt=""
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = assetUrl("/metfix-lockup.png");
+              }}
+            />
           </Link>
 
-          {/* Desktop links */}
-          <div style={{ display: isDesktop ? "flex" : "none", gap: "1.25rem", alignItems: "center", flex: 1, justifyContent: "center" }}>
-            {navLinks.map((item) =>
-              renderNavItem(item, { whiteSpace: "nowrap" })
-            )}
-          </div>
+          <nav className="global-nav__links" aria-label="Primary">
+            {navLinks.map((item) => renderNavItem(item, "global-nav__link"))}
+          </nav>
 
-          {/* Right controls */}
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-            <button
-              type="button"
-              aria-label="Search"
-              onClick={() => setSearchOpen(true)}
-              style={{ background: "none", border: "none", color: "rgba(239,239,239,0.8)", cursor: "pointer", padding: "0.7rem", transition: "color 0.2s" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#C9A96E")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(239,239,239,0.5)")}
-            >
-              <Search size={18} />
-            </button>
-            <Link
-              href={getMetfixLoginUrl()}
-              className="nav-link"
-              style={{
-                display: isDesktop ? "inline-flex" : "none",
-                fontSize: "0.72rem",
-                fontWeight: 600,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "rgba(239,239,239,0.85)",
-                textDecoration: "none",
-                whiteSpace: "nowrap",
-              }}
-            >
+          <div className="global-nav__actions">
+            <Link href={SEARCH_HREF} className="global-nav__icon-btn" aria-label="Search">
+              <Search size={18} aria-hidden="true" />
+              <span>Search</span>
+            </Link>
+            <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
               Login
             </Link>
-            <a
-              href="https://whatis.metfix.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary"
-              style={{ display: isDesktop ? "inline-flex" : "none", fontSize: "0.8rem", padding: "0.55rem 1.25rem", whiteSpace: "nowrap", flexShrink: 0 }}
-            >
-              Start Here <ArrowRight size={13} />
-            </a>
+            <button type="button" className="global-nav__join" onClick={openJoin}>
+              Join
+            </button>
             <button
-              onClick={() => setMobileOpen(!mobileOpen)}
-              style={{ display: isDesktop ? "none" : "block", background: "none", border: "none", color: "#fdf6f6", cursor: "pointer", padding: "0.7rem" }}
+              ref={toggleRef}
+              type="button"
+              className="global-nav__menu-toggle"
+              aria-label={mobileOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileOpen}
+              aria-controls={menuId}
+              onClick={() => setMobileOpen((v) => !v)}
             >
               {mobileOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
         </div>
 
-        {/* Mobile menu */}
-        {mobileOpen && (
-          <div style={{ background: "#0A0A0A", borderTop: "1px solid rgba(255,255,255,0.06)", padding: "1.5rem" }}>
-            {navLinks.map((item) =>
-              renderNavItem(
-                item,
-                {
-                  display: "block",
-                  padding: "0.875rem 0",
-                  borderBottom: "1px solid rgba(255,255,255,0.05)",
-                  fontFamily: "'DM Sans'",
-                  fontSize: "0.9rem",
-                  color: "rgba(255,255,255,0.7)",
-                  textDecoration: "none",
-                },
-                () => setMobileOpen(false)
-              )
-            )}
-            <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
-              <a
-                href="https://whatis.metfix.org/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-primary"
-                style={{ flex: 1, justifyContent: "center" }}
-              >
-                Start Here <ArrowRight size={14} />
-              </a>
-              <button
-                onClick={() => { setMobileOpen(false); setSearchOpen(true); }}
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(239,239,239,0.6)", padding: "0.625rem 1rem", cursor: "pointer" }}
-              >
-                <Search size={16} />
-              </button>
+        {mobileOpen ? (
+          <nav
+            ref={mobilePanelRef}
+            id={menuId}
+            className="global-nav__mobile"
+            aria-label="Mobile"
+          >
+            <div className="global-nav__mobile-list">
+              {navLinks.map((item) =>
+                renderNavItem(item, "global-nav__mobile-link", () => {
+                  setMobileOpen(false);
+                  toggleRef.current?.focus();
+                }),
+              )}
+              <div className="global-nav__mobile-actions">
+                <Link
+                  href={loginHref}
+                  className="global-nav__join"
+                  style={{ display: "inline-flex" }}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Login
+                </Link>
+                <button type="button" className="global-nav__join" onClick={openJoin}>
+                  Join
+                </button>
+                <Link
+                  href={SEARCH_HREF}
+                  className="global-nav__icon-btn"
+                  aria-label="Search"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Search size={18} aria-hidden="true" />
+                  <span>Search</span>
+                </Link>
+              </div>
             </div>
-          </div>
-        )}
-      </nav>
-    </>
+          </nav>
+        ) : null}
+      </div>
+    </header>
   );
 }

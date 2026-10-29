@@ -452,7 +452,7 @@ export default function LibraryPage() {
           <button type="submit">Search resources</button>
         </form>
 
-        <div className="library-chips" role="toolbar" aria-label="Content type filters">
+        <div className="library-chips" role="list">
           <button
             type="button"
             className="library-chip"

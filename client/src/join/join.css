@@ -1,0 +1,37 @@
+/* Warm-cream JoinFlow / Membership theme (scoped — does not override site dark shell). */
+.join-theme,
+.membership-theme {
+  --join-cream: #f3eee4;
+  --join-cream-2: #e9e1d2;
+  --join-paper: #faf7f1;
+  --join-ink: #171512;
+  --join-ink-2: #221f1b;
+  --join-ink-3: #2c2925;
+  --join-accent: #c4a46c;
+  --join-accent-2: #b08d52;
+  --join-accent-3: #d4bc8a;
+  --join-muted: #6e675c;
+  --join-muted-2: #8a8378;
+  --join-line: rgba(23, 21, 18, 0.1);
+  --join-line-light: rgba(243, 238, 228, 0.14);
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+.join-theme .font-serif,
+.membership-theme .font-serif {
+  font-family: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+}
+
+.membership-glass {
+  background: color-mix(in srgb, #171512 42%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

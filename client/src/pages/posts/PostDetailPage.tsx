@@ -13,6 +13,7 @@ import {
 } from "@shared/posts";
 import { BackToTop } from "@/components/BackToTop";
 import { SafeHtml } from "@/components/SafeHtml";
+import { UpgradePrompt } from "@/components/UpgradePrompt";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import NotFound from "@/pages/NotFound";
 import { PostsError, PostsLayout, PostsLoading } from "./PostsLayout";
@@ -149,6 +150,13 @@ function DetailBody({ post }: { post: DetailPost }) {
           />
         ) : null}
         <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+        {/* WJ18: exactly one UpgradePrompt (B6 forbids unlocked doubles only). */}
+        <div style={{ marginTop: "2rem" }}>
+          <UpgradePrompt
+            title="Get the full MetFix library"
+            body="Start your free month for courses, The Daily Fix archive, and cumulative LTV toward certificates."
+          />
+        </div>
         {post.permalink ? (
           <a
             className="posts-external"

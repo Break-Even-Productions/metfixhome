@@ -1,0 +1,42 @@
+{
+  "$comment": "PR E visual-diff masks — acceptance rev1.0.12. No year mask; Playwright locators only.",
+  "spec": "metfix-pr-e-home-port-acceptance.rev1.0.12",
+  "pixelThreshold": 0.1,
+  "maxDiffPixelRatio": 0.02,
+  "retries": 0,
+  "runToRunSpreadPointsMax": 0.2,
+  "maskAreaCap": {
+    "id": "MC-1",
+    "maxUnionFraction": 0.1,
+    "maxSingleBoxHeightPx": { "1280": 800, "390": 844 },
+    "note": "Union of mask boxes ≤ 10% of (viewportWidth × capturedPageHeight). Overlaps count once. Whole-section exclusions (X-9) are not masks."
+  },
+  "maskMustNotIntersect": {
+    "id": "P-E-M1",
+    "selectors": [
+      "input",
+      "select",
+      "textarea",
+      "button",
+      "a",
+      "[role=alert]",
+      "[aria-live]",
+      ".grecaptcha-badge",
+      "[data-nav-auth]"
+    ],
+    "note": "Masks never cover inputs, buttons, links, alerts, reCAPTCHA badge, or nav auth control."
+  },
+  "masks": [],
+  "sectionExclusions": {
+    "X-9": [
+      "#impact",
+      "#playbook",
+      "#affiliation",
+      "#about",
+      "#gap",
+      "#network",
+      "#membership-section"
+    ],
+    "note": "LR-E6 final: seven kept sections token-scanned and pixel-exempt (incl. Membership)."
+  }
+}

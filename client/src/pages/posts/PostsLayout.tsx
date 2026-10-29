@@ -10,6 +10,7 @@ type PostsLayoutProps = {
 /**
  * Shared shell for list, detail, loading, and error (B1 / CQ24).
  * Class-based styles only — no inline style props.
+ * Shared chrome footer on non-home routes is PR F (LR-E21); PR E mounts it on Home only.
  */
 export function PostsLayout({ children, kicker = "Posts" }: PostsLayoutProps) {
   return (

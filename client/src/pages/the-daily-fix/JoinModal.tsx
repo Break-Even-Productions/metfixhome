@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { buildLoginBody } from "@shared/join";
+import { getRecaptchaToken } from "@/lib/authRequest";
 import { clampClientRetryAfter } from "./comments";
 import { ensureRecaptchaScript } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
@@ -45,24 +47,6 @@ async function fetchCsrf(http: typeof fetch): Promise<string | null> {
   } catch {
     return null;
   }
-}
-async function getRecaptchaToken(action: string): Promise<string> {
-  const g = (
-    window as unknown as {
-      grecaptcha?: {
-        ready: (cb: () => void) => void;
-        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
-      };
-    }
-  ).grecaptcha;
-  const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
-    .__MFX_RECAPTCHA_SITE_KEY__;
-  if (!g || !siteKey) {
-    // Tests / local without widget: non-empty placeholder (Worker shape-checks only).
-    return "test-recaptcha-token";
-  }
-  await new Promise<void>((resolve) => g.ready(() => resolve()));
-  return g.execute(siteKey, { action });
 }
 
 function GoogleLogo({ className }: { className?: string }) {
@@ -183,7 +167,7 @@ export function JoinModal({
                     "Content-Type": "application/json",
                     "X-CSRF-Token": csrf,
                   },
-                  body: JSON.stringify({ identifier: id, password, recaptcha }),
+                  body: JSON.stringify(buildLoginBody({ identifier: id, password, recaptcha })),
                 });
                 if (res.status === 429) {
                   const wait = clampClientRetryAfter(res.headers.get("Retry-After"));

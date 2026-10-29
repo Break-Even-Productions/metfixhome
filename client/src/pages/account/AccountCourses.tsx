@@ -14,6 +14,8 @@ import {
   type CourseItem,
   type LtvCertificates,
 } from "@/lib/account";
+import { friendlyAttributionLabel } from "@/lib/attributionLabel";
+import { readStoredBsiRef } from "@/lib/referralAttribution";
 import DashboardLayout from "./DashboardLayout";
 import { LtvVisualizer } from "./LtvVisualizer";
 import { FoundationsCoachCard } from "./FoundationsCoachCard";
@@ -56,6 +58,8 @@ export default function AccountCourses() {
   const [ltv, setLtv] = useState<LtvCertificates | null>(null);
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [claimPending, setClaimPending] = useState(false);
+  const [buyLock, setBuyLock] = useState(false);
+  const [attributionSource, setAttributionSource] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -115,15 +119,23 @@ export default function AccountCourses() {
   }
 
   async function onBuy(course: CourseItem) {
-    if (!course.id) return;
+    if (!course.id || buyLock) return;
+    setBuyLock(true);
     setError(null);
     try {
-      const res = await purchaseCourseCheckout(course.id);
-      if (!assignBillingUrl(res.checkout_url, "billing_portal")) {
+      const bsi_ref = readStoredBsiRef() ?? undefined;
+      const res = await purchaseCourseCheckout(course.id, bsi_ref ? { bsi_ref } : undefined);
+      if (res.attribution?.attribution_source) {
+        // N7: wire value unchanged on API; display uses friendly label.
+        setAttributionSource(friendlyAttributionLabel(res.attribution.attribution_source));
+      }
+      if (!assignBillingUrl(res.checkout_url, "whop_only")) {
         setError("Checkout unavailable.");
       }
     } catch {
       setError("Checkout unavailable.");
+    } finally {
+      setBuyLock(false);
     }
   }
 
@@ -138,6 +150,11 @@ export default function AccountCourses() {
     >
       {error ? <p className="account-error">{error}</p> : null}
       {message ? <p role="status">{message}</p> : null}
+      {attributionSource ? (
+        <p className="account-mono" data-testid="attribution-source" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+          {attributionSource}
+        </p>
+      ) : null}
       {ltv ? <LtvVisualizer ltv={ltv} /> : null}
       {coach ? <FoundationsCoachCard coach={coach} /> : null}
 
@@ -186,6 +203,8 @@ export default function AccountCourses() {
                   <button
                     type="button"
                     className="account-btn account-btn--ghost"
+                    disabled={buyLock}
+                    data-testid={course.id != null ? `buy-course-${course.id}` : undefined}
                     onClick={() => void onBuy(course)}
                   >
                     {`Buy Course for Certificate ($${Math.floor(course.course_price_cents / 100)})`}
