@@ -28,6 +28,7 @@ import { SessionDO } from "./do/session";
 import { DAILY_FIX_CSP } from "./csp";
 import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
+import { handleAccountRoutes } from "./account";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
@@ -142,6 +143,11 @@ export async function handleRequest(
       cachesDefault: cache,
       bsiBaseUrl,
     });
+  }
+  // Account dashboard + public member profiles (before /api/* catch-all)
+  if (path.startsWith("/api/account") || path.startsWith("/api/members/")) {
+    const accountRes = await handleAccountRoutes(request, env, { fetchImpl, bsiBaseUrl });
+    if (accountRes) return accountRes;
   }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");

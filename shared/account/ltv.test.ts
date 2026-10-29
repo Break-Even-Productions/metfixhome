@@ -124,10 +124,10 @@ describe("computeLtvBudget / evaluateCourseCertificateEligibility (DP-T-CERT3 LT
 });
 
 describe("formatUsdFromCents", () => {
-  it("formats whole dollars without cents and fractional with two digits", () => {
-    expect(formatUsdFromCents(30000)).toBe("$300");
-    expect(formatUsdFromCents(15000)).toBe("$150");
+  it("formats always with two decimal places (QA CERT4 $300.00 style)", () => {
+    expect(formatUsdFromCents(30000)).toBe("$300.00");
+    expect(formatUsdFromCents(15000)).toBe("$150.00");
     expect(formatUsdFromCents(10050)).toBe("$100.50");
-    expect(formatUsdFromCents(0)).toBe("$0");
+    expect(formatUsdFromCents(0)).toBe("$0.00");
   });
 });

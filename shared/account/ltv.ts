@@ -96,11 +96,10 @@ export function evaluateCourseCertificateEligibility(
   };
 }
 
-/** Leaf USD formatter — whole dollars omit cents (`$300`); fractional keep two digits (`$100.50`). */
+/** Leaf USD formatter — always two decimal places (`$300.00`, `$100.50`). */
 export function formatUsdFromCents(cents: number): string {
   const n = toNonNegativeSafeCents(cents);
   const dollars = Math.floor(n / 100);
   const rem = n % 100;
-  if (rem === 0) return `$${dollars}`;
   return `$${dollars}.${String(rem).padStart(2, "0")}`;
 }
