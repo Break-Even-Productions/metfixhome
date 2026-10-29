@@ -1,6 +1,6 @@
 /**
  * Dedicated MetFix member login — visual language matches the member-access
- * design (dark canvas, Playfair + DM Sans, gold accent). Auth posts to the
+ * design (cream/ink, Playfair + Plus Jakarta Sans). Auth posts to the
  * same-origin Worker (/api/auth/*). No third-party telemetry.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";

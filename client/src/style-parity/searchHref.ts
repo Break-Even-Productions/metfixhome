@@ -11,8 +11,6 @@
 export type SearchHref = "/library/search" | "/library";
 
 const LITERAL_SEARCH = /path=\{["']\/library\/search["']\}|path=["']\/library\/search["']/;
-const PARAM_LIBRARY =
-  /path=\{["']\/library\/:[^"']+["']\}|path=["']\/library\/:[^"']+["']/;
 const NOT_FOUNDISH =
   /NotFound|not-found|component=\{?\(?\)?\s*=>\s*null|component=\{null\}/;
 
@@ -44,17 +42,13 @@ export function librarySearchIsShadowed(appSrc: string): boolean {
 /** Heuristic: literal route line looks like a real search page, not 404/empty. */
 export function librarySearchRendersSearchPage(appSrc: string): boolean {
   if (!LITERAL_SEARCH.test(appSrc)) return false;
-  // Grab a window around the literal route declaration
   const idx = appSrc.search(LITERAL_SEARCH);
   const window = appSrc.slice(Math.max(0, idx - 80), idx + 200);
   if (NOT_FOUNDISH.test(window)) return false;
-  // Prefer an explicit Search-ish component name when present
   if (/LibrarySearch|SearchPage|library\/search/i.test(window)) return true;
-  // Otherwise accept any non-NotFound component={…} on the same Route
   if (/component=\{[^}]+\}/.test(window) || /component=\{?\w+/.test(window)) {
     return !/component=\{?NotFound/.test(window);
   }
-  // Self-closing / children-only Route without component — treat as incomplete
   return false;
 }
 
@@ -62,7 +56,5 @@ export function expectedSearchHrefFromApp(appSrc: string): SearchHref {
   if (!LITERAL_SEARCH.test(appSrc)) return "/library";
   if (librarySearchIsShadowed(appSrc)) return "/library";
   if (!librarySearchRendersSearchPage(appSrc)) return "/library";
-  // PARAM_LIBRARY alone (without shadowing the literal) is fine
-  void PARAM_LIBRARY;
   return "/library/search";
 }

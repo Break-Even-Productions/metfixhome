@@ -48,6 +48,14 @@ export default defineConfig({
         viewport: { width: 1280, height: 800 },
       },
     },
+    {
+      // T-F-70: no hide-recaptcha; offline stub only (FN-4).
+      name: "prod-badge",
+      testMatch: /.*\.prod-badge\.spec\.ts/,
+      use: {
+        viewport: { width: 1280, height: 800 },
+      },
+    },
   ],
   webServer: {
     command: `npx vite preview --host 127.0.0.1 --port ${PORT}`,

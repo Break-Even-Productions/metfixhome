@@ -3,8 +3,8 @@ import { prepareVisualPage, settleForCapture, VIEWPORTS } from "./harness";
 import { masksForPath } from "./masks";
 
 /**
- * F1 visual gates (T-F-1..3). Baselines are box-generated vs beta 95f67814
- * and committed under tests/visual/baselines/. CI compares only (never regenerates).
+ * F1 visual gates (T-F-1..3). Baselines vs beta 95f67814 under
+ * tests/visual/f1.visual.spec.ts-snapshots/. CI compares only (never regenerates).
  * Masks: Playwright locators only — no data-visual-* in production (rev1.0.7).
  */
 const PAGES = [
@@ -16,25 +16,14 @@ const PAGES = [
 test.describe("F1 visual (T-F-1, T-F-2, T-F-3)", () => {
   for (const pageDef of PAGES) {
     for (const vp of VIEWPORTS) {
-      // Box generates baselines vs beta 95f67814; CI compares only (updateSnapshots:none).
-      // Skip until committed PNGs exist under tests/visual/f1.visual.spec.ts-snapshots/.
-      test(`${pageDef.name} @ ${vp.name}`, async ({ page }, testInfo) => {
-        const snapName = `${pageDef.name}-${vp.name}.png`;
-        const snapDir = testInfo.snapshotDir;
-        const fs = await import("node:fs");
-        const path = await import("node:path");
-        const exists =
-          fs.existsSync(path.join(snapDir, snapName)) ||
-          fs.existsSync(path.join(snapDir, `${pageDef.name}-${vp.name}-chromium-linux.png`));
-        test.skip(!exists, "baseline PNG not yet committed (box-only vs beta)");
-
+      test(`${pageDef.name} @ ${vp.name}`, async ({ page }) => {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await prepareVisualPage(page);
         await page.goto(pageDef.path, { waitUntil: "domcontentloaded" });
         await settleForCapture(page);
 
         const maskLocators = masksForPath(page, pageDef.path);
-        await expect(page).toHaveScreenshot(snapName, {
+        await expect(page).toHaveScreenshot(`${pageDef.name}-${vp.name}.png`, {
           fullPage: true,
           threshold: 0.1,
           maxDiffPixelRatio: 0.02,
@@ -74,5 +63,16 @@ test.describe("F1 harness (T-F-47, T-F-49, T-F-60, T-F-62, T-F-63, T-F-65)", () 
       return document.querySelectorAll("[data-visual-mask], [data-visual-region], [data-visual]").length;
     });
     expect(hits).toBe(0);
+  });
+
+  test("FONTS1 per-build css files exist", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const root = path.join(import.meta.dirname, "fonts/css");
+    expect(fs.existsSync(path.join(root, "target.css"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "beta.css"))).toBe(true);
+    const target = fs.readFileSync(path.join(root, "target.css"), "utf8");
+    expect(target).toMatch(/Playfair Display/);
+    expect(target).toMatch(/Plus Jakarta Sans/);
   });
 });

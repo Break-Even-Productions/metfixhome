@@ -7,9 +7,76 @@
   "maxDiffPixelRatio": 0.02,
   "retries": 0,
   "notes": "Baselines box-only vs beta 95f67814. Masks are Playwright locators (no data-visual-*). Terms URL: brokenscience.org/terms-and-conditions/.",
-  "entries": [],
+  "entries": [
+    {
+      "page": "affiliate-seminars",
+      "viewport": "1280",
+      "file": "tests/visual/f1.visual.spec.ts-snapshots/affiliate-seminars-1280-visual-linux.png",
+      "sha256": "7ac9fff85f6824fa1f3a8a3915fdae7a80a66770c463b957f3ff9db97d51a9eb",
+      "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+      "playwright": "1.56.1"
+    },
+    {
+      "page": "affiliate-seminars",
+      "viewport": "390",
+      "file": "tests/visual/f1.visual.spec.ts-snapshots/affiliate-seminars-390-visual-linux.png",
+      "sha256": "33249f4f150fdec04c1d5849dfe8aa67755e9fd7655a025353dda4eb0d101304",
+      "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+      "playwright": "1.56.1"
+    },
+    {
+      "page": "become-an-affiliate",
+      "viewport": "1280",
+      "file": "tests/visual/f1.visual.spec.ts-snapshots/become-an-affiliate-1280-visual-linux.png",
+      "sha256": "5dea96d54bd191b4be449563778ec85be8d2e87eb10fec306986a2640186f6e5",
+      "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+      "playwright": "1.56.1"
+    },
+    {
+      "page": "become-an-affiliate",
+      "viewport": "390",
+      "file": "tests/visual/f1.visual.spec.ts-snapshots/become-an-affiliate-390-visual-linux.png",
+      "sha256": "e6092101cc5eaa242f4be07f8e359d71480657e8b7ab94eb646b59961401939b",
+      "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+      "playwright": "1.56.1"
+    },
+    {
+      "page": "the-daily-fix",
+      "viewport": "1280",
+      "file": "tests/visual/f1.visual.spec.ts-snapshots/the-daily-fix-1280-visual-linux.png",
+      "sha256": "654833de5da9f5af34c2ea60075663406c83d98dc98249552cbf69985533be7a",
+      "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+      "playwright": "1.56.1"
+    },
+    {
+      "page": "the-daily-fix",
+      "viewport": "390",
+      "file": "tests/visual/f1.visual.spec.ts-snapshots/the-daily-fix-390-visual-linux.png",
+      "sha256": "a14e1d22c34e66e191fac99a040b6cfde6587a1627107b08d705ef02a67e4f8c",
+      "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+      "playwright": "1.56.1"
+    }
+  ],
   "fontHashes": {
-    "playfair-display/playfair-display-latin-400-normal.woff2": "51c8eae79bf05bbcc1811da8cb56ff69d87d40bafdce8282fea8a43259b4afcb",
-    "plus-jakarta-sans/plus-jakarta-sans-latin-400-normal.woff2": "cf1300338d5db6340c61d3e549d482298897791d327c156509e1968c84e0f143"
+    "montserrat/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCuM73w3aXpsog.woff2": "a59fcc944a712e213a2f3bd994367129217c75f24a9155a5a3c1a0f5fd2cc9a7",
+    "montserrat/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCuM73w5aXo.woff2": "f9d9e65b15372cebcafc3acd1e664a564c5c4b23278de4d5760de9a13c530371",
+    "oswald/TK3IWkUHHAIjg75cFRf3bXL8LICs1_Fv40pKlN4NNSeSASz7FmlWHYg.woff2": "571f3457dab507b6f2ce5394d593ca015251b69fea81ab7a546bd2368e9fc3ed",
+    "oswald/TK3IWkUHHAIjg75cFRf3bXL8LICs1_Fv40pKlN4NNSeSASz7FmlYHYjedg.woff2": "99016932b273efa7d55b3a0ae9fe4babc6dbdcd7539f58a742697054f89b1142",
+    "outfit/QGYvz_MVcBeNP4NJtEtq.woff2": "6c18d579fd87c3776be068b762cbc83fde3acb543d49eabd3ade842eb987e887",
+    "outfit/QGYvz_MVcBeNP4NJuktqQ4E.woff2": "0f53d1c03b3918d744a843b5039001ee31695ca1e255e3914188df81beb461e9",
+    "playfair-display/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtHA-Q.woff2": "eabce94d4a69e439cd050755c31f9894ac8a78f93e58b063c6c01f370474e1de",
+    "playfair-display/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt_A-W2r.woff2": "b02fdf18a2d7b09f409b01a1ab4afe7b5f7d08926b3c867187398765ea0fb3f1",
+    "playfair-display/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2": "42898ad49a6b23f32b109243e1df596edf831015ed685f429e4dafbb181d599d",
+    "playfair-display/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2": "e0c764a8e9e1cce92163c55bac4b2ad6cd4cf8c696ce2289ab5c41565e65b7e2",
+    "playfair-display/nuFkD-vYSZviVYUb_rj3ij__anPXDTnogkk7.woff2": "54af24bd0f911f0fd7399d5445ea2023ff501d6a69f2d728f1213072f977ab14",
+    "playfair-display/nuFkD-vYSZviVYUb_rj3ij__anPXDTnojEk72xU.woff2": "b9dff4aec6d8ef27af595330c808c455fcc3ff46881642aa6028ed4e27a96f89",
+    "plus-jakarta-sans/LDIZaomQNQcsA88c7O9yZ4KMCoOg4KozySKCdSNG9OcqYQ0lCS_XOKw.woff2": "e3d33148aa32c737949f4f91a0a3ef014792be66c61539455c492ec2cd4796e6",
+    "plus-jakarta-sans/LDIZaomQNQcsA88c7O9yZ4KMCoOg4KozySKCdSNG9OcqYQ0lCS_ZOKyYRw.woff2": "8bdc0f1b580aa381668eac662c2ea4a39efabef8225987d8f7b4865120617f27",
+    "plus-jakarta-sans/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko20yw.woff2": "153fc85b70298beeb1d61a5f723331649e7f23bb77302a66e61cb3e2fbdb5e79",
+    "plus-jakarta-sans/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko40yyygA.woff2": "38e3b8fd8045048eb311d90170a4429ed2c8f405852dc3d91b5af8452758703f",
+    "poppins/pxiByp8kv8JHgFVrLCz7Z1JlFc-K.woff2": "ccfd87f69ef00d811da3d06488cec4e79ec99d289cfbcbe4be42031cecae775a",
+    "poppins/pxiByp8kv8JHgFVrLCz7Z1xlFQ.woff2": "9338e65fc077355c7a87ae0d64cc101e23b9bf8ad78ae65f0f319c857311b526",
+    "poppins/pxiByp8kv8JHgFVrLEj6Z1JlFc-K.woff2": "bb1f2d582e7fba586ab70c91ef062d3becaf78b887654953863521b73665d171",
+    "poppins/pxiByp8kv8JHgFVrLEj6Z1xlFQ.woff2": "f4e80d9dfd374d02989b87a27b5ed4cb78fbb177c27f1478e9a8b0afb7513149"
   }
 }

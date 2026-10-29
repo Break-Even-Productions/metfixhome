@@ -199,12 +199,13 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
 
   it("CSS tokens include warm-cream palette (DP-T-UI1)", () => {
     const css = readFileSync(path.join(import.meta.dirname, "account.css"), "utf8");
-    expect(css).toMatch(/--color-cream:\s*(#f3eee4|var\(--color-cream\))/);
-    expect(css).toMatch(/--color-paper:\s*(#faf7f1|var\(--color-paper\))/);
-    expect(css).toMatch(/--color-ink:\s*(#171512|var\(--color-ink\))/);
-    expect(css).toMatch(/--color-muted:\s*(#686158|var\(--color-muted\))/);
-    expect(css).toMatch(/--color-accent:\s*(#c4a46c|var\(--color-accent\))/);
-    expect(css).toMatch(/--color-line:\s*(rgba\(23,\s*21,\s*18,\s*0\.1\)|var\(--color-line\))/);
+    // Exact F1 shared-palette values (no loose alternation).
+    expect(css).toMatch(/--color-cream:\s*#f3eee4\b/);
+    expect(css).toMatch(/--color-paper:\s*#faf7f1\b/);
+    expect(css).toMatch(/--color-ink:\s*#171512\b/);
+    expect(css).toMatch(/--color-muted:\s*#686158\b/);
+    expect(css).toMatch(/--color-accent:\s*#c4a46c\b/);
+    expect(css).toMatch(/--color-line:\s*rgba\(23,\s*21,\s*18,\s*0\.1\)/);
     expect(css).toMatch(/Playfair Display/);
     expect(css).toMatch(/Plus Jakarta Sans/);
     expect(css).not.toMatch(/Instrument Serif/);

@@ -12,7 +12,6 @@
   --color-accent-3: #d4bc8a;
   --color-accent-text: #775f37;
   --color-muted: #686158;
-  --color-muted-2: #8a8378;
   --color-line: rgba(23, 21, 18, 0.1);
   --color-danger-text: #9a4a2e;
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
@@ -151,7 +150,8 @@
 .seminars-page .sem-filter-btn.is-active {
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  color: var(--color-accent-text);
+  /* ink (not accent-text) — accent-text on cream-2 mix fails 4.5:1 (T-F-32) */
+  color: var(--color-ink);
 }
 
 .seminars-page .seminar-row {

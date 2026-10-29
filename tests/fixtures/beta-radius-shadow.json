@@ -1,0 +1,7 @@
+{
+  "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
+  "borderRadius": ["0", "0.25rem", "0.5rem", "1rem", "1.75rem", "2.5rem", "9999px", "999px", "50%"],
+  "boxShadow": ["none"],
+  "roundedClasses": ["rounded-sm", "rounded-md", "rounded-lg", "rounded-xl", "rounded-full"],
+  "shadowClasses": ["shadow-none"]
+}

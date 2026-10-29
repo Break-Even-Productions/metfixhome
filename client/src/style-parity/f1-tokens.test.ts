@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { VISUAL_HOOK_PATTERN } from "../../../tests/visual/hookPattern";
@@ -181,19 +182,50 @@ describe("F1 tooling (T-F-60, T-F-62, T-F-65, T-F-67, T-F-69, T-F-71)", () => {
     }
   });
 
-  it("vendors fonts with OFL and ≤1.5MB budget", () => {
+  it("vendors fonts with OFL, sha256 manifest, ≤1.5MB (FONTS1 / T-F-67)", () => {
     const fontRoot = path.join(root, "../tests/visual/fonts");
-    const families = ["playfair-display", "plus-jakarta-sans"];
+    const families = [
+      "playfair-display",
+      "plus-jakarta-sans",
+      "montserrat",
+      "oswald",
+      "outfit",
+      "poppins",
+    ];
     let total = 0;
+    const seenHash = new Set<string>();
     for (const fam of families) {
       const ofl = path.join(fontRoot, fam, "OFL.txt");
-      expect(readFileSync(ofl, "utf8")).toMatch(/Open Font License/i);
+      expect(readFileSync(ofl, "utf8")).toMatch(/SIL Open Font License/i);
       for (const name of readdirSync(path.join(fontRoot, fam))) {
         const fp = path.join(fontRoot, fam, name);
-        total += readFileSync(fp).byteLength;
+        const buf = readFileSync(fp);
+        total += buf.byteLength;
+        if (name.endsWith(".woff2")) {
+          const h = createHash("sha256").update(buf).digest("hex");
+          expect(seenHash.has(h), `duplicate font hash ${fam}/${name}`).toBe(false);
+          seenHash.add(h);
+        }
       }
     }
-    expect(total).toBeLessThanOrEqual(1.5 * 1024 * 1024);
+    expect(total).toBeLessThanOrEqual(1_572_864);
+    const manifest = JSON.parse(
+      readFileSync(path.join(root, "../tests/visual/manifest.json"), "utf8"),
+    );
+    expect(Object.keys(manifest.fontHashes || {}).length).toBeGreaterThanOrEqual(6);
+    for (const [rel, hash] of Object.entries(manifest.fontHashes as Record<string, string>)) {
+      const fp = path.join(fontRoot, rel);
+      expect(existsSync(fp), rel).toBe(true);
+      expect(createHash("sha256").update(readFileSync(fp)).digest("hex")).toBe(hash);
+    }
+    for (const build of ["target.css", "beta.css"]) {
+      const css = readFileSync(path.join(fontRoot, "css", build), "utf8");
+      expect(css).toMatch(/@font-face/);
+      expect(css).toMatch(/fonts\.gstatic\.com/);
+      // latin + latin-ext only (no cyrillic / vietnamese / greek blocks)
+      expect(css).not.toMatch(/\/\*\s*cyrillic/);
+      expect(css).not.toMatch(/\/\*\s*vietnamese/);
+    }
   });
 
   it("FOOTER_LINK_ALLOWLIST is defined once in siteFooterLinks.ts", () => {

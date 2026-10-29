@@ -160,8 +160,12 @@ jobs:
       - name: Assert hide-recaptcha is tests-only (T-F-62)
         run: |
           test -f tests/visual/fixtures/hide-recaptcha.css
-          if grep -RIn --include='*.css' --include='*.tsx' --include='*.ts' 'grecaptcha-badge' client/; then
-            echo "T-F-62 failed: grecaptcha-badge hide must not live in client/" >&2
+          # Scope: production client sources only (exclude *.test.*). Fail on any
+          # grecaptcha-badge mention or hide rule outside tests/visual/fixtures.
+          if grep -RIn --include='*.css' --include='*.tsx' --include='*.ts' \
+            --exclude='*.test.ts' --exclude='*.test.tsx' \
+            'grecaptcha-badge' client/; then
+            echo "T-F-62 failed: grecaptcha-badge must not live in client/ production sources" >&2
             exit 1
           fi
           echo "T-F-62 ok"
