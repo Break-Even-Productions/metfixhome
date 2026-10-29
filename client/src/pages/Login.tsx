@@ -1,6 +1,6 @@
 /**
  * Dedicated MetFix member login — visual language matches the member-access
- * design (dark canvas, Playfair + DM Sans, gold accent). Auth posts to the
+ * design (cream/ink, Playfair + Plus Jakarta Sans). Auth posts to the
  * same-origin Worker (/api/auth/*). No third-party telemetry.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
@@ -552,7 +552,7 @@ export default function Login() {
       <footer className="login-footer">
         <Link href="/">MetFix</Link>
         <a href="https://brokenscience.org/privacy-policy/">Privacy</a>
-        <a href="https://brokenscience.org/terms-of-use/">Terms</a>
+        <a href="https://brokenscience.org/terms-and-conditions/">Terms</a>
         <a href="mailto:courses@metfix.org">Support</a>
         <Link href="/become-an-affiliate">Affiliates</Link>
       </footer>
