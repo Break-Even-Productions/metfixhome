@@ -1,12 +1,35 @@
 /**
- * Shared CSRF + reCAPTCHA helpers for Login / JoinFlow (CQ N1).
+ * Shared CSRF + reCAPTCHA helpers (CQ N1 / CQ r2 NB2).
+ * CSRF cache is session-tied (sid cookie); cleared on auth change.
  * No Rule-4 test-token fallback — missing grecaptcha returns "".
  */
 
-let csrfCache: string | null = null;
+type CsrfEntry = { token: string; sessionKey: string };
+
+let csrfCache: CsrfEntry | null = null;
+
+/** Session key for CSRF binding: signed-in sid cookie, else "anon". */
+export function csrfSessionKey(cookieHeader?: string): string {
+  const raw =
+    cookieHeader ?? (typeof document !== "undefined" ? document.cookie : "");
+  const m = raw.match(/(?:^|;\s*)(?:__Host-)?mfx_sid=([^;]+)/);
+  if (!m?.[1]) return "anon";
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+export function clearCsrfCache(): void {
+  csrfCache = null;
+}
 
 export async function fetchCsrf(opts?: { force?: boolean }): Promise<string | null> {
-  if (!opts?.force && csrfCache) return csrfCache;
+  const sessionKey = csrfSessionKey();
+  if (!opts?.force && csrfCache && csrfCache.sessionKey === sessionKey) {
+    return csrfCache.token;
+  }
   try {
     const res = await fetch("/api/auth/csrf", {
       method: "GET",
@@ -16,15 +39,49 @@ export async function fetchCsrf(opts?: { force?: boolean }): Promise<string | nu
     if (!res.ok) return null;
     const json = (await res.json()) as { csrf?: unknown };
     const token = typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-    csrfCache = token;
+    if (token) csrfCache = { token, sessionKey };
+    else csrfCache = null;
     return token;
   } catch {
     return null;
   }
 }
 
-export function clearCsrfCache(): void {
-  csrfCache = null;
+/**
+ * POST JSON with CSRF; on 403 retry once with a forced fresh token (NB2).
+ */
+export async function postJsonWithCsrf(
+  path: string,
+  body: unknown,
+  init?: Omit<RequestInit, "body" | "method">,
+): Promise<Response> {
+  const attempt = async (force: boolean) => {
+    const csrf = await fetchCsrf({ force });
+    if (!csrf) {
+      return new Response(JSON.stringify({ error: "csrf_unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const headers = new Headers(init?.headers);
+    headers.set("Accept", "application/json");
+    headers.set("Content-Type", "application/json");
+    headers.set("X-CSRF-Token", csrf);
+    return fetch(path, {
+      ...init,
+      method: "POST",
+      credentials: "same-origin",
+      headers,
+      body: JSON.stringify(body),
+    });
+  };
+
+  let res = await attempt(false);
+  if (res.status === 403) {
+    clearCsrfCache();
+    res = await attempt(true);
+  }
+  return res;
 }
 
 /** Returns "" when the site key / grecaptcha is unavailable (Worker rejects empty). */

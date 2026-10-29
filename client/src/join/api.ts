@@ -1,6 +1,13 @@
 /** Client helpers for onboarding + Whop checkout (no credential storage). */
 
-export { fetchCsrf, getRecaptchaToken, clearCsrfCache } from "@/lib/authRequest";
+export {
+  clearCsrfCache,
+  fetchCsrf,
+  getRecaptchaToken,
+  postJsonWithCsrf,
+} from "@/lib/authRequest";
+
+import { postJsonWithCsrf } from "@/lib/authRequest";
 
 export type OnboardingBody = {
   first_name: string;
@@ -12,18 +19,11 @@ export type OnboardingBody = {
 
 export async function postOnboarding(
   body: OnboardingBody,
-  csrf: string,
+  _csrf?: string,
 ): Promise<{ ok: true } | { ok: false; status: number; error?: string }> {
-  const res = await fetch("/api/account/onboarding", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrf,
-    },
-    body: JSON.stringify(body),
-  });
+  // `_csrf` retained for call-site compatibility; postJsonWithCsrf owns the token + 403 retry.
+  void _csrf;
+  const res = await postJsonWithCsrf("/api/account/onboarding", body);
   if (!res.ok) {
     let error: string | undefined;
     try {
@@ -39,24 +39,16 @@ export async function postOnboarding(
 
 export async function postWhopCheckout(
   plan: "pro" | "org",
-  csrf: string,
+  _csrf?: string,
   returnPath?: string,
 ): Promise<
   | { ok: true; checkout_url: string; expires_at?: string }
   | { ok: false; status: number; error?: string }
 > {
+  void _csrf;
   const body: Record<string, string> = { plan };
   if (returnPath) body.return_path = returnPath;
-  const res = await fetch("/api/billing/whop/checkout-session", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrf,
-    },
-    body: JSON.stringify(body),
-  });
+  const res = await postJsonWithCsrf("/api/billing/whop/checkout-session", body);
   if (!res.ok) {
     let error: string | undefined;
     try {

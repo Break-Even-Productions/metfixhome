@@ -35,6 +35,8 @@ export type JoinFlowProps = {
   /** When true, mount as page (no modal overlay dismiss via route). */
   standalone?: boolean;
   initialStep?: JoinStep;
+  /** WJ15: element to restore focus to when the modal closes. */
+  returnFocusTo?: HTMLElement | null;
 };
 
 function fingerprintOnboarding(profile: JoinProfile): string {
@@ -52,7 +54,13 @@ function fingerprintOnboarding(profile: JoinProfile): string {
   });
 }
 
-export function JoinFlow({ open, onClose, standalone = false, initialStep }: JoinFlowProps) {
+export function JoinFlow({
+  open,
+  onClose,
+  standalone = false,
+  initialStep,
+  returnFocusTo = null,
+}: JoinFlowProps) {
   const [step, setStep] = useState<JoinStep>(initialStep ?? "name");
   const [authView, setAuthView] = useState<AuthView>("choose");
   const [pathView, setPathView] = useState<PathView>("plan");
@@ -209,6 +217,7 @@ export function JoinFlow({ open, onClose, standalone = false, initialStep }: Joi
       onBack={step === "name" || (step === "path" && pathView === "plan") ? undefined : back}
       progress={showProgress ? progress : undefined}
       wide={step === "path" && pathView === "plan"}
+      returnFocusTo={returnFocusTo}
     >
       {onboardingError ? (
         <p className="mb-4 text-sm text-red-700" role="alert">

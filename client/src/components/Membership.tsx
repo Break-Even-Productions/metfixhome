@@ -1,5 +1,5 @@
-import { motion, useMotionValue, useReducedMotion } from "framer-motion";
-import { useEffect, useRef } from "react";
+import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
+import { useRef } from "react";
 import { MEMBERSHIP_COMPARISON_ROWS, MEMBERSHIP_HERO } from "@shared/join";
 import "@/join/join.css";
 
@@ -26,28 +26,17 @@ export type MembershipProps = {
 /**
  * WJ16–WJ17 Membership hero + 7-row comparison table.
  * CQ Trap 5 fixed: no direct DOM node removal; CSS liquid-glass only (no WebGL).
+ * N9: framer `useScroll` (no raw scroll listener).
  */
 export function Membership({ onJoin, audience = "default" }: MembershipProps) {
   const reduce = useReducedMotion();
   const photo = membershipPhotos[audience] ?? membershipPhotos.default;
   const rootRef = useRef<HTMLDivElement>(null);
-  const y = useMotionValue(0);
-
-  useEffect(() => {
-    if (reduce) return;
-    const lock = () => {
-      const top = rootRef.current?.getBoundingClientRect().top ?? 0;
-      const shift = (top - window.innerHeight * 0.35) * 0.12;
-      y.set(Math.max(-36, Math.min(36, shift)));
-    };
-    lock();
-    window.addEventListener("scroll", lock, { passive: true });
-    window.addEventListener("resize", lock);
-    return () => {
-      window.removeEventListener("scroll", lock);
-      window.removeEventListener("resize", lock);
-    };
-  }, [reduce, y]);
+  const { scrollYProgress } = useScroll({
+    target: rootRef,
+    offset: ["start end", "end start"],
+  });
+  const y = useTransform(scrollYProgress, [0, 1], reduce ? [0, 0] : [24, -24]);
 
   return (
     <div
@@ -66,7 +55,7 @@ export function Membership({ onJoin, audience = "default" }: MembershipProps) {
             className="membership-photo pointer-events-none absolute inset-x-0 -top-12 h-[calc(100%+6rem)] w-full max-w-none object-cover"
             style={{
               objectPosition: photo.position,
-              y: reduce ? 0 : y,
+              y,
             }}
           />
           <div className="membership-glass absolute inset-0 z-10 flex flex-col justify-center">

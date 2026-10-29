@@ -270,6 +270,9 @@ describe("WJ21 POST /api/account/onboarding", () => {
     expect(res.headers.get("Retry-After")).toBe("60");
     privateNoStore(res);
     expect(write.calls.length).toBe(1);
+    // R2-N3: onboarding limiter key is user-only (no IP suffix).
+    expect(write.calls[0]).toMatch(/^acctw:\d+$/);
+    expect(write.calls[0]!.split(":").length).toBe(2);
     expect(
       g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
     ).toBe(0);
@@ -301,9 +304,10 @@ describe("WJ21 POST /api/account/onboarding", () => {
 });
 
 describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
-  it("signed out → 401 unauthenticated", async () => {
+  it("signed out → 401 unauthenticated, 0 BSI", async () => {
     const g = setupGate();
     attachJoinLimiters(g);
+    g.fetchMock.mockClear();
     const res = await callCheckout(g, {
       method: "POST",
       headers: {
@@ -316,6 +320,26 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthenticated" });
     privateNoStore(res);
+    expect(
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("checkout-session")).length,
+    ).toBe(0);
+    expect(
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/wp-json/bsi/")).length,
+    ).toBe(0);
+  });
+
+  it("WT-J3 CSRF compare uses timingSafeEqualStr (constant-time static)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(process.cwd(), "worker/join.ts"), "utf8");
+    expect(src).toMatch(/timingSafeEqualStr\s*\(/);
+    // No direct === / !== on CSRF header vs expected in requireSidCsrf.
+    const csrfBlock = src.slice(src.indexOf("async function requireSidCsrf"), src.indexOf("async function readJsonBody"));
+    expect(csrfBlock).toMatch(/timingSafeEqualStr/);
+    expect(csrfBlock).not.toMatch(/header\s*===|header\s*!==|expected\s*===|expected\s*!==/);
+    const { timingSafeEqualStr } = await import("./auth/crypto");
+    expect(timingSafeEqualStr("abc", "abc")).toBe(true);
+    expect(timingSafeEqualStr("abc", "abd")).toBe(false);
   });
 
   it("bad CSRF / Origin / cross-site → 403 each, 0 BSI", async () => {
@@ -461,19 +485,21 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
 });
 
 describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
-  it("upstream 401 → exactly one refresh then retry once", async () => {
+  it("upstream 401 → exactly one refresh + one retried call + final 200", async () => {
     const g = setupGate();
     attachJoinLimiters(g);
     const s = await seedSession(g);
     let checkoutHits = 0;
-    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    let refreshHits = 0;
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/me/whop/checkout-session")) {
         checkoutHits += 1;
         if (checkoutHits === 1) return new Response("{}", { status: 401 });
         return Response.json({ checkout_url: "https://whop.com/c/ok" });
       }
-      if (url.includes("/oauth/token") || url.includes("token")) {
+      if (url.includes("/oauth/token") || (url.includes("token") && init?.method === "POST")) {
+        refreshHits += 1;
         return Response.json({
           access_token: "refreshed-access",
           refresh_token: "refreshed-refresh",
@@ -490,11 +516,11 @@ describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
       headers: H_OK(s),
       body: JSON.stringify({ plan: "pro" }),
     });
-    // Either success after one refresh, or session-expired — never >2 checkout attempts
-    expect(checkoutHits).toBeLessThanOrEqual(2);
-    expect(checkoutHits).toBeGreaterThanOrEqual(1);
+    expect(refreshHits).toBe(1);
+    expect(checkoutHits).toBe(2);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ checkout_url: "https://whop.com/c/ok" });
     privateNoStore(res);
-    void res;
   });
 
   it("upstream 5xx → 502, no second checkout attempt", async () => {
@@ -526,38 +552,96 @@ describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
 });
 
 describe("WJ-X3 console never logs tokens/Bearer", () => {
-  it("spies console.* across checkout outcomes", async () => {
+  it("spies console.* across 200/401/403/429/502 outcomes", async () => {
     const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) =>
       vi.spyOn(console, m).mockImplementation(() => {}),
     );
+    const CANARY = "canary-secret-key-WJX3-do-not-log";
     const g = setupGate();
-    attachJoinLimiters(g);
+    attachJoinLimiters(g, { checkoutMax: 100 });
+    (g.env as { BSI_API_KEY?: string }).BSI_API_KEY = CANARY;
     const s = await seedSession(g);
-    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/me/whop/checkout-session")) {
-        return Response.json({ checkout_url: "https://whop.com/c/x" });
-      }
-      if (url.includes("/wp-json/bsi/v1/me")) {
-        return Response.json({ id: 42, display_name: "Jane" });
-      }
-      return new Response("{}", { status: 404 });
-    });
-    await callCheckout(g, {
-      method: "POST",
-      headers: H_OK(s),
-      body: JSON.stringify({ plan: "pro" }),
-    });
-    await callCheckout(g, {
-      method: "POST",
-      headers: { ...H_OK(s), "X-CSRF-Token": "wrong" },
-      body: JSON.stringify({ plan: "pro" }),
-    });
+
+    const outcomes: Array<() => Promise<Response>> = [
+      // 200
+      async () => {
+        g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/me/whop/checkout-session")) {
+            return Response.json({ checkout_url: "https://whop.com/c/x" });
+          }
+          if (url.includes("/wp-json/bsi/v1/me")) {
+            return Response.json({ id: 42, display_name: "Jane" });
+          }
+          return new Response("{}", { status: 404 });
+        });
+        return callCheckout(g, {
+          method: "POST",
+          headers: H_OK(s),
+          body: JSON.stringify({ plan: "pro" }),
+        });
+      },
+      // 401 signed out
+      async () =>
+        callCheckout(g, {
+          method: "POST",
+          headers: {
+            Origin: "https://metfix.org",
+            "Content-Type": "application/json",
+            "Sec-Fetch-Site": "same-origin",
+          },
+          body: JSON.stringify({ plan: "pro" }),
+        }),
+      // 403 bad CSRF
+      async () =>
+        callCheckout(g, {
+          method: "POST",
+          headers: { ...H_OK(s), "X-CSRF-Token": "wrong" },
+          body: JSON.stringify({ plan: "pro" }),
+        }),
+      // 429
+      async () => {
+        attachJoinLimiters(g, { checkoutMax: 0 });
+        return callCheckout(g, {
+          method: "POST",
+          headers: H_OK(s),
+          body: JSON.stringify({ plan: "pro" }),
+        });
+      },
+      // 502 upstream
+      async () => {
+        attachJoinLimiters(g, { checkoutMax: 100 });
+        g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.includes("/me/whop/checkout-session")) {
+            return new Response("boom", { status: 500 });
+          }
+          if (url.includes("/wp-json/bsi/v1/me")) {
+            return Response.json({ id: 42, display_name: "Jane" });
+          }
+          return new Response("{}", { status: 404 });
+        });
+        return callCheckout(g, {
+          method: "POST",
+          headers: H_OK(s),
+          body: JSON.stringify({ plan: "pro" }),
+        });
+      },
+    ];
+
+    const statuses: number[] = [];
+    for (const run of outcomes) {
+      const res = await run();
+      statuses.push(res.status);
+    }
+    expect(statuses).toEqual(expect.arrayContaining([200, 401, 403, 429, 502]));
+
     const dumped = spies
       .flatMap((sp) => sp.mock.calls.map((c) => c.map(String).join(" ")))
       .join("\n");
     expect(dumped).not.toMatch(/Bearer\s+\S+/i);
     expect(dumped).not.toMatch(ACCESS1);
+    expect(dumped).not.toContain(CANARY);
     for (const sp of spies) sp.mockRestore();
   });
 });

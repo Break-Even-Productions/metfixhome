@@ -35,10 +35,10 @@
 			"invocation_logs": true
 		}
 	},
-	// Ten Rate Limiting bindings (S-RL / P8 + DP-CFG-1 account + WHOP_CHECKOUT). namespace_id is an
-	// account-unique integer you choose (not created in the dashboard). 27101–27106
-	// and 27112–27114 are reserved for metfixhome on account 84da09b9… so they do
-	// not collide with other Workers.
+	// Ten Rate Limiting bindings (S-RL / P8 + DP-CFG-1 account + WHOP_CHECKOUT).
+	// ACCOUNT_WRITE 27113/27213 owned by #21; WHOP_CHECKOUT 27115/27215 from join.
+	// namespace_id is account-unique (not created in the dashboard). 27101–27106
+	// and 27112–27115 are reserved for metfixhome on account 84da09b9….
 	"ratelimits": [
 		{
 			"name": "SIGNUP_LIMITER",

@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -47,17 +48,26 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
   const worker = walk(join(ROOT, "worker")).filter((f) => !f.includes("__fixtures__"));
   const shared = walk(join(ROOT, "shared"));
   const wrangler = [join(ROOT, "wrangler.jsonc")];
-  const distPublic = walk(join(ROOT, "dist/public"));
+  const distRoot = join(ROOT, "dist/public");
+  const distPublic = walk(distRoot);
   const all = [...client, ...worker, ...shared, ...wrangler];
   const withDist = [...all, ...distPublic];
 
-  it("self-check: scanner detects curie + foreign biz_ on fixture text (2 hits)", () => {
-    const fixture = "checkout https://curie.whop.com biz_FOREIGN123 plan_xyz";
-    const curieHits = fixture.match(/curie/gi) ?? [];
-    const foreignBiz = (fixture.match(/biz_[A-Za-z0-9]+/g) ?? []).filter(
-      (b) => !(WHOP_ALLOWED_COMPANY_IDS as readonly string[]).includes(b),
+  it("WT-J1: dist/public must exist (run after build:cf in CI)", () => {
+    // Vacuity guard — empty walk would green-pass Whop scans without a bundle.
+    expect(existsSync(distRoot), "dist/public missing — run npm run build:cf first").toBe(true);
+    expect(distPublic.length, "dist/public has no scannable assets").toBeGreaterThan(0);
+  });
+
+  it("self-check: real scanHits detects curie + foreign biz_ (2 hits)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "wj-whop-self-"));
+    const fixturePath = join(dir, "fixture.txt");
+    writeFileSync(fixturePath, "checkout https://curie.whop.com/x biz_FOREIGN123 plan_xyz\n");
+    const curie = scanHits([fixturePath], /curie/i, { includeTests: true });
+    const foreignBiz = scanHits([fixturePath], /biz_[A-Za-z0-9]+/g, { includeTests: true }).filter(
+      (h) => !(WHOP_ALLOWED_COMPANY_IDS as readonly string[]).includes(h.match),
     );
-    expect(curieHits.length + foreignBiz.length).toBeGreaterThanOrEqual(2);
+    expect(curie.length + foreignBiz.length).toBe(2);
     expect(foreignBiz).toHaveLength(1);
     expect(BEP_WHOP_COMPANY_ID).toBe("biz_u15G8d34g9c0B0");
   });

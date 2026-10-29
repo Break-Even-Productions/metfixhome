@@ -57,18 +57,21 @@ async function limitOrDeny(
 export async function checkAccountWriteLimit(
   env: JoinLimitEnv,
   userId: string,
-  ip: string,
+  _ip?: string,
 ): Promise<{ allowed: true } | { allowed: false }> {
-  const ok = await limitOrDeny(env.ACCOUNT_WRITE_LIMITER, `acctw:${userId}:${ip}`);
+  // R2-N3: key by user only (no IP) — matches future #21 accountRateLimitKey shape.
+  void _ip;
+  const ok = await limitOrDeny(env.ACCOUNT_WRITE_LIMITER, `acctw:${userId}`);
   return ok ? { allowed: true } : { allowed: false };
 }
 
 export async function checkWhopCheckoutLimit(
   env: JoinLimitEnv,
   userId: string,
-  ip: string,
+  _ip?: string,
 ): Promise<{ allowed: true } | { allowed: false }> {
-  const ok = await limitOrDeny(env.WHOP_CHECKOUT_LIMITER, `whop:${userId}:${ip}`);
+  void _ip;
+  const ok = await limitOrDeny(env.WHOP_CHECKOUT_LIMITER, `whop:${userId}`);
   return ok ? { allowed: true } : { allowed: false };
 }
 

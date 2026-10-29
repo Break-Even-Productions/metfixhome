@@ -16,11 +16,29 @@ import { JoinFlow } from "./JoinFlow";
 import { JoinFlowProvider, useJoinFlow } from "@/contexts/JoinFlowContext";
 import * as session from "@/lib/session";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  delete (window as unknown as { grecaptcha?: unknown }).grecaptcha;
+  delete (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: unknown }).__MFX_RECAPTCHA_SITE_KEY__;
+  const { clearCsrfCache } = await import("@/lib/authRequest");
+  clearCsrfCache();
 });
+
+function stubRecaptcha(token = "recaptcha-ok") {
+  (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__: string }).__MFX_RECAPTCHA_SITE_KEY__ =
+    "test-site-key";
+  (window as unknown as {
+    grecaptcha: {
+      ready: (cb: () => void) => void;
+      execute: (siteKey: string, opts: { action: string }) => Promise<string>;
+    };
+  }).grecaptcha = {
+    ready: (cb) => cb(),
+    execute: async () => token,
+  };
+}
 
 function mockFetch(handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>>) {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -115,6 +133,7 @@ describe("JoinFlow P-WJ-1..8", () => {
   });
 
   it("P-WJ-2 AuthScreen wires real auth endpoints (no demo account picker)", async () => {
+    stubRecaptcha();
     const fetchImpl = mockFetch({
       "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
       "/api/auth/login": () => Response.json({ signed_in: true, public_name: "Pat" }),
@@ -283,6 +302,7 @@ describe("JoinFlow P-WJ-1..8", () => {
   });
 
   it("B1: login body uses exact `recaptcha` key (shared LoginBody)", async () => {
+    stubRecaptcha("recaptcha-login");
     const fetchImpl = mockFetch({
       "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
       "/api/auth/login": () => Response.json({ signed_in: true, public_name: "Pat" }),
@@ -312,6 +332,7 @@ describe("JoinFlow P-WJ-1..8", () => {
   });
 
   it("B1: signup body uses username+email+recaptcha (no password)", async () => {
+    stubRecaptcha("recaptcha-signup");
     const fetchImpl = mockFetch({
       "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
       "/api/auth/signup": () => Response.json({ status: "check_email" }, { status: 202 }),
@@ -450,7 +471,7 @@ describe("facilityFlagsForRoles / showOrganizationOwnerCard (B3)", () => {
 });
 
 describe("WJ15 /join + useJoinFlow modal Esc focus", () => {
-  it("useJoinFlow opens modal; Esc closes and restores focus", async () => {
+  it("useJoinFlow opens modal; Esc closes and restores focus to the trigger itself", async () => {
     vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
     vi.stubGlobal(
       "fetch",
@@ -473,19 +494,126 @@ describe("WJ15 /join + useJoinFlow modal Esc focus", () => {
     );
     const trigger = screen.getByRole("button", { name: /Open join/i });
     trigger.focus();
+    expect(document.activeElement).toBe(trigger);
     fireEvent.click(trigger);
     await screen.findByRole("dialog", { name: /Join MetFix/i });
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: /Join MetFix/i })).toBeNull();
     });
-    // JoinShell restores focus to the previously focused element (trigger).
     await waitFor(() => {
-      expect(document.activeElement === trigger || document.activeElement === document.body).toBe(
-        true,
-      );
+      expect(document.activeElement).toBe(trigger);
+    }, { timeout: 2000 });
+  });
+
+  it("/join route renders JoinFlow standalone", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () => Response.json({ signed_in: false }),
+      }),
+    );
+    window.history.pushState({}, "", "/join");
+    const { default: JoinPage } = await import("@/pages/join/JoinPage");
+    render(<JoinPage />);
+    expect(await screen.findByRole("dialog", { name: /Join MetFix/i })).toBeTruthy();
+    expect(screen.getByText(/What’s your name/i)).toBeTruthy();
+  });
+});
+
+describe("NB2 CSRF session-tied + email→onboarding→checkout", () => {
+  it("403 login retries once with fresh CSRF then onboarding+checkout use postJsonWithCsrf", async () => {
+    stubRecaptcha("recaptcha-ok");
+    let csrfN = 0;
+    let loginN = 0;
+    const tokens: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/auth/csrf")) {
+        csrfN += 1;
+        return Response.json({ csrf: `csrf-${csrfN}` });
+      }
+      if (url.includes("/api/auth/login")) {
+        loginN += 1;
+        const hdrs = new Headers(init?.headers);
+        tokens.push(hdrs.get("X-CSRF-Token") ?? "");
+        if (loginN === 1) return Response.json({ error: "csrf" }, { status: 403 });
+        return Response.json({ signed_in: true, public_name: "Pat Lee" });
+      }
+      if (url.includes("/api/account/onboarding")) {
+        const hdrs = new Headers(init?.headers);
+        tokens.push(hdrs.get("X-CSRF-Token") ?? "");
+        return Response.json({ ok: true });
+      }
+      if (url.includes("/api/billing/whop/checkout-session")) {
+        const hdrs = new Headers(init?.headers);
+        tokens.push(hdrs.get("X-CSRF-Token") ?? "");
+        return Response.json({ checkout_url: "https://whop.com/c/x" });
+      }
+      if (url.includes("/api/auth/me")) {
+        return Response.json({ signed_in: loginN >= 2, public_name: "Pat Lee" });
+      }
+      return new Response("{}", { status: 404 });
     });
-    trigger.focus();
-    expect(document.activeElement).toBe(trigger);
+    vi.stubGlobal("fetch", fetchImpl);
+    vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
+    vi.spyOn(session, "refreshMeAfterAuthChange").mockImplementation(async () => {
+      // Simulate sid change clearing CSRF (session.ts)
+      const { clearCsrfCache } = await import("@/lib/authRequest");
+      clearCsrfCache();
+      return { status: "signed_in", public_name: "Pat Lee", moderator: false };
+    });
+
+    render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByText(/What’s your name/i);
+    fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
+    fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/Continue with Google/i);
+    fireEvent.click(screen.getByRole("button", { name: /Continue with email/i }));
+    fireEvent.change(await screen.findByLabelText(/^Email$/i), {
+      target: { value: "pat@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "password1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Sign in$/i }));
+
+    await screen.findByText(/Which of these best describes you/i);
+    expect(loginN).toBe(2);
+    expect(tokens[0]).toBe("csrf-1");
+    expect(tokens[1]).toBe("csrf-2");
+
+    fireEvent.click(screen.getByText("Learning for myself"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/Your recommended path/i);
+    fireEvent.click(screen.getByRole("button", { name: /Start my free month/i }));
+    await waitFor(() => {
+      expect(
+        fetchImpl.mock.calls.some((c) => String(c[0]).includes("/api/billing/whop/checkout-session")),
+      ).toBe(true);
+    });
+    // Onboarding + checkout each carried a CSRF header (fresh after sign-in clear).
+    expect(tokens.length).toBeGreaterThanOrEqual(4);
+    expect(tokens.slice(2).every((t) => t.startsWith("csrf-"))).toBe(true);
+  });
+
+  it("R2-N2: missing grecaptcha shows load-fail message (no silent empty token)", async () => {
+    // no stubRecaptcha
+    const fetchImpl = mockFetch({
+      "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+      "/api/auth/me": () => Response.json({ signed_in: false }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<JoinFlow open onClose={() => {}} initialStep="auth" />);
+    await screen.findByText(/Continue with Google/i);
+    fireEvent.click(screen.getByRole("button", { name: /Continue with email/i }));
+    fireEvent.change(await screen.findByLabelText(/^Email$/i), {
+      target: { value: "pat@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Password$/i), { target: { value: "password1" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Sign in$/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Could not load the security check/i);
+    expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes("/api/auth/login"))).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { buildLoginBody, buildSignupBody } from "@shared/join";
 import { ensureRecaptchaScript } from "@/pages/the-daily-fix/recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
-import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
+import { getRecaptchaToken, postJsonWithCsrf } from "@/lib/authRequest";
 import type { AuthView } from "../types";
 import { Field, GhostButton, GoldButton, Kicker, Question, ScreenForm } from "../ui";
 
@@ -63,27 +63,23 @@ export function AuthScreen({
     setBusy(true);
     try {
       await ensureRecaptchaScript();
-      const csrf = await fetchCsrf();
-      if (!csrf) {
-        setError("Could not start a secure session. Refresh and try again.");
+      const recaptcha = await getRecaptchaToken(mode === "signup" ? "signup" : "login");
+      if (!recaptcha) {
+        // R2-N2: grecaptcha / site key missing — do not silently post empty token
+        setError("Could not load the security check. Refresh and try again.");
         return;
       }
-      const recaptcha = await getRecaptchaToken(mode === "signup" ? "signup" : "login");
       const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
       const body =
         mode === "signup"
           ? buildSignupBody({ username, email, recaptcha })
           : buildLoginBody({ identifier: email, password, recaptcha });
-      const res = await fetch(path, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrf,
-        },
-        body: JSON.stringify(body),
-      });
+      // NB2: postJsonWithCsrf retries once on 403 with a forced fresh token
+      const res = await postJsonWithCsrf(path, body);
+      if (res.status === 503) {
+        setError("Could not start a secure session. Refresh and try again.");
+        return;
+      }
       if (mode === "signup") {
         if (res.status === 202 || res.ok) {
           setSuccess("Check your email to finish creating your account.");

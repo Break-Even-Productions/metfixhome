@@ -148,34 +148,10 @@ export function availableCertificateLtvCents(
 export type CoachCredentialStatus = "active" | "expired" | "none";
 
 /**
- * Calendar +3 years from granted_at (WJ-COACH-2 / [t434u] / r1.1).
- * Leap-day clamp: `2028-02-29T00:00:00.000Z` → exactly `2031-02-28T00:00:00.000Z`
- * (not Mar 1 via bare setUTCFullYear).
+ * Coach status from expires_at (WJ-COACH-2).
+ * Leap-day `expires_at` math lives in #21 `computeThreeYearExpiryIso` after rebase
+ * (R2-N1: unused `coachExpiresAtIso` removed from this module).
  */
-export function coachExpiresAtIso(grantedAtIso: string): string {
-  const d = new Date(grantedAtIso);
-  if (Number.isNaN(d.getTime())) throw new Error("invalid_granted_at");
-  const y = d.getUTCFullYear() + 3;
-  const m = d.getUTCMonth();
-  const day = d.getUTCDate();
-  const out = new Date(
-    Date.UTC(
-      y,
-      m,
-      day,
-      d.getUTCHours(),
-      d.getUTCMinutes(),
-      d.getUTCSeconds(),
-      d.getUTCMilliseconds(),
-    ),
-  );
-  // JS Date: Feb 29 + 3y in non-leap → Mar 1; clamp to last day of Feb.
-  if (m === 1 && day === 29 && out.getUTCMonth() !== 1) {
-    out.setUTCDate(0); // last day of February in target year
-  }
-  return out.toISOString();
-}
-
 export function coachCredentialStatus(
   expiresAtIso: string | null | undefined,
   nowIso: string,
