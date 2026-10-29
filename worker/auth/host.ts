@@ -17,10 +17,15 @@ let cachedHosts: ReadonlySet<string> = new Set();
 /** Log rejected entries once per distinct raw value. */
 let loggedRaw: string | undefined;
 
-/** Host header: hostname or hostname:port — never a URL / userinfo / path. */
-const HOST_HEADER_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$/;
-/** Bare hostname (reCAPTCHA / Origin hostname / env tokens) — no port. */
-const BARE_HOSTNAME_RE = /^[A-Za-z0-9.-]+$/;
+/**
+ * Hostname-shaped: non-empty DNS labels (no leading/trailing hyphen per label),
+ * single dots between labels, optional one trailing dot. Rejects `a..b`.
+ */
+const BARE_HOSTNAME_RE =
+  /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\.?$/;
+/** Host header: hostname-shaped, optional :port. Never a URL / userinfo / path. */
+const HOST_HEADER_RE =
+  /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?))*\.?(?::\d{1,5})?$/;
 
 /** Lowercase and strip at most one trailing dot. */
 function canonicalizeHostname(hostname: string): string {
@@ -70,7 +75,7 @@ export function normalizeHostname(hostname: string): string {
   return bare;
 }
 
-function parseStagingAuthHostsRawImpl(raw: string): {
+function parseStagingAuthHostsRaw(raw: string): {
   hosts: ReadonlySet<string>;
   rejected: string[];
 } {
@@ -91,29 +96,13 @@ function parseStagingAuthHostsRawImpl(raw: string): {
 }
 
 /**
- * Indirection so tests can `vi.spyOn(stagingAuthHostsParse, "raw")` and
- * observe cache hits (one parse per raw value).
- */
-export const stagingAuthHostsParse = {
-  raw: parseStagingAuthHostsRawImpl,
-};
-
-/** Exported for tests / direct parse without touching the module cache. */
-export function parseStagingAuthHostsRaw(raw: string): {
-  hosts: ReadonlySet<string>;
-  rejected: string[];
-} {
-  return stagingAuthHostsParse.raw(raw);
-}
-
-/**
  * Cached Set of exact staging auth hostnames from STAGING_AUTH_HOSTS.
  * Keyed on the raw env string (B1).
  */
 export function stagingAuthHostsSet(env?: AuthHostEnv): ReadonlySet<string> {
   const raw = typeof env?.STAGING_AUTH_HOSTS === "string" ? env.STAGING_AUTH_HOSTS : "";
   if (raw === cachedRaw) return cachedHosts;
-  const { hosts, rejected } = stagingAuthHostsParse.raw(raw);
+  const { hosts, rejected } = parseStagingAuthHostsRaw(raw);
   cachedRaw = raw;
   cachedHosts = hosts;
   if (rejected.length > 0 && loggedRaw !== raw) {

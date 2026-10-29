@@ -6,7 +6,6 @@ import {
   normalizeHost,
   normalizeHostname,
   parseStagingAuthHosts,
-  stagingAuthHostsParse,
   stagingAuthHostsSet,
 } from "./auth/host";
 import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
@@ -180,7 +179,8 @@ describe("local auth helpers", () => {
         authOrigin: true,
       },
       {
-        name: "Origin :443",
+        // WHATWG URL collapses https default :443 to port ""; still accepted.
+        name: "Origin :443 (URL-normalized default port)",
         env: stagingEnv,
         origin: `https://${PREVIEW_HOST}:443`,
         host: PREVIEW_HOST,
@@ -196,8 +196,30 @@ describe("local auth helpers", () => {
         authOrigin: false,
       },
       {
-        name: "reCAPTCHA rejects ported hostname",
-        normalizeHostname: "",
+        name: "Origin userinfo rejected",
+        origin: "https://evil.com@metfix.org",
+        authOrigin: false,
+      },
+      {
+        name: "Origin path rejected",
+        origin: "https://metfix.org/x",
+        authOrigin: false,
+      },
+      {
+        name: "Origin query rejected",
+        origin: "https://metfix.org?q=1",
+        authOrigin: false,
+      },
+      {
+        name: "Origin hash rejected",
+        origin: "https://metfix.org#a",
+        authOrigin: false,
+      },
+      {
+        name: "a..b hostname rejected",
+        host: "a..b",
+        authHost: false,
+        normalizeHost: "",
       },
     ];
 
@@ -225,18 +247,17 @@ describe("local auth helpers", () => {
     expect(normalizeHostname("metfix.org.")).toBe("metfix.org");
     expect(normalizeHostname("metfix.org:443")).toBe("");
     expect(normalizeHostname("https://metfix.org")).toBe("");
+    expect(normalizeHostname("a..b")).toBe("");
     expect(isAllowedRecaptchaHostname("metfix.org:443", emptyEnv)).toBe(false);
   });
 
-  it("parses STAGING_AUTH_HOSTS once per raw value (cache)", () => {
-    const raw = `once-parse-${Date.now()}.example,*.bad`;
-    const spy = vi.spyOn(stagingAuthHostsParse, "raw");
-    parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
-    parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
-    stagingAuthHostsSet({ STAGING_AUTH_HOSTS: raw });
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(raw);
-    spy.mockRestore();
+  it("caches STAGING_AUTH_HOSTS Set by raw value (same reference)", () => {
+    const raw = `once-parse-${Date.now()}.example`;
+    const env = { STAGING_AUTH_HOSTS: raw };
+    const first = stagingAuthHostsSet(env);
+    const second = stagingAuthHostsSet(env);
+    expect(second).toBe(first);
+    expect(first.has(raw)).toBe(true);
   });
 
   it("logs rejected STAGING_AUTH_HOSTS entries once per raw value", () => {

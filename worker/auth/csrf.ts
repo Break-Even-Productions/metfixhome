@@ -28,31 +28,32 @@ import {
 
 const PRE_MAX_AGE = 1800;
 
-function isDefaultOriginPort(protocol: string, port: string): boolean {
-  if (port === "") return true;
-  if (protocol === "https:" && port === "443") return true;
-  if (protocol === "http:" && port === "80") return true;
-  return false;
+/** Browser Origins omit the port for defaults; reject any explicit port. */
+function isDefaultOriginPort(port: string): boolean {
+  return port === "";
 }
 
 /**
  * Production: https://metfix.org (case / one trailing-dot on hostname OK).
- * Staging: exact https://{STAGING_AUTH_HOSTS} (same trailing-dot / :443 rules).
+ * Staging: exact https://{STAGING_AUTH_HOSTS} (same trailing-dot rules).
  * LOCAL_AUTH: also http(s)://localhost|127.0.0.1 (any port).
- * Hostname is normalized once.
+ * Rejects userinfo / path / query / hash. Hostname is normalized once.
  */
 export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
   if (!origin) return false;
   try {
     const u = new URL(origin);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    // Reject https://evil.com@metfix.org, paths, query, and hash.
+    if (u.username !== "" || u.password !== "") return false;
+    if (u.pathname !== "/" || u.search !== "" || u.hash !== "") return false;
     // Normalize once (trailing-dot + case) for metfix.org and preview alike.
     const bare = normalizeHostname(u.hostname);
     if (!bare) return false;
 
     if (
       u.protocol === "https:" &&
-      isDefaultOriginPort(u.protocol, u.port) &&
+      isDefaultOriginPort(u.port) &&
       (bare === AUTH_HOST || isStagingAuthHost(bare, env))
     ) {
       return true;
