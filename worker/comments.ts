@@ -15,6 +15,7 @@ import {
   type FetchImpl,
 } from "./upstream";
 import { parseCookies, SID_COOKIE, sidCookieClear } from "./auth/cookies";
+import { isAllowedAuthOrigin } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
 import { jsonNoStore, unavailable } from "./auth/http";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
@@ -31,7 +32,6 @@ const COMMENT_TYPES = new Set(["belly", "body", "brain", "all"]);
 const MAX_BODY_BYTES = 8192;
 const MAX_CONTENT_CODEPOINTS = 2000;
 const COMMENT_ID_RE = /^[1-9][0-9]{0,9}$/;
-const ORIGIN = "https://metfix.org";
 
 type CommentLimitEnv = Env & {
   COMMENT_WRITE_LIMITER?: {
@@ -360,7 +360,7 @@ async function requireSession(
 async function requireCsrf(request: Request, env: Env, sid: string): Promise<Response | null> {
   if (!env.CSRF_SECRET) return unavailable();
   const origin = request.headers.get("Origin");
-  if (origin !== ORIGIN) {
+  if (!isAllowedAuthOrigin(origin, env)) {
     return jsonNoStore({ error: "forbidden" }, 403);
   }
   const sfs = request.headers.get("Sec-Fetch-Site");

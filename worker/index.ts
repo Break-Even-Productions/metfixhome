@@ -223,8 +223,8 @@ function redirectResponse(location: string): Response {
  * Same-origin classic script for the SPA shell (`client/index.html`).
  * Sets `window.__MFX_RECAPTCHA_SITE_KEY__` from Worker var `RECAPTCHA_SITE_KEY`
  * (public; set in Cloudflare Variables / wrangler vars — not `wrangler secret`).
- * Also injects `window.__MFX_STAGING_AUTH_HOSTS__` from `STAGING_AUTH_HOSTS`
- * (preview-only) so the SPA can enable auth UI without hardcoding workers.dev.
+ * When `STAGING_AUTH_HOSTS` parses to a non-empty list, also injects
+ * `window.__MFX_STAGING_AUTH_HOSTS__` (omitted on production / empty).
  * Missing/empty site key → empty string; client falls back to its test token locally.
  */
 function handleRecaptchaSiteKeyJs(request: Request, env: Env): Response {
@@ -236,9 +236,10 @@ function handleRecaptchaSiteKeyJs(request: Request, env: Env): Response {
   // Google site keys are [A-Za-z0-9_-]; reject anything else rather than emit it.
   const siteKey = /^[A-Za-z0-9_-]*$/.test(raw) ? raw : "";
   const stagingHosts = parseStagingAuthHosts(env);
-  const body =
-    `window.__MFX_RECAPTCHA_SITE_KEY__=${JSON.stringify(siteKey)};\n` +
-    `window.__MFX_STAGING_AUTH_HOSTS__=${JSON.stringify(stagingHosts)};\n`;
+  let body = `window.__MFX_RECAPTCHA_SITE_KEY__=${JSON.stringify(siteKey)};\n`;
+  if (stagingHosts.length > 0) {
+    body += `window.__MFX_STAGING_AUTH_HOSTS__=${JSON.stringify(stagingHosts)};\n`;
+  }
   return new Response(method === "HEAD" ? null : body, {
     status: 200,
     headers: {

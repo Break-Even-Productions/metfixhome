@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isAllowedAuthOrigin } from "./auth/csrf";
 import {
   isAllowedRecaptchaHostname,
   isAuthHost,
+  normalizeHost,
   parseStagingAuthHosts,
+  stagingAuthHostsSet,
 } from "./auth/host";
 import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
 import { assertBsiHost, resolveBsiOrigin, resolveDailyFixBase, type Env } from "./upstream";
@@ -36,6 +38,7 @@ describe("local auth helpers", () => {
 
   it("STAGING_AUTH_HOSTS accepts exactly the listed host", () => {
     expect(parseStagingAuthHosts(stagingEnv)).toEqual([PREVIEW_HOST]);
+    expect(stagingAuthHostsSet(stagingEnv).has(PREVIEW_HOST)).toBe(true);
     expect(isAuthHost(req(PREVIEW_HOST), stagingEnv)).toBe(true);
     expect(isAuthHost(req("metfix.org"), stagingEnv)).toBe(true);
     expect(isAllowedAuthOrigin(`https://${PREVIEW_HOST}`, {
@@ -70,6 +73,99 @@ describe("local auth helpers", () => {
         STAGING_AUTH_HOSTS: "*.workers.dev",
       }),
     ).toBe(false);
+  });
+
+  it("table: empty var, case, trailing dot, Host port, Origin port", () => {
+    const cases: Array<{
+      name: string;
+      env: { STAGING_AUTH_HOSTS?: string };
+      host?: string;
+      origin?: string | null;
+      authHost: boolean;
+      authOrigin?: boolean;
+    }> = [
+      { name: "empty string", env: { STAGING_AUTH_HOSTS: "" }, host: PREVIEW_HOST, authHost: false },
+      { name: "comma/space only", env: { STAGING_AUTH_HOSTS: " , " }, host: PREVIEW_HOST, authHost: false },
+      {
+        name: "uppercase Host",
+        env: stagingEnv,
+        host: PREVIEW_HOST.toUpperCase(),
+        authHost: true,
+      },
+      {
+        name: "trailing-dot Host",
+        env: stagingEnv,
+        host: `${PREVIEW_HOST}.`,
+        authHost: true,
+      },
+      {
+        name: "Host with port",
+        env: stagingEnv,
+        host: `${PREVIEW_HOST}:443`,
+        authHost: true,
+      },
+      {
+        name: "uppercase Origin",
+        env: stagingEnv,
+        origin: `https://${PREVIEW_HOST.toUpperCase()}`,
+        authHost: true,
+        host: PREVIEW_HOST,
+        authOrigin: true,
+      },
+      {
+        name: "trailing-dot Origin",
+        env: stagingEnv,
+        origin: `https://${PREVIEW_HOST}.`,
+        host: PREVIEW_HOST,
+        authHost: true,
+        authOrigin: true,
+      },
+      {
+        name: "Origin :443",
+        env: stagingEnv,
+        origin: `https://${PREVIEW_HOST}:443`,
+        host: PREVIEW_HOST,
+        authHost: true,
+        authOrigin: true,
+      },
+      {
+        name: "Origin non-default port rejected",
+        env: stagingEnv,
+        origin: `https://${PREVIEW_HOST}:8443`,
+        host: PREVIEW_HOST,
+        authHost: true,
+        authOrigin: false,
+      },
+    ];
+
+    for (const c of cases) {
+      if (c.host != null) {
+        expect(isAuthHost(req(c.host), c.env), c.name).toBe(c.authHost);
+      }
+      if (c.authOrigin != null && c.origin !== undefined) {
+        expect(
+          isAllowedAuthOrigin(c.origin, { ...emptyEnv, ...c.env }),
+          c.name,
+        ).toBe(c.authOrigin);
+      }
+    }
+
+    expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: "" })).toEqual([]);
+    expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: " , " })).toEqual([]);
+    expect(normalizeHost(`${PREVIEW_HOST}.`)).toBe(PREVIEW_HOST);
+    expect(normalizeHost(`${PREVIEW_HOST}:443`)).toBe(PREVIEW_HOST);
+  });
+
+  it("logs rejected STAGING_AUTH_HOSTS entries once per raw value", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const raw = "*.workers.dev,https://x.example,ok.example";
+    // First parse with this raw → one warn
+    parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
+    parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("STAGING_AUTH_HOSTS rejected entries");
+    expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw })).toEqual(["ok.example"]);
+    warn.mockRestore();
   });
 
   it("LOCAL_AUTH on: localhost and 127.0.0.1 allowed; other hosts still rejected", () => {

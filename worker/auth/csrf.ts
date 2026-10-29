@@ -19,7 +19,7 @@ import {
   methodNotAllowed,
 } from "./responses";
 import { isLocalAuthEnabled } from "../dev-auth";
-import { isAuthHost, isStagingAuthHost } from "./host";
+import { isAuthHost, isStagingAuthHost, normalizeHost } from "./host";
 
 const PRE_MAX_AGE = 1800;
 const ORIGIN = "https://metfix.org";
@@ -27,17 +27,19 @@ const ORIGIN = "https://metfix.org";
 /**
  * Production Origin only; with STAGING_AUTH_HOSTS, exact https://{host};
  * with LOCAL_AUTH, also http(s)://localhost|127.0.0.1.
+ * Hostnames go through normalizeHost (case, trailing dots, port stripped).
  */
 export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
   if (origin === ORIGIN) return true;
   if (origin) {
     try {
       const u = new URL(origin);
-      // Preview hosts are https-only; exact hostname from STAGING_AUTH_HOSTS (no port).
+      const bare = normalizeHost(u.hostname);
+      // Preview hosts: https only; default port ("" or 443) — same bare-host idea as Host.
       if (
         u.protocol === "https:" &&
-        u.port === "" &&
-        isStagingAuthHost(u.hostname, env)
+        (u.port === "" || u.port === "443") &&
+        isStagingAuthHost(bare, env)
       ) {
         return true;
       }
@@ -49,7 +51,8 @@ export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
   try {
     const u = new URL(origin);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    return u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    const bare = normalizeHost(u.hostname);
+    return bare === "localhost" || bare === "127.0.0.1";
   } catch {
     return false;
   }

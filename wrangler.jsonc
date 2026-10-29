@@ -162,7 +162,9 @@
 			"GOOGLE_AUTH_ENABLED": "1",
 			"GOOGLE_WEB_CLIENT_ID": "328949997919-e2j5nffdosrmma2ppjqpt3bak3rt425l.apps.googleusercontent.com",
 			"RECAPTCHA_SITE_KEY": "6LfUFO0mAAAAAKxrVeYxZ9p3vMWNtvJzCKhqBs1R",
-			// Preview-only AUTH-HOST allowlist (exact hostnames). Never copy into top-level vars.
+			// AUTH-HOST allowlist for Worker Previews: previews.vars applies to every
+			// preview (branch/PR), not only the staging branch. Exact hostnames only.
+			// Never copy into top-level / production vars.
 			"STAGING_AUTH_HOSTS": "staging-metfixhome.wispy-mode-982d.workers.dev"
 		},
 		"kv_namespaces": [

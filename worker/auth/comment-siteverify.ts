@@ -6,7 +6,7 @@ export async function siteverifyComment(
   token: string,
   secret: string,
   fetchImpl: FetchImpl,
-  env?: Env,
+  env: Env,
 ): Promise<"pass" | "fail" | "outage"> {
   try {
     const body = new URLSearchParams({ secret, response: token });
