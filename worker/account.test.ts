@@ -2651,7 +2651,6 @@ describe("worker/account routes", () => {
             },
           ];
         }, "bad_path");
-        // Kill claimOptions.ts:243 mutant — length !== 3 must reject (duplicate / fourth).
         const pathRow = (
           id: "redeem_ltv" | "prepay_credit" | "buy_outright",
           eligible: boolean,
@@ -2664,6 +2663,7 @@ describe("worker/account routes", () => {
           price_cents: 30000,
           reason_code: reason,
         });
+        // Duplicate still length===3; rejected by path-id order check, not :243.
         await rejectCase("bad_path duplicate path", (raw) => {
           (raw.courses as Record<string, unknown>[])[0]!.paths = [
             pathRow("redeem_ltv", false, 8000, "insufficient_ltv"),
@@ -2671,6 +2671,7 @@ describe("worker/account routes", () => {
             pathRow("buy_outright", true, 30000, null),
           ];
         }, "bad_path");
+        // Fourth path: only this case hits claimOptions.ts:243 (length !== 3).
         await rejectCase("bad_path fourth path", (raw) => {
           (raw.courses as Record<string, unknown>[])[0]!.paths = [
             pathRow("redeem_ltv", false, 8000, "insufficient_ltv"),
@@ -2715,9 +2716,9 @@ describe("worker/account routes", () => {
 
     it("CL-LEAK-1: spec regex on every claim POST + claim-options body", async () => {
       const sess = await withSession(h);
-      // CL-LEAK-1 — exact spec regex (verbatim).
+      // CL-LEAK-1 / rev1.2.3 S7 — gate regex (N-R7-1).
       const LEAK =
-        /(biz|cus|sub|mem|plan|prod|ch)_[A-Za-z0-9]+|cca_[a-f0-9]+|membership_id|attempt/;
+        /\b(biz|cus|sub|mem|plan|prod|ch)_[A-Za-z0-9]{6,}\b|\bcca_[a-f0-9]+\b|\bmembership_id\b|\battempt_id\b/;
 
       function assertClean(label: string, body: unknown) {
         const clone =
@@ -2728,6 +2729,18 @@ describe("worker/account routes", () => {
           delete (clone as Record<string, unknown>).checkout_url;
         }
         expect(JSON.stringify(clone), label).not.toMatch(LEAK);
+      }
+
+      // S-R7-1 / r2.12 L484 planted positives.
+      expect(JSON.stringify({ whop_company_id: "biz_u15G8d34g9c0B0" })).toMatch(LEAK);
+      {
+        const planted = {
+          checkout_url: "https://whop.com/checkout/biz_u15G8d34g9c0B0/plan_x",
+          ok: true,
+        };
+        const clone = { ...planted };
+        delete clone.checkout_url;
+        expect(JSON.stringify(clone)).not.toMatch(LEAK);
       }
 
       const claimCases: Array<{ label: string; path: string; upstream: Response }> = [
