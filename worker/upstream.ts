@@ -355,11 +355,13 @@ async function bsiPostMe(
   if (!cfg) return { kind: "nokey" };
   const path = mePath.startsWith("/") ? mePath : `/${mePath}`;
   const url = `${cfg.origin}/wp-json/bsi/v1/me${path}`;
+  const headers = bsiAccountBearerHeaders(accessToken, "application/json");
   return bsiFetch(
     url,
     {
       method: "POST",
-      headers: bsiAccountBearerHeaders(accessToken, "application/json"),
+      // UserBearerHeaders forbids X-API-Key at the type level; RequestInit wants Record.
+      headers: { ...headers } as unknown as Record<string, string>,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 15_000),
     },

@@ -6,6 +6,7 @@ import { getMetfixLoginUrl } from "@/const";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+import { sanitizeReturnPath as sanitizeReturnPathShared } from "../../shared/sanitize-return-path";
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -229,12 +230,9 @@ function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
   });
 }
 
-/** Same rules as Login safeNextPath / Worker sanitizeReturn. */
+/** Same rules as Worker sanitizeReturnPath; invalid → `/account`. */
 export function sanitizeReturnPath(raw: string | null | undefined): string {
-  if (!raw || raw.length > 512) return "/account";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/account";
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return "/account";
-  return raw;
+  return sanitizeReturnPathShared(raw) ?? "/account";
 }
 
 function redirectToLogin(currentPath?: string): never {

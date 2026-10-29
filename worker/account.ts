@@ -39,12 +39,13 @@ import {
   accountSubscriptionsPath,
 } from "../shared/account/bsi-paths";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
+import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
-import { csrfForSid, sha256Hex, timingSafeEqualStr } from "./auth/crypto";
-import { isAllowedAuthOrigin } from "./auth/csrf";
+import { sha256Hex } from "./auth/crypto";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
 import { clientIp } from "./auth/throttle";
+import { requireSidCsrf } from "./auth/sid-guards";
 import {
   assertBsiHost,
   bsiAccountBearerHeaders,
@@ -154,47 +155,15 @@ async function resolveAccountSession(
   return resolved;
 }
 
-async function requireAccountCsrf(
-  request: Request,
-  env: Env,
-  sid: string,
-): Promise<Response | null> {
-  if (!env.CSRF_SECRET) {
-    return accountJson({ error: "unavailable" }, 503, { "Retry-After": "300" });
-  }
-  if (!isAllowedAuthOrigin(request.headers.get("Origin"), env)) {
-    return accountJson({ error: "forbidden" }, 403);
-  }
-  const sfs = request.headers.get("Sec-Fetch-Site");
-  if (sfs != null && sfs !== "same-origin") {
-    return accountJson({ error: "forbidden" }, 403);
-  }
-  const token = request.headers.get("X-CSRF-Token") ?? "";
-  const expected = await csrfForSid(env.CSRF_SECRET, sid);
-  if (!timingSafeEqualStr(token, expected)) {
-    return accountJson({ error: "forbidden" }, 403);
-  }
-  return null;
-}
-
 function limiterBinding(env: Env, kind: LimiterKind): RateLimitBinding | undefined {
   if (kind === "read") return env.ACCOUNT_READ_LIMITER;
   if (kind === "write") return env.ACCOUNT_WRITE_LIMITER;
   return env.ACCOUNT_PORTAL_LIMITER;
 }
 
-/**
- * CQ B3 / DP-T-CFG3 / R2-N3: per-user limiter key.
- * Prefer real `bsi_user_id`. Treat missing, `""`, and `"0"` (session.ts stores
- * `String(user_id ?? "0")`) as absent → hashed sid fallback. Never raw sid;
- * never `acct:0`.
- */
+/** Re-export shared key helper (single implementation in auth/account-rate-limit). */
 export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
-  const uid = ctx.record.bsi_user_id;
-  if (typeof uid === "string" && uid.length > 0 && uid !== "0") {
-    return `acct:${uid}`;
-  }
-  return `sid:${await sha256Hex(ctx.sid)}`;
+  return accountRateLimitKeyImpl(ctx);
 }
 
 function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
@@ -1592,7 +1561,7 @@ export async function handleAccountRoutes(
 
   if (match.method !== "GET" && match.method !== "HEAD") {
     if (!ctx) return accountJson({ error: "unauthenticated" }, 401);
-    const csrfFail = await requireAccountCsrf(request, env, ctx.sid);
+    const csrfFail = await requireSidCsrf(request, env, ctx.sid, accountJson);
     if (csrfFail) return csrfFail;
   }
 

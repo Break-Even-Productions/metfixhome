@@ -28,7 +28,7 @@ describe("UpgradePrompt WJ18 + B5", () => {
     expect(screen.queryByRole("link", { name: /Manage membership/i })).toBeNull();
   });
 
-  it("signed in → Manage membership links to /join until #21 billing (flip after rebase)", async () => {
+  it("signed in → Manage membership links to /account/billing", async () => {
     vi.spyOn(session, "peekMe").mockReturnValue({
       status: "signed_in",
       public_name: "Pat",
@@ -42,9 +42,7 @@ describe("UpgradePrompt WJ18 + B5", () => {
     render(<UpgradePrompt />);
     await waitFor(() => {
       const link = screen.getByRole("link", { name: /Manage membership/i });
-      // Pre-#21: /join. After #21 rebase → /account/billing (WJ18 lead).
-      expect(link.getAttribute("href")).toBe("/join");
-      expect(link.getAttribute("href")).not.toMatch(/\/account\/billing/);
+      expect(link.getAttribute("href")).toBe("/account/billing");
     });
   });
 });

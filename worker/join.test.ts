@@ -270,9 +270,8 @@ describe("WJ21 POST /api/account/onboarding", () => {
     expect(res.headers.get("Retry-After")).toBe("60");
     privateNoStore(res);
     expect(write.calls.length).toBe(1);
-    // R2-N3: onboarding limiter key is user-only (no IP suffix).
-    expect(write.calls[0]).toMatch(/^acctw:\d+$/);
-    expect(write.calls[0]!.split(":").length).toBe(2);
+    // R2-N3 / #21 accountRateLimitKey: acct:<userId> (no IP suffix).
+    expect(write.calls[0]).toMatch(/^acct:[^:]+$/);
     expect(
       g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
     ).toBe(0);
@@ -331,10 +330,10 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
   it("WT-J3 CSRF compare uses timingSafeEqualStr (constant-time static)", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const src = readFileSync(join(process.cwd(), "worker/join.ts"), "utf8");
+    const src = readFileSync(join(process.cwd(), "worker/auth/sid-guards.ts"), "utf8");
     expect(src).toMatch(/timingSafeEqualStr\s*\(/);
     // No direct === / !== on CSRF header vs expected in requireSidCsrf.
-    const csrfBlock = src.slice(src.indexOf("async function requireSidCsrf"), src.indexOf("async function readJsonBody"));
+    const csrfBlock = src.slice(src.indexOf("export async function requireSidCsrf"), src.indexOf("export async function readJsonBody"));
     expect(csrfBlock).toMatch(/timingSafeEqualStr/);
     expect(csrfBlock).not.toMatch(/header\s*===|header\s*!==|expected\s*===|expected\s*!==/);
     const { timingSafeEqualStr } = await import("./auth/crypto");

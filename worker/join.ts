@@ -5,16 +5,15 @@
 import {
   isOnboardingRoleId,
   isWhopCheckoutPlan,
-  sanitizeReturnPath,
   sanitizeWhopCheckoutUrl,
   type RoleId,
   type WhopCheckoutPlan,
 } from "../shared/join/membership-domain";
+import { sanitizeReturnPath } from "../shared/sanitize-return-path";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
-import { csrfForSid, timingSafeEqualStr } from "./auth/crypto";
-import { isAllowedAuthOrigin } from "./auth/csrf";
+import { accountRateLimitKey } from "./auth/account-rate-limit";
 import { isAuthHost } from "./auth/host";
-import { clientIp } from "./auth/http";
+import { requireSidCsrf, readJsonBody as readJsonBodyShared } from "./auth/sid-guards";
 import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
 import { bsiPostMeOnboarding, bsiPostWhopCheckoutSession } from "./upstream";
 
@@ -22,7 +21,6 @@ const MAX_BODY_BYTES = 8_192;
 const NAME_MAX = 80;
 
 export type JoinLimitEnv = Env & {
-  ACCOUNT_WRITE_LIMITER?: RateLimitBinding;
   WHOP_CHECKOUT_LIMITER?: RateLimitBinding;
 };
 
@@ -54,24 +52,22 @@ async function limitOrDeny(
   return r.success === true;
 }
 
-export async function checkAccountWriteLimit(
+export async function checkWhopCheckoutLimit(
   env: JoinLimitEnv,
-  userId: string,
-  _ip?: string,
+  ctx: ActingContext,
 ): Promise<{ allowed: true } | { allowed: false }> {
-  // R2-N3: key by user only (no IP) — matches future #21 accountRateLimitKey shape.
-  void _ip;
-  const ok = await limitOrDeny(env.ACCOUNT_WRITE_LIMITER, `acctw:${userId}`);
+  const key = await accountRateLimitKey(ctx);
+  const ok = await limitOrDeny(env.WHOP_CHECKOUT_LIMITER, key);
   return ok ? { allowed: true } : { allowed: false };
 }
 
-export async function checkWhopCheckoutLimit(
+async function checkOnboardingWriteLimit(
   env: JoinLimitEnv,
-  userId: string,
-  _ip?: string,
+  ctx: ActingContext,
 ): Promise<{ allowed: true } | { allowed: false }> {
-  void _ip;
-  const ok = await limitOrDeny(env.WHOP_CHECKOUT_LIMITER, `whop:${userId}`);
+  // #21 owns ACCOUNT_WRITE_LIMITER — join only consumes it (no duplicate Env field).
+  const key = await accountRateLimitKey(ctx);
+  const ok = await limitOrDeny(env.ACCOUNT_WRITE_LIMITER, key);
   return ok ? { allowed: true } : { allowed: false };
 }
 
@@ -91,47 +87,12 @@ function upstreamError(status = 502): Response {
   return jsonPrivateNoStore({ error: "upstream_error" }, status >= 500 ? 502 : status);
 }
 
-async function requireSidCsrf(
-  request: Request,
-  env: Env,
-  sid: string,
-): Promise<Response | null> {
-  if (!env.CSRF_SECRET) {
-    return jsonPrivateNoStore({ error: "unavailable" }, 503, { "Retry-After": "300" });
-  }
-  const origin = request.headers.get("Origin");
-  if (!isAllowedAuthOrigin(origin, env)) return forbidden();
-  const sfs = request.headers.get("Sec-Fetch-Site");
-  if (sfs != null && sfs !== "same-origin") return forbidden();
-  const header = request.headers.get("X-CSRF-Token") ?? "";
-  const expected = await csrfForSid(env.CSRF_SECRET, sid);
-  if (!timingSafeEqualStr(header, expected)) return forbidden();
-  return null;
+async function readJsonBody(request: Request) {
+  return readJsonBodyShared(request, jsonPrivateNoStore);
 }
 
-async function readJsonBody(
-  request: Request,
-): Promise<{ ok: true; json: unknown } | Response> {
-  const ct = request.headers.get("Content-Type") ?? "";
-  if (!ct.toLowerCase().includes("application/json")) {
-    return jsonPrivateNoStore({ error: "unsupported_media_type" }, 415);
-  }
-  const cl = request.headers.get("Content-Length");
-  if (cl != null) {
-    const n = Number(cl);
-    if (Number.isFinite(n) && n > MAX_BODY_BYTES) {
-      return jsonPrivateNoStore({ error: "payload_too_large" }, 413);
-    }
-  }
-  const buf = await request.arrayBuffer();
-  if (buf.byteLength > MAX_BODY_BYTES) {
-    return jsonPrivateNoStore({ error: "payload_too_large" }, 413);
-  }
-  try {
-    return { ok: true, json: JSON.parse(new TextDecoder().decode(buf)) };
-  } catch {
-    return jsonPrivateNoStore({ error: "invalid_request" }, 400);
-  }
+async function requireJoinCsrf(request: Request, env: Env, sid: string) {
+  return requireSidCsrf(request, env, sid, jsonPrivateNoStore);
 }
 
 function trimName(raw: unknown): string | null {
@@ -252,13 +213,11 @@ export async function handleAccountOnboarding(
   const session = await resolveSessionOrUnauth(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
 
-  const csrfFail = await requireSidCsrf(request, env, session.sid);
+  const csrfFail = await requireJoinCsrf(request, env, session.sid);
   if (csrfFail) return csrfFail;
 
   // N8: limiter before body parse — invalid bodies still count against the key
-  const userId = String(session.record.bsi_user_id ?? session.hex);
-  const ip = clientIp(request);
-  const lim = await checkAccountWriteLimit(env, userId, ip);
+  const lim = await checkOnboardingWriteLimit(env, session);
   if (!lim.allowed) return rateLimited429();
 
   const bodyRead = await readJsonBody(request);
@@ -308,12 +267,10 @@ export async function handleWhopCheckoutSession(
   const session = await resolveSessionOrUnauth(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
 
-  const csrfFail = await requireSidCsrf(request, env, session.sid);
+  const csrfFail = await requireJoinCsrf(request, env, session.sid);
   if (csrfFail) return csrfFail;
 
-  const userId = String(session.record.bsi_user_id ?? session.hex);
-  const ip = clientIp(request);
-  const lim = await checkWhopCheckoutLimit(env, userId, ip);
+  const lim = await checkWhopCheckoutLimit(env, session);
   if (!lim.allowed) return rateLimited429();
 
   const bodyRead = await readJsonBody(request);
