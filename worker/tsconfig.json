@@ -17,6 +17,6 @@
     },
     "baseUrl": "."
   },
-  "include": ["./**/*.ts", "../shared/daily-fix/**/*.ts"],
+  "include": ["./**/*.ts", "../shared/daily-fix/**/*.ts", "../shared/library/**/*.ts", "../shared/posts/**/*.ts", "../shared/join/**/*.ts"],
   "exclude": ["./**/*.test.ts", "./**/*.workers.test.ts", "./test/**", "../shared/**/*.test.ts"]
 }

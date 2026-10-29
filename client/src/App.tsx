@@ -6,12 +6,14 @@ import { Route, Router, Switch } from "wouter";
 import { getRouterBase } from "@/const";
 import ErrorBoundary from "./components/ErrorBoundary";
 import GlobalNav from "./components/GlobalNav";
+import { JoinFlowProvider } from "./contexts/JoinFlowContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import BecomeAnAffiliate from "./pages/BecomeAnAffiliate";
 import Classes from "./pages/Classes";
 import AffiliateSeminars from "./pages/AffiliateSeminars";
 import Login from "./pages/Login";
+import JoinPage from "./pages/join/JoinPage";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./pages/posts/PostsPage";
 import LibraryPage from "./pages/library/LibraryPage";
@@ -35,6 +37,7 @@ function AppRoutes() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/login"} component={Login} />
+      <Route path={"/join"} component={JoinPage} />
       <Route path={"/become-an-affiliate"} component={BecomeAnAffiliate} />
       <Route path={"/classes"} component={Classes} />
       <Route path={"/courses"} component={Classes} />
@@ -82,7 +85,8 @@ function AppShell() {
     location === "/account" ||
     location.startsWith("/account/") ||
     location === "/members" ||
-    location.startsWith("/members/");
+    location.startsWith("/members/") ||
+    location === "/join";
   return (
     <>
       {hideGlobalNav ? null : <GlobalNav />}
@@ -98,7 +102,9 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router base={getRouterBase()}>
-            <AppShell />
+            <JoinFlowProvider>
+              <AppShell />
+            </JoinFlowProvider>
           </Router>
         </TooltipProvider>
       </ThemeProvider>

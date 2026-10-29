@@ -3,12 +3,12 @@ import { Link, useLocation } from "wouter";
 import { basePath, getMetfixLoginUrl } from "@/const";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { loadMe } from "@/lib/session";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 import {
   clearAccountCache,
   deriveMembershipStatus,
   loadOverview,
   loadSubscriptions,
-  sanitizeReturnPath,
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
@@ -59,7 +59,8 @@ export default function DashboardLayout({ title, description, children }: Props)
           clearAccountCache();
           window.location.assign(
             getMetfixLoginUrl(
-              sanitizeReturnPath(`${window.location.pathname}${window.location.search}`),
+              sanitizeReturnPath(`${window.location.pathname}${window.location.search}`) ??
+                "/account",
             ),
           );
           return;

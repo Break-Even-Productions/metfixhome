@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { buildLoginBody } from "@shared/join";
+import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
 import { clampClientRetryAfter } from "./comments";
 import { ensureRecaptchaScript } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
@@ -30,39 +32,6 @@ function playShake(element: HTMLElement | null) {
   element.classList.remove("df-join-shake");
   void element.offsetWidth;
   element.classList.add("df-join-shake");
-}
-
-async function fetchCsrf(http: typeof fetch): Promise<string | null> {
-  try {
-    const res = await http("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
-  }
-}
-async function getRecaptchaToken(action: string): Promise<string> {
-  const g = (
-    window as unknown as {
-      grecaptcha?: {
-        ready: (cb: () => void) => void;
-        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
-      };
-    }
-  ).grecaptcha;
-  const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
-    .__MFX_RECAPTCHA_SITE_KEY__;
-  if (!g || !siteKey) {
-    // Tests / local without widget: non-empty placeholder (Worker shape-checks only).
-    return "test-recaptcha-token";
-  }
-  await new Promise<void>((resolve) => g.ready(() => resolve()));
-  return g.execute(siteKey, { action });
 }
 
 function GoogleLogo({ className }: { className?: string }) {
@@ -169,7 +138,7 @@ export function JoinModal({
             setBusy(true);
             void (async () => {
               try {
-                const csrf = await fetchCsrf(authHttp);
+                const csrf = await fetchCsrf({ http: authHttp });
                 if (!csrf) {
                   setError("Sign-in is unavailable right now.");
                   return;
@@ -183,7 +152,7 @@ export function JoinModal({
                     "Content-Type": "application/json",
                     "X-CSRF-Token": csrf,
                   },
-                  body: JSON.stringify({ identifier: id, password, recaptcha }),
+                  body: JSON.stringify(buildLoginBody({ identifier: id, password, recaptcha })),
                 });
                 if (res.status === 429) {
                   const wait = clampClientRetryAfter(res.headers.get("Retry-After"));

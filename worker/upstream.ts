@@ -113,6 +113,8 @@ export type Env = {
   ACCOUNT_READ_LIMITER?: RateLimitBinding;
   ACCOUNT_WRITE_LIMITER?: RateLimitBinding;
   ACCOUNT_PORTAL_LIMITER?: RateLimitBinding;
+  /** Whop checkout session mint — 10/60s (27115 / preview 27215). */
+  WHOP_CHECKOUT_LIMITER?: RateLimitBinding;
 };
 
 /** DP9 / DP42 / DP45 / T1: Bearer-only headers — TypeScript rejects X-API-Key. */
@@ -315,15 +317,6 @@ function oauthFormHeaders(): Record<string, string> {
   };
 }
 
-/** GET /wp-json/bsi/v1/me headers (§0v.1 Q2 — Bearer only, no X-API-Key). */
-function bsiMeHeaders(accessToken: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${accessToken}`,
-    Accept: "application/json",
-    "User-Agent": UPSTREAM_USER_AGENT,
-  };
-}
-
 /** DP9 / DP42 / DP45 / T1: User-acting Bearer-only headers (NEVER sends X-API-Key, Referer, Origin, or client IP). */
 export function bsiAccountBearerHeaders(
   accessToken: string,
@@ -338,6 +331,56 @@ export function bsiAccountBearerHeaders(
     headers["Content-Type"] = contentType;
   }
   return headers;
+}
+
+/** Shared POST helper for `/wp-json/bsi/v1/me…` write paths (N6) — one Bearer builder. */
+async function bsiPostMe(
+  mePath: string,
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const path = mePath.startsWith("/") ? mePath : `/${mePath}`;
+  const url = `${cfg.origin}/wp-json/bsi/v1/me${path}`;
+  const headers = bsiAccountBearerHeaders(accessToken, "application/json");
+  return bsiFetch(
+    url,
+    {
+      method: "POST",
+      // UserBearerHeaders forbids X-API-Key at the type level; RequestInit wants Record.
+      headers: { ...headers } as unknown as Record<string, string>,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 15_000),
+    },
+    fetchImpl,
+    env,
+  );
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/onboarding — Bearer only (WJ21). */
+export async function bsiPostMeOnboarding(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  return bsiPostMe("/onboarding", accessToken, body, env, fetchImpl, opts);
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/whop/checkout-session — Bearer only (WJ22). */
+export async function bsiPostWhopCheckoutSession(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  return bsiPostMe("/whop/checkout-session", accessToken, body, env, fetchImpl, opts);
 }
 
 async function oauthTokenFetch(
@@ -724,7 +767,7 @@ export async function bsiFetchMe(
     url,
     {
       method: "GET",
-      headers: bsiMeHeaders(accessToken),
+      headers: { ...bsiAccountBearerHeaders(accessToken) } as unknown as Record<string, string>,
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
     fetchImpl,

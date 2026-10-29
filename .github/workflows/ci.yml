@@ -41,6 +41,19 @@ jobs:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
 
+      - name: WJ-WHOP-1 / WT-J1 repo+dist scan (after build:cf)
+        run: MFX_REQUIRE_DIST=1 npx vitest run join.repo-scan
+        env:
+          MFX_REQUIRE_DIST: "1"
+
+      - name: Bundle must not contain test-recaptcha-token
+        run: |
+          if grep -RInF 'test-recaptcha-token' dist/public; then
+            echo "test-recaptcha-token found in dist/public" >&2
+            exit 1
+          fi
+          echo "ok: no test-recaptcha-token in bundle"
+
       - name: No Sanity token in dist
         run: |
           test -d dist/public

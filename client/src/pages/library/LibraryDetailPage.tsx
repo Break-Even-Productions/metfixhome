@@ -11,6 +11,10 @@ import {
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import NotFound from "@/pages/NotFound";
+import { UpgradePrompt } from "@/components/UpgradePrompt";
+import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
+import { basePath } from "@/const";
+import { loadMe, peekMe } from "@/lib/session";
 import { JoinModal } from "./JoinModal";
 import { fetchLibraryItem } from "./api";
 import "./library.css";
@@ -44,6 +48,7 @@ export default function LibraryDetailPage({
   params?: { type?: string; id?: string };
 }) {
   const hookParams = useParams<{ type?: string; id?: string }>();
+  const joinFlow = useJoinFlowOptional();
   const typeRaw = routeParams?.type ?? hookParams.type;
   const id = useMemo(
     () => parseId(routeParams?.id ?? hookParams.id),
@@ -53,6 +58,17 @@ export default function LibraryDetailPage({
 
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [showJoin, setShowJoin] = useState(false);
+  const [signedIn, setSignedIn] = useState(() => peekMe()?.status === "signed_in");
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadMe().then((me) => {
+      if (!cancelled) setSignedIn(me.status === "signed_in");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const headInput = useMemo(() => {
     if (state.status === "data") {
@@ -98,7 +114,8 @@ export default function LibraryDetailPage({
         const body = await fetchLibraryItem(typeRaw!, id, controller.signal);
         if (controller.signal.aborted) return;
         setState({ status: "data", resource: body.resource });
-        if (body.resource.locked) setShowJoin(true);
+        // Signed-out locked → optional why-locked modal; signed-in uses billing CTA (WJ18).
+        if (body.resource.locked && peekMe()?.status !== "signed_in") setShowJoin(true);
       } catch {
         if (controller.signal.aborted) return;
         setState({ status: "error" });
@@ -157,9 +174,27 @@ export default function LibraryDetailPage({
             <strong>Members-only</strong>
             Sign in with an entitled MetFix account to read this resource on metfix.org.
             <div className="library-modal-actions" style={{ marginTop: "1rem" }}>
-              <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                Log in / Join
-              </a>
+              {signedIn ? (
+                <a
+                  className="library-btn library-btn-gold"
+                  href={basePath("/account/billing")}
+                  data-testid="library-locked-billing"
+                >
+                  Manage membership
+                </a>
+              ) : joinFlow ? (
+                <button
+                  type="button"
+                  className="library-btn library-btn-gold"
+                  onClick={() => joinFlow.openJoinFlow()}
+                >
+                  Start my free month
+                </button>
+              ) : (
+                <a className="library-btn library-btn-gold" href={joinCtaHref()}>
+                  Log in / Join
+                </a>
+              )}
               <button
                 type="button"
                 className="library-btn library-btn-ghost"
@@ -168,6 +203,7 @@ export default function LibraryDetailPage({
                 Why is this locked?
               </button>
             </div>
+            {/* B6: one CTA only — join/billing above; no second UpgradePrompt */}
           </div>
         ) : isPreview ? (
           <div className="library-preview-wrap">
@@ -176,11 +212,10 @@ export default function LibraryDetailPage({
             </div>
             <div className="library-preview-fade">
               <div className="library-preview-fade-inner">
-                <h2>Continue with MetFix</h2>
-                <p>You’re seeing a preview. Join or sign in for the full piece.</p>
-                <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                  Log in / Join
-                </a>
+                <UpgradePrompt
+                  title="Continue with MetFix"
+                  body="You’re seeing a preview. Join or sign in for the full piece."
+                />
               </div>
             </div>
           </div>
