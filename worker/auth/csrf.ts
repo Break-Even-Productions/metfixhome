@@ -19,40 +19,49 @@ import {
   methodNotAllowed,
 } from "./responses";
 import { isLocalAuthEnabled } from "../dev-auth";
-import { isAuthHost, isStagingAuthHost, normalizeHost } from "./host";
+import {
+  AUTH_HOST,
+  isAuthHost,
+  isStagingAuthHost,
+  normalizeHostname,
+} from "./host";
 
 const PRE_MAX_AGE = 1800;
-const ORIGIN = "https://metfix.org";
+
+function isDefaultOriginPort(protocol: string, port: string): boolean {
+  if (port === "") return true;
+  if (protocol === "https:" && port === "443") return true;
+  if (protocol === "http:" && port === "80") return true;
+  return false;
+}
 
 /**
- * Production Origin only; with STAGING_AUTH_HOSTS, exact https://{host};
- * with LOCAL_AUTH, also http(s)://localhost|127.0.0.1.
- * Hostnames go through normalizeHost (case, trailing dots, port stripped).
+ * Production: https://metfix.org (case / one trailing-dot on hostname OK).
+ * Staging: exact https://{STAGING_AUTH_HOSTS} (same trailing-dot / :443 rules).
+ * LOCAL_AUTH: also http(s)://localhost|127.0.0.1 (any port).
+ * Hostname is normalized once.
  */
 export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
-  if (origin === ORIGIN) return true;
-  if (origin) {
-    try {
-      const u = new URL(origin);
-      const bare = normalizeHost(u.hostname);
-      // Preview hosts: https only; default port ("" or 443) — same bare-host idea as Host.
-      if (
-        u.protocol === "https:" &&
-        (u.port === "" || u.port === "443") &&
-        isStagingAuthHost(bare, env)
-      ) {
-        return true;
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-  if (!isLocalAuthEnabled(env) || !origin) return false;
+  if (!origin) return false;
   try {
     const u = new URL(origin);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    const bare = normalizeHost(u.hostname);
-    return bare === "localhost" || bare === "127.0.0.1";
+    // Normalize once (trailing-dot + case) for metfix.org and preview alike.
+    const bare = normalizeHostname(u.hostname);
+    if (!bare) return false;
+
+    if (
+      u.protocol === "https:" &&
+      isDefaultOriginPort(u.protocol, u.port) &&
+      (bare === AUTH_HOST || isStagingAuthHost(bare, env))
+    ) {
+      return true;
+    }
+
+    if (isLocalAuthEnabled(env)) {
+      return bare === "localhost" || bare === "127.0.0.1";
+    }
+    return false;
   } catch {
     return false;
   }

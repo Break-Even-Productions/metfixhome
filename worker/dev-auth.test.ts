@@ -4,7 +4,9 @@ import {
   isAllowedRecaptchaHostname,
   isAuthHost,
   normalizeHost,
+  normalizeHostname,
   parseStagingAuthHosts,
+  stagingAuthHostsParse,
   stagingAuthHostsSet,
 } from "./auth/host";
 import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
@@ -75,14 +77,16 @@ describe("local auth helpers", () => {
     ).toBe(false);
   });
 
-  it("table: empty var, case, trailing dot, Host port, Origin port", () => {
+  it("table: empty var, case, trailing dot, ports, hostile Host forms", () => {
     const cases: Array<{
       name: string;
-      env: { STAGING_AUTH_HOSTS?: string };
+      env?: { STAGING_AUTH_HOSTS?: string; LOCAL_AUTH?: string };
       host?: string;
       origin?: string | null;
-      authHost: boolean;
+      authHost?: boolean;
       authOrigin?: boolean;
+      normalizeHost?: string;
+      normalizeHostname?: string;
     }> = [
       { name: "empty string", env: { STAGING_AUTH_HOSTS: "" }, host: PREVIEW_HOST, authHost: false },
       { name: "comma/space only", env: { STAGING_AUTH_HOSTS: " , " }, host: PREVIEW_HOST, authHost: false },
@@ -97,27 +101,82 @@ describe("local auth helpers", () => {
         env: stagingEnv,
         host: `${PREVIEW_HOST}.`,
         authHost: true,
+        normalizeHost: PREVIEW_HOST,
       },
       {
-        name: "Host with port",
+        name: "Host :443",
         env: stagingEnv,
         host: `${PREVIEW_HOST}:443`,
         authHost: true,
+        normalizeHost: PREVIEW_HOST,
       },
       {
-        name: "uppercase Origin",
+        name: "Host :8443 rejected",
+        env: stagingEnv,
+        host: `${PREVIEW_HOST}:8443`,
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "metfix.org :8443 rejected",
+        host: "metfix.org:8443",
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "evil.com@metfix.org",
+        host: "evil.com@metfix.org",
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "metfix.org/x",
+        host: "metfix.org/x",
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "metfix.org#a",
+        host: "metfix.org#a",
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "metfix.org\\\\x",
+        host: "metfix.org\\x",
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "https://metfix.org as Host",
+        host: "https://metfix.org",
+        authHost: false,
+        normalizeHost: "",
+      },
+      {
+        name: "uppercase Origin preview",
         env: stagingEnv,
         origin: `https://${PREVIEW_HOST.toUpperCase()}`,
-        authHost: true,
         host: PREVIEW_HOST,
+        authHost: true,
         authOrigin: true,
       },
       {
-        name: "trailing-dot Origin",
+        name: "trailing-dot Origin preview",
         env: stagingEnv,
         origin: `https://${PREVIEW_HOST}.`,
         host: PREVIEW_HOST,
         authHost: true,
+        authOrigin: true,
+      },
+      {
+        name: "trailing-dot Origin metfix.org",
+        origin: "https://metfix.org.",
+        authOrigin: true,
+      },
+      {
+        name: "uppercase Origin metfix.org",
+        origin: "https://MetFix.ORG",
         authOrigin: true,
       },
       {
@@ -129,24 +188,32 @@ describe("local auth helpers", () => {
         authOrigin: true,
       },
       {
-        name: "Origin non-default port rejected",
+        name: "Origin :8443 rejected",
         env: stagingEnv,
         origin: `https://${PREVIEW_HOST}:8443`,
         host: PREVIEW_HOST,
         authHost: true,
         authOrigin: false,
       },
+      {
+        name: "reCAPTCHA rejects ported hostname",
+        normalizeHostname: "",
+      },
     ];
 
     for (const c of cases) {
-      if (c.host != null) {
-        expect(isAuthHost(req(c.host), c.env), c.name).toBe(c.authHost);
+      const env = c.env ?? {};
+      if (c.host != null && c.authHost != null) {
+        expect(isAuthHost(req(c.host), env), c.name).toBe(c.authHost);
       }
       if (c.authOrigin != null && c.origin !== undefined) {
         expect(
-          isAllowedAuthOrigin(c.origin, { ...emptyEnv, ...c.env }),
+          isAllowedAuthOrigin(c.origin, { ...emptyEnv, ...env }),
           c.name,
         ).toBe(c.authOrigin);
+      }
+      if (c.normalizeHost != null && c.host != null) {
+        expect(normalizeHost(c.host), c.name).toBe(c.normalizeHost);
       }
     }
 
@@ -154,17 +221,32 @@ describe("local auth helpers", () => {
     expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: " , " })).toEqual([]);
     expect(normalizeHost(`${PREVIEW_HOST}.`)).toBe(PREVIEW_HOST);
     expect(normalizeHost(`${PREVIEW_HOST}:443`)).toBe(PREVIEW_HOST);
+    expect(normalizeHost(`${PREVIEW_HOST}:8443`)).toBe("");
+    expect(normalizeHostname("metfix.org.")).toBe("metfix.org");
+    expect(normalizeHostname("metfix.org:443")).toBe("");
+    expect(normalizeHostname("https://metfix.org")).toBe("");
+    expect(isAllowedRecaptchaHostname("metfix.org:443", emptyEnv)).toBe(false);
+  });
+
+  it("parses STAGING_AUTH_HOSTS once per raw value (cache)", () => {
+    const raw = `once-parse-${Date.now()}.example,*.bad`;
+    const spy = vi.spyOn(stagingAuthHostsParse, "raw");
+    parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
+    parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
+    stagingAuthHostsSet({ STAGING_AUTH_HOSTS: raw });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(raw);
+    spy.mockRestore();
   });
 
   it("logs rejected STAGING_AUTH_HOSTS entries once per raw value", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const raw = "*.workers.dev,https://x.example,ok.example";
-    // First parse with this raw → one warn
+    const raw = `*.workers.dev,https://x.example,ok-${Date.now()}.example`;
     parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
     parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw });
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain("STAGING_AUTH_HOSTS rejected entries");
-    expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw })).toEqual(["ok.example"]);
+    expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw })).toHaveLength(1);
     warn.mockRestore();
   });
 
@@ -201,6 +283,7 @@ describe("local auth helpers", () => {
 
   it("CSRF Origin accepts localhost only when LOCAL_AUTH is on", () => {
     expect(isAllowedAuthOrigin("https://metfix.org", emptyEnv)).toBe(true);
+    expect(isAllowedAuthOrigin("https://metfix.org.", emptyEnv)).toBe(true);
     expect(isAllowedAuthOrigin("http://localhost:3000", emptyEnv)).toBe(false);
     expect(
       isAllowedAuthOrigin("http://localhost:3000", { ...emptyEnv, LOCAL_AUTH: "1" }),
