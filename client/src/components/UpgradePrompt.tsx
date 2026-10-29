@@ -5,7 +5,7 @@ import { basePath } from "@/const";
 
 /**
  * WJ18: locked-content upgrade prompt.
- * Signed out → open JoinFlow (or /join). Signed in → /join until PR B billing lands.
+ * Signed out → open JoinFlow (or /join). Signed in → /account/billing (#21).
  */
 export function UpgradePrompt({
   title = "Continue with MetFix",
@@ -32,7 +32,7 @@ export function UpgradePrompt({
       <div className="upgrade-prompt" data-testid="upgrade-prompt">
         <h2>{title}</h2>
         <p>{body}</p>
-        <a className="library-btn library-btn-gold" href={basePath("/join")}>
+        <a className="library-btn library-btn-gold" href={basePath("/account/billing")}>
           Manage membership
         </a>
       </div>

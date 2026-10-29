@@ -76,12 +76,6 @@ export const WHOP_PLAN_TO_TIER: Record<WhopCheckoutPlan, CanonicalSubscriptionTi
   org: "organization_owner",
 };
 
-/** Break Even Productions Whop company id — never Curie & Co (WJ-WHOP-1). */
-export const BEP_WHOP_COMPANY_ID = "biz_u15G8d34g9c0B0";
-
-/** Allowed Whop company ids for scanners and allowlists (N10). */
-export const WHOP_ALLOWED_COMPANY_IDS = [BEP_WHOP_COMPANY_ID] as const;
-
 export const MEMBERSHIP_COMPARISON_ROWS: ReadonlyArray<{
   feature: string;
   metfix: string;
@@ -258,13 +252,6 @@ export function showOrganizationOwnerCard(
   const gymOk = roles.includes("gym_owner") && hasPhysicalGym === true;
   const clinicOk = roles.includes("clinician") && hasPhysicalClinic === true;
   return gymOk || clinicOk;
-}
-
-export function sanitizeReturnPath(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  if (raw.length === 0 || raw.length > 512) return null;
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return null;
-  return raw;
 }
 
 /**

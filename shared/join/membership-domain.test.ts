@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   availableCertificateLtvCents,
-  BEP_WHOP_COMPANY_ID,
   CANONICAL_SUBSCRIPTION_TIERS,
   clampJoinDeepLink,
   coachCredentialStatus,
@@ -13,11 +12,12 @@ import {
   ONBOARDING_ROLE_IDS,
   parseJoinStepParam,
   resolveJoinStepTransition,
-  sanitizeReturnPath,
   sanitizeWhopCheckoutUrl,
   showOrganizationOwnerCard,
-  WHOP_ALLOWED_COMPANY_IDS,
 } from "./membership-domain";
+import { BEP_WHOP_COMPANY_ID, WHOP_ALLOWED_COMPANY_IDS } from "../account/whop";
+import { sanitizeReturnPath } from "../sanitize-return-path";
+import { computeThreeYearExpiryIso } from "../account/foundations-coach";
 
 describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
   it("exports exactly 4 canonical tiers", () => {
@@ -78,19 +78,7 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(isFoundationsCoachGranted({ path: "seminar", checkedIn: false })).toBe(false);
   });
 
-  it("leap-day expiry clamp (WJ-COACH-2 r1.1; moves to #21 computeThreeYearExpiryIso)", () => {
-    // R2-N1: production coachExpiresAtIso removed; keep leap-day contract in tests until rebase.
-    function computeThreeYearExpiryIso(grantedAtIso: string): string {
-      const d = new Date(grantedAtIso);
-      const y = d.getUTCFullYear() + 3;
-      const m = d.getUTCMonth();
-      const day = d.getUTCDate();
-      const out = new Date(
-        Date.UTC(y, m, day, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()),
-      );
-      if (m === 1 && day === 29 && out.getUTCMonth() !== 1) out.setUTCDate(0);
-      return out.toISOString();
-    }
+  it("leap-day expiry clamp via #21 computeThreeYearExpiryIso (WJ-COACH-2)", () => {
     expect(computeThreeYearExpiryIso("2026-10-28T00:00:00.000Z")).toBe("2029-10-28T00:00:00.000Z");
     expect(computeThreeYearExpiryIso("2028-02-29T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
     expect(computeThreeYearExpiryIso("2028-02-28T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
