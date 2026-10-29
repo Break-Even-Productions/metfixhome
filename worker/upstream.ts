@@ -4,6 +4,7 @@ import {
   type DailyFixDay,
   type UpstreamOutcome,
 } from "../shared/daily-fix";
+import { isStagingAuthHost, normalizeHost, stagingAuthHostsSet } from "./auth/host";
 import { parseLocalBsiOrigin, type LocalAuthEnv } from "./dev-auth";
 
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
@@ -96,7 +97,13 @@ export type Env = {
    * Never set in production.
    */
   LOCAL_AUTH?: string;
-  /** Local only: override BSI origin (e.g. http://127.0.0.1:8080) when LOCAL_AUTH is on. */
+  /**
+   * BSI site origin override.
+   * - Local (`.dev.vars` + LOCAL_AUTH): e.g. http://127.0.0.1:8080
+   * - Worker Previews only (`previews.vars`, never top-level): must be exactly
+   *   `https://brokenstaging.wpengine.com`, and only honored when the request
+   *   Host is in STAGING_AUTH_HOSTS. Any other value is ignored.
+   */
   BSI_ORIGIN?: string;
   /**
    * Comma-separated exact auth hostnames for Worker Previews / staging only.
@@ -138,8 +145,50 @@ export function assertBsiHost(url: string, env?: LocalAuthEnv): void {
   throw new Error(`BSI host not allowed: ${host}`);
 }
 
-/** Resolved BSI site origin (production, opts.baseUrl, or LOCAL_AUTH BSI_ORIGIN). */
-export function resolveBsiOrigin(env: Env, opts?: { baseUrl?: string }): string {
+export type ResolveBsiOriginOpts = {
+  /** Test / harness override — treated as a full origin (or daily-fix base for resolveDailyFixBase). */
+  baseUrl?: string;
+  /**
+   * Incoming Worker request. Required to honor preview `BSI_ORIGIN`:
+   * Host must be an exact STAGING_AUTH_HOSTS entry.
+   */
+  request?: Request;
+};
+
+/**
+ * Preview-only staging BSI. Returns BSI_STAGING_ORIGIN only when:
+ * - env.BSI_ORIGIN equals exactly `https://brokenstaging.wpengine.com` (no LOCAL_AUTH), and
+ * - opts.request Host is in STAGING_AUTH_HOSTS.
+ * Any other BSI_ORIGIN value is rejected. Does not require LOCAL_AUTH.
+ */
+export function parsePreviewBsiOrigin(
+  env: Pick<Env, "BSI_ORIGIN" | "STAGING_AUTH_HOSTS">,
+  opts?: { request?: Request },
+): string | null {
+  // Exact string match only — do not URL-parse or accept trailing slash / other hosts.
+  if (env.BSI_ORIGIN !== BSI_STAGING_ORIGIN) return null;
+  const request = opts?.request;
+  if (!request) return null;
+  const raw = request.headers.get("Host") ?? new URL(request.url).host;
+  const bare = normalizeHost(raw);
+  if (!bare || !isStagingAuthHost(bare, env)) return null;
+  return BSI_STAGING_ORIGIN;
+}
+
+/**
+ * Strip BSI_ORIGIN unless this request may use preview staging BSI.
+ * Call once at the Worker request boundary so downstream resolveBsiOrigin
+ * (which often has no Request) still cannot honor a leaked override.
+ */
+export function scopeEnvBsiOrigin(env: Env, request: Request): Env {
+  if (parsePreviewBsiOrigin(env, { request })) return env;
+  if (env.BSI_ORIGIN == null) return env;
+  const { BSI_ORIGIN: _dropped, ...rest } = env;
+  return rest;
+}
+
+/** Resolved BSI site origin (production, opts.baseUrl, LOCAL_AUTH, or preview staging). */
+export function resolveBsiOrigin(env: Env, opts?: ResolveBsiOriginOpts): string {
   if (opts?.baseUrl) {
     try {
       return new URL(opts.baseUrl).origin;
@@ -147,15 +196,28 @@ export function resolveBsiOrigin(env: Env, opts?: { baseUrl?: string }): string 
       /* fall through */
     }
   }
-  return parseLocalBsiOrigin(env) ?? BSI_ORIGIN;
+  const local = parseLocalBsiOrigin(env);
+  if (local) return local;
+
+  // Preview path never requires LOCAL_AUTH. Exact origin only; any other value rejected.
+  if (env.BSI_ORIGIN === BSI_STAGING_ORIGIN) {
+    if (opts?.request) {
+      return parsePreviewBsiOrigin(env, opts) ?? BSI_ORIGIN;
+    }
+    // No Request in opts (most upstream call sites): honor only when
+    // STAGING_AUTH_HOSTS is configured. handleRequest calls scopeEnvBsiOrigin
+    // so a non-allowlisted Host never leaves BSI_ORIGIN set on env.
+    if (stagingAuthHostsSet(env).size > 0) return BSI_STAGING_ORIGIN;
+  }
+  return BSI_ORIGIN;
 }
 
 /** Daily Fix REST base path under the resolved BSI origin. */
-export function resolveDailyFixBase(env: Env, opts?: { baseUrl?: string }): string {
+export function resolveDailyFixBase(env: Env, opts?: ResolveBsiOriginOpts): string {
   if (opts?.baseUrl) return opts.baseUrl;
-  const local = parseLocalBsiOrigin(env);
-  if (local) return `${local}/wp-json/metfix/v1/daily-fix`;
-  return BSI_DAILY_FIX_URL;
+  const origin = resolveBsiOrigin(env, opts);
+  if (origin === BSI_ORIGIN) return BSI_DAILY_FIX_URL;
+  return `${origin}/wp-json/metfix/v1/daily-fix`;
 }
 
 /** W5 + Content-Type for JSON POSTs. Never forwards IP or Authorization. */

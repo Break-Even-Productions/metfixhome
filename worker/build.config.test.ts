@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
+import { parseJsonc } from "./test/parse-jsonc";
 
 /** Main's run_worker_first before PR3 posts entries (A16 / PH1). */
 const MAIN_RUN_WORKER_FIRST = [
@@ -79,7 +80,7 @@ describe("B1/B5/B6/B7 build config", () => {
 
   it("A16/PH1 run_worker_first = main + /posts + /library; no sitemap-posts", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as { assets: { run_worker_first: string[] } };
     expect(json.assets.run_worker_first).toEqual([
       ...MAIN_RUN_WORKER_FIRST,
       "/posts",
@@ -105,22 +106,39 @@ describe("B1/B5/B6/B7 build config", () => {
 
   it("preview_urls is true while workers_dev stays false", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as { workers_dev: boolean; preview_urls: boolean };
     expect(json.workers_dev).toBe(false);
     expect(json.preview_urls).toBe(true);
   });
 
   it("previews mirrors vars, preview KV, DO bindings, and 9 ratelimits", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      vars: Record<string, string>;
+      previews: {
+        vars: Record<string, string>;
+        kv_namespaces: unknown[];
+        durable_objects: { bindings: unknown };
+        ratelimits: { name: string; simple: unknown; namespace_id: string }[];
+      };
+      kv_namespaces: { preview_id: string }[];
+      durable_objects: { bindings: unknown };
+      ratelimits: { name: string; simple: unknown }[];
+    };
     const previews = json.previews;
     expect(previews).toBeTruthy();
-    // STAGING_AUTH_HOSTS is preview-only — must never appear in top-level / production vars.
+    // STAGING_AUTH_HOSTS / BSI_ORIGIN are preview-only — never top-level / production vars.
     expect(json.vars.STAGING_AUTH_HOSTS).toBeUndefined();
+    expect(json.vars.BSI_ORIGIN).toBeUndefined();
     expect(previews.vars.STAGING_AUTH_HOSTS).toBe(
       "staging-metfixhome.wispy-mode-982d.workers.dev",
     );
-    const { STAGING_AUTH_HOSTS: _stagingOnly, ...previewVarsRest } = previews.vars;
+    expect(previews.vars.BSI_ORIGIN).toBe("https://brokenstaging.wpengine.com");
+    const {
+      STAGING_AUTH_HOSTS: _stagingOnly,
+      BSI_ORIGIN: _bsiOriginOnly,
+      ...previewVarsRest
+    } = previews.vars;
     expect(previewVarsRest).toEqual(json.vars);
     expect(previews.kv_namespaces).toEqual([
       {
@@ -166,16 +184,23 @@ describe("B1/B5/B6/B7 build config", () => {
       "utf8",
     );
     expect(wrangler).not.toMatch(/LOCAL_AUTH/);
-    expect(wrangler).not.toMatch(/BSI_ORIGIN/);
   });
 
-  it("STAGING_AUTH_HOSTS is only under previews.vars, never top-level vars", () => {
+  it("STAGING_AUTH_HOSTS and BSI_ORIGIN are only under previews.vars, never top-level vars", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      vars: Record<string, string>;
+      previews: { vars: Record<string, string> };
+    };
     expect(Object.prototype.hasOwnProperty.call(json.vars, "STAGING_AUTH_HOSTS")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(json.vars, "BSI_ORIGIN")).toBe(false);
     expect(json.previews.vars.STAGING_AUTH_HOSTS).toBe(
       "staging-metfixhome.wispy-mode-982d.workers.dev",
     );
+    expect(json.previews.vars.BSI_ORIGIN).toBe("https://brokenstaging.wpengine.com");
+    // Top-level vars block (first "vars") must not mention BSI_ORIGIN.
+    const topVarsBlock = raw.match(/"vars"\s*:\s*\{[\s\S]*?\n\t\},/);
+    expect(topVarsBlock?.[0] ?? "").not.toMatch(/BSI_ORIGIN/);
   });
 });
 

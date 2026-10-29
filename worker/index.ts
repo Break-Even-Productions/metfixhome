@@ -35,6 +35,7 @@ import {
   fetchDailyFixListPage,
   isPublicListItem,
   LIST_PAGE_SIZE,
+  scopeEnvBsiOrigin,
   SITEMAP_MAX_SUBREQUESTS,
   type CommentType,
   type Env,
@@ -89,6 +90,8 @@ export async function handleRequest(
     bsiBaseUrl?: string;
   } = {},
 ): Promise<Response> {
+  // Preview BSI_ORIGIN is only honored when Host ∈ STAGING_AUTH_HOSTS; strip otherwise.
+  env = scopeEnvBsiOrigin(env, request);
   const fetchImpl = deps.fetchImpl ?? fetch;
   const cache = deps.cachesDefault ?? caches.default;
   const bsiBaseUrl = deps.bsiBaseUrl;
