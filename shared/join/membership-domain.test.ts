@@ -79,10 +79,12 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(isFoundationsCoachGranted({ path: "seminar", checkedIn: false })).toBe(false);
   });
 
-  it("coachExpiresAtIso is granted_at + 3 calendar years (WJ-COACH-2)", () => {
-    expect(coachExpiresAtIso("2026-10-28")).toBe("2029-10-28");
-    // Feb 29 → Feb 28 in non-leap target year
-    expect(coachExpiresAtIso("2028-02-29")).toBe("2031-02-28");
+  it("coachExpiresAtIso is granted_at + 3 calendar years (WJ-COACH-2 r1.1)", () => {
+    expect(coachExpiresAtIso("2026-10-28T00:00:00.000Z")).toBe("2029-10-28T00:00:00.000Z");
+    // Leap-day clamp (Web Lead / #21 DP-T-COACH4): not Mar 1
+    expect(coachExpiresAtIso("2028-02-29T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
+    expect(coachExpiresAtIso("2028-02-28T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
+    expect(coachExpiresAtIso("2028-03-01T00:00:00.000Z")).toBe("2031-03-01T00:00:00.000Z");
   });
 
   it("coachCredentialStatus: active before expiry, expired at/after", () => {
