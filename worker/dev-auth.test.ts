@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { isAllowedAuthOrigin } from "./auth/csrf";
-import { isAuthHost } from "./auth/host";
+import {
+  isAllowedRecaptchaHostname,
+  isAuthHost,
+  parseStagingAuthHosts,
+} from "./auth/host";
 import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
 import { assertBsiHost, resolveBsiOrigin, resolveDailyFixBase, type Env } from "./upstream";
 
@@ -12,11 +16,60 @@ function req(host: string): Request {
 
 const emptyEnv = {} as Env;
 
+const PREVIEW_HOST = "staging-metfixhome.wispy-mode-982d.workers.dev";
+const stagingEnv = { STAGING_AUTH_HOSTS: PREVIEW_HOST };
+
 describe("local auth helpers", () => {
   it("LOCAL_AUTH off: only metfix.org is auth host", () => {
     expect(isAuthHost(req("metfix.org"))).toBe(true);
     expect(isAuthHost(req("localhost"), {})).toBe(false);
     expect(isAuthHost(req("127.0.0.1"), { LOCAL_AUTH: "0" })).toBe(false);
+  });
+
+  it("production config (no STAGING_AUTH_HOSTS) rejects the staging preview host", () => {
+    expect(isAuthHost(req(PREVIEW_HOST), emptyEnv)).toBe(false);
+    expect(isAuthHost(req(PREVIEW_HOST))).toBe(false);
+    expect(isAuthHost(req(PREVIEW_HOST), { LOCAL_AUTH: "1" })).toBe(false);
+    expect(isAllowedAuthOrigin(`https://${PREVIEW_HOST}`, emptyEnv)).toBe(false);
+    expect(isAllowedRecaptchaHostname(PREVIEW_HOST, emptyEnv)).toBe(false);
+  });
+
+  it("STAGING_AUTH_HOSTS accepts exactly the listed host", () => {
+    expect(parseStagingAuthHosts(stagingEnv)).toEqual([PREVIEW_HOST]);
+    expect(isAuthHost(req(PREVIEW_HOST), stagingEnv)).toBe(true);
+    expect(isAuthHost(req("metfix.org"), stagingEnv)).toBe(true);
+    expect(isAllowedAuthOrigin(`https://${PREVIEW_HOST}`, {
+      ...emptyEnv,
+      ...stagingEnv,
+    })).toBe(true);
+    expect(isAllowedRecaptchaHostname(PREVIEW_HOST, stagingEnv)).toBe(true);
+  });
+
+  it("STAGING_AUTH_HOSTS rejects lookalike hosts (no suffix / wildcard)", () => {
+    const env = stagingEnv;
+    expect(isAuthHost(req(`evil-${PREVIEW_HOST}`), env)).toBe(false);
+    expect(isAuthHost(req(`${PREVIEW_HOST}.evil.com`), env)).toBe(false);
+    expect(isAuthHost(req("metfixhome.wispy-mode-982d.workers.dev"), env)).toBe(false);
+    expect(isAuthHost(req("staging-metfixhome.evil.workers.dev"), env)).toBe(false);
+    expect(isAuthHost(req("wispy-mode-982d.workers.dev"), env)).toBe(false);
+    expect(isAllowedAuthOrigin(`https://evil-${PREVIEW_HOST}`, {
+      ...emptyEnv,
+      ...env,
+    })).toBe(false);
+    expect(isAllowedAuthOrigin(`http://${PREVIEW_HOST}`, {
+      ...emptyEnv,
+      ...env,
+    })).toBe(false);
+    expect(isAllowedRecaptchaHostname(`evil-${PREVIEW_HOST}`, env)).toBe(false);
+    // Wildcard / URL tokens in the env var are ignored, not treated as matches.
+    expect(
+      parseStagingAuthHosts({ STAGING_AUTH_HOSTS: "*.workers.dev,https://x.example" }),
+    ).toEqual([]);
+    expect(
+      isAuthHost(req("anything.workers.dev"), {
+        STAGING_AUTH_HOSTS: "*.workers.dev",
+      }),
+    ).toBe(false);
   });
 
   it("LOCAL_AUTH on: localhost and 127.0.0.1 allowed; other hosts still rejected", () => {

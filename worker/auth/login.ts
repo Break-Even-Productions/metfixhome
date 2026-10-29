@@ -9,7 +9,7 @@ import {
 import { requireCsrf } from "./csrf";
 import { SID_COOKIE, getSid, setHostCookie } from "./cookies";
 import { randomId32 } from "./crypto";
-import { isAuthHost } from "./host";
+import { isAllowedRecaptchaHostname, isAuthHost } from "./host";
 import {
   BODY_INVALID_LOGIN,
   BODY_INVALID_REQUEST,
@@ -43,6 +43,7 @@ async function siteverifyLogin(
   token: string,
   secret: string,
   fetchImpl: FetchImpl,
+  env: Env,
 ): Promise<"pass" | "fail" | "outage"> {
   try {
     const body = new URLSearchParams({ secret, response: token });
@@ -60,7 +61,7 @@ async function siteverifyLogin(
       hostname?: unknown;
     };
     if (json.success !== true) return "fail";
-    if (json.hostname !== "metfix.org") return "fail";
+    if (!isAllowedRecaptchaHostname(json.hostname, env)) return "fail";
     if (json.action !== "login") return "fail";
     if (typeof json.score !== "number" || json.score < 0.5) return "fail";
     return "pass";
@@ -130,7 +131,7 @@ export async function handleLogin(
     }
     const recaptchaToken = body.recaptcha;
 
-    const sv = await siteverifyLogin(recaptchaToken, cfg.recaptchaSecret, fetchImpl);
+    const sv = await siteverifyLogin(recaptchaToken, cfg.recaptchaSecret, fetchImpl, env);
     if (sv === "fail") {
       return authJson(BODY_TRY_AGAIN, 403);
     }

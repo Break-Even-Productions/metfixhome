@@ -425,7 +425,7 @@ async function verifyCommentRecaptcha(
     return jsonNoStore({ error: "try_again" }, 403);
   }
   if (!env.RECAPTCHA_SECRET) return unavailable();
-  const sv = await siteverifyComment(token, env.RECAPTCHA_SECRET, fetchImpl);
+  const sv = await siteverifyComment(token, env.RECAPTCHA_SECRET, fetchImpl, env);
   if (sv === "fail") return jsonNoStore({ error: "try_again" }, 403);
   if (sv === "outage") return unavailable();
   return null;

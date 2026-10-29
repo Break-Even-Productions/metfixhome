@@ -20,6 +20,7 @@ import {
 } from "../shared/daily-fix";
 import { buildFullHead, rewriteHtml, type HeadMode } from "./head";
 import { handleAuth } from "./auth";
+import { parseStagingAuthHosts } from "./auth/host";
 import { handleCommentsRoutes } from "./comments";
 import { handleLeaderboard } from "./leaderboard";
 import { LoginThrottleDO } from "./do/login-throttle";
@@ -222,7 +223,9 @@ function redirectResponse(location: string): Response {
  * Same-origin classic script for the SPA shell (`client/index.html`).
  * Sets `window.__MFX_RECAPTCHA_SITE_KEY__` from Worker var `RECAPTCHA_SITE_KEY`
  * (public; set in Cloudflare Variables / wrangler vars — not `wrangler secret`).
- * Missing/empty → empty string; client falls back to its test token locally.
+ * Also injects `window.__MFX_STAGING_AUTH_HOSTS__` from `STAGING_AUTH_HOSTS`
+ * (preview-only) so the SPA can enable auth UI without hardcoding workers.dev.
+ * Missing/empty site key → empty string; client falls back to its test token locally.
  */
 function handleRecaptchaSiteKeyJs(request: Request, env: Env): Response {
   const method = request.method.toUpperCase();
@@ -232,7 +235,10 @@ function handleRecaptchaSiteKeyJs(request: Request, env: Env): Response {
   const raw = typeof env.RECAPTCHA_SITE_KEY === "string" ? env.RECAPTCHA_SITE_KEY.trim() : "";
   // Google site keys are [A-Za-z0-9_-]; reject anything else rather than emit it.
   const siteKey = /^[A-Za-z0-9_-]*$/.test(raw) ? raw : "";
-  const body = `window.__MFX_RECAPTCHA_SITE_KEY__=${JSON.stringify(siteKey)};\n`;
+  const stagingHosts = parseStagingAuthHosts(env);
+  const body =
+    `window.__MFX_RECAPTCHA_SITE_KEY__=${JSON.stringify(siteKey)};\n` +
+    `window.__MFX_STAGING_AUTH_HOSTS__=${JSON.stringify(stagingHosts)};\n`;
   return new Response(method === "HEAD" ? null : body, {
     status: 200,
     headers: {

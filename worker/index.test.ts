@@ -901,6 +901,7 @@ describe("Worker HTML / API / sitemap", () => {
       ...makeEnv(assetsFetch),
       RECAPTCHA_SITE_KEY: "6LeTestSiteKey_abc-123",
     };
+    const emptyHostsLine = "window.__MFX_STAGING_AUTH_HOSTS__=[];\n";
     const res = await handleRequest(
       new Request("https://metfix.org/api/recaptcha-site-key.js"),
       withKey,
@@ -910,7 +911,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/javascript; charset=utf-8");
     expect(await res.text()).toBe(
-      'window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n',
+      'window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n' + emptyHostsLine,
     );
     expect(fetchMock).toHaveBeenCalledTimes(0);
 
@@ -920,7 +921,9 @@ describe("Worker HTML / API / sitemap", () => {
       ctx,
       { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
     );
-    expect(await empty.text()).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+    expect(await empty.text()).toBe(
+      'window.__MFX_RECAPTCHA_SITE_KEY__="";\n' + emptyHostsLine,
+    );
 
     const rejected = await handleRequest(
       new Request("https://metfix.org/api/recaptcha-site-key.js"),
@@ -928,7 +931,21 @@ describe("Worker HTML / API / sitemap", () => {
       ctx,
       { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
     );
-    expect(await rejected.text()).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+    expect(await rejected.text()).toBe(
+      'window.__MFX_RECAPTCHA_SITE_KEY__="";\n' + emptyHostsLine,
+    );
+
+    const stagingHost = "staging-metfixhome.wispy-mode-982d.workers.dev";
+    const withStaging = await handleRequest(
+      new Request("https://metfix.org/api/recaptcha-site-key.js"),
+      { ...withKey, STAGING_AUTH_HOSTS: stagingHost },
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(await withStaging.text()).toBe(
+      'window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n' +
+        `window.__MFX_STAGING_AUTH_HOSTS__=${JSON.stringify([stagingHost])};\n`,
+    );
 
     const head = await handleRequest(
       new Request("https://metfix.org/api/recaptcha-site-key.js", { method: "HEAD" }),

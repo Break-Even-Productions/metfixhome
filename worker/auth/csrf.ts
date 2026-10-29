@@ -19,14 +19,32 @@ import {
   methodNotAllowed,
 } from "./responses";
 import { isLocalAuthEnabled } from "../dev-auth";
-import { isAuthHost } from "./host";
+import { isAuthHost, isStagingAuthHost } from "./host";
 
 const PRE_MAX_AGE = 1800;
 const ORIGIN = "https://metfix.org";
 
-/** Production Origin only; with LOCAL_AUTH, also http(s)://localhost|127.0.0.1. */
+/**
+ * Production Origin only; with STAGING_AUTH_HOSTS, exact https://{host};
+ * with LOCAL_AUTH, also http(s)://localhost|127.0.0.1.
+ */
 export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
   if (origin === ORIGIN) return true;
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      // Preview hosts are https-only; exact hostname from STAGING_AUTH_HOSTS (no port).
+      if (
+        u.protocol === "https:" &&
+        u.port === "" &&
+        isStagingAuthHost(u.hostname, env)
+      ) {
+        return true;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
   if (!isLocalAuthEnabled(env) || !origin) return false;
   try {
     const u = new URL(origin);

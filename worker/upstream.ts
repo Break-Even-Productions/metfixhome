@@ -98,6 +98,11 @@ export type Env = {
   LOCAL_AUTH?: string;
   /** Local only: override BSI origin (e.g. http://127.0.0.1:8080) when LOCAL_AUTH is on. */
   BSI_ORIGIN?: string;
+  /**
+   * Comma-separated exact auth hostnames for Worker Previews / staging only.
+   * Set in wrangler `previews.vars` — never top-level production vars.
+   */
+  STAGING_AUTH_HOSTS?: string;
   SIGNUP_LIMITER?: RateLimitBinding;
   USERNAME_CHECK_LIMITER?: RateLimitBinding;
   GOOGLE_AUTH_LIMITER?: RateLimitBinding;
