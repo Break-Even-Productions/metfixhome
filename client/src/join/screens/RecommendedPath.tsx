@@ -319,6 +319,7 @@ export function RecommendedPath({
                   "Check in on-site to start your 3-year Foundations Coach credential",
                 ]}
                 cta="View Upcoming Seminars"
+                // Ruling (b): prefer /seminars when routed; App only mounts /affiliate-seminars.
                 href="/affiliate-seminars"
               />
             </div>

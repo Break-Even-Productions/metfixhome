@@ -32,8 +32,6 @@ const easeOutExpo: [number, number, number, number] = [0.16, 1, 0.3, 1];
 export type JoinFlowProps = {
   open: boolean;
   onClose: () => void;
-  /** When true, mount as page (no modal overlay dismiss via route). */
-  standalone?: boolean;
   initialStep?: JoinStep;
   /** WJ15: element to restore focus to when the modal closes. */
   returnFocusTo?: HTMLElement | null;
@@ -57,7 +55,6 @@ function fingerprintOnboarding(profile: JoinProfile): string {
 export function JoinFlow({
   open,
   onClose,
-  standalone: _standalone = false,
   initialStep,
   returnFocusTo = null,
 }: JoinFlowProps) {

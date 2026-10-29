@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Field, GoldButton, Kicker, Question, ScreenForm } from "../ui";
 
 const NAME_MAX = 80;
@@ -5,7 +6,7 @@ const NAME_MAX = 80;
 export function validateNamePart(value: string): string | null {
   const t = value.trim();
   if (!t) return "Required";
-  if (t.length > NAME_MAX) return `Must be ${NAME_MAX} characters or fewer`;
+  if ([...t].length > NAME_MAX) return `Must be ${NAME_MAX} characters or fewer`;
   return null;
 }
 
@@ -20,13 +21,16 @@ export function NameScreen({
   onChange: (field: "firstName" | "lastName", value: string) => void;
   onContinue: () => void;
 }) {
-  const firstErr = firstName.length > 0 || lastName.length > 0 ? validateNamePart(firstName) : null;
-  const lastErr = lastName.length > 0 || firstName.length > 0 ? validateNamePart(lastName) : null;
+  const [attempted, setAttempted] = useState(false);
+  const showErrors = attempted || firstName.length > 0 || lastName.length > 0;
+  const firstErr = showErrors ? validateNamePart(firstName) : null;
+  const lastErr = showErrors ? validateNamePart(lastName) : null;
   const canSubmit = !validateNamePart(firstName) && !validateNamePart(lastName);
 
   return (
     <ScreenForm
       onSubmit={() => {
+        setAttempted(true);
         if (!canSubmit) return;
         onContinue();
       }}
@@ -53,7 +57,7 @@ export function NameScreen({
         />
       </div>
       <div className="mt-10">
-        <GoldButton type="submit" disabled={!canSubmit}>
+        <GoldButton type="submit" disabled={!canSubmit && attempted}>
           Continue
         </GoldButton>
       </div>

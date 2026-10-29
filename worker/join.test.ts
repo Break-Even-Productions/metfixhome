@@ -522,6 +522,43 @@ describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
     privateNoStore(res);
   });
 
+  it("401 then 401 → exactly one refresh then signed_out (MX-doubleRefresh)", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    let checkoutHits = 0;
+    let refreshHits = 0;
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/me/whop/checkout-session")) {
+        checkoutHits += 1;
+        return new Response("{}", { status: 401 });
+      }
+      if (url.includes("/oauth/token") || (url.includes("token") && init?.method === "POST")) {
+        refreshHits += 1;
+        return Response.json({
+          access_token: "refreshed-access",
+          refresh_token: "refreshed-refresh",
+          expires_in: 3600,
+        });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const res = await callCheckout(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify({ plan: "pro" }),
+    });
+    expect(refreshHits).toBe(1);
+    expect(checkoutHits).toBe(2);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    privateNoStore(res);
+  });
+
   it("upstream 5xx → 502, no second checkout attempt", async () => {
     const g = setupGate();
     attachJoinLimiters(g);
