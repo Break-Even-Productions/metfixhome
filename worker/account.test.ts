@@ -712,10 +712,33 @@ describe("worker/account routes", () => {
 
   it("DP-T-24/25/26/28/29/30 referrals gifts notifications privacy password email", async () => {
     const sess = await withSession(h);
+    const referralsDto = {
+      eligible: true,
+      eligibility_type: "organization",
+      reason_code: null,
+      payee_display_name: "Gym",
+      foundations_coach_expires_at: null,
+      join_code: {
+        slug: "abcslug01",
+        whop_affiliate_code: "abcslug01",
+        join_url: "https://metfix.org/share/?slug=abcslug01",
+        commission_percent: 15,
+        commission_bps: 1500,
+      },
+      course_links: [],
+    };
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path, method }) => {
-        if (path.includes("referral-earnings")) return Response.json({ earnings_cents: 0 });
-        if (path.includes("referral-code")) return Response.json({ code: "ABC" });
+        if (path.endsWith("/me/referrals")) return Response.json(referralsDto);
+        if (path.includes("referral-earnings")) {
+          return Response.json({
+            pending_cents: 0,
+            ready_cents: 0,
+            paid_total_cents: 0,
+            currency: "USD",
+          });
+        }
+        if (path.includes("referral-code")) return Response.json(referralsDto);
         if (path.includes("course-gifts")) return Response.json({ items: [] });
         if (path.includes("notification-preferences")) {
           return Response.json({ email: true });

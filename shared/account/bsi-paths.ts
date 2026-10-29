@@ -42,6 +42,15 @@ export function accountPurchaseCheckoutPath(courseId: string): string {
   return `${BSI}/courses/${encodeURIComponent(courseId)}/purchase-checkout`;
 }
 
+/** PR D CR3 — preferred upstream checkout path (alias of purchase-checkout). */
+export function accountCourseCheckoutPath(courseId: string): string {
+  return `${BSI}/courses/${encodeURIComponent(courseId)}/checkout`;
+}
+
+export function accountReferralsPath(): string {
+  return `${BSI}/me/referrals`;
+}
+
 export function accountProfilesMePath(): string {
   return `${BSI}/profiles/me`;
 }

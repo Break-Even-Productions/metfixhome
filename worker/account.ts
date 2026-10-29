@@ -2,6 +2,15 @@
  * Account dashboard + public member profile Worker routes (PR B / DP1–DP31).
  * Bearer-only BSI via runUserBsiCall + bsiAccountBearerHeaders (never shared API-key header).
  */
+import {
+  BSI_REF_RE,
+  COURSE_ID_RE,
+  buildCheckoutDto,
+  buildReferralsDto,
+  canGenerateCourseReferrals,
+  emitDropLogs,
+  sanitizeReturnPath,
+} from "../shared/account/courseReferrals";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
@@ -14,6 +23,7 @@ import {
   accountCancelDuplicatePath,
   accountClaimCertificatePath,
   accountConvertToWhopPath,
+  accountCourseCheckoutPath,
   accountCourseGiftsPath,
   accountEmailConfirmPath,
   accountEmailPath,
@@ -32,12 +42,13 @@ import {
   accountProfilesMeAttributesPath,
   accountProfilesMePath,
   accountProfilesMePicturePath,
-  accountPurchaseCheckoutPath,
   accountReferralCodePath,
   accountReferralEarningsPath,
+  accountReferralsPath,
   accountSpendPath,
   accountSubscriptionsPath,
 } from "../shared/account/bsi-paths";
+import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { getSid } from "./auth/cookies";
 import { csrfForSid, sha256Hex, timingSafeEqualStr } from "./auth/crypto";
@@ -72,6 +83,11 @@ const NOTIFICATION_PUT_KEYS = new Set([
   "preferences",
 ]);
 const NOTIFICATION_PREF_KEYS = new Set(["email_digest", "product_updates"]);
+
+const REFERRAL_INELIGIBLE_CODES = new Set([
+  "bsi_referral_ineligible",
+  "bsi_referral_coach_expired",
+]);
 
 /**
  * Editable profile attribute IDs (non-email). Common BSI attr slots for
@@ -381,6 +397,12 @@ function mapUpstreamResult(result: BsiHttpResult): Response | { json: unknown; s
     return accountJson({ error: "unavailable" }, 502);
   }
   return accountJson({ error: "unavailable" }, 503, { "Retry-After": "60" });
+}
+
+function upstreamErrorCode(json: unknown): string | null {
+  const obj = asRecord(json);
+  if (!obj) return null;
+  return typeof obj.code === "string" ? obj.code : null;
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -719,6 +741,17 @@ function matchRoute(method: string, path: string): RouteMatch | null {
     };
   }
 
+  // CR3 alias: POST /api/courses/:courseId/checkout
+  const coursesCheckout = path.match(/^\/api\/courses\/([^/]+)\/checkout$/);
+  if (method === "POST" && coursesCheckout) {
+    return {
+      id: "DP7",
+      method: "POST",
+      params: { courseId: coursesCheckout[1]! },
+      limiter: "write",
+    };
+  }
+
   if (!path.startsWith("/api/account/")) return null;
 
   const rest = path.slice("/api/account/".length);
@@ -754,7 +787,8 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "POST" && claim) {
     return { id: "DP6", method: "POST", params: { courseId: claim[1]! }, limiter: "write" };
   }
-  const purchase = rest.match(/^courses\/([^/]+)\/purchase-checkout$/);
+  // CR3: purchase-checkout + checkout aliases under /api/account/courses/
+  const purchase = rest.match(/^courses\/([^/]+)\/(purchase-checkout|checkout)$/);
   if (method === "POST" && purchase) {
     return { id: "DP7", method: "POST", params: { courseId: purchase[1]! }, limiter: "write" };
   }
@@ -785,10 +819,12 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       limiter: "write",
     };
   }
-  if (method === "GET" && rest === "referrals") {
+  // CR1 aliases
+  if (method === "GET" && (rest === "referrals" || rest === "course-referrals")) {
     return { id: "DP24", method: "GET", params: {}, limiter: "read" };
   }
-  if (method === "POST" && rest === "referral-code") {
+  // CR2 aliases
+  if (method === "POST" && (rest === "referral-code" || rest === "course-referrals")) {
     return { id: "DP24w", method: "POST", params: {}, limiter: "write" };
   }
   if (method === "GET" && rest === "course-gifts") {
@@ -1129,29 +1165,79 @@ async function dispatch(
       return accountJson(obj, mapped.status);
     }
     case "DP7": {
+      // CR3 — server-side course checkout coalescing (renamed from PR B DP7).
       const courseId = match.params.courseId!;
-      if (!POSITIVE_INT_RE.test(courseId)) {
+      if (!COURSE_ID_RE.test(courseId)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+
+      // Allowlist body: only bsi_ref + return_path; drop client attribution overrides.
+      let bsi_ref: string | undefined;
+      if ("bsi_ref" in body) {
+        if (typeof body.bsi_ref !== "string" || !BSI_REF_RE.test(body.bsi_ref)) {
+          return accountJson({ error: "invalid_referral_code" }, 400);
+        }
+        bsi_ref = body.bsi_ref;
+      }
+      let return_path: string | undefined;
+      if ("return_path" in body) {
+        const sanitized = sanitizeReturnPath(body.return_path);
+        if (sanitized == null) {
+          return accountJson({ error: "invalid_request" }, 400);
+        }
+        return_path = sanitized;
+      }
+      const upstreamBody: Record<string, string> = {};
+      if (bsi_ref !== undefined) upstreamBody.bsi_ref = bsi_ref;
+      if (return_path !== undefined) upstreamBody.return_path = return_path;
+
       const ran = await runBearer(
         ctx!,
         env,
         fetchImpl,
         opts,
         "POST",
-        accountPurchaseCheckoutPath(courseId),
-        { body: "{}", contentType: "application/json" },
+        accountCourseCheckoutPath(courseId),
+        { body: JSON.stringify(upstreamBody), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "http") {
+        const code = upstreamErrorCode(ran.result.json);
+        if (
+          code === "bsi_course_not_found" ||
+          code === "bsi_course_whop_mapping_not_found"
+        ) {
+          return accountJson({ error: code }, 404);
+        }
+        if (code === "whop_company_mismatch") {
+          return accountJson({ error: "whop_company_mismatch" }, 422);
+        }
+        if (code === "whop_checkout_upstream_error") {
+          return accountJson({ error: "whop_checkout_upstream_error" }, 502);
+        }
+        return accountJson(
+          ran.result.json && typeof ran.result.json === "object"
+            ? ran.result.json
+            : { error: "upstream_error" },
+          ran.result.status,
+        );
+      }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json);
-      const checkout = sanitizeExternalBillingUrl(
-        obj?.checkout_url ?? obj?.url,
-        "whop_only",
-      );
-      if (!checkout) return accountJson({ error: "bad_gateway" }, 502);
-      return accountJson({ checkout_url: checkout }, 200);
+
+      const built = buildCheckoutDto(mapped.json, BEP_WHOP_COMPANY_ID);
+      if (!built.ok) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      const safeUrl = sanitizeExternalBillingUrl(built.dto.checkout_url, "whop_only");
+      if (!safeUrl) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      // Pass through original checkout_url string when sanitize accepts (rebuild is ok for whop).
+      return accountJson({ ...built.dto, checkout_url: safeUrl }, 200);
     }
     case "DP12": {
       // Ignore client-supplied member_id / user_id (T2).
@@ -1318,26 +1404,91 @@ async function dispatch(
       return accountJson({ favorited: desired }, 200);
     }
     case "DP24": {
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountReferralEarningsPath(),
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? {}, 200);
+      // CR1 — referrals + earnings merged; strip commission_policy / internal IDs.
+      const [refRan, earnRan] = await Promise.all([
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountReferralsPath()),
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountReferralEarningsPath()),
+      ]);
+      if (refRan instanceof Response) return mapUnauthenticated(refRan);
+      if (earnRan instanceof Response) return mapUnauthenticated(earnRan);
+      const refMapped = mapUpstreamResult(refRan.result);
+      if (refMapped instanceof Response) return refMapped;
+      let earningsJson: unknown = undefined;
+      if (earnRan.result.kind === "ok") {
+        earningsJson = earnRan.result.json;
+      }
+      const built = buildReferralsDto(refMapped.json, earningsJson, Date.now());
+      if (!built.ok) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      emitDropLogs(built.logs);
+      return accountJson(built.dto, 200);
     }
     case "DP24w": {
+      // CR2 — generate / rotate / revoke referral code.
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json);
       if (!body || typeof body.action !== "string" || !REFERRAL_ACTIONS.has(body.action)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
+      let entity_id: number | undefined;
+      if ("entity_id" in body) {
+        if (
+          typeof body.entity_id !== "number" ||
+          !Number.isSafeInteger(body.entity_id) ||
+          body.entity_id < 1
+        ) {
+          return accountJson({ error: "invalid_request" }, 400);
+        }
+        entity_id = body.entity_id;
+      }
+
+      // Worker pre-check on generate/rotate: 0 upstream mutation when ineligible.
+      if (body.action === "generate" || body.action === "rotate") {
+        const preRan = await runBearer(
+          ctx!,
+          env,
+          fetchImpl,
+          opts,
+          "GET",
+          accountReferralsPath(),
+        );
+        if (preRan instanceof Response) return mapUnauthenticated(preRan);
+        const preMapped = mapUpstreamResult(preRan.result);
+        if (preMapped instanceof Response) return preMapped;
+        const preBuilt = buildReferralsDto(preMapped.json, undefined, Date.now());
+        if (preBuilt.ok && !preBuilt.dto.eligible) {
+          return accountJson(
+            {
+              error: "referral_ineligible",
+              reason_code: preBuilt.dto.reason_code ?? "bsi_referral_ineligible",
+            },
+            403,
+          );
+        }
+        // Also honor raw upstream eligibility if builder said eligible but predicate disagrees.
+        const raw = asRecord(preMapped.json) ?? {};
+        const pred = canGenerateCourseReferrals(
+          {
+            eligibility_type: raw.eligibility_type,
+            canonical_tier: raw.canonical_tier,
+            foundations_coach_expires_at: raw.foundations_coach_expires_at,
+            role_slug: raw.role_slug,
+          },
+          Date.now(),
+        );
+        if (!pred.eligible) {
+          return accountJson(
+            { error: "referral_ineligible", reason_code: pred.reason_code },
+            403,
+          );
+        }
+      }
+
+      const upstreamPayload: Record<string, unknown> = { action: body.action };
+      if (entity_id !== undefined) upstreamPayload.entity_id = entity_id;
+
       const ran = await runBearer(
         ctx!,
         env,
@@ -1345,12 +1496,39 @@ async function dispatch(
         opts,
         "POST",
         accountReferralCodePath(),
-        { body: JSON.stringify({ action: body.action }), contentType: "application/json" },
+        { body: JSON.stringify(upstreamPayload), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "http" && ran.result.status === 403) {
+        const code = upstreamErrorCode(ran.result.json);
+        if (code && REFERRAL_INELIGIBLE_CODES.has(code)) {
+          return accountJson(
+            { error: "referral_ineligible", reason_code: code },
+            403,
+          );
+        }
+      }
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      // CR2 200 reuses CR1 builder (may also fetch earnings in parallel for parity).
+      const earnRan = await runBearer(
+        ran.ctx,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountReferralEarningsPath(),
+      );
+      let earningsJson: unknown = undefined;
+      if (!(earnRan instanceof Response) && earnRan.result.kind === "ok") {
+        earningsJson = earnRan.result.json;
+      }
+      const built = buildReferralsDto(mapped.json, earningsJson, Date.now());
+      if (!built.ok) {
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      emitDropLogs(built.logs);
+      return accountJson(built.dto, 200);
     }
     case "DP25": {
       const ran = await runBearer(
@@ -1553,7 +1731,7 @@ async function dispatch(
   }
 }
 
-/** Index entrypoint — null when path is not an account/members API route. */
+/** Index entrypoint — null when path is not an account/members/courses API route. */
 export async function handleAccountRoutes(
   request: Request,
   env: Env,
@@ -1561,7 +1739,13 @@ export async function handleAccountRoutes(
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
-  if (!(path.startsWith("/api/account") || path.startsWith("/api/members/"))) {
+  if (
+    !(
+      path.startsWith("/api/account") ||
+      path.startsWith("/api/members/") ||
+      path.startsWith("/api/courses/")
+    )
+  ) {
     return null;
   }
 

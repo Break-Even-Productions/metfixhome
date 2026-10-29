@@ -45,7 +45,21 @@ beforeEach(() => {
         return jsonResponse({ ok: true });
       }
       if (url.includes("/purchase-checkout") && method === "POST") {
-        return jsonResponse({ checkout_url: "https://whop.com/checkout/course-20" });
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return jsonResponse({
+          attempt_id: "cca_9f8e7d6c5b4a3f2e1d0c9b8a",
+          course_id: 20,
+          checkout_url: "https://whop.com/checkout/plan_course_essentials/?d2c=true",
+          course_price_cents: 20000,
+          currency: "USD",
+          attribution: {
+            attribution_source: body.bsi_ref ? "explicit_slug" : "none",
+            bsi_ref_slug: body.bsi_ref ?? null,
+            whop_affiliate_code: body.bsi_ref ?? null,
+            commission_percent: body.bsi_ref ? 15 : 0,
+            commission_bps: body.bsi_ref ? 1500 : 0,
+          },
+        });
       }
       return jsonResponse({ error: "not_found" }, 404);
     }),
@@ -144,5 +158,52 @@ describe("AccountCourses (P-DB-7, P-DB-8, CERT)", () => {
     );
     await waitFor(() => expect(screen.getAllByText(/Foundations Coach/i).length).toBeGreaterThan(0));
     expect(screen.getAllByText(/in-person seminar check-in/i).length).toBeGreaterThan(0);
+  });
+
+  it("CR-COALESCE: buy posts purchase-checkout with bsi_ref once (busy lock)", async () => {
+    const bodies: unknown[] = [];
+    sessionStorage.setItem("mfx_bsi_ref", "cfexample9");
+    vi.spyOn(await import("@/lib/account"), "assignBillingUrl").mockReturnValue(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET") return jsonResponse(COURSES_LTV300);
+        if (url.includes("/purchase-checkout") && method === "POST") {
+          bodies.push(JSON.parse(String(init?.body ?? "{}")));
+          return jsonResponse({
+            attempt_id: "cca_9f8e7d6c5b4a3f2e1d0c9b8a",
+            course_id: 20,
+            checkout_url: "https://whop.com/checkout/plan_course_essentials/?d2c=true&a=cfexample9",
+            course_price_cents: 20000,
+            currency: "USD",
+            attribution: {
+              attribution_source: "primary_org",
+              bsi_ref_slug: "cfexample9",
+              whop_affiliate_code: "cfexample9",
+              commission_percent: 15,
+              commission_bps: 1500,
+            },
+          });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByTestId("buy-course-20")).toBeTruthy());
+    const btn = screen.getByTestId("buy-course-20");
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0]).toEqual({ bsi_ref: "cfexample9" });
+    await waitFor(() => expect(screen.getByTestId("attribution-source").textContent).toBe("primary_org"));
   });
 });

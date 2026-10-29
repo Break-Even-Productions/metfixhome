@@ -140,9 +140,42 @@ export type FavoritesPage = {
 };
 
 export type ReferralsPayload = {
+  eligible?: boolean;
+  eligibility_type?: "organization" | "foundations_coach" | null;
+  reason_code?: "bsi_referral_ineligible" | "bsi_referral_coach_expired" | null;
+  payee_display_name?: string | null;
+  foundations_coach_expires_at?: string | null;
+  join_code?: {
+    slug: string;
+    whop_affiliate_code: string;
+    join_url: string | null;
+    commission_percent: number;
+    commission_bps: number;
+  } | null;
+  course_links?: Array<{
+    course_id: number;
+    course_slug: string;
+    course_title: string;
+    course_price_cents: number;
+    currency: string;
+    commission_percent: number;
+    commission_bps: number;
+    estimated_commission_cents: number;
+    bsi_ref_slug: string;
+    whop_affiliate_code: string;
+    whop_plan_id: string;
+    share_url: string;
+  }>;
+  course_links_dropped?: number;
+  join_code_dropped?: boolean;
+  earnings?: {
+    pending_cents?: number;
+    ready_cents?: number;
+    paid_total_cents?: number;
+    currency?: string;
+  };
+  /** @deprecated PR B stub field — prefer join_code.slug */
   referral_code?: string | null;
-  earnings?: unknown;
-  [key: string]: unknown;
 };
 
 export type CourseGiftsPayload = {
@@ -481,10 +514,27 @@ export async function claimCertificate(courseId: string | number): Promise<unkno
 
 export async function purchaseCourseCheckout(
   courseId: string | number,
-): Promise<{ checkout_url?: string }> {
+  opts?: { bsi_ref?: string; return_path?: string },
+): Promise<{
+  attempt_id?: string;
+  course_id?: number;
+  checkout_url?: string;
+  course_price_cents?: number;
+  currency?: string;
+  attribution?: {
+    attribution_source: string;
+    bsi_ref_slug: string | null;
+    whop_affiliate_code: string | null;
+    commission_percent: number;
+    commission_bps: number;
+  };
+}> {
+  const body: Record<string, string> = {};
+  if (opts?.bsi_ref) body.bsi_ref = opts.bsi_ref;
+  if (opts?.return_path) body.return_path = opts.return_path;
   return accountMutate(`/api/account/courses/${courseId}/purchase-checkout`, {
     method: "POST",
-    body: {},
+    body,
   });
 }
 
@@ -642,7 +692,9 @@ export type MembershipStatusLabel =
 export function deriveMembershipStatus(
   subs: AccountSubscriptions | null | undefined,
 ): MembershipStatusLabel {
-  if (!subs || subs.canonical_tier === "free" || subs.items.length === 0) return "Free";
+  if (!subs || subs.canonical_tier === "free" || !Array.isArray(subs.items) || subs.items.length === 0) {
+    return "Free";
+  }
   const primary =
     subs.items.find((i) => !i.is_duplicate_stripe) ?? subs.items[0];
   if (!primary) return "Free";
