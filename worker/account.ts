@@ -643,23 +643,6 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
       typeof r.allocated_cents === "number" && Number.isSafeInteger(r.allocated_cents)
         ? r.allocated_cents
         : null;
-    if (allocated == null || allocated < 0) {
-      // Branch B: no valid total → fail closed 502 (no LTV figure / no claim).
-      if (!claimedOverrideValid) {
-        console.warn(
-          JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
-        );
-        return accountJson({ error: "unavailable" }, 502);
-      }
-      // Branch A: valid total is source of truth; keep bad row out of sum; log once.
-      if (!loggedBadAllocated) {
-        loggedBadAllocated = true;
-        console.warn(
-          JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
-        );
-      }
-      continue;
-    }
     const cm = r.claim_method;
     const knownMethod =
       cm === "redeem_ltv" ||
@@ -676,6 +659,32 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
           course_id: courseId,
         }),
       );
+    }
+    if (allocated == null || allocated < 0) {
+      // Branch B (r2.11 / d2): no valid total → 502 upstream_error, no LTV figure / no claim.
+      if (!claimedOverrideValid) {
+        console.warn(
+          JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
+        );
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      // Branch A: keep bad row (not silently dropped), exclude from every sum; log once.
+      if (!loggedBadAllocated) {
+        loggedBadAllocated = true;
+        console.warn(
+          JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
+        );
+      }
+      claimed_certificates.push({
+        course_id: courseId,
+        course_slug: strOrNull(r.course_slug),
+        course_title: strOrNull(r.course_title),
+        allocated_cents: null,
+        claimed_at: strOrNull(r.claimed_at),
+        claim_method: claimMethod,
+        certificate_url: typeof r.certificate_url === "string" ? r.certificate_url : undefined,
+      });
+      continue;
     }
     claimedSum += allocated;
     claimed_certificates.push({
@@ -1318,6 +1327,13 @@ async function dispatch(
       let upstreamPath: string;
       let upstreamBody: Record<string, string>;
       if (claimPath === "redeem_ltv") {
+        // CL-LTVROW-B: fail closed before charge when spend rows are unsafe.
+        const spendRan = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountSpendPath());
+        if (spendRan instanceof Response) return mapUnauthenticated(spendRan);
+        const spendMapped = mapUpstreamResult(spendRan.result);
+        if (spendMapped instanceof Response) return spendMapped;
+        const ltvGate = shapeLtv(spendMapped.json);
+        if (ltvGate instanceof Response) return ltvGate;
         upstreamPath = accountClaimCertificatePath(courseId);
         upstreamBody = { method: "redeem_ltv" };
       } else if (claimPath === "prepay_credit") {

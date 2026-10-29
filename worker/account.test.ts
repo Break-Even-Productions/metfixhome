@@ -1314,6 +1314,7 @@ describe("worker/account routes", () => {
     const claimOnce = async (allocated: unknown, idemSuffix: string) => {
       const { fetchImpl } = makeFetchMock([
         async ({ path, method }) => {
+          if (path.endsWith("/me/spend")) return Response.json(LTV300_SPEND);
           if (path.includes("/claim-certificate") && method === "POST") {
             return Response.json(repeatBody(allocated));
           }
@@ -1482,97 +1483,194 @@ describe("worker/account routes", () => {
     expect(body.claimed_certificates.map((c) => c.course_id)).toEqual([7, 3]);
   });
 
-  it("PD-S4 / errata d2 Branch A: bad allocated_cents + valid claimed_courses_value_cents → 200, log once", async () => {
+  it("CL-LTVROW-A: bad allocated_cents cases + valid total → 200, keep row, available ≤ total", async () => {
     const sess = await withSession(h);
-    const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const { fetchImpl } = makeFetchMock([
-        async ({ path }) => {
-          if (path.endsWith("/me/spend")) {
-            return Response.json({
-              total_ltv_cents: 30000,
-              claimed_courses_value_cents: 20000,
-              claimed_certificates: [
-                {
-                  course_id: 7,
-                  course_slug: "bad-alloc",
-                  course_title: "Bad Alloc",
-                  allocated_cents: -5,
-                  claimed_at: "2026-01-01T00:00:00Z",
-                  claim_method: "redeem_ltv",
-                },
-                {
-                  course_id: 3,
-                  course_slug: "c",
-                  course_title: "Course C",
-                  allocated_cents: 5000,
-                  claimed_at: "2026-01-02T00:00:00Z",
-                  claim_method: "redeem_ltv",
-                },
-              ],
-              canonical_tier: "metfix_pro",
-              foundations_coach: {},
-            });
-          }
-          return new Response(null, { status: 404 });
-        },
-      ]);
-      const res = await callAccount(
-        h,
-        "/api/account/ltv-certificates",
-        { headers: { Cookie: sess.cookie } },
-        fetchImpl,
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        total_ltv_cents: number;
-        claimed_courses_value_cents: number;
-        available_certificate_ltv_cents: number;
-        claimed_certificates: Array<{ course_id: number }>;
+    const badCases: Array<{ label: string; allocated: unknown }> = [
+      { label: "missing", allocated: undefined },
+      { label: "0.5", allocated: 0.5 },
+      { label: "-5", allocated: -5 },
+      { label: '"100"', allocated: "100" },
+    ];
+    for (const { label, allocated } of badCases) {
+      const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const badRow: Record<string, unknown> = {
+          course_id: 7,
+          course_slug: "bad-alloc",
+          course_title: "Bad Alloc",
+          claimed_at: "2026-01-01T00:00:00Z",
+          claim_method: "redeem_ltv",
+        };
+        if (allocated !== undefined) badRow.allocated_cents = allocated;
+        // total (22000) < naive row sum (25000 good + any coerced bad) so over-total fails.
+        const { fetchImpl } = makeFetchMock([
+          async ({ path }) => {
+            if (path.endsWith("/me/spend")) {
+              return Response.json({
+                total_ltv_cents: 22000,
+                claimed_courses_value_cents: 20000,
+                claimed_certificates: [
+                  badRow,
+                  {
+                    course_id: 3,
+                    course_slug: "c",
+                    course_title: "Course C",
+                    allocated_cents: 25000,
+                    claimed_at: "2026-01-02T00:00:00Z",
+                    claim_method: "redeem_ltv",
+                  },
+                ],
+                canonical_tier: "metfix_pro",
+                foundations_coach: {},
+              });
+            }
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const res = await callAccount(
+          h,
+          "/api/account/ltv-certificates",
+          { headers: { Cookie: sess.cookie } },
+          fetchImpl,
+        );
+        expect(res.status, label).toBe(200);
+        assertNoStore(res);
+        const body = (await res.json()) as {
+          total_ltv_cents: number;
+          claimed_courses_value_cents: number;
+          available_certificate_ltv_cents: number;
+          claimed_certificates: Array<{ course_id: number; allocated_cents: number | null }>;
+        };
+        expect(body.claimed_courses_value_cents, label).toBe(20000);
+        expect(body.available_certificate_ltv_cents, label).toBe(2000);
+        expect(body.available_certificate_ltv_cents, label).toBeLessThanOrEqual(body.total_ltv_cents);
+        expect(body.claimed_certificates.map((c) => c.course_id), label).toEqual([7, 3]);
+        expect(body.claimed_certificates[0]?.allocated_cents, label).toBeNull();
+        expect(body.claimed_certificates[1]?.allocated_cents, label).toBe(25000);
+        const logs = spyWarn.mock.calls
+          .map((c) => {
+            try {
+              return JSON.parse(String(c[0])) as Record<string, unknown>;
+            } catch {
+              return null;
+            }
+          })
+          .filter((l) => l?.event === "ltv_row_allocated_invalid");
+        expect(logs, label).toHaveLength(1);
+        expect(Object.keys(logs[0]!).sort(), label).toEqual(["course_id", "event"]);
+        expect(logs[0], label).toEqual({ event: "ltv_row_allocated_invalid", course_id: 7 });
+      } finally {
+        spyWarn.mockRestore();
+      }
+    }
+  });
+
+  it("CL-LTVROW-B: bad allocated + missing total → 502 upstream_error, no-store, claim blocked", async () => {
+    const sess = await withSession(h);
+    const badCases: unknown[] = [undefined, 0.5, -5, "100"];
+    let branchBBody: Record<string, unknown> | null = null;
+    for (const allocated of badCases) {
+      const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const badRow: Record<string, unknown> = {
+          course_id: 9,
+          course_slug: "bad",
+          course_title: "Bad",
+          claimed_at: "2026-01-01T00:00:00Z",
+          claim_method: "redeem_ltv",
+        };
+        if (allocated !== undefined) badRow.allocated_cents = allocated;
+        let claimCertPosts = 0;
+        const { fetchImpl } = makeFetchMock([
+          async ({ path, method }) => {
+            if (path.endsWith("/me/spend")) {
+              return Response.json({
+                total_ltv_cents: 30000,
+                claimed_certificates: [badRow],
+                canonical_tier: "metfix_pro",
+                foundations_coach: {},
+              });
+            }
+            if (path.includes("/claim-certificate") && method === "POST") {
+              claimCertPosts += 1;
+              return Response.json({ already_claimed: false });
+            }
+            return new Response(null, { status: 404 });
+          },
+        ]);
+        const res = await callAccount(
+          h,
+          "/api/account/ltv-certificates",
+          { headers: { Cookie: sess.cookie } },
+          fetchImpl,
+        );
+        expect(res.status).toBe(502);
+        assertNoStore(res);
+        const body = (await res.json()) as Record<string, unknown>;
+        expect(body).toEqual({ error: "upstream_error" });
+        for (const k of Object.keys(body)) {
+          expect(k.includes("ltv") || k.includes("available"), String(k)).toBe(false);
+        }
+        if (branchBBody == null) branchBBody = body;
+        else expect(body).toEqual(branchBBody);
+
+        const logs = spyWarn.mock.calls
+          .map((c) => {
+            try {
+              return JSON.parse(String(c[0])) as Record<string, unknown>;
+            } catch {
+              return null;
+            }
+          })
+          .filter((l) => l?.event === "ltv_row_allocated_invalid");
+        expect(logs).toHaveLength(1);
+        expect(Object.keys(logs[0]!).sort()).toEqual(["course_id", "event"]);
+
+        // Following redeem claim blocked — 0 upstream claim-certificate calls.
+        const claimRes = await callAccount(
+          h,
+          "/api/account/courses/10/claim",
+          {
+            method: "POST",
+            headers: {
+              ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+              "Idempotency-Key": "550e8400-e29b-41d4-a716-446655449901",
+            },
+            body: JSON.stringify({ path: "redeem_ltv" }),
+          },
+          fetchImpl,
+        );
+        expect(claimRes.status).toBe(502);
+        expect(await claimRes.json()).toEqual({ error: "upstream_error" });
+        assertNoStore(claimRes);
+        expect(claimCertPosts).toBe(0);
+      } finally {
+        spyWarn.mockRestore();
+      }
+    }
+  });
+
+  it("CL-LTVROW-B2: invalid claimed_courses_value_cents → same as B (deep-equal, no throw)", async () => {
+    const sess = await withSession(h);
+    const invalidTotals = [0.5, "20000", -1];
+    const badAllocatedCases = [undefined, 0.5, -5, "100"];
+
+    const runBranch = async (claimedTotal: unknown, allocated: unknown) => {
+      const badRow: Record<string, unknown> = {
+        course_id: 11,
+        claim_method: "redeem_ltv",
       };
-      expect(body.claimed_courses_value_cents).toBe(20000);
-      expect(body.available_certificate_ltv_cents).toBe(10000);
-      expect(body.available_certificate_ltv_cents).toBeLessThanOrEqual(body.total_ltv_cents);
-      expect(body.claimed_certificates.map((c) => c.course_id)).toEqual([3]);
-      const logs = spyWarn.mock.calls
-        .map((c) => {
-          try {
-            return JSON.parse(String(c[0])) as { event?: string; course_id?: number };
-          } catch {
-            return null;
-          }
-        })
-        .filter((l) => l?.event === "ltv_row_allocated_invalid");
-      expect(logs).toHaveLength(1);
-      expect(logs[0]).toEqual({ event: "ltv_row_allocated_invalid", course_id: 7 });
-    } finally {
-      spyWarn.mockRestore();
-    }
-  });
-
-  it("PD-S4 / errata d2 Branch B: bad allocated_cents + missing claimed_courses_value_cents → 502", async () => {
-    const sess = await withSession(h);
-    const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
+      if (allocated !== undefined) badRow.allocated_cents = allocated;
+      const spend: Record<string, unknown> = {
+        total_ltv_cents: 30000,
+        claimed_certificates: [badRow],
+        canonical_tier: "metfix_pro",
+        foundations_coach: {},
+      };
+      if (claimedTotal !== undefined) spend.claimed_courses_value_cents = claimedTotal;
       const { fetchImpl } = makeFetchMock([
         async ({ path }) => {
-          if (path.endsWith("/me/spend")) {
-            return Response.json({
-              total_ltv_cents: 30000,
-              claimed_certificates: [
-                {
-                  course_id: 9,
-                  course_slug: "bad",
-                  course_title: "Bad",
-                  // missing allocated_cents
-                  claimed_at: "2026-01-01T00:00:00Z",
-                  claim_method: "redeem_ltv",
-                },
-              ],
-              canonical_tier: "metfix_pro",
-              foundations_coach: {},
-            });
-          }
+          if (path.endsWith("/me/spend")) return Response.json(spend);
           return new Response(null, { status: 404 });
         },
       ]);
@@ -1582,72 +1680,23 @@ describe("worker/account routes", () => {
         { headers: { Cookie: sess.cookie } },
         fetchImpl,
       );
-      expect(res.status).toBe(502);
-      const body = (await res.json()) as Record<string, unknown>;
-      expect(body).toEqual({ error: "unavailable" });
-      expect(body).not.toHaveProperty("available_certificate_ltv_cents");
-      expect(body).not.toHaveProperty("total_ltv_cents");
-      const logs = spyWarn.mock.calls
-        .map((c) => {
-          try {
-            return JSON.parse(String(c[0])) as { event?: string; course_id?: number };
-          } catch {
-            return null;
-          }
-        })
-        .filter((l) => l?.event === "ltv_row_allocated_invalid");
-      expect(logs).toHaveLength(1);
-      expect(logs[0]).toEqual({ event: "ltv_row_allocated_invalid", course_id: 9 });
-    } finally {
-      spyWarn.mockRestore();
-    }
-  });
+      return res;
+    };
 
-  it("PD-S4 / errata d2 Branch B2: bad allocated_cents + invalid claimed_courses_value_cents → 502", async () => {
-    const sess = await withSession(h);
-    const spyWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const { fetchImpl } = makeFetchMock([
-        async ({ path }) => {
-          if (path.endsWith("/me/spend")) {
-            return Response.json({
-              total_ltv_cents: 30000,
-              claimed_courses_value_cents: -1,
-              claimed_certificates: [
-                {
-                  course_id: 11,
-                  allocated_cents: 1.5,
-                  claim_method: "redeem_ltv",
-                },
-              ],
-              canonical_tier: "metfix_pro",
-              foundations_coach: {},
-            });
-          }
-          return new Response(null, { status: 404 });
-        },
-      ]);
-      const res = await callAccount(
-        h,
-        "/api/account/ltv-certificates",
-        { headers: { Cookie: sess.cookie } },
-        fetchImpl,
-      );
-      expect(res.status).toBe(502);
-      expect(await res.json()).toEqual({ error: "unavailable" });
-      const logs = spyWarn.mock.calls
-        .map((c) => {
-          try {
-            return JSON.parse(String(c[0])) as { event?: string; course_id?: number };
-          } catch {
-            return null;
-          }
-        })
-        .filter((l) => l?.event === "ltv_row_allocated_invalid");
-      expect(logs).toHaveLength(1);
-      expect(logs[0]?.course_id).toBe(11);
-    } finally {
-      spyWarn.mockRestore();
+    const baseline = await runBranch(undefined, undefined);
+    expect(baseline.status).toBe(502);
+    assertNoStore(baseline);
+    const baselineBody = await baseline.json();
+    expect(baselineBody).toEqual({ error: "upstream_error" });
+
+    for (const total of invalidTotals) {
+      for (const allocated of badAllocatedCases) {
+        await expect(runBranch(total, allocated)).resolves.toBeTruthy();
+        const res = await runBranch(total, allocated);
+        expect(res.status).toBe(502);
+        assertNoStore(res);
+        expect(await res.json()).toEqual(baselineBody);
+      }
     }
   });
 
@@ -1656,6 +1705,7 @@ describe("worker/account routes", () => {
     const postClaim = async (upstream: Response, idem: string) => {
       const { fetchImpl } = makeFetchMock([
         async ({ path, method }) => {
+          if (path.endsWith("/me/spend")) return Response.json(LTV300_SPEND);
           if (path.includes("/claim-certificate") && method === "POST") return upstream;
           return new Response(null, { status: 404 });
         },

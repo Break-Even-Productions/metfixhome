@@ -268,9 +268,12 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     expect(optionsGets).toBe(1);
   });
 
-  it("S-R2-1: redeem_ltv POST 200 + claim-options refresh 502 → success message, no error, one POST", async () => {
+  it("CL-POSTGET-1 / S-R2-1: redeem POST 200 + options 502 → success, no failed, ≤1 GET, key kept", async () => {
     let claimPosts = 0;
     let optionsGets = 0;
+    let optionsGetsAfterPost = 0;
+    let posted = false;
+    const idemKeys: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -284,12 +287,16 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
         }
         if (url.includes("/certificate-claim-options")) {
           optionsGets += 1;
-          if (optionsGets === 1) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+          if (posted) optionsGetsAfterPost += 1;
+          if (!posted) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
           return jsonResponse({ error: "unavailable" }, 502);
         }
         if (url.includes("/courses/20/claim") && method === "POST") {
           claimPosts += 1;
-          return jsonResponse({ already_claimed: true });
+          posted = true;
+          const key = new Headers(init?.headers).get("Idempotency-Key");
+          if (key) idemKeys.push(key);
+          return jsonResponse({ already_claimed: false });
         }
         return jsonResponse({ error: "not_found" }, 404);
       }),
@@ -306,12 +313,16 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     fireEvent.click(redeemButton());
     await waitFor(() => expect(claimPosts).toBe(1));
     await waitFor(() => expect(screen.getByText("Certificate claimed")).toBeTruthy());
-    // Failed claim-options refresh must not surface a claim error (B1).
-    expect(screen.queryByText("Claim failed.")).toBeNull();
-    expect(screen.queryByText("Something went wrong. Check your claim status.")).toBeNull();
-    expect(screen.queryByText("Checkout unavailable.")).toBeNull();
+    expect(screen.queryByText(/failed/i)).toBeNull();
     await new Promise((r) => setTimeout(r, 50));
     expect(claimPosts).toBe(1);
+    expect(optionsGetsAfterPost).toBeLessThanOrEqual(1);
+    expect(idemKeys).toHaveLength(1);
+
+    // Later click reuses the same Idempotency-Key (CL-POSTGET-1).
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(2));
+    expect(idemKeys[1]).toBe(idemKeys[0]);
   });
 
   it("R2-N1: unmount during background claim-options refresh does not throw", async () => {
