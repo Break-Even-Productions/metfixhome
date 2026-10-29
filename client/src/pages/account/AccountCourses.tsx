@@ -122,7 +122,6 @@ export default function AccountCourses() {
     setBuyLock(true);
     setError(null);
     try {
-      const { readStoredBsiRef } = await import("@/lib/referralAttribution");
       const bsi_ref = readStoredBsiRef() ?? undefined;
       const res = await purchaseCourseCheckout(course.id, bsi_ref ? { bsi_ref } : undefined);
       if (res.attribution?.attribution_source) {

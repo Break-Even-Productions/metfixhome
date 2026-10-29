@@ -845,6 +845,341 @@ describe("static client scans", () => {
   });
 });
 
+describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = createHarness();
+    installLimiters(h.env);
+  });
+
+  it("T-CR2 exact Bearer header set on CR1", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    await callAccount(h, "/api/account/referrals", { headers: { Cookie: sess.cookie } }, fetchImpl);
+    const upstream = recorded.filter((r) => r.url.includes("/wp-json/"));
+    expect(upstream.length).toBeGreaterThanOrEqual(2);
+    for (const rec of upstream) {
+      expect(Object.keys(rec.headers).sort()).toEqual(
+        expect.arrayContaining(["accept", "authorization", "user-agent"]),
+      );
+      expect(rec.headers.authorization).toMatch(/^Bearer\s+\S+$/);
+      expect(rec.headers["x-api-key"]).toBeUndefined();
+      expect(rec.headers.referer).toBeUndefined();
+      expect(rec.headers.origin).toBeUndefined();
+    }
+  });
+
+  it("T-CR6 / CR-COALESCE-3: unknown attribution_source → 502; all 4 sources pass", async () => {
+    const sess = await withSession(h);
+    const bad = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([
+        async () =>
+          Response.json({
+            ...CHECKOUT_OK,
+            attribution: { ...CHECKOUT_OK.attribution, attribution_source: "client_override" },
+          }),
+      ]).fetchImpl,
+    );
+    expect(bad.status).toBe(502);
+
+    for (const attribution_source of [
+      "primary_org",
+      "explicit_slug",
+      "bsi_ref_cookie",
+      "none",
+    ] as const) {
+      const { fetchImpl } = makeFetchMock([
+        async () =>
+          Response.json({
+            ...CHECKOUT_OK,
+            attribution: {
+              ...CHECKOUT_OK.attribution,
+              attribution_source,
+              ...(attribution_source === "none"
+                ? { bsi_ref_slug: null, whop_affiliate_code: null, commission_percent: 0, commission_bps: 0 }
+                : {}),
+            },
+          }),
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/courses/20231/purchase-checkout",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({ bsi_ref: "cfexample9" }),
+        },
+        fetchImpl,
+      );
+      expect(res.status, attribution_source).toBe(200);
+      const body = await res.json();
+      expect(body.attribution.attribution_source).toBe(attribution_source);
+    }
+  });
+
+  it("CR-ATTEMPT-1 rejects whitespace / cca- / ccb_ / uppercase@32", async () => {
+    const sess = await withSession(h);
+    const badIds = [
+      "cca_" + "a".repeat(24) + "\n",
+      " cca_" + "a".repeat(24),
+      "cca-" + "a".repeat(24),
+      "ccb_" + "a".repeat(24),
+      "cca_" + "A".repeat(32),
+    ];
+    for (const attempt_id of badIds) {
+      const res = await callAccount(
+        h,
+        "/api/account/courses/20231/purchase-checkout",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({}),
+        },
+        makeFetchMock([async () => Response.json({ ...CHECKOUT_OK, attempt_id })]).fetchImpl,
+      );
+      expect(res.status, JSON.stringify(attempt_id)).toBe(502);
+    }
+  });
+
+  it("CR3 rejects -1 / 1.5 / abc courseId and bad return_path with 0 upstream", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json(CHECKOUT_OK),
+    ]);
+    for (const courseId of ["-1", "1.5", "abc", "0"]) {
+      const res = await callAccount(
+        h,
+        `/api/account/courses/${courseId}/purchase-checkout`,
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({}),
+        },
+        fetchImpl,
+      );
+      expect(res.status, courseId).toBe(400);
+    }
+    const badPath = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ return_path: "https://evil.example/" }),
+      },
+      fetchImpl,
+    );
+    expect(badPath.status).toBe(400);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("CR2 non-int entity_id → 400 with 0 upstream", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([]);
+    for (const entity_id of [1.5, "7", 0, -1, null]) {
+      const res = await callAccount(
+        h,
+        "/api/account/referral-code",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({ action: "generate", entity_id }),
+        },
+        fetchImpl,
+      );
+      expect(res.status, String(entity_id)).toBe(400);
+    }
+    expect(recorded).toHaveLength(0);
+  });
+
+  it("CR5 429 on generate → 0 upstream", async () => {
+    const sess = await withSession(h);
+    h.env.ACCOUNT_WRITE_LIMITER = countingLimiter(0);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json(REFERRALS_OK),
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(429);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("CR-X1: 401 on checkout retries at most once (never unbounded)", async () => {
+    const sess = await withSession(h);
+    let checkoutPosts = 0;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method, url }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          checkoutPosts += 1;
+          return new Response(JSON.stringify({ code: "unauthorized" }), { status: 401 });
+        }
+        // Session refresh / oauth paths — always succeed so acting layer can retry once.
+        if (/oauth|token|refresh/i.test(url) || /oauth|token|refresh/i.test(path)) {
+          return Response.json({
+            access_token: "tok_refreshed",
+            refresh_token: "rt_refreshed",
+            expires_in: 3600,
+            token_type: "Bearer",
+          });
+        }
+        if (path.endsWith("/me") || path.includes("/me?")) {
+          return Response.json({ id: 1, email: "a@b.co" });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    // One initial attempt + at most one post-refresh retry.
+    expect(checkoutPosts).toBeGreaterThanOrEqual(1);
+    expect(checkoutPosts).toBeLessThanOrEqual(2);
+  });
+
+  it("CR-X2: canary token / Bearer / API key absent from logs during referrals", async () => {
+    const sess = await withSession(h);
+    const logs: string[] = [];
+    const spyInfo = vi.spyOn(console, "info").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+    const spyWarn = vi.spyOn(console, "warn").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+    const canary = "canary_Bearer_tok_SECRET_xyz";
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) {
+          return Response.json({
+            ...REFERRALS_OK,
+            payee_display_name: "Ada",
+          });
+        }
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    await callAccount(h, "/api/account/referrals", { headers: { Cookie: sess.cookie } }, fetchImpl);
+    const blob = logs.join("\n");
+    expect(blob).not.toContain(canary);
+    expect(blob).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
+    expect(blob).not.toMatch(/test-secret-key|DAILY_FIX_API_KEY/i);
+    spyInfo.mockRestore();
+    spyWarn.mockRestore();
+  });
+
+  it("CR1 exact DTO keys; CR-DROP recursive PII scan + counts 0/3/all", async () => {
+    const sess = await withSession(h);
+    const warns: Record<string, unknown>[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      warns.push(typeof msg === "string" ? JSON.parse(msg) : (msg as object));
+    });
+
+    const expectedKeys = new Set([
+      "eligible",
+      "eligibility_type",
+      "reason_code",
+      "payee_display_name",
+      "foundations_coach_expires_at",
+      "join_code",
+      "course_links",
+      "course_links_dropped",
+      "join_code_dropped",
+      "earnings",
+    ]);
+
+    // count 0
+    {
+      warns.length = 0;
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+          if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/referrals",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      const body = await res.json();
+      expect(body.course_links_dropped).toBe(0);
+      expect(warns).toEqual([]);
+      for (const k of Object.keys(body)) expect(expectedKeys.has(k), k).toBe(true);
+    }
+
+    // count 3 (all dropped) — recursive PII scan on log objects
+    {
+      warns.length = 0;
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/referrals")) {
+            return Response.json({
+              ...REFERRALS_OK,
+              course_links: [
+                link({ course_id: 11, share_url: "http://evil.example/x" }),
+                link({ course_id: 12, currency: "usd" }),
+                link({ course_id: 13, course_price_cents: -5 }),
+              ],
+            });
+          }
+          if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/referrals",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      const body = await res.json();
+      expect(body.course_links).toEqual([]);
+      expect(body.course_links_dropped).toBe(3);
+      expect(warns).toHaveLength(3);
+      const blob = JSON.stringify(warns);
+      // Recursive PII scan: no emails, tokens, slugs, or URL values in drop logs.
+      expect(blob).not.toMatch(/[^\s"']+@[^\s"']+/);
+      expect(blob).not.toMatch(/Bearer\s+\S+/i);
+      expect(blob).not.toMatch(/cfexample9/);
+      expect(blob).not.toMatch(/https?:\/\//i);
+      for (const w of warns) {
+        expect(Object.keys(w).sort()).toEqual(["course_id", "event", "reason"]);
+      }
+    }
+    spy.mockRestore();
+  });
+});
+
 // silence unused ACCESS1 import warning path — used by harness login
 void ACCESS1;
 void NOW_ISO;

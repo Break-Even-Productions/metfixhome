@@ -455,6 +455,50 @@ describe("buildCheckoutDto + attempt_id (CR-ATTEMPT-1 / CR-COALESCE-4)", () => {
     expect(ATTEMPT_ID_RE.test("cca_9F8E7d6c5b4a3f2e1d0c9b8a")).toBe(false);
     expect(ATTEMPT_ID_RE.test("cc_" + "a".repeat(24))).toBe(false);
     expect(ATTEMPT_ID_RE.test("CCA_" + "a".repeat(24))).toBe(false);
+    expect(ATTEMPT_ID_RE.test("cca_" + "a".repeat(24) + "\n")).toBe(false);
+    expect(ATTEMPT_ID_RE.test(" cca_" + "a".repeat(24))).toBe(false);
+    expect(ATTEMPT_ID_RE.test("cca-" + "a".repeat(24))).toBe(false);
+    expect(ATTEMPT_ID_RE.test("ccb_" + "a".repeat(24))).toBe(false);
+    expect(ATTEMPT_ID_RE.test("cca_" + "A".repeat(32))).toBe(false);
+  });
+
+  it("CR-COMM-2 bad_price / bad_currency / bad_join_url + multi-fault first reason", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        join_code: {
+          ...CONTRACT_JOIN,
+          join_url: "http://brokenscience.org/bad",
+        },
+        course_links: [
+          { ...CONTRACT_LINK, course_id: 1, course_price_cents: -1 },
+          { ...CONTRACT_LINK, course_id: 2, currency: "usd" },
+          {
+            ...CONTRACT_LINK,
+            course_id: 3,
+            commission_percent: 20,
+            course_price_cents: -1,
+            currency: "usd",
+            share_url: "http://evil",
+          },
+        ],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.dto.join_code?.join_url).toBeNull();
+    expect(built.dto.course_links_dropped).toBe(3);
+    expect(built.logs.map((l) => l.reason)).toEqual([
+      "bad_join_url",
+      "bad_price",
+      "bad_currency",
+      "commission_mismatch",
+    ]);
+    warn.mockRestore();
   });
 
   it("wrong company → 502", () => {
