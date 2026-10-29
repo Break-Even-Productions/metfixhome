@@ -15,6 +15,15 @@ import Login from "./pages/Login";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./pages/posts/PostsPage";
 import LibraryPage from "./pages/library/LibraryPage";
+import AccountOverview from "./pages/account/AccountOverview";
+import AccountBilling from "./pages/account/AccountBilling";
+import AccountProfile from "./pages/account/AccountProfile";
+import AccountCourses from "./pages/account/AccountCourses";
+import AccountFavorites from "./pages/account/AccountFavorites";
+import AccountReferrals from "./pages/account/AccountReferrals";
+import AccountNotifications from "./pages/account/AccountNotifications";
+import AccountPrivacy from "./pages/account/AccountPrivacy";
+import MemberProfilePage from "./pages/members/MemberProfilePage";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
@@ -50,6 +59,15 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/library"} component={LibraryPage} />
+      <Route path={"/account/billing"} component={AccountBilling} />
+      <Route path={"/account/profile"} component={AccountProfile} />
+      <Route path={"/account/courses"} component={AccountCourses} />
+      <Route path={"/account/favorites"} component={AccountFavorites} />
+      <Route path={"/account/referrals"} component={AccountReferrals} />
+      <Route path={"/account/notifications"} component={AccountNotifications} />
+      <Route path={"/account/privacy"} component={AccountPrivacy} />
+      <Route path={"/account"} component={AccountOverview} />
+      <Route path={"/members/:memberId"} component={MemberProfilePage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -58,7 +76,13 @@ function AppRoutes() {
 
 function AppShell() {
   const [location] = useLocation();
-  const hideGlobalNav = location === "/login" || location.startsWith("/login?");
+  const hideGlobalNav =
+    location === "/login" ||
+    location.startsWith("/login?") ||
+    location === "/account" ||
+    location.startsWith("/account/") ||
+    location === "/members" ||
+    location.startsWith("/members/");
   return (
     <>
       {hideGlobalNav ? null : <GlobalNav />}
