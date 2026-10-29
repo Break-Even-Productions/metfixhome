@@ -8,13 +8,9 @@ const BIZ_ID_RE = /biz_[A-Za-z0-9]+/g;
 /**
  * Outbound billing / Whop URL gate (DP-WHOP-1 / T19).
  *
- * R3-N2: Non-default ports are rejected indirectly — `u.hostname` is host-only
- * (no port), but we require `https:` with empty userinfo and an allowlisted host.
- * A URL like `https://whop.com:8443/x` still has hostname `whop.com` and would
- * pass the host check; callers that need port rejection should compare
- * `u.port === "" || u.port === "443"`. Today we rely on upstream never emitting
- * alternate ports; Stripe Customer Portal / Checkout hosts are accepted only in
- * `billing_portal` mode (`billing.stripe.com`, `checkout.stripe.com`), never in
+ * R3-N2: Reject non-default HTTPS ports (`u.port !== "" && u.port !== "443"`).
+ * Stripe Customer Portal / Checkout hosts (`billing.stripe.com`,
+ * `checkout.stripe.com`) are accepted only in `billing_portal` mode, never in
  * `whop_only`.
  */
 export function sanitizeExternalBillingUrl(

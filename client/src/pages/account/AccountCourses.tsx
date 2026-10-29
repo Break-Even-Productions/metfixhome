@@ -188,7 +188,7 @@ export default function AccountCourses() {
                     className="account-btn account-btn--ghost"
                     onClick={() => void onBuy(course)}
                   >
-                    {`Buy Course (${cost})`}
+                    {`Buy Course for Certificate ($${Math.floor(course.course_price_cents / 100)})`}
                   </button>
                 </div>
               ) : course.certificate_url ? (

@@ -1283,6 +1283,31 @@ describe("worker/account routes", () => {
     expect(keys[3]).toBe("acct:123");
   });
 
+  it("pin: upstream 409 → { error: already_claimed } (status map, opaque body)", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("/claim-certificate") && method === "POST") {
+          // Opaque upstream conflict — must not echo; pin status→already_claimed.
+          return Response.json({ message: "bsi_certificate_already_claimed" }, { status: 409 });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/10/claim-certificate",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ method: "ltv" }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "already_claimed" });
+  });
+
   it("DP-T-CERT3b: 409 double claim; claimed>total → available 0", async () => {
     const sess = await withSession(h);
     let claims = 0;
