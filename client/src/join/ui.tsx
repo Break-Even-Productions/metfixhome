@@ -7,18 +7,22 @@ export function JoinShell({
   onBack,
   progress,
   wide,
+  returnFocusTo = null,
 }: {
   children: ReactNode;
   onClose: () => void;
   onBack?: () => void;
   progress?: number;
   wide?: boolean;
+  /** Prefer explicit opener from JoinFlowProvider (WJ15). */
+  returnFocusTo?: HTMLElement | null;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    previouslyFocused.current =
+      returnFocusTo ?? (document.activeElement as HTMLElement | null);
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -32,9 +36,13 @@ export function JoinShell({
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
-      previouslyFocused.current?.focus?.();
+      const el = previouslyFocused.current;
+      // Defer so React unmount/commit does not steal focus back to body (WJ15).
+      queueMicrotask(() => {
+        if (el && document.contains(el)) el.focus();
+      });
     };
-  }, [onClose]);
+  }, [onClose, returnFocusTo]);
 
   return (
     <div

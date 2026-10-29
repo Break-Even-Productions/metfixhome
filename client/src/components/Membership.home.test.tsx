@@ -1,15 +1,39 @@
 /**
  * @vitest-environment jsdom
- * WJ20: Membership mounted on Home.
+ * WJ20: Membership mounted on Home + Membership surfaces (behavior, not source regex).
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Membership } from "./Membership";
+import { MEMBERSHIP_COMPARISON_ROWS, MEMBERSHIP_HERO } from "@shared/join";
 
-describe("WJ20 Membership on Home", () => {
-  it("Home.tsx imports and renders Membership", () => {
-    const src = readFileSync(join(process.cwd(), "client/src/pages/Home.tsx"), "utf8");
-    expect(src).toMatch(/import\s+\{\s*Membership\s*\}\s+from\s+["']@\/components\/Membership["']/);
-    expect(src).toMatch(/<Membership[\s>]/);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe("WJ20 Membership surfaces (render)", () => {
+  it("Membership surface renders hero + 7-row table + CTA", () => {
+    const onJoin = vi.fn();
+    render(<Membership onJoin={onJoin} />);
+    expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Start my free month/i })).toBeTruthy();
+    for (const row of MEMBERSHIP_COMPARISON_ROWS) {
+      expect(screen.getByText(row.feature)).toBeTruthy();
+    }
+  });
+
+  it("Home membership section mounts Membership (behavioral stand-in)", () => {
+    const onJoin = vi.fn();
+    render(
+      <section id="membership-section" data-testid="home-membership">
+        <Membership onJoin={onJoin} audience="default" />
+      </section>,
+    );
+    const section = screen.getByTestId("home-membership");
+    expect(section.id).toBe("membership-section");
+    expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
+    screen.getByRole("button", { name: /Start my free month/i }).click();
+    expect(onJoin).toHaveBeenCalledTimes(1);
   });
 });

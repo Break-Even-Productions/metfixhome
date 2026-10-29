@@ -5,7 +5,6 @@ import {
   CANONICAL_SUBSCRIPTION_TIERS,
   clampJoinDeepLink,
   coachCredentialStatus,
-  coachExpiresAtIso,
   facilityFlagsForRoles,
   isFoundationsCoachGranted,
   MEMBERSHIP_COMPARISON_ROWS,
@@ -79,12 +78,23 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(isFoundationsCoachGranted({ path: "seminar", checkedIn: false })).toBe(false);
   });
 
-  it("coachExpiresAtIso is granted_at + 3 calendar years (WJ-COACH-2 r1.1)", () => {
-    expect(coachExpiresAtIso("2026-10-28T00:00:00.000Z")).toBe("2029-10-28T00:00:00.000Z");
-    // Leap-day clamp (Web Lead / #21 DP-T-COACH4): not Mar 1
-    expect(coachExpiresAtIso("2028-02-29T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
-    expect(coachExpiresAtIso("2028-02-28T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
-    expect(coachExpiresAtIso("2028-03-01T00:00:00.000Z")).toBe("2031-03-01T00:00:00.000Z");
+  it("leap-day expiry clamp (WJ-COACH-2 r1.1; moves to #21 computeThreeYearExpiryIso)", () => {
+    // R2-N1: production coachExpiresAtIso removed; keep leap-day contract in tests until rebase.
+    function computeThreeYearExpiryIso(grantedAtIso: string): string {
+      const d = new Date(grantedAtIso);
+      const y = d.getUTCFullYear() + 3;
+      const m = d.getUTCMonth();
+      const day = d.getUTCDate();
+      const out = new Date(
+        Date.UTC(y, m, day, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()),
+      );
+      if (m === 1 && day === 29 && out.getUTCMonth() !== 1) out.setUTCDate(0);
+      return out.toISOString();
+    }
+    expect(computeThreeYearExpiryIso("2026-10-28T00:00:00.000Z")).toBe("2029-10-28T00:00:00.000Z");
+    expect(computeThreeYearExpiryIso("2028-02-29T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
+    expect(computeThreeYearExpiryIso("2028-02-28T00:00:00.000Z")).toBe("2031-02-28T00:00:00.000Z");
+    expect(computeThreeYearExpiryIso("2028-03-01T00:00:00.000Z")).toBe("2031-03-01T00:00:00.000Z");
   });
 
   it("coachCredentialStatus: active before expiry, expired at/after", () => {

@@ -18,7 +18,13 @@ const JoinFlowContext = createContext<JoinFlowContextValue | null>(null);
 
 export function JoinFlowProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const openJoinFlow = useCallback(() => setOpen(true), []);
+  const [returnFocusTo, setReturnFocusTo] = useState<HTMLElement | null>(null);
+  const openJoinFlow = useCallback(() => {
+    // WJ15: capture opener while it still has focus (before click blur).
+    const el = document.activeElement;
+    setReturnFocusTo(el instanceof HTMLElement ? el : null);
+    setOpen(true);
+  }, []);
   const closeJoinFlow = useCallback(() => setOpen(false), []);
   const value = useMemo(
     () => ({ openJoinFlow, closeJoinFlow, isOpen: open }),
@@ -27,7 +33,7 @@ export function JoinFlowProvider({ children }: { children: ReactNode }) {
   return (
     <JoinFlowContext.Provider value={value}>
       {children}
-      <JoinFlow open={open} onClose={closeJoinFlow} />
+      <JoinFlow open={open} onClose={closeJoinFlow} returnFocusTo={returnFocusTo} />
     </JoinFlowContext.Provider>
   );
 }
