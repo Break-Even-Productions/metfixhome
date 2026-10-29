@@ -17,7 +17,8 @@
 			"/posts",
 			"/posts/*",
 			"/library",
-			"/library/*"
+			"/library/*",
+			"/topic/*"
 		]
 	},
 	"kv_namespaces": [
@@ -120,9 +121,8 @@
 	],
 	// Non-secret: dedicated metfix.org WP OAuth client_id for BSI-C10 web-login (§0s.2).
 	// Never from the browser; Worker never holds/sends METFIX_ORG_OAUTH_CLIENT_SECRET.
-	// RECAPTCHA_SITE_KEY (public v3 site key) is intentionally omitted here — set it as a
-	// plain Worker Variable in the Cloudflare dashboard (or wrangler vars) for prod/preview.
-	// Do not put RECAPTCHA_SECRET in vars; use `wrangler secret put RECAPTCHA_SECRET`.
+	// RECAPTCHA_SITE_KEY: public v3 site key (safe in vars). Do not put RECAPTCHA_SECRET in vars;
+	// use `wrangler secret put RECAPTCHA_SECRET`.
 	"vars": {
 		"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
 		"GOOGLE_AUTH_ENABLED": "1",

@@ -94,13 +94,13 @@ describe("buildPostsHead (CQ6 / PH3 / PH5 / PH6 / PH15)", () => {
 describe("cache keys (A11 / PW36)", () => {
   it("builds synthetic list and detail keys", () => {
     expect(postsListCacheKey(1).url).toBe(
-      "https://metfix.org/__cache/posts/list?page=1",
+      "https://metfix.org/__cache/v2/posts/list?page=1",
     );
     expect(postsListCacheKey(2).url).toBe(
-      "https://metfix.org/__cache/posts/list?page=2",
+      "https://metfix.org/__cache/v2/posts/list?page=2",
     );
     expect(postsDetailCacheKey(5).url).toBe(
-      "https://metfix.org/__cache/posts/5",
+      "https://metfix.org/__cache/v2/posts/5",
     );
   });
 });

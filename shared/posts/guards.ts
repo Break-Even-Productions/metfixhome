@@ -1,3 +1,5 @@
+import { isResourceVideo } from "../library/video";
+import type { ContentAccessDisplay, TermRef } from "../library/types";
 import type { DetailPost, Post, PostDetailBody, PostListBody } from "./types";
 
 const POST_KEYS = ["id", "title", "excerpt", "date", "image", "author", "category"] as const;
@@ -11,6 +13,12 @@ const DETAIL_POST_KEYS = [
   "category",
   "content",
   "permalink",
+  "video",
+  "categories",
+  "content_types",
+  "topics",
+  "locked",
+  "access",
 ] as const;
 const LIST_BODY_KEYS = ["posts", "page", "per_page", "has_more"] as const;
 const DETAIL_BODY_KEYS = ["post"] as const;
@@ -29,6 +37,24 @@ function isCategory(value: unknown): value is { name: string; slug: string } {
   if (!exactKeySet(value, ["name", "slug"])) return false;
   const c = value as { name: unknown; slug: unknown };
   return typeof c.name === "string" && typeof c.slug === "string";
+}
+
+function isTermRef(value: unknown): value is TermRef {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const t = value as Record<string, unknown>;
+  return (
+    typeof t.id === "number" &&
+    Number.isInteger(t.id) &&
+    t.id > 0 &&
+    typeof t.name === "string" &&
+    typeof t.slug === "string"
+  );
+}
+
+function isAccess(value: unknown): value is ContentAccessDisplay {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const a = value as Record<string, unknown>;
+  return a.access === "full" || a.access === "preview" || a.access === "none";
 }
 
 function isPost(value: unknown): value is Post {
@@ -58,6 +84,12 @@ function isDetailPost(value: unknown): value is DetailPost {
   if (!(p.category === null || isCategory(p.category))) return false;
   if (typeof p.content !== "string") return false;
   if (!(p.permalink === null || typeof p.permalink === "string")) return false;
+  if (!(p.video === null || isResourceVideo(p.video))) return false;
+  if (!Array.isArray(p.categories) || !p.categories.every(isTermRef)) return false;
+  if (!Array.isArray(p.content_types) || !p.content_types.every(isTermRef)) return false;
+  if (!Array.isArray(p.topics) || !p.topics.every(isTermRef)) return false;
+  if (typeof p.locked !== "boolean") return false;
+  if (!isAccess(p.access)) return false;
   return true;
 }
 
@@ -83,3 +115,6 @@ export function isPostDetailBody(value: unknown): value is PostDetailBody {
   const body = value as Record<string, unknown>;
   return isDetailPost(body.post);
 }
+
+/** Exported for TC10 lockstep tests. */
+export { isDetailPost, DETAIL_POST_KEYS };

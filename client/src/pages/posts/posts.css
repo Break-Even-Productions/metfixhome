@@ -10,6 +10,16 @@
   --posts-muted: #6e675c;
   --posts-line: rgba(23, 21, 18, 0.1);
   --posts-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Comment thread reuses Daily Fix tokens. */
+  --df-cream: var(--posts-cream);
+  --df-paper: var(--posts-paper);
+  --df-ink: var(--posts-ink);
+  --df-ink-2: #221f1b;
+  --df-accent: var(--posts-accent);
+  --df-accent-2: #b08d52;
+  --df-muted: var(--posts-muted);
+  --df-line: var(--posts-line);
+  --df-ease: var(--posts-ease);
 
   min-height: 100svh;
   padding: 5.25rem 1rem 2.5rem;
@@ -34,6 +44,15 @@
 .posts-shell {
   max-width: 44rem;
   margin: 0 auto;
+}
+
+/* Detail + author-right rail (mockup container max-width 1280px). */
+.posts-shell--wide {
+  max-width: 80rem;
+  --post-aside-bg: var(--posts-paper);
+  --post-aside-border: var(--posts-line);
+  --post-aside-label: var(--posts-accent);
+  --post-aside-ink: var(--posts-ink);
 }
 
 .posts-kicker {
@@ -242,9 +261,21 @@
   text-align: left;
 }
 
+.post-reader-main > .posts-title,
 .posts-detail-header .posts-title {
   text-align: left;
-  margin-bottom: 0.75rem;
+  font-family: var(--posts-font-serif);
+  font-size: 36px;
+  line-height: 1.25;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 639px) {
+  .post-reader-main > .posts-title,
+  .posts-detail-header .posts-title {
+    font-size: 28px;
+  }
 }
 
 .posts-detail-meta {
@@ -252,40 +283,23 @@
   flex-wrap: wrap;
   gap: 0.5rem 1.25rem;
   color: var(--posts-muted);
-  font-size: 0.9rem;
-  margin-bottom: 1.25rem;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  margin-bottom: 24px;
 }
 
 .posts-detail-image {
-  display: block;
-  width: 100%;
-  max-height: 28rem;
-  object-fit: cover;
-  border-radius: 1.25rem;
-  margin-bottom: 1.75rem;
   background: #e4ddd0;
 }
 
-.posts-detail-content {
-  font-size: 1.05rem;
-  line-height: 1.7;
-}
-
-.posts-detail-content > *:first-child {
-  margin-top: 0;
-}
-
-.posts-detail-content p,
 .posts-detail-content ul,
 .posts-detail-content ol,
 .posts-detail-content blockquote,
 .posts-detail-content pre {
-  margin: 0 0 1.1rem;
+  margin: 0 0 16px;
 }
 
 .posts-detail-content img {
-  max-width: 100%;
-  height: auto;
   border-radius: 0.75rem;
 }
 
