@@ -91,6 +91,44 @@ function buyOutrightButton() {
   return screen.getByRole("button", { name: /^Buy$/i });
 }
 
+function redeemButton() {
+  return screen.getByRole("button", { name: /^Redeem$/i });
+}
+
+const CLAIM_OPTIONS_REDEEM_OK = {
+  ...CLAIM_OPTIONS,
+  ltv: { total_ltv_cents: 30000, claimed_value_cents: 0, available_cents: 30000 },
+  courses: [
+    {
+      ...CLAIM_OPTIONS.courses[0]!,
+      price_cents: 20000,
+      paths: [
+        {
+          path: "redeem_ltv",
+          eligible: true,
+          shortfall_cents: 0,
+          price_cents: 20000,
+          reason_code: null,
+        },
+        {
+          path: "prepay_credit",
+          eligible: false,
+          shortfall_cents: 0,
+          price_cents: 20000,
+          reason_code: "no_shortfall",
+        },
+        {
+          path: "buy_outright",
+          eligible: true,
+          shortfall_cents: 20000,
+          price_cents: 20000,
+          reason_code: null,
+        },
+      ],
+    },
+  ],
+};
+
 beforeEach(() => {
   clearAccountCache();
   vi.stubGlobal(
@@ -228,6 +266,102 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(claimPosts).toBe(1);
     expect(optionsGets).toBe(1);
+  });
+
+  it("S-R2-1: redeem_ltv POST 200 + claim-options refresh 502 → success message, no error, one POST", async () => {
+    let claimPosts = 0;
+    let optionsGets = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) {
+          optionsGets += 1;
+          if (optionsGets === 1) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+          return jsonResponse({ error: "unavailable" }, 502);
+        }
+        if (url.includes("/courses/20/claim") && method === "POST") {
+          claimPosts += 1;
+          return jsonResponse({ already_claimed: true });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(redeemButton()).toBeTruthy());
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(1));
+    await waitFor(() => expect(screen.getByText("Certificate claimed")).toBeTruthy());
+    // Failed claim-options refresh must not surface a claim error (B1).
+    expect(screen.queryByText("Claim failed.")).toBeNull();
+    expect(screen.queryByText("Something went wrong. Check your claim status.")).toBeNull();
+    expect(screen.queryByText("Checkout unavailable.")).toBeNull();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(claimPosts).toBe(1);
+  });
+
+  it("R2-N1: unmount during background claim-options refresh does not throw", async () => {
+    let resolveRefresh: ((v: Response) => void) | null = null;
+    let claimPosts = 0;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) {
+          if (method === "GET" && claimPosts === 0) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+          return new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+          });
+        }
+        if (url.includes("/courses/20/claim") && method === "POST") {
+          claimPosts += 1;
+          return jsonResponse({ already_claimed: true });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    const view = render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(redeemButton()).toBeTruthy());
+    fireEvent.click(redeemButton());
+    await waitFor(() => expect(claimPosts).toBe(1));
+    await waitFor(() => expect(screen.getByText("Certificate claimed")).toBeTruthy());
+    view.unmount();
+    resolveRefresh?.(jsonResponse(CLAIM_OPTIONS_REDEEM_OK));
+    await new Promise((r) => setTimeout(r, 30));
+    const reactUnmountWarnings = consoleError.mock.calls.filter((c) =>
+      String(c[0]).includes("unmounted"),
+    );
+    expect(reactUnmountWarnings).toHaveLength(0);
+    consoleError.mockRestore();
   });
 
   it("CL-T19: double-click claim posts once; 502 re-fetches CL1 once, never retries POST", async () => {

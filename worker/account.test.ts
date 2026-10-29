@@ -2,7 +2,12 @@
  * PR B account Worker gates (QA §E/F) — bearer-only, CSRF, LTV300, tiers, URL allowlist.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleAccountRoutes, EDITABLE_ATTR_IDS, PUBLIC_MEMBER_SUMMARY_KEYS } from "./account";
+import {
+  handleAccountRoutes,
+  EDITABLE_ATTR_IDS,
+  PUBLIC_MEMBER_SUMMARY_KEYS,
+  parsePositiveCourseId,
+} from "./account";
 import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
 import {
   ACCESS1,
@@ -1416,6 +1421,65 @@ describe("worker/account routes", () => {
     } finally {
       spyWarn.mockRestore();
     }
+  });
+
+  it("R2-N3: parsePositiveCourseId accepts number and digit-only string; nulls others", () => {
+    expect(parsePositiveCourseId(7)).toBe(7);
+    expect(parsePositiveCourseId("20")).toBe(20);
+    expect(parsePositiveCourseId("07")).toBe(7);
+    expect(parsePositiveCourseId(0)).toBeNull();
+    expect(parsePositiveCourseId(-1)).toBeNull();
+    expect(parsePositiveCourseId(1.5)).toBeNull();
+    expect(parsePositiveCourseId("20a")).toBeNull();
+    expect(parsePositiveCourseId("")).toBeNull();
+    expect(parsePositiveCourseId(null)).toBeNull();
+    expect(parsePositiveCourseId(Number.MAX_SAFE_INTEGER + 1)).toBeNull();
+  });
+
+  it("R2-N3: shapeLtv keeps digit-string course_id (normalized) and number course_id", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/spend")) {
+          return Response.json({
+            total_ltv_cents: 30000,
+            claimed_courses_value_cents: 20000,
+            claimed_certificates: [
+              {
+                course_id: "7",
+                course_slug: "str-id",
+                course_title: "String Id",
+                allocated_cents: 15000,
+                claimed_at: "2026-01-01T00:00:00Z",
+                claim_method: "redeem_ltv",
+              },
+              {
+                course_id: 3,
+                course_slug: "c",
+                course_title: "Course C",
+                allocated_cents: 5000,
+                claimed_at: "2026-01-02T00:00:00Z",
+                claim_method: "redeem_ltv",
+              },
+            ],
+            canonical_tier: "metfix_pro",
+            foundations_coach: {},
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/ltv-certificates",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      claimed_certificates: Array<{ course_id: number }>;
+    };
+    expect(body.claimed_certificates.map((c) => c.course_id)).toEqual([7, 3]);
   });
 
   it("PD-S4 / errata d2 Branch A: bad allocated_cents + valid claimed_courses_value_cents → 200, log once", async () => {

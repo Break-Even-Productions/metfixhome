@@ -139,7 +139,7 @@ export default function AccountReferrals(_props: Props) {
       {error ? <p className="account-error">{error}</p> : null}
 
       {data && !eligible ? (
-        <section className="account-card" data-testid="referrals-locked">
+        <section className="account-card">
           <h2>Referral links locked</h2>
           <p>
             Generating course referral links requires either an active Organization
@@ -165,7 +165,7 @@ export default function AccountReferrals(_props: Props) {
       ) : null}
 
       {data?.earnings ? (
-        <section className="account-card" data-testid="referrals-earnings">
+        <section className="account-card">
           <h2>Earnings</h2>
           <p className="account-mono font-mono">
             Pending {formatUsdFromCents(data.earnings.pending_cents)} · Ready{" "}
@@ -178,10 +178,7 @@ export default function AccountReferrals(_props: Props) {
       {eligible && data ? (
         <>
           {showMutedNotice ? (
-            <p
-              className="account-muted"
-              data-testid="referrals-dropped-notice"
-            >
+            <p className="account-muted">
               {data.join_code_dropped
                 ? "Your join link couldn't be shown right now."
                 : "Some course links couldn't be shown right now."}
@@ -194,7 +191,6 @@ export default function AccountReferrals(_props: Props) {
                 type="button"
                 className="account-btn"
                 disabled={busy}
-                data-testid="generate-referral"
                 onClick={() => void onAction("generate")}
               >
                 Generate Referral Link
@@ -203,7 +199,7 @@ export default function AccountReferrals(_props: Props) {
           ) : null}
 
           {data.join_code ? (
-            <section className="account-card" data-testid="join-code-card">
+            <section className="account-card">
               <h2>Join code</h2>
               <p className="account-mono">
                 {data.join_code.slug}
@@ -250,7 +246,6 @@ export default function AccountReferrals(_props: Props) {
                 type="button"
                 className="account-btn"
                 disabled={busy}
-                data-testid="generate-referral-after-drop"
                 onClick={() => void onAction("generate")}
               >
                 Generate Referral Link

@@ -429,6 +429,16 @@ function upstreamErrorCode(json: unknown): string | null {
   return typeof obj.code === "string" ? obj.code : null;
 }
 
+/** R2-N3: positive safe integer, or digit-only string normalized to number; else null. */
+export function parsePositiveCourseId(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0) return raw;
+  if (typeof raw === "string" && /^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (Number.isSafeInteger(n) && n > 0) return n;
+  }
+  return null;
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   return v as Record<string, unknown>;
@@ -628,8 +638,7 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
   for (const row of claimedList) {
     const r = asRecord(row);
     if (!r) continue;
-    const courseId =
-      typeof r.course_id === "number" && Number.isSafeInteger(r.course_id) ? r.course_id : null;
+    const courseId = parsePositiveCourseId(r.course_id);
     const allocated =
       typeof r.allocated_cents === "number" && Number.isSafeInteger(r.allocated_cents)
         ? r.allocated_cents

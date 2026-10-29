@@ -129,26 +129,34 @@ export default function AccountCourses() {
   const idemRef = useRef<string | null>(null);
   const inflightRef = useRef(false);
   const lockRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const claimRefreshAcRef = useRef<AbortController | null>(null);
 
   async function refreshLists() {
     const [lt, cs] = await Promise.all([
       loadLtvCertificates({ force: true }),
       loadCourses({ force: true }),
     ]);
+    if (!mountedRef.current) return;
     setLtv(lt);
     setCourses(cs.items);
   }
 
   /** Background CL1 refresh — swallow failures; never clears Idempotency-Key (CQ B1). */
   function refreshClaimOptionsBackground() {
-    void loadClaimOptions({ force: true })
+    claimRefreshAcRef.current?.abort();
+    const ac = new AbortController();
+    claimRefreshAcRef.current = ac;
+    void loadClaimOptions({ force: true, signal: ac.signal })
       .then((opts) => {
+        if (!mountedRef.current || ac.signal.aborted) return;
         setClaimOptions(opts);
       })
       .catch(() => undefined);
   }
 
   useEffect(() => {
+    mountedRef.current = true;
     const ac = new AbortController();
     let cancelled = false;
     (async () => {
@@ -158,18 +166,21 @@ export default function AccountCourses() {
           loadLtvCertificates({ signal: ac.signal }),
           loadCourses({ signal: ac.signal }),
         ]);
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         setLtv(lt);
         setCourses(cs.items);
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError("Unable to load courses.");
       }
     })();
     return () => {
       cancelled = true;
+      mountedRef.current = false;
       ac.abort();
+      claimRefreshAcRef.current?.abort();
+      claimRefreshAcRef.current = null;
       if (lockRefetchTimerRef.current != null) {
         clearTimeout(lockRefetchTimerRef.current);
         lockRefetchTimerRef.current = null;
@@ -187,14 +198,17 @@ export default function AccountCourses() {
       let opts = claimOptions;
       if (!opts) {
         opts = await loadClaimOptions();
+        if (!mountedRef.current) return;
         setClaimOptions(opts);
       }
       if (!opts.courses.some((c) => c.course_id === id)) {
         setError("Course not found.");
         return;
       }
+      if (!mountedRef.current) return;
       setActiveCourseId(id);
     } catch {
+      if (!mountedRef.current) return;
       setError("Unable to load claim options.");
     }
   }
