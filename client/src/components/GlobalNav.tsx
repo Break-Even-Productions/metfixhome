@@ -209,7 +209,7 @@ export default function GlobalNav() {
         <div className="global-nav__row">
           <Link href="/" className="global-nav__logo" aria-label="MetFix">
             <img
-              src={assetUrl("/MetFixLogoBlack.png")}
+              src={assetUrl("/metfix-lockup.png")}
               alt=""
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src = assetUrl("/metfix-lockup.png");

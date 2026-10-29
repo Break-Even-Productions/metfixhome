@@ -24,11 +24,11 @@ export const SITE_FOOTER_LINKS = {
   explore: [
     { label: "Classes", href: "/#classes" },
     { label: "Membership", href: "/#membership-section" },
-    { label: "Find a Gym", href: "/#network" },
+    { label: "Foundations", href: "/#foundations" },
     { label: "Library", href: "/library" },
   ],
   company: [
-    { label: "About", href: "/#about" },
+    { label: "Testimonials", href: "/#testimonials" },
     { label: "Become an Affiliate", href: "/become-an-affiliate" },
     { label: "Affiliate Seminars", href: "/affiliate-seminars" },
     { label: "Help", href: "/#faq" },

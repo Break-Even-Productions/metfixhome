@@ -26,10 +26,7 @@ export const FOOTER_LINK_ALLOWLIST = [
   "/#foundations",
   "/#testimonials",
   "/#faq",
-  "/#network",
-  "/#about",
   "https://brokenscience.us13.list-manage.com/subscribe/post",
-  "https://brokenscience.us13.list-manage.com/subscribe/post?u=473a65a0067d6101d3a6277c8&id=abdc550935&f_id=001a53eaf0",
   "https://brokenscience.org/privacy-policy/",
   "https://brokenscience.org/terms-and-conditions/",
 ] as const;

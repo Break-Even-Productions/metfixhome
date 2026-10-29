@@ -1,6 +1,6 @@
 /**
  * T-E-NAV-1 / T-E-NAV-9 / T-E-60 (rev1.0.12 + errata ER-11 / ER-14).
- * Search href derivation imports F1-owned `@/style-parity/searchHref`.
+ * Search href derivation: F1-owned `style-parity/searchHref` (no lib duplicate).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -48,6 +48,22 @@ function pathOf(href: string): string {
   return href;
 }
 
+/** Plant ordered Route path= lines into a minimal AppRoutes-shaped source. */
+function appWithRoutes(paths: string[]): string {
+  const routes = paths
+    .map((p) => {
+      const comp =
+        p === "/library/search"
+          ? "LibrarySearchPage"
+          : p.startsWith("/library/")
+            ? "LibrarySlug"
+            : "LibraryPage";
+      return `<Route path={"${p}"} component={${comp}} />`;
+    })
+    .join("\n");
+  return `function AppRoutes(){ return (<Switch>${routes}</Switch>); }`;
+}
+
 describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
   it("every nav href resolves to AppRoutes path or allowlisted external host", () => {
     for (const item of GLOBAL_NAV_ITEMS) {
@@ -84,35 +100,33 @@ describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
     const paths = listRoutePathsInOrder(app);
     expect(paths).toContain("/library");
     expect(paths).not.toContain("/library/search");
-    expect(librarySearchIsShadowed(app)).toBe(false);
-    const expected = expectedSearchHrefFromApp(app);
-    expect(expected).toBe("/library");
-    expect(resolveSearchHref(app)).toBe(expected);
-    expect(SEARCH_HREF).toBe(expected);
-    expect(GLOBAL_NAV_SEARCH_HREF).toBe(expected);
-    expect(CONST_SEARCH_HREF).toBe(expected);
+    expect(expectedSearchHrefFromApp(app)).toBe("/library");
+    expect(resolveSearchHref(app)).toBe("/library");
+    expect(SEARCH_HREF).toBe("/library");
+    expect(GLOBAL_NAV_SEARCH_HREF).toBe("/library");
+    expect(CONST_SEARCH_HREF).toBe("/library");
   });
 
   it("ER-11/14 planted: param routes do not count; shadowed literal → /library", () => {
-    expect(expectedSearchHrefFromApp(`<Route path="/library/:slug" />`)).toBe(
+    expect(expectedSearchHrefFromApp(appWithRoutes(["/library/:slug"]))).toBe(
       "/library",
     );
     expect(
       expectedSearchHrefFromApp(
-        `<Route path="/library/:type/:id" /><Route path="/library" />`,
+        appWithRoutes(["/library/:type/:id", "/library"]),
       ),
     ).toBe("/library");
     expect(
+      expectedSearchHrefFromApp(appWithRoutes(["/library/search"])),
+    ).toBe("/library/search");
+    expect(
       expectedSearchHrefFromApp(
-        `<Route path="/library/search" component={LibrarySearch} />`,
+        appWithRoutes(["/library/search", "/library/:slug"]),
       ),
     ).toBe("/library/search");
-    // ER-14: earlier param route that matches /library/search shadows the literal
-    expect(
-      expectedSearchHrefFromApp(
-        `<Route path="/library/:slug" /><Route path="/library/search" component={LibrarySearch} />`,
-      ),
-    ).toBe("/library");
+    const shadowed = appWithRoutes(["/library/:slug", "/library/search"]);
+    expect(librarySearchIsShadowed(shadowed)).toBe(true);
+    expect(expectedSearchHrefFromApp(shadowed)).toBe("/library");
   });
 
   it("T-E-60: no overlay symbols; SEARCH_HREF once; visible Search link text", () => {
@@ -123,6 +137,8 @@ describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
     expect(src).not.toMatch(/setSearchOpen/);
     expect(src).toMatch(/<span>Search<\/span>/);
     expect(src).not.toMatch(/sr-only">Search/);
+    expect(src).toMatch(/@\/style-parity\/searchHref/);
+    expect(src).not.toMatch(/@\/lib\/searchHref/);
     const constSrc = readFileSync(CONST_SRC, "utf8");
     expect(constSrc.match(/export const SEARCH_HREF/g)).toHaveLength(1);
   });
