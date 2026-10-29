@@ -12,7 +12,6 @@ import DashboardLayout from "./DashboardLayout";
 
 type Props = {
   fetchImpl?: typeof fetch;
-  nowMs?: number;
   // wouter Route injects params — accept and ignore.
   params?: Record<string, string | undefined>;
 };
@@ -24,9 +23,12 @@ function commissionBadge(percent: number): string {
 /**
  * E4 / R2-N3/N6: no client defaults (??0 / ??USD / missing eligible ≠ eligible).
  * Incomplete earnings → omit; missing eligible → not eligible.
- * course_links_dropped: copy Worker number only (no ?? 0).
+ * R4-N1: course_links_dropped required — missing → throw (bad response).
  */
 function asDto(payload: ReferralsPayload): ReferralsDto {
+  if (typeof payload.course_links_dropped !== "number") {
+    throw new Error("bad_referrals_dto");
+  }
   const eligible = payload.eligible === true;
   let earnings: ReferralsDto["earnings"] | undefined;
   const e = payload.earnings;
@@ -48,10 +50,6 @@ function asDto(payload: ReferralsPayload): ReferralsDto {
       connect_status: e.connect_status,
     };
   }
-  const course_links_dropped =
-    typeof payload.course_links_dropped === "number"
-      ? payload.course_links_dropped
-      : Number.NaN;
   return {
     eligible,
     eligibility_type: eligible ? (payload.eligibility_type ?? null) : null,
@@ -60,7 +58,7 @@ function asDto(payload: ReferralsPayload): ReferralsDto {
     foundations_coach_expires_at: payload.foundations_coach_expires_at ?? null,
     join_code: payload.join_code ?? null,
     course_links: payload.course_links ?? [],
-    course_links_dropped,
+    course_links_dropped: payload.course_links_dropped,
     join_code_dropped: payload.join_code_dropped === true,
     ...(earnings ? { earnings } : {}),
   };

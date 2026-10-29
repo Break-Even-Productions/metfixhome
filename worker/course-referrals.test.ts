@@ -479,6 +479,44 @@ describe("PR D course referrals + checkout", () => {
     expect(caseBlock).not.toMatch(/canGenerateCourseReferrals/);
   });
 
+  it("CR-ELIG-4: unmapped BSI 403 → {error:'upstream_error'} (not referral_ineligible)", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("referral-code") && method === "POST") {
+          return Response.json(
+            {
+              code: "bsi_some_other_forbidden",
+              message: "do-not-leak",
+              payee_entity_id: 99,
+            },
+            { status: 403 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    assertNoStore(res);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(["error"]);
+    expect(body).toEqual({ error: "upstream_error" });
+    expect(JSON.stringify(body)).not.toContain("bsi_some_other_forbidden");
+    expect(JSON.stringify(body)).not.toContain("do-not-leak");
+    expect(JSON.stringify(body)).not.toContain("payee_entity_id");
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+  });
+
   it("CR-EARN-1: upstream earnings fail → 200 omit + upstream_error log", async () => {
     const sess = await withSession(h);
     const warns: Record<string, unknown>[] = [];
@@ -1028,6 +1066,48 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
       expect(rec.headers.referer).toBeUndefined();
       expect(rec.headers.origin).toBeUndefined();
     }
+  });
+
+  it("CR-COALESCE-3: client override + primary_affiliate_id are not forwarded upstream", async () => {
+    const sess = await withSession(h);
+    let upstreamBody: unknown = null;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          upstreamBody = JSON.parse(bodyText);
+          return Response.json(CHECKOUT_OK);
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          bsi_ref: "cfexample9",
+          return_path: "/account/courses",
+          attribution_source: "explicit_slug",
+          override: true,
+          primary_affiliate_id: 4242,
+          payee_entity_id: 99,
+          commission_bps: 9999,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(upstreamBody).toEqual({
+      bsi_ref: "cfexample9",
+      return_path: "/account/courses",
+    });
+    expect(upstreamBody).not.toHaveProperty("override");
+    expect(upstreamBody).not.toHaveProperty("primary_affiliate_id");
+    expect(upstreamBody).not.toHaveProperty("attribution_source");
+    expect(upstreamBody).not.toHaveProperty("payee_entity_id");
+    expect(upstreamBody).not.toHaveProperty("commission_bps");
   });
 
   it("T-CR6 / CR-COALESCE-3: unknown attribution_source → 502; all 4 sources pass", async () => {

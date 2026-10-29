@@ -539,6 +539,64 @@ describe("buildReferralsDto", () => {
     expect(built.logs[0]!.reason).toBe("commission_mismatch");
   });
 
+  it("W1: only currency + share_url bad → bad_currency", () => {
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        course_links: [
+          {
+            ...CONTRACT_LINK,
+            currency: "usd",
+            share_url: "http://evil.example/x",
+          },
+        ],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.dto.course_links).toEqual([]);
+    expect(built.dto.course_links_dropped).toBe(1);
+    expect(built.logs).toEqual([
+      {
+        event: "course_link_dropped",
+        reason: "bad_currency",
+        course_id: CONTRACT_LINK.course_id,
+      },
+    ]);
+  });
+
+  it("W1: only share_url + estimate bad → bad_share_url", () => {
+    const built = buildReferralsDto(
+      {
+        eligible: true,
+        eligibility_type: "organization",
+        course_links: [
+          {
+            ...CONTRACT_LINK,
+            share_url: "http://evil.example/x",
+            estimated_commission_cents: 9999,
+          },
+        ],
+      },
+      undefined,
+      NOW,
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.dto.course_links).toEqual([]);
+    expect(built.dto.course_links_dropped).toBe(1);
+    expect(built.logs).toEqual([
+      {
+        event: "course_link_dropped",
+        reason: "bad_share_url",
+        course_id: CONTRACT_LINK.course_id,
+      },
+    ]);
+  });
+
   it("ineligible forces empty with 0 drops", () => {
     const built = buildReferralsDto(
       {

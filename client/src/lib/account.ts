@@ -169,7 +169,8 @@ export type ReferralsPayload = {
     whop_plan_id: string;
     share_url: string;
   }>;
-  course_links_dropped?: number;
+  /** R4-N1: required on Worker CR1/CR2 DTO — missing is a contract error. */
+  course_links_dropped: number;
   join_code_dropped?: boolean;
   earnings?: {
     pending_cents?: number;

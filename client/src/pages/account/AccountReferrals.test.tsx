@@ -68,7 +68,7 @@ beforeEach(() => {
 function mount() {
   return render(
     <Router>
-      <AccountReferrals nowMs={Date.parse("2026-10-28T22:00:00.000Z")} />
+      <AccountReferrals />
     </Router>,
   );
 }
@@ -250,6 +250,75 @@ describe("AccountReferrals PR D", () => {
     expect(container.textContent).not.toContain("25%");
     expect(container.textContent).toContain("$200.00");
     expect(container.textContent).toContain("$30.00");
+  });
+
+  it("CR-COMM-3: policy change 15→25 leaves stored commission_percent on screen", async () => {
+    let load = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+        if (url.includes("/api/account/referrals")) {
+          load += 1;
+          // Worker DTO never includes policy; stored percent stays 15 across loads.
+          return jsonResponse({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: JOIN,
+            course_links: [LINK],
+            course_links_dropped: 0,
+            // If a stale client ever saw policy, UI must still use stored 15.
+            commission_policy:
+              load === 1
+                ? { commission_percent: 15, commission_bps: 1500 }
+                : { commission_percent: 25, commission_bps: 2500 },
+          });
+        }
+        if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+        return jsonResponse({});
+      }),
+    );
+    const first = mount();
+    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    expect(first.container.textContent).toContain("15% referral commission");
+    expect(first.container.textContent).not.toContain("25%");
+    cleanup();
+    clearAccountCache();
+    const second = mount();
+    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    expect(second.container.textContent).toContain("15% referral commission");
+    expect(second.container.textContent).not.toContain("25%");
+    expect(load).toBe(2);
+  });
+
+  it("R4-N1: missing course_links_dropped is a bad response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+        if (url.includes("/api/account/referrals")) {
+          return jsonResponse({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: JOIN,
+            course_links: [LINK],
+            // course_links_dropped intentionally omitted
+          });
+        }
+        if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+        return jsonResponse({});
+      }),
+    );
+    mount();
+    await waitFor(() => expect(screen.getByText("Unable to load referrals.")).toBeTruthy());
+    expect(screen.queryByTestId("join-code-card")).toBeNull();
+    expect(screen.queryByTestId("generate-referral")).toBeNull();
   });
 
   it("CR-DROP notice + estimate shown as sent; W3 after join_code drop", async () => {
@@ -453,7 +522,7 @@ describe("AccountReferrals PR D", () => {
     expect(screen.queryByTestId("join-code-card")).toBeNull();
   });
 
-  it("E4 / R3-N1 / R3-N2 static: no ??0 dropped default; trust eligible; single preserve helper", async () => {
+  it("E4 / R3-N1 / R3-N2 / R4-N1 / R4-N2 static", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const referralsSrc = readFileSync(join(import.meta.dirname, "AccountReferrals.tsx"), "utf8");
@@ -462,8 +531,12 @@ describe("AccountReferrals PR D", () => {
     expect(referralsSrc).toMatch(/eligible\s*===\s*true/);
     expect(referralsSrc).not.toMatch(/canGenerateCourseReferrals/);
     expect(referralsSrc).not.toMatch(/prev\?\.earnings/);
+    expect(referralsSrc).toMatch(/typeof payload\.course_links_dropped !== "number"/);
+    expect(referralsSrc).not.toMatch(/\bnowMs\b/);
     expect(accountSrc).toMatch(/export function preserveReferralEarnings/);
     expect(accountSrc).toMatch(/preserveReferralEarnings\(next,\s*opts\?\.previousEarnings\)/);
+    expect(accountSrc).toMatch(/course_links_dropped: number;/);
+    expect(accountSrc).not.toMatch(/course_links_dropped\?:/);
   });
 
   it("R3-N2: preserveReferralEarnings keeps prior panel when CR2 omits", () => {

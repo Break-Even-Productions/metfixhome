@@ -731,11 +731,13 @@ describe("worker/account routes", () => {
       async ({ path, method }) => {
         if (path.endsWith("/me/referrals")) return Response.json(referralsDto);
         if (path.includes("referral-earnings")) {
+          // CR-EARN-1 BSI §2.4 shape (no *_cents aliases; lowercase currency).
           return Response.json({
-            pending_cents: 0,
-            ready_cents: 0,
-            paid_total_cents: 0,
-            currency: "USD",
+            currency: "usd",
+            pending: 0,
+            ready: 0,
+            paid_total: 0,
+            connect_status: "active",
           });
         }
         if (path.includes("referral-code")) return Response.json(referralsDto);
