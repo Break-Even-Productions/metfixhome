@@ -50,9 +50,9 @@ function ClaimPathCard(props: {
   const title =
     path.path === "buy_outright" ? buyOutrightTitle(path.price_cents) : PATH_TITLES[path.path];
   return (
-    <div className="account-course-card" data-testid={`claim-path-${path.path}`}>
-      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.25rem" }}>{title}</h3>
-      <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+    <div className="account-course-card">
+      <h3 className="account-claim-path-title">{title}</h3>
+      <p className="account-mono">
         {formatUsdFromCents(path.price_cents)}
         {path.shortfall_cents > 0
           ? ` · shortfall ${formatUsdFromCents(path.shortfall_cents)}`
@@ -85,27 +85,19 @@ function ClaimScreen(props: {
   const promo = promoLine(options.credit);
 
   return (
-    <div data-testid="claim-screen">
+    <div>
       <button type="button" className="account-btn account-btn--ghost" onClick={onBack}>
         Back to courses
       </button>
-      <h2 style={{ fontSize: "1.35rem", marginTop: "1rem" }}>{course.title}</h2>
+      <h2 className="account-claim-title">{course.title}</h2>
 
-      <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+      <p className="account-mono">
         {formatUsdFromCents(options.ltv.available_cents)} available
         {options.credit.balance_cents > 0 || options.credit.days_granted > 0
           ? ` · credit ${formatUsdFromCents(options.credit.balance_cents)} · ${options.credit.days_granted} days granted`
           : null}
       </p>
-      {promo ? (
-        <p
-          className="account-mono"
-          data-testid="promo-line"
-          style={{ fontFamily: '"JetBrains Mono", monospace' }}
-        >
-          {promo}
-        </p>
-      ) : null}
+      {promo ? <p className="account-mono">{promo}</p> : null}
 
       {error ? <p className="account-error">{error}</p> : null}
       {message ? <p role="status">{message}</p> : null}
@@ -113,11 +105,7 @@ function ClaimScreen(props: {
       {course.already_claimed ? (
         <div>
           <p>Certificate claimed</p>
-          {access ? (
-            <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-              {access}
-            </p>
-          ) : null}
+          {access ? <p className="account-mono">{access}</p> : null}
         </div>
       ) : (
         <div className="account-course-grid" style={{ marginTop: "1rem" }}>
@@ -151,10 +139,13 @@ export default function AccountCourses() {
     setCourses(cs.items);
   }
 
-  async function refreshClaimOptions() {
-    const opts = await loadClaimOptions({ force: true });
-    setClaimOptions(opts);
-    return opts;
+  /** Background CL1 refresh — swallow failures; never clears Idempotency-Key (CQ B1). */
+  function refreshClaimOptionsBackground() {
+    void loadClaimOptions({ force: true })
+      .then((opts) => {
+        setClaimOptions(opts);
+      })
+      .catch(() => undefined);
   }
 
   useEffect(() => {
@@ -190,9 +181,14 @@ export default function AccountCourses() {
     if (course.id == null) return;
     setError(null);
     setMessage(null);
+    const id = Number(course.id);
     try {
-      const opts = await refreshClaimOptions();
-      const id = Number(course.id);
+      // S2: use cached options when present — not a forced GET on every open.
+      let opts = claimOptions;
+      if (!opts) {
+        opts = await loadClaimOptions();
+        setClaimOptions(opts);
+      }
       if (!opts.courses.some((c) => c.course_id === id)) {
         setError("Course not found.");
         return;
@@ -214,48 +210,39 @@ export default function AccountCourses() {
     }
     const key = idemRef.current;
     try {
+      // B1 / S1: outcome from claim POST alone — no claim-options GET before redirect.
       const res = await claimCoursePath(activeCourseId, path, key);
-      const opts = await refreshClaimOptions();
-      setClaimOptions(opts);
       if ("checkout_url" in res && res.checkout_url) {
+        // B1/S1/CL-T19: redirect from POST alone — no claim-options GET before/after.
         if (!openWhopCheckout(res.checkout_url)) {
           setError("Checkout unavailable.");
         }
         return;
       }
-      if (res.already_claimed) {
-        setMessage("Certificate claimed");
-      } else {
-        setMessage("Certificate claimed.");
-      }
+      // redeem_ltv (or already_claimed) success — single success copy (CQ nit).
+      setMessage("Certificate claimed");
       idemRef.current = null;
-      await refreshLists();
+      refreshClaimOptionsBackground();
+      void refreshLists().catch(() => undefined);
     } catch (err) {
       const status = (err as { status?: number })?.status;
       const body = (err as { body?: { error?: string; reason_code?: string } })?.body;
       if (status === 409 && body?.error === "claim_in_progress") {
-        // 409: no CL1 re-fetch; keep key for user retry (N5).
         setError("Still working on it. Try again in a few seconds.");
       } else if (status === 503 && body?.error === "claim_in_progress") {
-        // 503: exactly one delayed CL1 re-fetch; clear on unmount (CQ S1).
         setError("Still working on it. Try again in a few seconds.");
         if (lockRefetchTimerRef.current != null) {
           clearTimeout(lockRefetchTimerRef.current);
         }
         lockRefetchTimerRef.current = setTimeout(() => {
           lockRefetchTimerRef.current = null;
-          void refreshClaimOptions().catch(() => undefined);
+          refreshClaimOptionsBackground();
         }, 1500);
       } else if (body?.error === "idempotency_key_mismatch") {
         setError("That request changed. Please start the claim again.");
         idemRef.current = null;
       } else if (body?.error === "claim_ineligible") {
-        // 402/403: one CL1 re-fetch (claimCoursePath also invalidates).
-        try {
-          await refreshClaimOptions();
-        } catch {
-          /* keep prior */
-        }
+        refreshClaimOptionsBackground();
         setError(null);
         idemRef.current = null;
       } else if (body?.error === "course_not_found") {
@@ -265,12 +252,8 @@ export default function AccountCourses() {
         setError("This course can't be claimed right now.");
         idemRef.current = null;
       } else if (status === 502) {
-        // Item 13: one CL1 re-fetch after CL2 502; never retry the POST.
-        try {
-          await refreshClaimOptions();
-        } catch {
-          /* keep prior */
-        }
+        // Item 13: one background CL1 re-fetch after CL2 502; never retry POST.
+        refreshClaimOptionsBackground();
         setError("Something went wrong. Check your claim status.");
         idemRef.current = null;
       } else {
@@ -321,17 +304,9 @@ export default function AccountCourses() {
               const cost = formatUsdFromCents(course.course_price_cents);
               return (
                 <article key={String(course.id)} className="account-course-card">
-                  <h2 style={{ fontSize: "1.2rem", marginBottom: "0.35rem" }}>
-                    {course.title ?? "Course"}
-                  </h2>
+                  <h2 className="account-course-card-title">{course.title ?? "Course"}</h2>
                   <p className="account-muted">
-                    Listed value{" "}
-                    <span
-                      className="account-mono"
-                      style={{ fontFamily: '"JetBrains Mono", monospace' }}
-                    >
-                      {cost}
-                    </span>
+                    Listed value <span className="account-mono">{cost}</span>
                     {" · "}
                     {course.completed
                       ? "Completed"
@@ -352,9 +327,6 @@ export default function AccountCourses() {
                     <button
                       type="button"
                       className="account-btn"
-                      data-testid={
-                        course.id != null ? `claim-certificate-${course.id}` : undefined
-                      }
                       onClick={() => void openClaim(course)}
                     >
                       Claim Certificate

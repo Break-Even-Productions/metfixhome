@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
-import { clearAccountCache } from "@/lib/account";
+import { clearAccountCache, openWhopCheckout } from "@/lib/account";
 import AccountCourses from "./AccountCourses";
 import {
   COURSES_LTV300,
@@ -24,6 +24,16 @@ vi.mock("@/lib/session", () => ({
 vi.mock("@/hooks/usePageMeta", () => ({
   usePageMeta: () => {},
 }));
+
+vi.mock("@/lib/account", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/account")>("@/lib/account");
+  return {
+    ...actual,
+    openWhopCheckout: vi.fn(() => true),
+  };
+});
+
+const CHECKOUT_URL = "https://whop.com/checkout/plan_test_checkout";
 
 const CLAIM_OPTIONS = {
   currency: "usd",
@@ -73,6 +83,14 @@ const CLAIM_OPTIONS = {
   ],
 };
 
+function claimCertificateButton() {
+  return screen.getByRole("button", { name: "Claim Certificate" });
+}
+
+function buyOutrightButton() {
+  return screen.getByRole("button", { name: /^Buy$/i });
+}
+
 beforeEach(() => {
   clearAccountCache();
   vi.stubGlobal(
@@ -107,12 +125,11 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
       </Router>,
     );
     await waitFor(() => expect(screen.getByText("Course B")).toBeTruthy());
-    expect(screen.getByTestId("claim-certificate-20")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("claim-certificate-20"));
-    await waitFor(() => expect(screen.getByTestId("claim-screen")).toBeTruthy());
-    expect(screen.getByTestId("claim-path-redeem_ltv")).toBeTruthy();
-    expect(screen.getByTestId("claim-path-prepay_credit")).toBeTruthy();
-    expect(screen.getByTestId("claim-path-buy_outright")).toBeTruthy();
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(screen.getByText("Back to courses")).toBeTruthy());
+    expect(screen.getByRole("button", { name: /^Redeem$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Prepay$/i })).toBeTruthy();
+    expect(buyOutrightButton()).toBeTruthy();
     expect(screen.getByText("Option 1 direct purchase ($200.00)")).toBeTruthy();
     expect(screen.getByText(/\$100\.00 available/)).toBeTruthy();
   });
@@ -125,6 +142,92 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     );
     await waitFor(() => expect(screen.getAllByText(/Foundations Coach/i).length).toBeGreaterThan(0));
     expect(screen.getAllByText(/in-person seminar check-in/i).length).toBeGreaterThan(0);
+  });
+
+  it("S2: open / back / open uses cached claim options (one GET)", async () => {
+    let optionsGets = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) {
+          optionsGets += 1;
+          return jsonResponse(CLAIM_OPTIONS);
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(screen.getByText("Back to courses")).toBeTruthy());
+    expect(optionsGets).toBe(1);
+    fireEvent.click(screen.getByText("Back to courses"));
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(screen.getByText("Back to courses")).toBeTruthy());
+    expect(optionsGets).toBe(1);
+  });
+
+  it("CL-T19: POST 200 + claim-options 502 → redirect immediately; one POST; ≤1 GET", async () => {
+    let claimPosts = 0;
+    let optionsGets = 0;
+    vi.mocked(openWhopCheckout).mockClear();
+    vi.mocked(openWhopCheckout).mockReturnValue(true);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) {
+          optionsGets += 1;
+          if (optionsGets === 1) return jsonResponse(CLAIM_OPTIONS);
+          return jsonResponse({ error: "unavailable" }, 502);
+        }
+        if (url.includes("/courses/20/claim") && method === "POST") {
+          claimPosts += 1;
+          return jsonResponse({ checkout_url: CHECKOUT_URL });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(buyOutrightButton()).toBeTruthy());
+    expect(optionsGets).toBe(1);
+    fireEvent.click(buyOutrightButton());
+    await waitFor(() => expect(claimPosts).toBe(1));
+    await waitFor(() =>
+      expect(vi.mocked(openWhopCheckout)).toHaveBeenCalledWith(CHECKOUT_URL),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(claimPosts).toBe(1);
+    expect(optionsGets).toBe(1);
   });
 
   it("CL-T19: double-click claim posts once; 502 re-fetches CL1 once, never retries POST", async () => {
@@ -158,10 +261,10 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
         <AccountCourses />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByTestId("claim-certificate-20")).toBeTruthy());
-    fireEvent.click(screen.getByTestId("claim-certificate-20"));
-    await waitFor(() => expect(screen.getByTestId("claim-path-buy_outright")).toBeTruthy());
-    const buy = screen.getByTestId("claim-path-buy_outright").querySelector("button")!;
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(buyOutrightButton()).toBeTruthy());
+    const buy = buyOutrightButton();
     fireEvent.click(buy);
     fireEvent.click(buy);
     await waitFor(() => expect(claimPosts).toBe(1));

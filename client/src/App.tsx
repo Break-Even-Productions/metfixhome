@@ -33,7 +33,6 @@ import { useLocation } from "wouter";
 
 function BsiRefCapture() {
   useEffect(() => {
-    if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
     captureBsiRef(window.location.search, sessionStorage);
   }, []);
   return null;

@@ -31,27 +31,13 @@ export function parseIsoInstantToUtcZ(raw: unknown): string | null {
   if (d > daysInMonth(y, mo)) return null;
 
   if (offsetTok !== "Z") {
-    const sign = m[8]!;
     // RFC 3339 unknown-local offset; reject `-00:00`. ±14:00 already gated by regex (N21).
-    if (sign === "-" && offsetTok === "-00:00") return null;
+    if (offsetTok === "-00:00") return null;
   }
 
   const ms = Date.parse(raw);
   if (!Number.isFinite(ms)) return null;
   return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-/** @deprecated Prefer `parseIsoInstantToUtcZ` (1.2.8 N15). */
-export function normalizeIsoToZ(raw: unknown): string | null {
-  return parseIsoInstantToUtcZ(raw);
-}
-
-export function isStrictIsoZ(raw: unknown): raw is string {
-  return parseIsoInstantToUtcZ(raw) != null;
-}
-
-export function normalizeClaimedAtIso(raw: unknown): string | null {
-  return parseIsoInstantToUtcZ(raw);
 }
 
 export function formatUtcDate(iso: string): string {

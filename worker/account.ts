@@ -617,16 +617,40 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
   const claimedList = Array.isArray(obj.claimed_certificates) ? obj.claimed_certificates : [];
   const claimed_certificates: Record<string, unknown>[] = [];
   let claimedSum = 0;
-  // 1.2.9 CQ F1: unknown/`'ltv'` method → keep row, method null, log once (replaces 1.2.8 502).
+  // PD-S4 / errata d2: never silently drop a bad allocated_cents row.
+  const claimedOverrideValid =
+    typeof obj.claimed_courses_value_cents === "number" &&
+    Number.isSafeInteger(obj.claimed_courses_value_cents) &&
+    obj.claimed_courses_value_cents >= 0;
+  // 1.2.9 CQ F1 / W-N26: unknown/`'ltv'` method → keep row, method null, log once.
   let loggedUnknownMethod = false;
+  let loggedBadAllocated = false;
   for (const row of claimedList) {
     const r = asRecord(row);
     if (!r) continue;
+    const courseId =
+      typeof r.course_id === "number" && Number.isSafeInteger(r.course_id) ? r.course_id : null;
     const allocated =
       typeof r.allocated_cents === "number" && Number.isSafeInteger(r.allocated_cents)
         ? r.allocated_cents
         : null;
-    if (allocated == null || allocated < 0) continue;
+    if (allocated == null || allocated < 0) {
+      // Branch B: no valid total → fail closed 502 (no LTV figure / no claim).
+      if (!claimedOverrideValid) {
+        console.warn(
+          JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
+        );
+        return accountJson({ error: "unavailable" }, 502);
+      }
+      // Branch A: valid total is source of truth; keep bad row out of sum; log once.
+      if (!loggedBadAllocated) {
+        loggedBadAllocated = true;
+        console.warn(
+          JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
+        );
+      }
+      continue;
+    }
     const cm = r.claim_method;
     const knownMethod =
       cm === "redeem_ltv" ||
@@ -640,16 +664,13 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
         JSON.stringify({
           event: "ltv_row_method_unknown",
           keys: ["claim_method"],
-          course_id:
-            typeof r.course_id === "number" && Number.isSafeInteger(r.course_id)
-              ? r.course_id
-              : null,
+          course_id: courseId,
         }),
       );
     }
     claimedSum += allocated;
     claimed_certificates.push({
-      course_id: r.course_id ?? null,
+      course_id: courseId,
       course_slug: strOrNull(r.course_slug),
       course_title: strOrNull(r.course_title),
       allocated_cents: allocated,
@@ -658,12 +679,9 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
       certificate_url: typeof r.certificate_url === "string" ? r.certificate_url : undefined,
     });
   }
-  const claimedOverride =
-    typeof obj.claimed_courses_value_cents === "number" &&
-    Number.isSafeInteger(obj.claimed_courses_value_cents) &&
-    obj.claimed_courses_value_cents >= 0
-      ? obj.claimed_courses_value_cents
-      : claimedSum;
+  const claimedOverride = claimedOverrideValid
+    ? (obj.claimed_courses_value_cents as number)
+    : claimedSum;
   let budget;
   try {
     budget = computeLtvBudget(totalRaw, claimedOverride);
