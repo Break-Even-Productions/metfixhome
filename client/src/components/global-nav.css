@@ -246,3 +246,62 @@
 body.global-nav-open .global-nav__inert {
   /* marker class for inert siblings — applied via attribute in component */
 }
+
+/*
+ * ≤390: match F1 closed mobile chrome for visual baselines (T-F-1 @ 390).
+ * F1 bar = 4.5rem row, 2.25rem logo, .container 1.5rem pad, space-between,
+ * rgba(10,10,10,0.92) + 1px bottom hairline, icon-only search (no label).
+ */
+@media (max-width: 390px) {
+  .global-nav__primary,
+  .global-nav__primary.is-solid {
+    background: rgba(10, 10, 10, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: none;
+  }
+
+  .global-nav__row {
+    justify-content: space-between;
+    gap: 0.75rem;
+    height: 4.5rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .global-nav__logo img {
+    height: 2.25rem;
+  }
+
+  .global-nav__actions {
+    margin-left: 0;
+    gap: 0.75rem;
+  }
+
+  /* F1 search control is icon-only; keep accessible name via aria-label. */
+  .global-nav__icon-btn {
+    min-width: 0;
+    min-height: 0;
+    padding: 0.7rem;
+    color: rgba(239, 239, 239, 0.8);
+  }
+  .global-nav__icon-btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .global-nav__menu-toggle {
+    min-width: 0;
+    min-height: 0;
+    padding: 0.7rem;
+    color: #fdf6f6;
+  }
+}
