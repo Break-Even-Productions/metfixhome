@@ -1,0 +1,1474 @@
+/**
+ * PR D course referrals + checkout gates (QA r1.4 — 39 [CI] coverage).
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { handleAccountRoutes } from "./account";
+import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
+import {
+  ACCESS1,
+  BSI_ORIGIN,
+  createHarness,
+  csrfSid,
+  hOk,
+  ORIGIN,
+  setupAuthHooks,
+  type Harness,
+} from "../tools/pr2/harness/realauth-harness";
+import { SID_COOKIE } from "./auth/cookies";
+import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+setupAuthHooks();
+
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const NOW_ISO = "2026-10-28T22:00:00.000Z";
+
+function countingLimiter(max: number): RateLimitBinding {
+  const windows = new Map<string, number[]>();
+  return {
+    async limit({ key }: { key: string }) {
+      const now = Date.now();
+      const w = (windows.get(key) ?? []).filter((t) => now - t < 60_000);
+      if (w.length >= max) {
+        windows.set(key, w);
+        return { success: false };
+      }
+      w.push(now);
+      windows.set(key, w);
+      return { success: true };
+    },
+  };
+}
+
+type Recorded = {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  bodyText: string;
+};
+
+const FORBIDDEN_UPSTREAM = [
+  "x-api-key",
+  "referer",
+  "origin",
+  "x-forwarded-for",
+  "cf-connecting-ip",
+];
+
+function assertBearerOnly(rec: Recorded) {
+  for (const h of FORBIDDEN_UPSTREAM) {
+    expect(rec.headers[h], `${h} on ${rec.url}`).toBeUndefined();
+  }
+  if (rec.headers.authorization) {
+    expect(rec.headers.authorization).toMatch(/^Bearer /);
+  }
+}
+
+function assertNoStore(res: Response) {
+  expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+}
+
+type MockHandler = (req: {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  bodyText: string;
+  path: string;
+}) => Response | Promise<Response>;
+
+async function withSession(h: Harness) {
+  const { sid } = await h.login();
+  const csrf = await csrfSid(h.env, sid);
+  return { sid, csrf, cookie: `${SID_COOKIE}=${encodeURIComponent(sid)}` };
+}
+
+function installLimiters(env: Env, max = 100) {
+  env.ACCOUNT_READ_LIMITER = countingLimiter(max);
+  env.ACCOUNT_WRITE_LIMITER = countingLimiter(max);
+  env.ACCOUNT_PORTAL_LIMITER = countingLimiter(max);
+}
+
+function makeFetchMock(handlers: MockHandler[]): { fetchImpl: FetchImpl; recorded: Recorded[] } {
+  const recorded: Recorded[] = [];
+  const fetchImpl: FetchImpl = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (input as Request).url;
+    const method =
+      init?.method?.toUpperCase() ??
+      (typeof input !== "string" && !(input instanceof URL)
+        ? (input as Request).method.toUpperCase()
+        : "GET");
+    const rawBody = init?.body;
+    let bodyText = "";
+    if (typeof rawBody === "string") bodyText = rawBody;
+    else if (rawBody instanceof ArrayBuffer) bodyText = `[bin:${rawBody.byteLength}]`;
+    else if (rawBody == null) bodyText = "";
+    else bodyText = String(rawBody);
+    const headers: Record<string, string> = {};
+    new Headers(init?.headers).forEach((v, k) => {
+      headers[k.toLowerCase()] = v;
+    });
+    const rec = { url, method, headers, bodyText };
+    recorded.push(rec);
+    if (url.includes("/wp-json/")) {
+      assertBearerOnly(rec);
+      if (headers["x-api-key"] && headers.authorization) {
+        return new Response("trap", { status: 500 });
+      }
+    }
+    const path = new URL(url).pathname;
+    for (const handler of handlers) {
+      const res = await handler({ url, method, headers, bodyText, path });
+      if (res) return res;
+    }
+    return Response.json({ error: "mock_miss", path }, { status: 404 });
+  };
+  return { fetchImpl, recorded };
+}
+
+async function callAccount(
+  h: Harness,
+  path: string,
+  init: RequestInit,
+  fetchImpl: FetchImpl,
+): Promise<Response> {
+  const req = new Request(`https://metfix.org${path}`, init);
+  return handleAccountRoutes(req, h.env, { fetchImpl, bsiBaseUrl: BSI_ORIGIN }) as Promise<Response>;
+}
+
+const JOIN = {
+  id: 7,
+  slug: "cfexample9",
+  whop_affiliate_code: "cfexample9",
+  commission_percent: 15,
+  commission_bps: 1500,
+  join_url: "https://brokenscience.org/share/?slug=cfexample9",
+};
+
+function link(over: Record<string, unknown> = {}) {
+  return {
+    course_id: 20231,
+    course_slug: "metfix-essentials",
+    course_title: "MetFix Essentials",
+    course_price_cents: 20000,
+    currency: "USD",
+    commission_percent: 15,
+    commission_bps: 1500,
+    estimated_commission_cents: 3000,
+    bsi_ref_slug: "cfexample9",
+    whop_affiliate_code: "cfexample9",
+    whop_plan_id: "plan_course_essentials",
+    share_url: "https://brokenscience.org/courses/metfix-essentials/?bsi_ref=cfexample9",
+    ...over,
+  };
+}
+
+const REFERRALS_OK = {
+  eligible: true,
+  eligibility_type: "organization",
+  reason_code: null,
+  payee_entity_id: 42,
+  payee_display_name: "CrossFit Example Affiliate",
+  foundations_coach_expires_at: "2029-10-28T18:00:00Z",
+  join_code: JOIN,
+  course_links: [link()],
+};
+
+const CHECKOUT_OK = {
+  attempt_id: "cca_9f8e7d6c5b4a3f2e1d0c9b8a",
+  course_id: 20231,
+  checkout_url: "https://whop.com/checkout/plan_course_essentials/?d2c=true&a=cfexample9",
+  whop_company_id: BEP_WHOP_COMPANY_ID,
+  whop_product_id: "prod_course_essentials",
+  whop_plan_id: "plan_course_essentials",
+  whop_checkout_config_id: "ch_cfg_01Jtest",
+  course_price_cents: 20000,
+  currency: "USD",
+  attribution: {
+    attribution_source: "primary_org",
+    payee_entity_id: 42,
+    bsi_ref_slug: "cfexample9",
+    whop_affiliate_code: "cfexample9",
+    commission_percent: 15,
+    commission_bps: 1500,
+  },
+};
+
+/** BSI account-api-gaps rev1.3.18 §2.4 documented payload (not *_cents). */
+const EARNINGS = {
+  currency: "usd",
+  pending: 0,
+  ready: 100,
+  paid_total: 500,
+  connect_status: "active",
+};
+
+describe("PR D course referrals + checkout", () => {
+  let h: Harness;
+
+  beforeEach(() => {
+    h = createHarness();
+    installLimiters(h.env);
+  });
+
+  it("CR-WHOP-1 repo scan: only BEP biz_ literal; zero foreign curie biz", () => {
+    const dirs = ["client", "worker", "shared"].map((d) => join(REPO_ROOT, d));
+    const files: string[] = [];
+    function walk(dir: string) {
+      if (!existsSync(dir)) return;
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        if (ent.name === "node_modules" || ent.name === "dist") continue;
+        const full = join(dir, ent.name);
+        if (ent.isDirectory()) walk(full);
+        else if (/\.(ts|tsx|js|jsonc|json)$/.test(ent.name)) files.push(full);
+      }
+    }
+    for (const d of dirs) walk(d);
+    files.push(join(REPO_ROOT, "wrangler.jsonc"));
+    const bizHits: string[] = [];
+    for (const f of files) {
+      const rel = relative(REPO_ROOT, f);
+      if (/\.test\.(ts|tsx)$/.test(rel)) continue;
+      const src = readFileSync(f, "utf8");
+      for (const m of src.matchAll(/biz_[A-Za-z0-9]+/g)) {
+        if (m[0] !== BEP_WHOP_COMPANY_ID) bizHits.push(`${rel}:${m[0]}`);
+      }
+    }
+    expect(bizHits).toEqual([]);
+    // Only one production source of the literal (shared/account/whop.ts)
+    const whopSrc = readFileSync(join(REPO_ROOT, "shared/account/whop.ts"), "utf8");
+    expect(whopSrc).toContain(BEP_WHOP_COMPANY_ID);
+  });
+
+  it("CR1 GET referrals + alias strips policy/ids; merges earnings", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) {
+          return Response.json({
+            ...REFERRALS_OK,
+            commission_policy: { commission_percent: 25, commission_bps: 2500 },
+          });
+        }
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    for (const path of ["/api/account/referrals", "/api/account/course-referrals"]) {
+      const res = await callAccount(h, path, { headers: { Cookie: sess.cookie } }, fetchImpl);
+      assertNoStore(res);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.eligible).toBe(true);
+      expect(body.join_code.commission_percent).toBe(15);
+      expect(body.course_links[0].estimated_commission_cents).toBe(3000);
+      expect(body.earnings).toEqual({
+        pending_cents: 0,
+        ready_cents: 100,
+        paid_total_cents: 500,
+        currency: "usd",
+        connect_status: "active",
+      });
+      expect(body.join_code_dropped).toBe(false);
+      expect(typeof body.course_links_dropped).toBe("number");
+      const s = JSON.stringify(body);
+      expect(s).not.toContain("commission_policy");
+      expect(s).not.toContain("payee_entity_id");
+      expect(s).not.toContain('"id":7');
+      expect(body).not.toHaveProperty("commission_policy");
+    }
+    for (const r of recorded.filter((x) => x.url.includes("/wp-json/"))) {
+      expect(Object.keys(r.headers).sort()).toEqual(
+        expect.arrayContaining(["accept", "authorization", "user-agent"]),
+      );
+      expect(r.headers["x-api-key"]).toBeUndefined();
+    }
+  });
+
+  it("CR-ELIG-2 ineligible forces empty even when upstream sent rows", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) {
+          return Response.json({
+            eligible: false,
+            reason_code: "bsi_referral_ineligible",
+            join_code: JOIN,
+            course_links: [link()],
+          });
+        }
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    const body = await res.json();
+    expect(body.join_code).toBeNull();
+    expect(body.course_links).toEqual([]);
+    expect(body.course_links_dropped).toBe(0);
+  });
+
+  it("CR-DROP-T1 / T2 + log key allowlist", async () => {
+    const sess = await withSession(h);
+    const warns: unknown[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      warns.push(typeof msg === "string" ? JSON.parse(msg) : msg);
+    });
+
+    const dropFixture = {
+      eligible: true,
+      eligibility_type: "organization",
+      join_code: JOIN,
+      course_links: [
+        link({ course_id: 1, course_price_cents: 333, estimated_commission_cents: 50 }),
+        link({ course_id: 2, course_price_cents: 333, estimated_commission_cents: 51 }),
+        link({ course_id: 3, course_price_cents: 20000, estimated_commission_cents: 3000 }),
+      ],
+    };
+    {
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/referrals")) return Response.json(dropFixture);
+          if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/referrals",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.course_links.map((c: { course_id: number }) => c.course_id)).toEqual([1, 3]);
+      expect(body.course_links[0].estimated_commission_cents).toBe(50);
+      expect(body.course_links_dropped).toBe(1);
+      expect(warns).toEqual([
+        { event: "course_link_dropped", reason: "estimate_mismatch", course_id: 2 },
+      ]);
+      expect(Object.keys(warns[0] as object).sort()).toEqual(["course_id", "event", "reason"]);
+    }
+
+    warns.length = 0;
+    {
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/referrals")) {
+            return Response.json({
+              ...dropFixture,
+              course_links: [...dropFixture.course_links, link({ commission_bps: 10001 })],
+            });
+          }
+          if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/referrals",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      expect(res.status).toBe(502);
+      expect(warns).toEqual([]);
+    }
+    spy.mockRestore();
+  });
+
+  it("CR-ORDER-T1 route: valid join + bad percent + bps 10001 → 502 no-store, 0 drops", async () => {
+    const sess = await withSession(h);
+    const warns: unknown[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      warns.push(typeof msg === "string" ? JSON.parse(msg) : msg);
+    });
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) {
+          return Response.json({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: JOIN,
+            course_links: [
+              link({ course_id: 1 }),
+              link({ course_id: 2, commission_percent: 20, commission_bps: 1500 }),
+              link({ course_id: 3, commission_bps: 10001 }),
+            ],
+          });
+        }
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "upstream_error" });
+    assertNoStore(res);
+    expect(warns.filter((w) => (w as { event?: string }).event === "course_link_dropped")).toEqual(
+      [],
+    );
+    spy.mockRestore();
+  });
+
+  it("CR-ELIG-4: exactly 1 upstream POST; {error,reason_code} only; no leak; both routes", async () => {
+    const sess = await withSession(h);
+    const cases: Array<{
+      path: string;
+      action: string;
+      code: "bsi_referral_ineligible" | "bsi_referral_coach_expired";
+    }> = [
+      {
+        path: "/api/account/referral-code",
+        action: "generate",
+        code: "bsi_referral_coach_expired",
+      },
+      {
+        path: "/api/account/referral-code",
+        action: "generate",
+        code: "bsi_referral_ineligible",
+      },
+      {
+        path: "/api/account/course-referrals",
+        action: "rotate",
+        code: "bsi_referral_ineligible",
+      },
+      {
+        path: "/api/account/course-referrals",
+        action: "rotate",
+        code: "bsi_referral_coach_expired",
+      },
+    ];
+    for (const c of cases) {
+      let posts = 0;
+      let other = 0;
+      const canary = "leak-canary-xyz@example.com";
+      const { fetchImpl, recorded } = makeFetchMock([
+        async ({ path, method }) => {
+          if (path.includes("referral-code") && method === "POST") {
+            posts += 1;
+            return Response.json(
+              {
+                code: c.code,
+                message: "do-not-leak",
+                data: { payee_entity_id: 99 },
+                payee_entity_id: 99,
+                join_code: JOIN,
+                commission_policy: { commission_percent: 25 },
+                email: canary,
+                canary,
+              },
+              { status: 403 },
+            );
+          }
+          other += 1;
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        c.path,
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({ action: c.action }),
+        },
+        fetchImpl,
+      );
+      assertNoStore(res);
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(Object.keys(body).sort()).toEqual(["error", "reason_code"]);
+      expect(body).toEqual({
+        error: "referral_ineligible",
+        reason_code: c.code,
+      });
+      const blob = JSON.stringify(body);
+      expect(blob).not.toContain(canary);
+      expect(blob).not.toContain("payee_entity_id");
+      expect(blob).not.toContain("commission_policy");
+      expect(blob).not.toContain("do-not-leak");
+      expect(posts).toBe(1);
+      expect(other).toBe(0);
+      expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+    }
+  });
+
+  it("CR-ELIG-4 static: CR2 handler has no canGenerateCourseReferrals pre-check", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(REPO_ROOT, "worker/account.ts"), "utf8");
+    const caseBlock = src.match(/case "DP24w":[\s\S]*?case "DP25":/)?.[0] ?? "";
+    expect(caseBlock.length).toBeGreaterThan(100);
+    expect(caseBlock).not.toMatch(/canGenerateCourseReferrals/);
+  });
+
+  it("CR-ELIG-4: unmapped BSI 403 → {error:'upstream_error'} (not referral_ineligible)", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("referral-code") && method === "POST") {
+          return Response.json(
+            {
+              code: "bsi_some_other_forbidden",
+              message: "do-not-leak",
+              payee_entity_id: 99,
+            },
+            { status: 403 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    assertNoStore(res);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(["error"]);
+    expect(body).toEqual({ error: "upstream_error" });
+    expect(JSON.stringify(body)).not.toContain("bsi_some_other_forbidden");
+    expect(JSON.stringify(body)).not.toContain("do-not-leak");
+    expect(JSON.stringify(body)).not.toContain("payee_entity_id");
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+  });
+
+  it("CR-EARN-1: upstream earnings fail → 200 omit + upstream_error log", async () => {
+    const sess = await withSession(h);
+    const warns: Record<string, unknown>[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      try {
+        warns.push(typeof msg === "string" ? JSON.parse(msg) : (msg as object));
+      } catch {
+        /* ignore */
+      }
+    });
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+        if (path.includes("referral-earnings")) {
+          return Response.json({ error: "boom" }, { status: 500 });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).not.toHaveProperty("earnings");
+    expect(body.join_code?.slug).toBe("cfexample9");
+    expect(warns).toContainEqual({
+      event: "referral_earnings_omitted",
+      reason: "upstream_error",
+    });
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(2);
+    spy.mockRestore();
+  });
+
+  it("CR-EARN-1: bad_shape earnings → 200 omit + bad_shape log", async () => {
+    const sess = await withSession(h);
+    const warns: Record<string, unknown>[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      try {
+        warns.push(typeof msg === "string" ? JSON.parse(msg) : (msg as object));
+      } catch {
+        /* ignore */
+      }
+    });
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+        if (path.includes("referral-earnings")) {
+          return Response.json({
+            currency: "USD",
+            pending: 1,
+            ready: 1,
+            paid_total: 1,
+            connect_status: "active",
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referrals",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).not.toHaveProperty("earnings");
+    expect(warns).toContainEqual({
+      event: "referral_earnings_omitted",
+      reason: "bad_shape",
+    });
+    spy.mockRestore();
+  });
+
+  it("CQ B2: upstream 500 with payee/whop/commission_policy → only {error}", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          return Response.json(
+            {
+              error: "boom",
+              payee_entity_id: 42,
+              whop_checkout_config_id: "ch_leak",
+              commission_policy: { commission_percent: 25 },
+            },
+            { status: 500 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(["error"]);
+    expect(body).toEqual({ error: "upstream_error" });
+    expect(JSON.stringify(body)).not.toMatch(/payee|whop_|commission_policy/);
+  });
+
+  it("CR2 invalid action → 400 with 0 upstream", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([]);
+    const res = await callAccount(
+      h,
+      "/api/account/course-referrals",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ action: "mint" }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(400);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("CR3 checkout: §4.2 fixture, strips internals, maps errors", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          expect(JSON.parse(bodyText)).toEqual({ bsi_ref: "cfexample9" });
+          return Response.json(CHECKOUT_OK);
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          bsi_ref: "cfexample9",
+          attribution_source: "explicit_slug",
+          payee_entity_id: 99,
+          commission_bps: 9999,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      checkout_url: "https://whop.com/checkout/plan_course_essentials/?d2c=true&a=cfexample9",
+    });
+    expect(Object.keys(body).sort()).toEqual(["checkout_url"]);
+    const s = JSON.stringify(body);
+    for (const leak of [
+      "whop_checkout_config_id",
+      "payee_entity_id",
+      "whop_company_id",
+      "whop_product_id",
+      "whop_plan_id",
+      "commission_policy",
+    ]) {
+      expect(s).not.toContain(leak);
+    }
+    expect(recorded.some((r) => r.url.includes("/checkout"))).toBe(true);
+    expect(recorded.every((r) => !r.url.includes("purchase-checkout"))).toBe(true);
+
+    // alias route
+    const { fetchImpl: f2 } = makeFetchMock([
+      async ({ path }) => {
+        if (path.includes("/courses/20231/checkout")) return Response.json(CHECKOUT_OK);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const alias = await callAccount(
+      h,
+      "/api/courses/20231/checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      f2,
+    );
+    expect(alias.status).toBe(200);
+  });
+
+  it("CR3 validation + error map + evil checkout_url", async () => {
+    const sess = await withSession(h);
+
+    const { fetchImpl: f0, recorded: r0 } = makeFetchMock([]);
+    expect(
+      (
+        await callAccount(
+          h,
+          "/api/account/courses/0/purchase-checkout",
+          {
+            method: "POST",
+            headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+            body: JSON.stringify({}),
+          },
+          f0,
+        )
+      ).status,
+    ).toBe(400);
+    expect(r0.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+
+    const { fetchImpl: fBadRef, recorded: rBad } = makeFetchMock([]);
+    const badRef = await callAccount(
+      h,
+      "/api/account/courses/1/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ bsi_ref: "a" }),
+      },
+      fBadRef,
+    );
+    expect(badRef.status).toBe(400);
+    expect(await badRef.json()).toEqual({ error: "invalid_referral_code" });
+    expect(rBad.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+
+    for (const [code, status] of [
+      ["bsi_course_not_found", 404],
+      ["bsi_course_whop_mapping_not_found", 404],
+      ["whop_company_mismatch", 422],
+      ["whop_checkout_upstream_error", 502],
+    ] as const) {
+      const { fetchImpl } = makeFetchMock([
+        async () => Response.json({ code, message: code }, { status }),
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/courses/1/purchase-checkout",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({}),
+        },
+        fetchImpl,
+      );
+      expect(res.status).toBe(status);
+      assertNoStore(res);
+    }
+
+    for (const evil of [
+      "http://whop.com/x",
+      "https://evil.example",
+      "javascript:alert(1)",
+      "//evil.com",
+      "https://whop.com.evil.io",
+      "https://evilwhop.com",
+      "https://u:p@whop.com",
+      "https://curie.whop.com",
+    ]) {
+      const { fetchImpl } = makeFetchMock([
+        async () => Response.json({ ...CHECKOUT_OK, checkout_url: evil }),
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/courses/20231/purchase-checkout",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({}),
+        },
+        fetchImpl,
+      );
+      expect(res.status, evil).toBe(502);
+    }
+
+    // LR-1: known whop_company_id when present must be BEP; non-BEP → 502.
+    const { fetchImpl: fBiz } = makeFetchMock([
+      async () => Response.json({ ...CHECKOUT_OK, whop_company_id: "biz_OTHER" }),
+    ]);
+    const bizRes = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fBiz,
+    );
+    expect(bizRes.status).toBe(502);
+    expect(await bizRes.json()).toEqual({ error: "upstream_error" });
+  });
+
+  it("CR-CO-T1: success keys exactly [checkout_url]; extras ignored; missing url 502", async () => {
+    const sess = await withSession(h);
+    const ok = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([async () => Response.json(CHECKOUT_OK)]).fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    assertNoStore(ok);
+    const body = await ok.json();
+    expect(Object.keys(body).sort()).toEqual(["checkout_url"]);
+    expect(body).not.toHaveProperty("attempt_id");
+    expect(body).not.toHaveProperty("attribution");
+    expect(body).not.toHaveProperty("course_price_cents");
+
+    // LR-1: unknown extras ignored; known non-BEP whop_company_id → 502.
+    const extraOk = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([
+        async () =>
+          Response.json({
+            checkout_url: CHECKOUT_OK.checkout_url,
+            attempt_id: "cca_" + "a".repeat(24),
+            junk: true,
+          }),
+      ]).fetchImpl,
+    );
+    expect(extraOk.status).toBe(200);
+    expect(await extraOk.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+
+    const extraBadCo = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([
+        async () =>
+          Response.json({
+            checkout_url: CHECKOUT_OK.checkout_url,
+            whop_company_id: "biz_OTHER",
+          }),
+      ]).fetchImpl,
+    );
+    expect(extraBadCo.status).toBe(502);
+
+    const missing = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      makeFetchMock([async () => Response.json({ attempt_id: "cca_" + "a".repeat(24) })]).fetchImpl,
+    );
+    expect(missing.status).toBe(502);
+  });
+
+  it("T-CR3 CSRF before limiter; cross-origin; T-CR4 no-store; CR5 429", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json(CHECKOUT_OK),
+    ]);
+    const noCsrf = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: {
+          Cookie: sess.cookie,
+          Origin: ORIGIN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(noCsrf.status).toBe(403);
+    assertNoStore(noCsrf);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+
+    const crossOrigin = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: {
+          Cookie: sess.cookie,
+          Origin: "https://evil.example",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": sess.csrf,
+          "Sec-Fetch-Site": "cross-site",
+        },
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    expect(crossOrigin.status).toBe(403);
+    assertNoStore(crossOrigin);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+
+    h.env.ACCOUNT_WRITE_LIMITER = countingLimiter(0);
+    const limited = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).toBe("60");
+    assertNoStore(limited);
+  });
+
+  it("off-host 403 and signed-out 401 with 0 upstream", async () => {
+    const { fetchImpl, recorded } = makeFetchMock([]);
+    const off = await handleAccountRoutes(
+      new Request("https://evil.example/api/account/referrals", {
+        headers: { Host: "evil.example" },
+      }),
+      h.env,
+      { fetchImpl, bsiBaseUrl: BSI_ORIGIN },
+    );
+    expect(off!.status).toBe(403);
+    const unauth = await callAccount(h, "/api/account/referrals", {}, fetchImpl);
+    expect(unauth.status).toBe(401);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("CR-CO-T1: attribution mismatch ignored when checkout_url valid (W2 retired)", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async () =>
+        Response.json({
+          ...CHECKOUT_OK,
+          attribution: {
+            ...CHECKOUT_OK.attribution,
+            commission_percent: 20,
+            commission_bps: 1500,
+          },
+        }),
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+  });
+
+  it("CR2 200 returns CR1 DTO via same builder; exactly 1 upstream call", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("referral-code") && method === "POST") {
+          return Response.json({
+            ...REFERRALS_OK,
+            commission_policy: { commission_percent: 25, commission_bps: 2500 },
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.join_code.commission_percent).toBe(15);
+    expect(body).not.toHaveProperty("commission_policy");
+    expect(body).not.toHaveProperty("earnings");
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
+  });
+});
+
+describe("CR5 limiter lockstep", () => {
+  it("ACCOUNT_READ/WRITE ids lockstep in wrangler", () => {
+    const raw = readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8");
+    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const top = Object.fromEntries(
+      json.ratelimits.map((r: { name: string; namespace_id: string; simple: unknown }) => [
+        r.name,
+        r,
+      ]),
+    );
+    const prev = Object.fromEntries(
+      json.previews.ratelimits.map((r: { name: string; namespace_id: string; simple: unknown }) => [
+        r.name,
+        r,
+      ]),
+    );
+    expect(top.ACCOUNT_READ_LIMITER.namespace_id).toBe("27112");
+    expect(top.ACCOUNT_WRITE_LIMITER.namespace_id).toBe("27113");
+    expect(top.ACCOUNT_READ_LIMITER.simple).toEqual({ limit: 60, period: 60 });
+    expect(top.ACCOUNT_WRITE_LIMITER.simple).toEqual({ limit: 15, period: 60 });
+    expect(prev.ACCOUNT_READ_LIMITER.namespace_id).toBe("27212");
+    expect(prev.ACCOUNT_WRITE_LIMITER.namespace_id).toBe("27213");
+    expect(prev.ACCOUNT_READ_LIMITER.simple).toEqual(top.ACCOUNT_READ_LIMITER.simple);
+    expect(prev.ACCOUNT_WRITE_LIMITER.simple).toEqual(top.ACCOUNT_WRITE_LIMITER.simple);
+  });
+});
+
+describe("static client scans", () => {
+  it("0 commission_policy reads in client/src outside tests; 0 hardcoded % literals", () => {
+    function walk(dir: string, out: string[] = []) {
+      if (!existsSync(dir)) return out;
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, ent.name);
+        if (ent.isDirectory()) walk(full, out);
+        else if (/\.(ts|tsx)$/.test(ent.name) && !/\.test\.(ts|tsx)$/.test(ent.name)) out.push(full);
+      }
+      return out;
+    }
+    const files = walk(join(REPO_ROOT, "client/src"));
+    for (const f of files) {
+      const src = readFileSync(f, "utf8");
+      expect(src, relative(REPO_ROOT, f)).not.toMatch(/commission_policy/);
+      expect(src, relative(REPO_ROOT, f)).not.toMatch(/['"`]15%['"`]/);
+      expect(src, relative(REPO_ROOT, f)).not.toMatch(/['"`]20%['"`]/);
+      expect(src, relative(REPO_ROOT, f)).not.toMatch(/['"`]25%['"`]/);
+      expect(src, relative(REPO_ROOT, f)).not.toMatch(/established_at/);
+    }
+  });
+});
+
+describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = createHarness();
+    installLimiters(h.env);
+  });
+
+  it("T-CR2 exact Bearer header set on CR1", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    await callAccount(h, "/api/account/referrals", { headers: { Cookie: sess.cookie } }, fetchImpl);
+    const upstream = recorded.filter((r) => r.url.includes("/wp-json/"));
+    expect(upstream.length).toBeGreaterThanOrEqual(2);
+    for (const rec of upstream) {
+      expect(Object.keys(rec.headers).sort()).toEqual(
+        expect.arrayContaining(["accept", "authorization", "user-agent"]),
+      );
+      expect(rec.headers.authorization).toMatch(/^Bearer\s+\S+$/);
+      expect(rec.headers["x-api-key"]).toBeUndefined();
+      expect(rec.headers.referer).toBeUndefined();
+      expect(rec.headers.origin).toBeUndefined();
+    }
+  });
+
+  it("CR-COALESCE-3: client override + primary_affiliate_id are not forwarded upstream", async () => {
+    const sess = await withSession(h);
+    let upstreamBody: unknown = null;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          upstreamBody = JSON.parse(bodyText);
+          return Response.json(CHECKOUT_OK);
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          bsi_ref: "cfexample9",
+          return_path: "/account/courses",
+          attribution_source: "explicit_slug",
+          override: true,
+          primary_affiliate_id: 4242,
+          payee_entity_id: 99,
+          commission_bps: 9999,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(upstreamBody).toEqual({
+      bsi_ref: "cfexample9",
+      return_path: "/account/courses",
+    });
+    expect(upstreamBody).not.toHaveProperty("override");
+    expect(upstreamBody).not.toHaveProperty("primary_affiliate_id");
+    expect(upstreamBody).not.toHaveProperty("attribution_source");
+    expect(upstreamBody).not.toHaveProperty("payee_entity_id");
+    expect(upstreamBody).not.toHaveProperty("commission_bps");
+  });
+
+  it("T-CR6 / CR-COALESCE-3: CR3 forwards bsi_ref; browser body is exactly {checkout_url}", async () => {
+    const sess = await withSession(h);
+    for (const attribution_source of [
+      "primary_org",
+      "explicit_slug",
+      "bsi_ref_cookie",
+      "none",
+      "client_override",
+    ] as const) {
+      const { fetchImpl, recorded } = makeFetchMock([
+        async ({ bodyText }) => {
+          expect(JSON.parse(bodyText)).toEqual({ bsi_ref: "cfexample9" });
+          return Response.json({
+            ...CHECKOUT_OK,
+            attribution: {
+              ...CHECKOUT_OK.attribution,
+              attribution_source,
+            },
+          });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/courses/20231/purchase-checkout",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({ bsi_ref: "cfexample9" }),
+        },
+        fetchImpl,
+      );
+      expect(res.status, attribution_source).toBe(200);
+      expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+      expect(recorded).toHaveLength(1);
+    }
+  });
+
+  it("CR-CO-T1: attempt_id junk ignored when checkout_url valid", async () => {
+    const sess = await withSession(h);
+    const junkIds = [
+      "cca_" + "a".repeat(24) + "\n",
+      " cca_" + "a".repeat(24),
+      "cca-" + "a".repeat(24),
+      "ccb_" + "a".repeat(24),
+      "cca_" + "A".repeat(32),
+    ];
+    for (const attempt_id of junkIds) {
+      const res = await callAccount(
+        h,
+        "/api/account/courses/20231/purchase-checkout",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({}),
+        },
+        makeFetchMock([async () => Response.json({ ...CHECKOUT_OK, attempt_id })]).fetchImpl,
+      );
+      expect(res.status, JSON.stringify(attempt_id)).toBe(200);
+      expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+    }
+  });
+
+  it("CR3 rejects -1 / 1.5 / abc courseId and bad return_path with 0 upstream", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json(CHECKOUT_OK),
+    ]);
+    for (const courseId of ["-1", "1.5", "abc", "0"]) {
+      const res = await callAccount(
+        h,
+        `/api/account/courses/${courseId}/purchase-checkout`,
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({}),
+        },
+        fetchImpl,
+      );
+      expect(res.status, courseId).toBe(400);
+    }
+    const badPath = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ return_path: "https://evil.example/" }),
+      },
+      fetchImpl,
+    );
+    expect(badPath.status).toBe(400);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("CR2 non-int entity_id → 400 with 0 upstream", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([]);
+    for (const entity_id of [1.5, "7", 0, -1, null]) {
+      const res = await callAccount(
+        h,
+        "/api/account/referral-code",
+        {
+          method: "POST",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify({ action: "generate", entity_id }),
+        },
+        fetchImpl,
+      );
+      expect(res.status, String(entity_id)).toBe(400);
+    }
+    expect(recorded).toHaveLength(0);
+  });
+
+  it("CR5 429 on generate → 0 upstream", async () => {
+    const sess = await withSession(h);
+    h.env.ACCOUNT_WRITE_LIMITER = countingLimiter(0);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json(REFERRALS_OK),
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/referral-code",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ action: "generate" }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(429);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("CR-X1: 401 on checkout retries at most once (never unbounded)", async () => {
+    const sess = await withSession(h);
+    let checkoutPosts = 0;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method, url }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          checkoutPosts += 1;
+          return new Response(JSON.stringify({ code: "unauthorized" }), { status: 401 });
+        }
+        // Session refresh / oauth paths — always succeed so acting layer can retry once.
+        if (/oauth|token|refresh/i.test(url) || /oauth|token|refresh/i.test(path)) {
+          return Response.json({
+            access_token: "tok_refreshed",
+            refresh_token: "rt_refreshed",
+            expires_in: 3600,
+            token_type: "Bearer",
+          });
+        }
+        if (path.endsWith("/me") || path.includes("/me?")) {
+          return Response.json({ id: 1, email: "a@b.co" });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    // One initial attempt + at most one post-refresh retry.
+    expect(checkoutPosts).toBeGreaterThanOrEqual(1);
+    expect(checkoutPosts).toBeLessThanOrEqual(2);
+  });
+
+  it("CR-X2: canary token / Bearer / API key absent from logs during referrals", async () => {
+    const sess = await withSession(h);
+    const logs: string[] = [];
+    const spyInfo = vi.spyOn(console, "info").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+    const spyWarn = vi.spyOn(console, "warn").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+    const canary = "canary_Bearer_tok_SECRET_xyz";
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/referrals")) {
+          return Response.json({
+            ...REFERRALS_OK,
+            payee_display_name: "Ada",
+          });
+        }
+        if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    await callAccount(h, "/api/account/referrals", { headers: { Cookie: sess.cookie } }, fetchImpl);
+    const blob = logs.join("\n");
+    expect(blob).not.toContain(canary);
+    expect(blob).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
+    expect(blob).not.toMatch(/test-secret-key|DAILY_FIX_API_KEY/i);
+    spyInfo.mockRestore();
+    spyWarn.mockRestore();
+  });
+
+  it("CR1 exact DTO keys; CR-DROP recursive PII scan + counts 0/3/all", async () => {
+    const sess = await withSession(h);
+    const warns: Record<string, unknown>[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((msg) => {
+      warns.push(typeof msg === "string" ? JSON.parse(msg) : (msg as object));
+    });
+
+    const expectedKeys = new Set([
+      "eligible",
+      "eligibility_type",
+      "reason_code",
+      "payee_display_name",
+      "foundations_coach_expires_at",
+      "join_code",
+      "course_links",
+      "course_links_dropped",
+      "join_code_dropped",
+      "earnings",
+    ]);
+
+    // count 0
+    {
+      warns.length = 0;
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/referrals")) return Response.json(REFERRALS_OK);
+          if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/referrals",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      const body = await res.json();
+      expect(body.course_links_dropped).toBe(0);
+      expect(warns).toEqual([]);
+      for (const k of Object.keys(body)) expect(expectedKeys.has(k), k).toBe(true);
+    }
+
+    // count 3 (all dropped) — recursive PII scan on log objects
+    {
+      warns.length = 0;
+      const { fetchImpl } = makeFetchMock([
+        async ({ path }) => {
+          if (path.endsWith("/me/referrals")) {
+            return Response.json({
+              ...REFERRALS_OK,
+              course_links: [
+                link({ course_id: 11, share_url: "http://evil.example/x" }),
+                link({ course_id: 12, currency: "usd" }),
+                link({ course_id: 13, course_price_cents: -5 }),
+              ],
+            });
+          }
+          if (path.includes("referral-earnings")) return Response.json(EARNINGS);
+          return new Response(null, { status: 404 });
+        },
+      ]);
+      const res = await callAccount(
+        h,
+        "/api/account/referrals",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      );
+      const body = await res.json();
+      expect(body.course_links).toEqual([]);
+      expect(body.course_links_dropped).toBe(3);
+      expect(warns).toHaveLength(3);
+      const blob = JSON.stringify(warns);
+      // Recursive PII scan: no emails, tokens, slugs, or URL values in drop logs.
+      expect(blob).not.toMatch(/[^\s"']+@[^\s"']+/);
+      expect(blob).not.toMatch(/Bearer\s+\S+/i);
+      expect(blob).not.toMatch(/cfexample9/);
+      expect(blob).not.toMatch(/https?:\/\//i);
+      for (const w of warns) {
+        expect(Object.keys(w).sort()).toEqual(["course_id", "event", "reason"]);
+      }
+    }
+    spy.mockRestore();
+  });
+});
+
+// silence unused ACCESS1 import warning path — used by harness login
+void ACCESS1;
+void NOW_ISO;

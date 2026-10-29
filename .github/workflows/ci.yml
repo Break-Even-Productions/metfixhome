@@ -32,8 +32,41 @@ jobs:
       - name: Typecheck worker
         run: npm run check:worker
 
+      # 1.2.11 / CQ S2: root `npm run check` gates client + shared tsc at merge.
+      - name: Typecheck client and shared
+        run: npm run check
+
       - name: Unit and mount tests
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
+
+      # CL-MONEY-SCAN-1 / N-R3-1: fail job on gating violation OR zero matched tests.
+      # Vitest may ANSI-color the summary (`Tests … 1 passed`); strip before grep.
+      - name: CL-MONEY-SCAN-1 — frozen money scan
+        env:
+          NO_COLOR: "1"
+        run: |
+          set -o pipefail
+          # S-R5-1b: capture status even when vitest fails under set -e.
+          out=$(npx vitest run worker/account.repo-scan.test.ts -t "CL-MONEY-SCAN-1" 2>&1) && status=0 || status=$?
+          printf '%s\n' "$out"
+          # N-R6-2: zero-tests-matched check only when vitest exited 0
+          # (real failures already printed their own output above).
+          if [ "$status" -eq 0 ]; then
+            plain=$(printf '%s\n' "$out" | sed $'s/\x1b\\[[0-9;]*m//g')
+            printf '%s\n' "$plain" | grep -qE 'Tests[^[:digit:]]*[1-9][0-9]*[[:space:]]+passed' || {
+              echo "N-R3-1 FAIL: zero CL-MONEY-SCAN-1 tests matched" >&2
+              exit 1
+            }
+          fi
+          exit "$status"
+
+      - name: Pages — no data-testid
+        run: |
+          if grep -RIn --include='*.tsx' --include='*.ts' --exclude='*.test.ts' --exclude='*.test.tsx' 'data-testid' client/src/pages; then
+            echo "FAIL: data-testid under client/src/pages (production)" >&2
+            exit 1
+          fi
+          echo "ok: no data-testid in client/src/pages"
 
       - name: Build static site
         run: npm run build:cf
@@ -76,10 +109,11 @@ jobs:
           # Source: any biz_ outside shared/account/whop.ts (and tests) fails.
           hits=$(grep -RInE --exclude-dir=node_modules --exclude-dir=dist --exclude='*.test.ts' --exclude='*.test.tsx' -e 'biz_[A-Za-z0-9]+' client worker shared wrangler.jsonc || true)
           bad=$(printf '%s\n' "$hits" | grep -v '^shared/account/whop.ts:' | grep -v "$BEP" || true)
-          # Also fail if BEP appears outside whop.ts
+          # Also fail if BEP appears outside whop.ts (source count must be 1)
           bep_elsewhere=$(printf '%s\n' "$hits" | grep "$BEP" | grep -v '^shared/account/whop.ts:' || true)
-          if [ -n "$bad" ] || [ -n "$bep_elsewhere" ]; then
-            echo "DP-WHOP-1 failed: unexpected biz_ literals:" >&2
+          bep_in_whop=$(printf '%s\n' "$hits" | grep '^shared/account/whop.ts:' | grep -c "$BEP" || true)
+          if [ -n "$bad" ] || [ -n "$bep_elsewhere" ] || [ "$bep_in_whop" != "1" ]; then
+            echo "DP-WHOP-1 failed: unexpected biz_ literals (BEP defs in whop.ts=$bep_in_whop):" >&2
             printf '%s\n%s\n' "$bad" "$bep_elsewhere" >&2
             exit 1
           fi
@@ -89,6 +123,25 @@ jobs:
             exit 1
           fi
           echo "DP-WHOP-1 ok: sole biz_ literal in shared/account/whop.ts"
+
+      - name: CR-COMM — no commission_policy in dist/public
+        run: |
+          if grep -RInE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'commission_policy' dist/public; then
+            echo "CR-COMM failed: commission_policy found in dist/public" >&2
+            exit 1
+          fi
+          echo "CR-COMM ok: no commission_policy in dist/public"
+
+      - name: CR N3 — exactly one sanitizeReturnPath definition
+        run: |
+          defs=$(grep -RInE --exclude-dir=node_modules --exclude-dir=dist --exclude='*.test.ts' --exclude='*.test.tsx' -e 'function sanitizeReturnPath|const sanitizeReturnPath' shared client worker || true)
+          count=$(printf '%s\n' "$defs" | grep -c . || true)
+          if [ "$count" != "1" ]; then
+            echo "Expected 1 sanitizeReturnPath definition, got $count:" >&2
+            printf '%s\n' "$defs" >&2
+            exit 1
+          fi
+          echo "ok: one sanitizeReturnPath definition"
 
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk

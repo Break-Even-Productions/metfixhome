@@ -42,6 +42,25 @@ export function accountPurchaseCheckoutPath(courseId: string): string {
   return `${BSI}/courses/${encodeURIComponent(courseId)}/purchase-checkout`;
 }
 
+/** PR D CR3 / CL2 buy_outright — upstream checkout path (rev1.7 §PD-2 (A)). */
+export function accountCourseCheckoutPath(courseId: string): string {
+  return `${BSI}/courses/${encodeURIComponent(courseId)}/checkout`;
+}
+
+/** CL1 — three-path claim options (BSI §DTO). */
+export function certificateClaimOptionsPath(): string {
+  return `${BSI}/me/certificate-claim-options`;
+}
+
+/** CL2 prepay_credit — Whop credit prepay checkout. */
+export function certificatePrepayCheckoutPath(courseId: string): string {
+  return `${BSI}/courses/${encodeURIComponent(courseId)}/certificate-prepay-checkout`;
+}
+
+export function accountReferralsPath(): string {
+  return `${BSI}/me/referrals`;
+}
+
 export function accountProfilesMePath(): string {
   return `${BSI}/profiles/me`;
 }

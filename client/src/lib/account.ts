@@ -4,8 +4,18 @@
  */
 import { getMetfixLoginUrl } from "@/const";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
+import { isWhopCheckoutUrl } from "@shared/account/url-allowlist";
+import type {
+  ClaimOptionsDto,
+  ClaimPathId,
+} from "@shared/account/claimOptions";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
+import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+
+export { sanitizeReturnPath } from "@shared/account/returnPath";
+export type { ClaimOptionsDto, ClaimPathId };
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -55,12 +65,15 @@ export type AccountSubscriptions = {
 };
 
 export type ClaimedCertificate = {
-  course_id: number | string | null;
+  /** S-R3-2: number or null only (digit-strings normalized in worker). */
+  course_id: number | null;
   course_slug: string | null;
   course_title: string | null;
-  allocated_cents: number;
+  /** S-R3-2: number|null for null-safety (Worker Branch A drops bad rows). */
+  allocated_cents: number | null;
   claimed_at: string | null;
-  claim_method: "ltv" | "direct_purchase" | null;
+  /** Read-side only; includes legacy `direct_purchase` (BSI §R120). Never outbound `'ltv'`. */
+  claim_method: StoredClaimMethod | null;
   certificate_url?: string;
 };
 
@@ -102,7 +115,7 @@ export type CourseItem = {
   included_with_subscription: boolean;
   purchased_directly: boolean;
   certificate_claimed: boolean;
-  certificate_claim_method: "ltv" | "direct_purchase" | null;
+  certificate_claim_method: StoredClaimMethod | null;
   certificate_url: string | null;
 };
 
@@ -140,9 +153,44 @@ export type FavoritesPage = {
 };
 
 export type ReferralsPayload = {
+  eligible?: boolean;
+  eligibility_type?: "organization" | "foundations_coach" | null;
+  reason_code?: "bsi_referral_ineligible" | "bsi_referral_coach_expired" | null;
+  payee_display_name?: string | null;
+  foundations_coach_expires_at?: string | null;
+  join_code?: {
+    slug: string;
+    whop_affiliate_code: string;
+    join_url: string | null;
+    commission_percent: number;
+    commission_bps: number;
+  } | null;
+  course_links?: Array<{
+    course_id: number;
+    course_slug: string;
+    course_title: string;
+    course_price_cents: number;
+    currency: string;
+    commission_percent: number;
+    commission_bps: number;
+    estimated_commission_cents: number;
+    bsi_ref_slug: string;
+    whop_affiliate_code: string;
+    whop_plan_id: string;
+    share_url: string;
+  }>;
+  /** R4-N1: required on Worker CR1/CR2 DTO — missing is a contract error. */
+  course_links_dropped: number;
+  join_code_dropped?: boolean;
+  earnings?: {
+    pending_cents?: number;
+    ready_cents?: number;
+    paid_total_cents?: number;
+    currency?: string;
+    connect_status?: "none" | "pending" | "active";
+  };
+  /** @deprecated PR B stub field — prefer join_code.slug */
   referral_code?: string | null;
-  earnings?: unknown;
-  [key: string]: unknown;
 };
 
 export type CourseGiftsPayload = {
@@ -180,6 +228,9 @@ export type MemberSummary = {
   };
 };
 
+/** CL-REQ-1: single cache key for claim options (invalidateQueries equivalent). */
+export const CLAIM_OPTIONS_QUERY_KEY = "certificate-claim-options" as const;
+
 type CacheKey =
   | "overview"
   | "subscriptions"
@@ -191,19 +242,13 @@ type CacheKey =
   | "gifts"
   | "notifications"
   | "privacy"
+  | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
   | `member:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
-
-/** Single in-flight LTV certificate claim (CQ §1.2 / CERT3b). */
-let claimInflight: Promise<unknown> | null = null;
-
-export function isClaimInFlight(): boolean {
-  return claimInflight != null;
-}
 
 function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
@@ -229,14 +274,6 @@ function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
   });
 }
 
-/** Same rules as Login safeNextPath / Worker sanitizeReturn. */
-export function sanitizeReturnPath(raw: string | null | undefined): string {
-  if (!raw || raw.length > 512) return "/account";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/account";
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return "/account";
-  return raw;
-}
-
 function redirectToLogin(currentPath?: string): never {
   clearAccountCache();
   const path =
@@ -244,7 +281,7 @@ function redirectToLogin(currentPath?: string): never {
     (typeof window !== "undefined"
       ? `${window.location.pathname}${window.location.search}`
       : "/account");
-  const next = sanitizeReturnPath(path);
+  const next = sanitizeReturnPath(path) ?? "/account";
   if (typeof window !== "undefined") {
     window.location.assign(getMetfixLoginUrl(next));
   }
@@ -254,7 +291,6 @@ function redirectToLogin(currentPath?: string): never {
 export function clearAccountCache(): void {
   cache.clear();
   inflight.clear();
-  claimInflight = null;
 }
 
 function invalidateKeys(keys: CacheKey[]): void {
@@ -296,6 +332,8 @@ async function accountGet<T>(
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
+      // S-R3-3: forward AbortSignal so unmount aborts in-flight CL1 refresh.
+      signal: options?.signal,
     });
     if (res.status === 401) {
       redirectToLogin();
@@ -324,6 +362,7 @@ async function accountMutate<T>(
     bodyInit?: BodyInit;
     contentType?: string | null;
     invalidate?: CacheKey[];
+    headers?: Record<string, string>;
   },
 ): Promise<T> {
   const csrf = await fetchCsrf();
@@ -332,6 +371,7 @@ async function accountMutate<T>(
   const headers: Record<string, string> = {
     Accept: "application/json",
     "X-CSRF-Token": csrf,
+    ...init.headers,
   };
   let body: BodyInit | undefined = init.bodyInit;
   if (init.body !== undefined) {
@@ -466,26 +506,73 @@ export function loadMember(
   return accountGet(`/api/members/${encodeURIComponent(memberId)}`, `member:${memberId}`, options);
 }
 
-export async function claimCertificate(courseId: string | number): Promise<unknown> {
-  if (claimInflight) return claimInflight;
-  const shared = accountMutate(`/api/account/courses/${courseId}/claim-certificate`, {
-    method: "POST",
-    body: { method: "ltv" },
-    invalidate: ["ltv", "courses", "overview"],
-  }).finally(() => {
-    claimInflight = null;
-  });
-  claimInflight = shared;
-  return shared;
-}
-
 export async function purchaseCourseCheckout(
   courseId: string | number,
-): Promise<{ checkout_url?: string }> {
+  opts?: { bsi_ref?: string; return_path?: string },
+): Promise<{ checkout_url: string }> {
+  const body: Record<string, string> = {};
+  if (opts?.bsi_ref) body.bsi_ref = opts.bsi_ref;
+  if (opts?.return_path) body.return_path = opts.return_path;
   return accountMutate(`/api/account/courses/${courseId}/purchase-checkout`, {
     method: "POST",
-    body: {},
+    body,
   });
+}
+
+export function loadClaimOptions(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<ClaimOptionsDto> {
+  return accountGet(
+    "/api/account/certificate-claim-options",
+    CLAIM_OPTIONS_QUERY_KEY,
+    options,
+  );
+}
+
+export function invalidateClaimOptions(): void {
+  invalidateKeys([CLAIM_OPTIONS_QUERY_KEY]);
+}
+
+export type ClaimPathResult =
+  | { already_claimed: boolean; checkout_url?: never }
+  | { checkout_url: string; already_claimed?: never };
+
+/**
+ * CL2 three-path claim. Caller owns Idempotency-Key (created in click handler).
+ * Invalidates CL1 on success / ineligible / 502 (CQ S3).
+ */
+export async function claimCoursePath(
+  courseId: string | number,
+  path: ClaimPathId,
+  idempotencyKey: string,
+): Promise<ClaimPathResult> {
+  try {
+    const res = await accountMutate<ClaimPathResult>(
+      `/api/account/courses/${courseId}/claim`,
+      {
+        method: "POST",
+        body: { path },
+        headers: { "Idempotency-Key": idempotencyKey },
+        invalidate: [CLAIM_OPTIONS_QUERY_KEY, "ltv", "courses", "overview"],
+      },
+    );
+    return res;
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    // 402/403/502: invalidate CL1. 409: no re-fetch. 503: handled by UI (one delayed re-fetch).
+    if (status === 402 || status === 403 || status === 502) {
+      invalidateClaimOptions();
+    }
+    throw err;
+  }
+}
+
+/** CL-UI-1 N2: single Whop checkout handoff — re-check host then assign. */
+export function openWhopCheckout(url: unknown): boolean {
+  if (!isWhopCheckoutUrl(url)) return false;
+  window.location.assign(url);
+  return true;
 }
 
 export async function convertToWhop(body: {
@@ -565,14 +652,35 @@ export async function setFavorite(
   });
 }
 
+/**
+ * R3-N2 / CR-EARN-T3: single helper — CR2 omits earnings; keep prior panel values.
+ */
+export function preserveReferralEarnings(
+  next: ReferralsPayload,
+  previous: ReferralsPayload["earnings"] | undefined,
+): ReferralsPayload {
+  if (next.earnings == null && previous) {
+    return { ...next, earnings: previous };
+  }
+  return next;
+}
+
 export async function referralCodeAction(
   action: "generate" | "rotate" | "revoke",
+  opts?: { previousEarnings?: ReferralsPayload["earnings"] },
 ): Promise<ReferralsPayload> {
-  return accountMutate("/api/account/referral-code", {
+  // N5: seed cache with returned DTO (do not invalidate then refetch).
+  const next = await accountMutate<ReferralsPayload>("/api/account/referral-code", {
     method: "POST",
     body: { action },
-    invalidate: ["referrals"],
   });
+  const merged =
+    action === "generate" || action === "rotate"
+      ? preserveReferralEarnings(next, opts?.previousEarnings)
+      : next;
+  cache.set("referrals", merged);
+  inflight.delete("referrals");
+  return merged;
 }
 
 export async function updateNotifications(
@@ -642,7 +750,9 @@ export type MembershipStatusLabel =
 export function deriveMembershipStatus(
   subs: AccountSubscriptions | null | undefined,
 ): MembershipStatusLabel {
-  if (!subs || subs.canonical_tier === "free" || subs.items.length === 0) return "Free";
+  if (!subs || subs.canonical_tier === "free" || !Array.isArray(subs.items) || subs.items.length === 0) {
+    return "Free";
+  }
   const primary =
     subs.items.find((i) => !i.is_duplicate_stripe) ?? subs.items[0];
   if (!primary) return "Free";

@@ -1,3 +1,6 @@
+/** Documentation-only money alias (CL-MONEY-1 / B3). Not branded. */
+export type Cents = number;
+
 export type LtvBudgetSummary = {
   total_ltv_cents: number;
   claimed_courses_value_cents: number;
@@ -5,8 +8,15 @@ export type LtvBudgetSummary = {
   utilization_percent: number; // integer 0..100 for segmented progress bar
 };
 
+/** Read-side claim methods (1.2.7 / BSI rev1.22 §R120). No outbound `'ltv'`. */
+export type StoredClaimMethod =
+  | "redeem_ltv"
+  | "prepay_credit"
+  | "buy_outright"
+  | "direct_purchase";
+
 export type CourseCertificateEligibility =
-  | { status: "claimed"; method: "ltv" | "direct_purchase" | null }
+  | { status: "claimed"; method: StoredClaimMethod | null }
   | { status: "eligible_direct_purchase" } // purchased_directly === true && completed
   | { status: "eligible_ltv"; required_cents: number; remaining_after_claim_cents: number }
   | {
@@ -48,7 +58,7 @@ export type CourseCertificateEvalInput = {
   course_price_cents: number;
   completed: boolean;
   certificate_claimed: boolean;
-  claim_method?: "ltv" | "direct_purchase" | null;
+  claim_method?: StoredClaimMethod | null;
   purchased_directly?: boolean;
 };
 
@@ -64,9 +74,13 @@ export function evaluateCourseCertificateEligibility(
   const available = toNonNegativeSafeCents(availableCertificateLtvCents);
 
   if (course.certificate_claimed) {
-    const method = course.claim_method === "ltv" || course.claim_method === "direct_purchase"
-      ? course.claim_method
-      : null;
+    const method =
+      course.claim_method === "redeem_ltv" ||
+      course.claim_method === "prepay_credit" ||
+      course.claim_method === "buy_outright" ||
+      course.claim_method === "direct_purchase"
+        ? course.claim_method
+        : null;
     return { status: "claimed", method };
   }
 
