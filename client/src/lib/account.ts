@@ -65,10 +65,12 @@ export type AccountSubscriptions = {
 };
 
 export type ClaimedCertificate = {
-  course_id: number | string | null;
+  /** S-R3-2: number or null only (digit-strings normalized in worker). */
+  course_id: number | null;
   course_slug: string | null;
   course_title: string | null;
-  allocated_cents: number;
+  /** S-R3-2: number|null for null-safety (Worker Branch A drops bad rows). */
+  allocated_cents: number | null;
   claimed_at: string | null;
   /** Read-side only; includes legacy `direct_purchase` (BSI §R120). Never outbound `'ltv'`. */
   claim_method: StoredClaimMethod | null;
@@ -330,6 +332,8 @@ async function accountGet<T>(
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
+      // S-R3-3: forward AbortSignal so unmount aborts in-flight CL1 refresh.
+      signal: options?.signal,
     });
     if (res.status === 401) {
       redirectToLogin();

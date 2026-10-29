@@ -37,10 +37,12 @@ export function LtvVisualizer({ ltv }: Props) {
           </dd>
           {claimedLtv.length > 0 ? (
             <ul className="account-muted" style={{ margin: "0.4rem 0 0", paddingLeft: "1.1rem" }}>
-              {claimedLtv.map((c) => (
-                <li key={`${c.course_id}-${c.claimed_at}`}>
+              {claimedLtv.map((c, i) => (
+                <li key={`claimed-${c.course_id ?? "x"}-${c.claimed_at ?? "t"}-${i}`}>
                   {c.course_title ?? "Course"}{" "}
-                  <span className="account-mono">{formatUsdFromCents(c.allocated_cents)}</span>
+                  <span className="account-mono">
+                    {c.allocated_cents == null ? "—" : formatUsdFromCents(c.allocated_cents)}
+                  </span>
                 </li>
               ))}
             </ul>

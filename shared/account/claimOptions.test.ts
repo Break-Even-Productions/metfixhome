@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   buildClaimOptionsDto,
   buyOutrightTitle,
+  CLAIM_REASON_BY_UPSTREAM,
+  mapClaimIneligible,
   mapRedeemLtvSuccess,
   isValidIdempotencyKey,
+  type ClaimIneligibleReason,
+  type UpstreamClaimCode,
 } from "./claimOptions";
 import { formatUsdFromCents } from "./ltv";
 
@@ -190,5 +194,129 @@ describe("isValidIdempotencyKey", () => {
     expect(isValidIdempotencyKey("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
     expect(isValidIdempotencyKey("550E8400-E29B-41D4-A716-446655440000")).toBe(false);
     expect(isValidIdempotencyKey("abcdefgh")).toBe(false);
+  });
+});
+
+describe("CL-ERR-1 CLAIM_REASON_BY_UPSTREAM", () => {
+  it("maps only known upstream codes to the 8 §PD-enum reasons", () => {
+    const eight = [
+      "legacy_stripe_member",
+      "not_completed",
+      "insufficient_ltv",
+      "already_claimed",
+      "not_subscriber",
+      "no_shortfall",
+      "membership_not_renewing",
+      "course_not_purchasable",
+    ] as const satisfies readonly ClaimIneligibleReason[];
+    expectTypeOf<ClaimIneligibleReason>().toEqualTypeOf<(typeof eight)[number]>();
+    // @ts-expect-error claim_in_progress is not a ClaimIneligibleReason
+    const bad: ClaimIneligibleReason = "claim_in_progress";
+    void bad;
+
+    expect(Object.values(CLAIM_REASON_BY_UPSTREAM).every((r) => eight.includes(r))).toBe(true);
+    expect(mapClaimIneligible("bsi_insufficient_certificate_ltv")).toEqual({
+      error: "claim_ineligible",
+      reason_code: "insufficient_ltv",
+    });
+    expect(mapClaimIneligible("bsi_prepay_legacy_stripe_member")).toEqual({
+      error: "claim_ineligible",
+      reason_code: "legacy_stripe_member",
+    });
+    expect(mapClaimIneligible("bsi_course_not_completed")).toEqual({
+      error: "claim_ineligible",
+      reason_code: "not_completed",
+    });
+    expect(mapClaimIneligible("bsi_unknown_code")).toBeNull();
+    expect(mapClaimIneligible(null)).toBeNull();
+
+    const codes = Object.keys(CLAIM_REASON_BY_UPSTREAM) as UpstreamClaimCode[];
+    expect(codes.sort()).toEqual([
+      "bsi_course_not_completed",
+      "bsi_insufficient_certificate_ltv",
+      "bsi_prepay_legacy_stripe_member",
+    ]);
+  });
+});
+
+describe("CL-T13 / CL-T14 claim-options DTO maps", () => {
+  it("CL-T13: CLF redeem shortfall 8000; no credit combine", () => {
+    const raw = {
+      currency: "usd",
+      ltv: { total_ltv_cents: 30000, claimed_value_cents: 8000, available_cents: 22000 },
+      credit: {
+        balance_cents: 1300,
+        days_granted: 12,
+        pending_promo_cents: 1300,
+        promo_state: "waiting_to_apply",
+      },
+      courses: [
+        {
+          course_id: 1,
+          slug: "essentials",
+          title: "Essentials",
+          completion_status: "completed",
+          completed_at: "2026-01-01T00:00:00Z",
+          price_cents: 30000,
+          already_claimed: false,
+          claimed_at: null,
+          claimed_via: null,
+          access_expires_at: null,
+          paths: [
+            path("redeem_ltv", false, 8000, 30000, "insufficient_ltv"),
+            path("prepay_credit", true, 8000, 30000, null),
+            path("buy_outright", true, 30000, 30000, null),
+          ],
+        },
+      ],
+    };
+    const built = buildClaimOptionsDto(raw);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.dto.courses[0]!.paths[0]).toMatchObject({
+      path: "redeem_ltv",
+      reason_code: "insufficient_ltv",
+      shortfall_cents: 8000,
+    });
+    const json = JSON.stringify(built.dto);
+    expect(json).not.toContain("23300");
+    expect(json).not.toContain("$233");
+  });
+
+  it("CL-T14: promo copy states; none+1300 zeros pending + one promo_state_mismatch log", () => {
+    const baseCourse = {
+      course_id: 1,
+      slug: "x",
+      title: "X",
+      completion_status: "completed" as const,
+      completed_at: "2026-01-01T00:00:00Z",
+      price_cents: 100,
+      already_claimed: false,
+      claimed_at: null,
+      claimed_via: null,
+      access_expires_at: null,
+      paths: [
+        path("redeem_ltv", true, 0, 100, null),
+        path("prepay_credit", false, 0, 100, "no_shortfall"),
+        path("buy_outright", true, 100, 100, null),
+      ],
+    };
+    const mismatch = buildClaimOptionsDto({
+      currency: "usd",
+      ltv: { total_ltv_cents: 100, claimed_value_cents: 0, available_cents: 100 },
+      credit: {
+        balance_cents: 0,
+        days_granted: 0,
+        pending_promo_cents: 1300,
+        promo_state: "none",
+      },
+      courses: [baseCourse],
+    });
+    expect(mismatch.ok).toBe(true);
+    if (!mismatch.ok) return;
+    expect(mismatch.dto.credit.pending_promo_cents).toBe(0);
+    expect(JSON.stringify(mismatch.dto)).not.toContain("1300");
+    expect(mismatch.logs).toEqual([{ event: "promo_state_mismatch" }]);
+    expect(Object.keys(mismatch.logs[0]!).sort()).toEqual(["event"]);
   });
 });

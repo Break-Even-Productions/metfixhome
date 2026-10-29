@@ -95,6 +95,10 @@ function redeemButton() {
   return screen.getByRole("button", { name: /^Redeem$/i });
 }
 
+function prepayButton() {
+  return screen.getByRole("button", { name: /^Prepay$/i });
+}
+
 const CLAIM_OPTIONS_REDEEM_OK = {
   ...CLAIM_OPTIONS,
   ltv: { total_ltv_cents: 30000, claimed_value_cents: 0, available_cents: 30000 },
@@ -268,9 +272,60 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     expect(optionsGets).toBe(1);
   });
 
-  it("CL-POSTGET-1 / S-R2-1: redeem POST 200 + options 502 → success, no failed, ≤1 GET, key kept", async () => {
+  it("CL-POSTGET-1: prepay checkout — no failed; exactly 1 redirect; same Idempotency-Key within attempt", async () => {
     let claimPosts = 0;
-    let optionsGets = 0;
+    const idemKeys: string[] = [];
+    vi.mocked(openWhopCheckout).mockClear();
+    vi.mocked(openWhopCheckout).mockReturnValue(true);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+        if (url.includes("/api/account/courses") && method === "GET" && !url.includes("/claim")) {
+          return jsonResponse(COURSES_LTV300);
+        }
+        if (url.includes("/certificate-claim-options")) return jsonResponse(CLAIM_OPTIONS);
+        if (url.includes("/courses/20/claim") && method === "POST") {
+          claimPosts += 1;
+          const key = new Headers(init?.headers).get("Idempotency-Key");
+          if (key) idemKeys.push(key);
+          return jsonResponse({ checkout_url: CHECKOUT_URL });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    render(
+      <Router>
+        <AccountCourses />
+      </Router>,
+    );
+    await waitFor(() => expect(claimCertificateButton()).toBeTruthy());
+    fireEvent.click(claimCertificateButton());
+    await waitFor(() => expect(prepayButton()).toBeTruthy());
+    fireEvent.click(prepayButton());
+    await waitFor(() => expect(claimPosts).toBe(1));
+    await waitFor(() =>
+      expect(vi.mocked(openWhopCheckout)).toHaveBeenCalledTimes(1),
+    );
+    expect(vi.mocked(openWhopCheckout)).toHaveBeenCalledWith(CHECKOUT_URL);
+    expect(screen.queryByText(/failed/i)).toBeNull();
+    expect(idemKeys).toHaveLength(1);
+
+    // Same attempt: later click reuses the same Idempotency-Key (prepay does not clear on redirect).
+    fireEvent.click(prepayButton());
+    await waitFor(() => expect(claimPosts).toBe(2));
+    expect(idemKeys[1]).toBe(idemKeys[0]);
+    expect(vi.mocked(openWhopCheckout)).toHaveBeenCalledTimes(2);
+  });
+
+  it("CL-POSTGET-1 / S-R2-1 / S-R3-1: redeem POST 200 + options 502 → success; exactly 1 refresh GET; new key after success", async () => {
+    let claimPosts = 0;
     let optionsGetsAfterPost = 0;
     let posted = false;
     const idemKeys: string[] = [];
@@ -286,7 +341,6 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
           return jsonResponse(COURSES_LTV300);
         }
         if (url.includes("/certificate-claim-options")) {
-          optionsGets += 1;
           if (posted) optionsGetsAfterPost += 1;
           if (!posted) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
           return jsonResponse({ error: "unavailable" }, 502);
@@ -316,18 +370,20 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     expect(screen.queryByText(/failed/i)).toBeNull();
     await new Promise((r) => setTimeout(r, 50));
     expect(claimPosts).toBe(1);
-    expect(optionsGetsAfterPost).toBeLessThanOrEqual(1);
+    expect(optionsGetsAfterPost).toBe(1);
     expect(idemKeys).toHaveLength(1);
 
-    // Later click reuses the same Idempotency-Key (CL-POSTGET-1).
+    // S-R3-1: next claim after success gets a new Idempotency-Key.
     fireEvent.click(redeemButton());
     await waitFor(() => expect(claimPosts).toBe(2));
-    expect(idemKeys[1]).toBe(idemKeys[0]);
+    expect(idemKeys[1]).toBeTruthy();
+    expect(idemKeys[1]).not.toBe(idemKeys[0]);
   });
 
-  it("R2-N1: unmount during background claim-options refresh does not throw", async () => {
+  it("R2-N1 / S-R3-3: unmount aborts background claim-options AbortSignal", async () => {
     let resolveRefresh: ((v: Response) => void) | null = null;
     let claimPosts = 0;
+    let refreshSignal: AbortSignal | null = null;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal(
       "fetch",
@@ -342,6 +398,7 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
         }
         if (url.includes("/certificate-claim-options")) {
           if (method === "GET" && claimPosts === 0) return jsonResponse(CLAIM_OPTIONS_REDEEM_OK);
+          refreshSignal = init?.signal ?? null;
           return new Promise<Response>((resolve) => {
             resolveRefresh = resolve;
           });
@@ -365,7 +422,9 @@ describe("AccountCourses three-path claim (CL-UI-1 / P-CL-1)", () => {
     fireEvent.click(redeemButton());
     await waitFor(() => expect(claimPosts).toBe(1));
     await waitFor(() => expect(screen.getByText("Certificate claimed")).toBeTruthy());
+    await waitFor(() => expect(refreshSignal).toBeTruthy());
     view.unmount();
+    expect(refreshSignal!.aborted).toBe(true);
     resolveRefresh?.(jsonResponse(CLAIM_OPTIONS_REDEEM_OK));
     await new Promise((r) => setTimeout(r, 30));
     const reactUnmountWarnings = consoleError.mock.calls.filter((c) =>

@@ -234,8 +234,10 @@ export default function AccountCourses() {
         return;
       }
       // redeem_ltv (or already_claimed) success — single success copy (CQ nit).
-      // CL-POSTGET-1: keep Idempotency-Key; failed CL1 refresh must never clear it.
+      // S-R3-1: clear key on success so the next claim gets a new key; failed
+      // CL1 refresh must not clear/rotate mid-attempt (already cleared here once).
       setMessage("Certificate claimed");
+      idemRef.current = null;
       refreshClaimOptionsBackground();
       void refreshLists().catch(() => undefined);
     } catch (err) {

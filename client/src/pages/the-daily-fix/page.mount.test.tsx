@@ -1878,9 +1878,9 @@ describe("C6.1 /me single-flight on mount", () => {
     expect(await screen.findByText(/Signed in as Jane/i)).toBeTruthy();
     const thread = document.querySelector(".df-comments");
     expect(thread).toBeTruthy();
-    expect(within(thread as HTMLElement).getByTestId("df-comments-viewer").textContent).toBe(
-      "Signed in as Jane",
-    );
+    expect(
+      within(thread as HTMLElement).getByText("Signed in as Jane").className,
+    ).toMatch(/df-comments-viewer/);
 
     // Switch pillar, navigate to another date and back, focus, advance 10 min.
     const brainTab = screen.getByRole("tab", { name: /Brain/i });
@@ -1901,9 +1901,9 @@ describe("C6.1 /me single-flight on mount", () => {
     // Still Jane in the thread after navigate/focus (from /me cache, not a hardcoded prop).
     const threadAfter = document.querySelector(".df-comments");
     expect(threadAfter).toBeTruthy();
-    expect(within(threadAfter as HTMLElement).getByTestId("df-comments-viewer").textContent).toBe(
-      "Signed in as Jane",
-    );
+    expect(
+      within(threadAfter as HTMLElement).getByText("Signed in as Jane").className,
+    ).toMatch(/df-comments-viewer/);
     await refreshMeAfterAuthChange();
     expect(meCalls()).toHaveLength(2);
   });

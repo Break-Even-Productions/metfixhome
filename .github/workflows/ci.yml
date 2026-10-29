@@ -39,17 +39,23 @@ jobs:
       - name: Unit and mount tests
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm test; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
 
-      # CL-MONEY-SCAN-1: frozen 1.2.12 money scan — fail job on gating violation.
+      # CL-MONEY-SCAN-1 / N-R3-1: fail job on gating violation OR zero matched tests.
       - name: CL-MONEY-SCAN-1 — frozen money scan
-        run: npx vitest run worker/account.repo-scan.test.ts -t "CL-MONEY-SCAN-1"
-
-      - name: Account pages — no data-testid
         run: |
-          if grep -RIn --include='*.tsx' --include='*.ts' --exclude='*.test.ts' --exclude='*.test.tsx' 'data-testid' client/src/pages/account; then
-            echo "FAIL: data-testid under client/src/pages/account (production)" >&2
+          set -o pipefail
+          out=$(npx vitest run worker/account.repo-scan.test.ts -t "CL-MONEY-SCAN-1" 2>&1 | tee /dev/stderr)
+          echo "$out" | grep -qE 'Tests[[:space:]]+[1-9][0-9]* passed' || {
+            echo "N-R3-1 FAIL: zero CL-MONEY-SCAN-1 tests matched" >&2
+            exit 1
+          }
+
+      - name: Pages — no data-testid
+        run: |
+          if grep -RIn --include='*.tsx' --include='*.ts' --exclude='*.test.ts' --exclude='*.test.tsx' 'data-testid' client/src/pages; then
+            echo "FAIL: data-testid under client/src/pages (production)" >&2
             exit 1
           fi
-          echo "ok: no data-testid in client/src/pages/account"
+          echo "ok: no data-testid in client/src/pages"
 
       - name: Build static site
         run: npm run build:cf

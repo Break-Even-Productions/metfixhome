@@ -668,22 +668,14 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
         );
         return accountJson({ error: "upstream_error" }, 502);
       }
-      // Branch A: keep bad row (not silently dropped), exclude from every sum; log once.
+      // Branch A (QA ed5a / S-R3-2 amend): drop bad row + log once {event, course_id}.
+      // No allocated_cents:null in the response. Types stay number|null for null-safety.
       if (!loggedBadAllocated) {
         loggedBadAllocated = true;
         console.warn(
           JSON.stringify({ event: "ltv_row_allocated_invalid", course_id: courseId }),
         );
       }
-      claimed_certificates.push({
-        course_id: courseId,
-        course_slug: strOrNull(r.course_slug),
-        course_title: strOrNull(r.course_title),
-        allocated_cents: null,
-        claimed_at: strOrNull(r.claimed_at),
-        claim_method: claimMethod,
-        certificate_url: typeof r.certificate_url === "string" ? r.certificate_url : undefined,
-      });
       continue;
     }
     claimedSum += allocated;
@@ -1327,13 +1319,7 @@ async function dispatch(
       let upstreamPath: string;
       let upstreamBody: Record<string, string>;
       if (claimPath === "redeem_ltv") {
-        // CL-LTVROW-B: fail closed before charge when spend rows are unsafe.
-        const spendRan = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountSpendPath());
-        if (spendRan instanceof Response) return mapUnauthenticated(spendRan);
-        const spendMapped = mapUpstreamResult(spendRan.result);
-        if (spendMapped instanceof Response) return spendMapped;
-        const ltvGate = shapeLtv(spendMapped.json);
-        if (ltvGate instanceof Response) return ltvGate;
+        // B-R3-1: exactly one upstream POST per claim — no spend preflight.
         upstreamPath = accountClaimCertificatePath(courseId);
         upstreamBody = { method: "redeem_ltv" };
       } else if (claimPath === "prepay_credit") {
