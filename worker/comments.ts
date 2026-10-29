@@ -30,7 +30,7 @@ import {
 const COMMENT_TYPES = new Set(["belly", "body", "brain", "all"]);
 const MAX_BODY_BYTES = 8192;
 const MAX_CONTENT_CODEPOINTS = 2000;
-const COMMENT_ID_RE = /^[1-9][0-9]{0,9}$/;
+export const COMMENT_ID_RE = /^[1-9][0-9]{0,9}$/;
 const ORIGIN = "https://metfix.org";
 
 type CommentLimitEnv = Env & {
@@ -357,7 +357,11 @@ async function requireSession(
   return resolveActingSession(request, env, fetchImpl, opts);
 }
 
-async function requireCsrf(request: Request, env: Env, sid: string): Promise<Response | null> {
+export async function requireCommentCsrf(
+  request: Request,
+  env: Env,
+  sid: string,
+): Promise<Response | null> {
   if (!env.CSRF_SECRET) return unavailable();
   const origin = request.headers.get("Origin");
   if (origin !== ORIGIN) {
@@ -375,7 +379,7 @@ async function requireCsrf(request: Request, env: Env, sid: string): Promise<Res
   return null;
 }
 
-async function readJsonBodyLimited(
+export async function readCommentJsonBodyLimited(
   request: Request,
 ): Promise<{ ok: true; text: string; json: unknown } | Response> {
   if (!isJsonContentType(request.headers.get("Content-Type"))) {
@@ -400,7 +404,7 @@ async function readJsonBodyLimited(
   }
 }
 
-function validateContent(raw: unknown): string | null {
+export function validateCommentContent(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -408,7 +412,7 @@ function validateContent(raw: unknown): string | null {
   return trimmed;
 }
 
-function validateParentId(raw: unknown): number | undefined | "bad" {
+export function validateCommentParentId(raw: unknown): number | undefined | "bad" {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1 || raw > 9_999_999_999) {
     return "bad";
@@ -416,7 +420,7 @@ function validateParentId(raw: unknown): number | undefined | "bad" {
   return raw;
 }
 
-async function verifyCommentRecaptcha(
+export async function verifyCommentRecaptcha(
   token: unknown,
   env: Env,
   fetchImpl: FetchImpl,
@@ -453,10 +457,10 @@ async function handleCommentPost(
   const ctx = await requireSession(request, env, fetchImpl, opts);
   if (ctx instanceof Response) return ctx;
   if (!ctx.access) return unavailable();
-  const csrf = await requireCsrf(request, env, ctx.sid);
+  const csrf = await requireCommentCsrf(request, env, ctx.sid);
   if (csrf) return csrf;
 
-  const parsed = await readJsonBodyLimited(request);
+  const parsed = await readCommentJsonBodyLimited(request);
   if (parsed instanceof Response) return parsed;
   if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
     return jsonNoStore({ error: "invalid_request" }, 400);
@@ -464,8 +468,8 @@ async function handleCommentPost(
   const body = parsed.json as Record<string, unknown>;
   const date = typeof body.date === "string" ? body.date : "";
   const type = typeof body.type === "string" ? body.type : "";
-  const content = validateContent(body.content);
-  const parent = validateParentId(body.parent_comment_id);
+  const content = validateCommentContent(body.content);
+  const parent = validateCommentParentId(body.parent_comment_id);
   if (
     !isIsoDate(date) ||
     !isCommentType(type) ||
@@ -515,16 +519,16 @@ async function handleCommentPatch(
   const session = await requireSession(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
   if (!session.access) return unavailable();
-  const csrf = await requireCsrf(request, env, session.sid);
+  const csrf = await requireCommentCsrf(request, env, session.sid);
   if (csrf) return csrf;
 
-  const parsed = await readJsonBodyLimited(request);
+  const parsed = await readCommentJsonBodyLimited(request);
   if (parsed instanceof Response) return parsed;
   if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
     return jsonNoStore({ error: "invalid_request" }, 400);
   }
   const body = parsed.json as Record<string, unknown>;
-  const content = validateContent(body.content);
+  const content = validateCommentContent(body.content);
   if (content == null) return jsonNoStore({ error: "invalid_request" }, 400);
 
   const ip = clientIp(request);
@@ -560,7 +564,7 @@ async function handleCommentDelete(
   const session = await requireSession(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
   if (!session.access) return unavailable();
-  const csrf = await requireCsrf(request, env, session.sid);
+  const csrf = await requireCommentCsrf(request, env, session.sid);
   if (csrf) return csrf;
 
   const ip = clientIp(request);
@@ -609,10 +613,10 @@ async function handleCommentLike(
   const session = await requireSession(request, env, fetchImpl, opts);
   if (session instanceof Response) return session;
   if (!session.access) return unavailable();
-  const csrf = await requireCsrf(request, env, session.sid);
+  const csrf = await requireCommentCsrf(request, env, session.sid);
   if (csrf) return csrf;
 
-  const parsed = await readJsonBodyLimited(request);
+  const parsed = await readCommentJsonBodyLimited(request);
   if (parsed instanceof Response) return parsed;
   if (!parsed.json || typeof parsed.json !== "object" || Array.isArray(parsed.json)) {
     return jsonNoStore({ error: "invalid_request" }, 400);

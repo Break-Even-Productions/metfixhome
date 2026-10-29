@@ -1,0 +1,436 @@
+/* /library/search — same cream, ink, and gold as the resource library hub. */
+
+.search-page {
+  --search-font-serif: var(--lib-font-serif);
+  --search-font-sans: var(--lib-font-sans);
+  --search-gold: var(--lib-accent);
+  --search-gold-label: var(--lib-accent);
+  --search-ink: var(--lib-ink);
+  --search-muted: var(--lib-muted);
+  --search-muted-2: var(--lib-muted);
+  --search-field: var(--lib-paper);
+  --search-bar: var(--lib-cream);
+  --search-page-bg: var(--lib-cream);
+  --search-border: var(--lib-line);
+  --search-gold-border: var(--lib-line);
+  --search-btn-ink: var(--lib-paper);
+  --search-ease: var(--lib-ease);
+
+  --lib-font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+  --lib-font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --lib-cream: #f3eee4;
+  --lib-cream-2: #e9e1d2;
+  --lib-paper: #faf7f1;
+  --lib-ink: #171512;
+  --lib-ink-2: #221f1b;
+  --lib-accent: #c4a46c;
+  --lib-accent-2: #b08d52;
+  --lib-muted: #6e675c;
+  --lib-line: rgba(23, 21, 18, 0.1);
+  --lib-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  min-height: 100svh;
+  padding: 5.25rem 1rem 3.5rem;
+  background:
+    radial-gradient(ellipse 70% 45% at 85% 0%, rgba(196, 164, 108, 0.14), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 0% 30%, rgba(233, 225, 210, 0.9), transparent 50%),
+    linear-gradient(180deg, var(--lib-cream) 0%, var(--lib-cream-2) 100%);
+  color: var(--lib-ink);
+  font-family: var(--lib-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (min-width: 768px) {
+  .search-page {
+    padding: 5.75rem 1.5rem 4rem;
+  }
+}
+
+.search-page * {
+  box-sizing: border-box;
+}
+
+.search-shell {
+  max-width: 68rem;
+  margin: 0 auto;
+}
+
+.search-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+  font-family: var(--lib-font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: var(--lib-accent);
+}
+
+.search-breadcrumb a,
+.search-breadcrumb [aria-current="page"] {
+  letter-spacing: 0.18em;
+  line-height: 1;
+  /* The site touch-target rule sets min-height: 44px on every nav link.
+     That drops the slashes and current crumb to the middle of a tall box. */
+  min-height: 0;
+  /* Tracking adds space after the last glyph. Pull it back so separators sit centered. */
+  margin-inline-end: -0.18em;
+}
+
+.search-breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.search-breadcrumb a:hover {
+  color: var(--lib-accent-2);
+}
+
+.search-breadcrumb [aria-current="page"] {
+  color: var(--lib-ink);
+}
+
+.search-breadcrumb-sep {
+  color: var(--lib-accent);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  opacity: 1;
+}
+
+.search-title {
+  font-family: var(--lib-font-serif);
+  font-weight: 700;
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-align: left;
+  color: var(--lib-ink);
+  margin: 0 0 1.75rem;
+}
+
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.65rem;
+  max-width: none;
+  margin: 0 0 1.25rem;
+}
+
+.search-field {
+  position: relative;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.search-field-icon {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--lib-accent);
+  pointer-events: none;
+}
+
+.search-field input {
+  width: 100%;
+  border: 1px solid var(--lib-line);
+  background: var(--lib-paper);
+  color: var(--lib-ink);
+  border-radius: 0.35rem;
+  padding: 0.85rem 2.4rem 0.85rem 2.4rem;
+  font-size: 0.95rem;
+  font-family: var(--lib-font-sans);
+  outline: none;
+  transition: border-color 0.2s var(--lib-ease), box-shadow 0.2s var(--lib-ease);
+}
+
+.search-field input::placeholder {
+  color: var(--lib-muted);
+}
+
+.search-field input:focus-visible {
+  border-color: var(--lib-accent);
+  box-shadow: 0 0 0 3px rgba(196, 164, 108, 0.2);
+}
+
+.search-field-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--lib-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.search-field-clear:hover {
+  color: var(--lib-ink);
+}
+
+.search-field-clear:focus-visible {
+  outline: 2px solid var(--lib-accent);
+  outline-offset: 2px;
+}
+
+.search-submit {
+  border: none;
+  background: var(--lib-ink);
+  color: var(--lib-paper);
+  font-family: var(--lib-font-sans);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.9rem 1.25rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  transition: background 0.2s var(--lib-ease), transform 0.2s var(--lib-ease);
+}
+
+.search-submit:hover {
+  background: var(--lib-ink-2);
+  transform: translateY(-1px);
+}
+
+.search-submit:focus-visible {
+  outline: 2px solid var(--lib-accent);
+  outline-offset: 2px;
+}
+
+.search-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  margin: 0 0 2.25rem;
+  max-width: none;
+}
+
+.search-pill {
+  appearance: none;
+  border: 1px solid var(--lib-line);
+  background: transparent;
+  color: var(--lib-muted);
+  font-family: var(--lib-font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.2s var(--lib-ease),
+    color 0.2s var(--lib-ease),
+    border-color 0.2s var(--lib-ease);
+}
+
+.search-pill:hover {
+  border-color: var(--lib-accent);
+  color: var(--lib-ink);
+}
+
+.search-pill[aria-pressed="true"] {
+  background: var(--lib-ink);
+  color: var(--lib-paper);
+  border-color: var(--lib-ink);
+}
+
+.search-pill:focus-visible {
+  outline: 2px solid var(--lib-accent);
+  outline-offset: 2px;
+}
+
+.search-tabs-wrap {
+  position: sticky;
+  top: 4.5rem;
+  z-index: 5;
+  background: color-mix(in srgb, var(--lib-cream) 92%, white);
+  border-bottom: 1px solid var(--lib-line);
+  margin: 0 -1rem 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .search-tabs-wrap {
+    margin-left: -1.5rem;
+    margin-right: -1.5rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+.search-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.search-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.search-tab {
+  flex: 0 0 auto;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--lib-muted);
+  font-family: var(--lib-font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.85rem 1rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.search-tab:hover {
+  color: var(--lib-ink);
+}
+
+.search-tab[aria-selected="true"] {
+  color: var(--lib-ink);
+  border-bottom-color: var(--lib-accent);
+}
+
+.search-tab:focus-visible {
+  outline: 2px solid var(--lib-accent);
+  outline-offset: -2px;
+}
+
+.search-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.search-count {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--lib-muted);
+}
+
+.search-clear-filters {
+  border: none;
+  background: transparent;
+  color: var(--lib-accent-2);
+  font-family: var(--lib-font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0;
+}
+
+.search-clear-filters:hover {
+  color: var(--lib-ink);
+}
+
+.search-clear-filters:focus-visible {
+  outline: 2px solid var(--lib-accent);
+  outline-offset: 2px;
+}
+
+.search-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 720px) {
+  .search-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .search-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.search-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+}
+
+.search-empty-title {
+  font-family: var(--lib-font-serif);
+  font-size: 1.15rem;
+  color: var(--lib-ink);
+  margin: 0 0 0.5rem;
+}
+
+.search-empty-lead {
+  margin: 0;
+  color: var(--lib-muted);
+  font-size: 0.95rem;
+}
+
+.search-status {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--lib-muted);
+}
+
+.search-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--lib-ink);
+}
+
+.search-error button {
+  border: 1px solid var(--lib-line);
+  background: var(--lib-paper);
+  color: var(--lib-ink);
+  font-family: var(--lib-font-sans);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.65rem 1rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.search-error button:hover {
+  border-color: var(--lib-accent);
+}
+
+.search-sentinel {
+  height: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-submit,
+  .search-pill,
+  .search-field input {
+    transition: none;
+  }
+
+  .search-submit:hover {
+    transform: none;
+  }
+}

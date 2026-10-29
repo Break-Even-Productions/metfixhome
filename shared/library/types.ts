@@ -47,11 +47,43 @@ export type LibraryResource = {
   composite?: LibraryCompositeThumbnail | null;
 };
 
+/** Structured video for detail readers (PL6 / CQ-2). */
+export type ResourceVideo = {
+  kind: "youtube" | "vimeo" | "self_hosted";
+  /** Canonical https embed URL for youtube/vimeo; null for self_hosted. */
+  embedUrl: string | null;
+  /** Canonical https media/watch URL, or null. */
+  url: string | null;
+  /** Provider video ID when applicable. */
+  videoId: string | null;
+};
+
 export type LibraryDetail = LibraryResource & {
   content: string;
-  video: string | null;
+  video: ResourceVideo | null;
   /** When true, body is withheld; show locked / join UX. */
   locked: boolean;
+};
+
+/**
+ * Normalized reader model shared by PostDetailPage + LibraryDetailPage (CQ-1.2).
+ * Both DetailPost and LibraryDetail satisfy this shape (posts omit access/locked defaults).
+ */
+export type DetailReaderModel = {
+  id: number;
+  /** BSI resource type segment (PL15 fallback when `content_types` is empty). */
+  resourceType: ResourceType;
+  title: string;
+  date: string;
+  author: string | null;
+  image: string | null;
+  video: ResourceVideo | null;
+  categories: TermRef[];
+  content_types: TermRef[];
+  topics: TermRef[];
+  locked: boolean;
+  access: ContentAccessDisplay;
+  content: string;
 };
 
 export type LibrarySearchMeta = {
@@ -76,6 +108,10 @@ export type LibraryFilterTerm = {
   name: string;
   slug: string;
   count?: number;
+  /** Plain text; paragraph breaks as `\n\n`. Never HTML. */
+  description: string | null;
+  /** Allowlisted https://brokenscience.org image, or null. */
+  image: string | null;
 };
 
 export type LibraryFiltersBody = {

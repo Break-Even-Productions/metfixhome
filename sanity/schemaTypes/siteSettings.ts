@@ -8,6 +8,7 @@ export const siteSettings = defineType({
   groups: [
     { name: "nav", title: "Navigation Bar", default: true },
     { name: "footer", title: "Footer" },
+    { name: "search", title: "Search" },
   ],
   fields: [
     defineField({
@@ -72,6 +73,49 @@ export const siteSettings = defineType({
       description:
         "Footer copyright text. Supports longer paragraphs — the site layout wraps and scales to fit.",
       validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "searchTopics",
+      title: "Search topic tabs",
+      type: "array",
+      group: "search",
+      description:
+        "Optional pinned topic tabs shown first on /library/search. Remaining BSI topics from /api/library/filters follow, deduped by topic_id. “All” is always shown and is not listed here. Empty is fine in production — API topics only.",
+      of: [
+        defineArrayMember({
+          type: "object",
+          name: "searchTopic",
+          title: "Search topic",
+          fields: [
+            defineField({
+              name: "topic_id",
+              title: "BSI topic id",
+              type: "number",
+              description: "BSI term id used for dedupe and topics[] filter.",
+              validation: (Rule) =>
+                Rule.required()
+                  .integer()
+                  .positive()
+                  .error("topic_id must be a positive integer"),
+            }),
+            defineField({
+              name: "label",
+              title: "Label override",
+              type: "string",
+              description: "Optional. Overrides the BSI topic name when set.",
+            }),
+          ],
+          preview: {
+            select: { title: "label", topic_id: "topic_id" },
+            prepare({ title, topic_id }) {
+              return {
+                title: title || (topic_id != null ? `Topic ${topic_id}` : "Untitled"),
+                subtitle: topic_id != null ? `id ${topic_id}` : "",
+              };
+            },
+          },
+        }),
+      ],
     }),
   ],
   preview: {

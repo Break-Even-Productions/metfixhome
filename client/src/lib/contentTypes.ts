@@ -29,7 +29,9 @@ export type Course = {
   startButtonLabel?: string;
   notifyButtonLabel?: string;
   sortOrder: number;
-  /** When set, Library Courses rail prefers this Sanity course over the matching BSI LearnPress id. */
+  /** Card photo. Empty means the library rail may fill it from the matching BSI course. */
+  image?: string;
+  /** When set, the library Courses rail merges this course with that BSI LearnPress id. */
   bsiPostId?: number;
 };
 
@@ -39,9 +41,16 @@ export type NavLink = {
   openInNewTab: boolean;
 };
 
+/** Sanity `searchTopics` row (E2: topic_id required; label optional). */
+export type SearchTopicSetting = {
+  topic_id: number;
+  label?: string;
+};
+
 export type SiteSettings = {
   copyrightText: string;
   navLinks: NavLink[];
+  searchTopics: SearchTopicSetting[];
 };
 
 export const DEFAULT_COPYRIGHT_TEXT =

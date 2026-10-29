@@ -1,3 +1,9 @@
+import type {
+  ContentAccessDisplay,
+  ResourceVideo,
+  TermRef,
+} from "../library/types";
+
 /** List-card post shape (A6). Exact key set. */
 export type Post = {
   id: number;
@@ -9,10 +15,16 @@ export type Post = {
   category: { name: string; slug: string } | null;
 };
 
-/** Detail post shape (A7). Exact key set = Post + content + permalink. */
+/** Detail post shape (A7 / PL14–PL16). Exact key set. */
 export type DetailPost = Post & {
   content: string;
   permalink: string | null;
+  video: ResourceVideo | null;
+  categories: TermRef[];
+  content_types: TermRef[];
+  topics: TermRef[];
+  locked: boolean;
+  access: ContentAccessDisplay;
 };
 
 /** Mapped list API body (A6). Exact key set. */

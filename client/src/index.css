@@ -109,7 +109,7 @@
     font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overflow-x: hidden;
+    overflow-x: clip;
     /* iOS momentum scrolling */
     -webkit-overflow-scrolling: touch;
   }
@@ -1061,7 +1061,10 @@
    These rules are outside @layer so they cannot be overridden by Tailwind.
    ═══════════════════════════════════════════════════════════════════════════ */
 html, body {
-  overflow-x: hidden;
+  /* clip (not hidden) stops sideways scroll without turning the page into a
+     scroll container. overflow-x: hidden computes overflow-y to auto and
+     breaks position: sticky on descendants such as the author card. */
+  overflow-x: clip;
   max-width: 100vw;
 }
 
