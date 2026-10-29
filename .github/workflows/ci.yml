@@ -70,6 +70,26 @@ jobs:
           fi
           echo "DP-WHOP-1 ok: no Curie in dist/public"
 
+      - name: DP-WHOP-1 — only Break Even biz_ literal (whop.ts) elsewhere forbidden
+        run: |
+          BEP='biz_u15G8d34g9c0B0'
+          # Source: any biz_ outside shared/account/whop.ts (and tests) fails.
+          hits=$(grep -RInE --exclude-dir=node_modules --exclude-dir=dist --exclude='*.test.ts' --exclude='*.test.tsx' -e 'biz_[A-Za-z0-9]+' client worker shared wrangler.jsonc || true)
+          bad=$(printf '%s\n' "$hits" | grep -v '^shared/account/whop.ts:' | grep -v "$BEP" || true)
+          # Also fail if BEP appears outside whop.ts
+          bep_elsewhere=$(printf '%s\n' "$hits" | grep "$BEP" | grep -v '^shared/account/whop.ts:' || true)
+          if [ -n "$bad" ] || [ -n "$bep_elsewhere" ]; then
+            echo "DP-WHOP-1 failed: unexpected biz_ literals:" >&2
+            printf '%s\n%s\n' "$bad" "$bep_elsewhere" >&2
+            exit 1
+          fi
+          # Dist: any biz_ fails (BEP itself should not ship in client bundle).
+          if grep -RInE --include='*.js' --include='*.html' --include='*.css' --include='*.map' -e 'biz_[A-Za-z0-9]+' dist/public; then
+            echo "DP-WHOP-1 failed: biz_ found in dist/public" >&2
+            exit 1
+          fi
+          echo "DP-WHOP-1 ok: sole biz_ literal in shared/account/whop.ts"
+
       - name: Assert liquidglass stays out of App entry chunk
         run: npm run assert:liquidglass-chunk
 

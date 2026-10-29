@@ -1,11 +1,22 @@
-/** Break Even Productions Whop company — only allowed `biz_` literal (DP-WHOP-1). */
-export const BEP_WHOP_COMPANY_ID = "biz_u15G8d34g9c0B0";
+import { BEP_WHOP_COMPANY_ID } from "./whop";
 
 const WHOP_ALLOWED_HOSTS = new Set(["whop.com"]);
 const PORTAL_EXTRA_HOSTS = new Set(["billing.stripe.com", "checkout.stripe.com"]);
 const FORBIDDEN_WHOP_SUBSTRINGS = ["curie"];
 const BIZ_ID_RE = /biz_[A-Za-z0-9]+/g;
 
+/**
+ * Outbound billing / Whop URL gate (DP-WHOP-1 / T19).
+ *
+ * R3-N2: Non-default ports are rejected indirectly — `u.hostname` is host-only
+ * (no port), but we require `https:` with empty userinfo and an allowlisted host.
+ * A URL like `https://whop.com:8443/x` still has hostname `whop.com` and would
+ * pass the host check; callers that need port rejection should compare
+ * `u.port === "" || u.port === "443"`. Today we rely on upstream never emitting
+ * alternate ports; Stripe Customer Portal / Checkout hosts are accepted only in
+ * `billing_portal` mode (`billing.stripe.com`, `checkout.stripe.com`), never in
+ * `whop_only`.
+ */
 export function sanitizeExternalBillingUrl(
   raw: unknown,
   mode: "whop_only" | "billing_portal",
@@ -18,8 +29,11 @@ export function sanitizeExternalBillingUrl(
     return null;
   }
   if (u.protocol !== "https:" || u.username !== "" || u.password !== "") return null;
+  // Reject non-default HTTPS ports (R3-N2).
+  if (u.port !== "" && u.port !== "443") return null;
   const host = u.hostname.toLowerCase();
   const isWhop = WHOP_ALLOWED_HOSTS.has(host) || host.endsWith(".whop.com");
+  // Stripe Customer Portal / Checkout session URLs — billing_portal mode only.
   const isStripePortal = mode === "billing_portal" && PORTAL_EXTRA_HOSTS.has(host);
   if (!isWhop && !isStripePortal) return null;
   const lowerHref = u.href.toLowerCase();

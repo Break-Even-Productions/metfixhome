@@ -8,7 +8,7 @@ import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { BEP_WHOP_COMPANY_ID } from "../shared/account/url-allowlist";
+import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -82,22 +82,29 @@ describe("account.repo-scan", () => {
     expect(failures, failures.join("\n")).toEqual([]);
   });
 
-  it("DP-WHOP-1: only BEP biz_ literal; planted foreign biz_ fails; dist/ scan", () => {
+  it("DP-WHOP-1: only BEP biz_ literal lives in shared/account/whop.ts; planted foreign fails", () => {
     const files = sourceFiles().filter((f) => {
       const rel = relative(REPO_ROOT, f);
       return !/\.test\.(ts|tsx)$/.test(rel);
     });
     const bizRe = /biz_[A-Za-z0-9]+/g;
     const foreign: string[] = [];
+    const bepFiles: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, "utf8");
+      const rel = relative(REPO_ROOT, file);
       for (const m of text.matchAll(bizRe)) {
         if (m[0] !== BEP_WHOP_COMPANY_ID) {
-          foreign.push(`${relative(REPO_ROOT, file)}: ${m[0]}`);
+          foreign.push(`${rel}: ${m[0]}`);
+        } else if (rel !== "shared/account/whop.ts") {
+          bepFiles.push(rel);
         }
       }
     }
     expect(foreign, foreign.join("\n")).toEqual([]);
+    expect(bepFiles, `BEP literal must only appear in whop.ts; also in:\n${bepFiles.join("\n")}`).toEqual(
+      [],
+    );
 
     // Planted foreign biz_ must fail the scanner.
     const plantDir = mkdtempSync(join(tmpdir(), "whop1-plant-"));

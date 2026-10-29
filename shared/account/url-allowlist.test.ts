@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BEP_WHOP_COMPANY_ID, sanitizeExternalBillingUrl } from "./url-allowlist";
+import { BEP_WHOP_COMPANY_ID } from "./whop";
+import { sanitizeExternalBillingUrl } from "./url-allowlist";
 
 describe("sanitizeExternalBillingUrl (DP-WHOP-1 / T19)", () => {
   it("allows whop.com and *.whop.com in whop_only mode", () => {
@@ -62,5 +63,12 @@ describe("sanitizeExternalBillingUrl (DP-WHOP-1 / T19)", () => {
     expect(sanitizeExternalBillingUrl("", "whop_only")).toBeNull();
     expect(sanitizeExternalBillingUrl("not a url", "whop_only")).toBeNull();
     expect(sanitizeExternalBillingUrl(`https://whop.com/${"a".repeat(2100)}`, "whop_only")).toBeNull();
+  });
+
+  it("R3-N2: rejects non-default https ports", () => {
+    expect(sanitizeExternalBillingUrl("https://whop.com:8443/checkout/x", "whop_only")).toBeNull();
+    expect(
+      sanitizeExternalBillingUrl("https://billing.stripe.com:8443/session/x", "billing_portal"),
+    ).toBeNull();
   });
 });

@@ -2,7 +2,7 @@
  * PR B account Worker gates (QA §E/F) — bearer-only, CSRF, LTV300, tiers, URL allowlist.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleAccountRoutes, EDITABLE_ATTR_IDS } from "./account";
+import { handleAccountRoutes, EDITABLE_ATTR_IDS, PUBLIC_MEMBER_SUMMARY_KEYS } from "./account";
 import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
 import {
   ACCESS1,
@@ -1450,7 +1450,7 @@ describe("worker/account routes", () => {
     expect(body.preferences).toEqual({ email_digest: true, product_updates: false });
   });
 
-  it("members expired coach → foundations_coach badge false (normalize only)", async () => {
+  it("R3-B1: public /api/members/:id key-set exact; expired coach badge false; no foundations_coach object", async () => {
     const { fetchImpl } = makeFetchMock([
       async ({ path }) => {
         if (path.includes("/profiles/summary/")) {
@@ -1464,6 +1464,8 @@ describe("worker/account routes", () => {
               expires_at: "2023-01-15T00:00:00.000Z",
             },
             bio: "hi",
+            location: "Austin",
+            role_badges_html: "<b>x</b>",
           });
         }
         return new Response(null, { status: 404 });
@@ -1471,12 +1473,11 @@ describe("worker/account routes", () => {
     ]);
     const res = await callAccount(h, "/api/members/9", {}, fetchImpl);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      badges: { foundations_coach: boolean };
-      foundations_coach: { active: boolean };
-    };
-    expect(body.foundations_coach.active).toBe(false);
-    expect(body.badges.foundations_coach).toBe(false);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual([...PUBLIC_MEMBER_SUMMARY_KEYS].sort());
+    expect(body).not.toHaveProperty("foundations_coach");
+    expect(body).not.toHaveProperty("role_badges_html");
+    expect((body.badges as { foundations_coach: boolean }).foundations_coach).toBe(false);
   });
 
   it("DP-T-UI5: /members/abc and /members/1.5 → 400, 0 upstream", async () => {
@@ -1491,21 +1492,85 @@ describe("worker/account routes", () => {
     }
   });
 
-  it("DP-T-T6: accountLog redacts Bearer and emails (no Bearer , no @)", async () => {
-    const { accountLog } = await import("./account");
-    const spy = vi.spyOn(console, "info").mockImplementation(() => {});
+  it("R3-B2: only subscriptions.items → same canonical_tier on overview + LTV", async () => {
+    const sess = await withSession(h);
+    const medViaNested = {
+      items: [
+        {
+          sub_ref: "opaque_med_nested",
+          provider: "stripe",
+          tier: "member",
+          legacy_source: "medical_society_stripe",
+          status: "active",
+          current_period_end: "2026-12-01",
+          paid_through: "2026-12-01",
+          cancel_at_period_end: false,
+          card: { brand: "visa", last4: "4242" },
+        },
+      ],
+    };
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/account")) {
+          return Response.json({
+            ...OVERVIEW_FIXTURE,
+            canonical_tier: "free",
+            // No top-level subscription_items — only nested subscriptions.items
+            subscriptions: medViaNested,
+          });
+        }
+        if (path.endsWith("/me/spend")) {
+          return Response.json({
+            ...LTV300_SPEND,
+            canonical_tier: "free",
+            subscriptions: medViaNested,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const ov = (await (
+      await callAccount(h, "/api/account/overview", { headers: { Cookie: sess.cookie } }, fetchImpl)
+    ).json()) as { canonical_tier: string };
+    const lt = (await (
+      await callAccount(
+        h,
+        "/api/account/ltv-certificates",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
+      )
+    ).json()) as { canonical_tier: string };
+    expect(ov.canonical_tier).toBe("metfix_pro");
+    expect(lt.canonical_tier).toBe("metfix_pro");
+  });
+
+  it("DP-T-T6: account routes do not console-log Bearer tokens or emails", async () => {
+    const sess = await withSession(h);
+    const spyInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const spyLog = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      accountLog(
-        "probe",
-        `Authorization: Bearer ${ACCESS1} user=jane@example.test`,
+      const { fetchImpl } = makeFetchMock([
+        async () =>
+          Response.json({
+            ...OVERVIEW_FIXTURE,
+            email: "secret.user@example.test",
+          }),
+      ]);
+      await callAccount(
+        h,
+        "/api/account/overview",
+        { headers: { Cookie: sess.cookie } },
+        fetchImpl,
       );
-      expect(spy).toHaveBeenCalled();
-      const logged = String(spy.mock.calls[0]![0] ?? "");
-      expect(logged).not.toMatch(/Bearer /);
-      expect(logged).not.toContain("@");
-      expect(logged).not.toContain(ACCESS1);
+      const all = [...spyInfo.mock.calls, ...spyLog.mock.calls].map((c) => String(c[0] ?? ""));
+      for (const line of all) {
+        expect(line).not.toMatch(/Bearer /);
+        expect(line).not.toMatch(/secret\.user@example\.test/i);
+        expect(line).not.toContain(ACCESS1);
+      }
     } finally {
-      spy.mockRestore();
+      spyInfo.mockRestore();
+      spyLog.mockRestore();
     }
   });
 });

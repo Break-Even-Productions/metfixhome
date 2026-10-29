@@ -63,9 +63,6 @@ const POSITIVE_INT_RE = /^[1-9][0-9]{0,9}$/;
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const STRIPE_LIKE_ID_RE = /^(cus|sub|mem|seti|pi)_[A-Za-z0-9]+$/;
 const EMAIL_VALUE_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const BEARER_LOG_RE = /Bearer\s+\S+/gi;
-const EMAIL_LOG_RE = /[^\s"']+@[^\s"']+/g;
-
 /** DP-T-26b: only these top-level keys may leave the Worker toward BSI. */
 const NOTIFICATION_PUT_KEYS = new Set([
   "email_digest",
@@ -198,19 +195,6 @@ export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
     return `acct:${uid}`;
   }
   return `sid:${await sha256Hex(ctx.sid)}`;
-}
-
-/** DP-T-T6: structured account logs never contain Bearer tokens or emails. */
-export function accountLog(kind: string, detail?: string): void {
-  let msg = `account:${kind}`;
-  if (detail != null && detail.length > 0) {
-    const redacted = detail
-      .replace(BEARER_LOG_RE, "[REDACTED_TOKEN]")
-      .replace(EMAIL_LOG_RE, "[REDACTED_EMAIL]")
-      .replace(/@/g, "");
-    msg = `${msg} ${redacted}`;
-  }
-  console.info(msg);
 }
 
 function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
@@ -489,24 +473,34 @@ function shapeConversion(raw: unknown): Record<string, unknown> | undefined {
   return out;
 }
 
+/**
+ * R3-B2: one shared extractor for overview + LTV tier resolution.
+ * Accepts top-level `subscription_items` or nested `subscriptions.items`
+ * (never bare `items`, which may be unrelated lists).
+ */
+function extractSubscriptionTierItems(
+  obj: Record<string, unknown>,
+): Array<{ tier: unknown; legacy_source: unknown; status: unknown }> {
+  const subsRaw = asRecord(obj.subscriptions);
+  const rows = Array.isArray(obj.subscription_items)
+    ? obj.subscription_items
+    : Array.isArray(subsRaw?.items)
+      ? (subsRaw!.items as unknown[])
+      : [];
+  return rows.map((row) => {
+    const r = asRecord(row) ?? {};
+    return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
+  });
+}
+
 function shapeOverview(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
   const badges = asRecord(obj.badges) ?? {};
   const coach = normalizeFoundationsCoachStatus(obj.foundations_coach);
-  // Prefer explicit subscription payload fields — never treat unrelated `items` as subs.
-  const subsRaw = asRecord(obj.subscriptions);
-  const subItems = Array.isArray(obj.subscription_items)
-    ? obj.subscription_items
-    : Array.isArray(subsRaw?.items)
-      ? (subsRaw!.items as unknown[])
-      : [];
   const canonical_tier = resolveAccountCanonicalTier({
     canonical_tier: obj.canonical_tier,
-    items: subItems.map((row) => {
-      const r = asRecord(row) ?? {};
-      return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
-    }),
+    items: extractSubscriptionTierItems(obj),
   });
   return {
     user_id: obj.user_id ?? null,
@@ -636,12 +630,7 @@ function shapeLtv(raw: unknown): Record<string, unknown> | Response {
     claimed_certificates,
     canonical_tier: resolveAccountCanonicalTier({
       canonical_tier: obj.canonical_tier,
-      items: Array.isArray(obj.subscription_items)
-        ? (obj.subscription_items as unknown[]).map((row) => {
-            const r = asRecord(row) ?? {};
-            return { tier: r.tier, legacy_source: r.legacy_source, status: r.status };
-          })
-        : undefined,
+      items: extractSubscriptionTierItems(obj),
     }),
     foundations_coach: normalizeFoundationsCoachStatus(obj.foundations_coach),
   };
@@ -685,11 +674,21 @@ function shapeCourses(raw: unknown): Record<string, unknown> | null {
   };
 }
 
+/** R3-B1: public member DTO — badge boolean only; no foundations_coach object. */
+export const PUBLIC_MEMBER_SUMMARY_KEYS = [
+  "member_id",
+  "display_name",
+  "bio",
+  "location",
+  "badges",
+] as const;
+
 function shapeMemberSummary(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
   const badgesRaw = asRecord(obj.badges) ?? {};
-  // CQ r2: coach badge ONLY via normalizeFoundationsCoachStatus (never raw BSI badge).
+  // Coach badge ONLY via normalizeFoundationsCoachStatus (never raw BSI badge).
+  // R3-B1: do not expose foundations_coach object on public /api/members/:id.
   const coach = normalizeFoundationsCoachStatus(obj.foundations_coach);
   return {
     member_id: obj.member_id ?? null,
@@ -701,7 +700,6 @@ function shapeMemberSummary(raw: unknown): Record<string, unknown> | null {
       affiliate: boolOrFalse(badgesRaw.affiliate),
       foundations_coach: coach.active,
     },
-    foundations_coach: coach,
   };
 }
 
