@@ -112,7 +112,7 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(json.preview_urls).toBe(true);
   });
 
-  it("previews mirrors vars, preview KV, DO bindings, and 10 ratelimits", () => {
+  it("previews mirrors vars, preview KV, DO bindings, and 10 ratelimits (account + whop)", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
     const json = parseJsonc(raw) as {
       vars: Record<string, string>;
@@ -158,6 +158,30 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(previews.ratelimits.map((r: { simple: unknown }) => r.simple)).toEqual(
       json.ratelimits.map((r: { simple: unknown }) => r.simple),
     );
+    expect(json.ratelimits.map((r: { name: string; namespace_id: string }) => r.name)).toEqual([
+      "SIGNUP_LIMITER",
+      "USERNAME_CHECK_LIMITER",
+      "GOOGLE_AUTH_LIMITER",
+      "COMMENT_WRITE_LIMITER",
+      "COMMENT_LIKE_LIMITER",
+      "COMMENT_LIKE_TOGGLE_LIMITER",
+      "ACCOUNT_READ_LIMITER",
+      "ACCOUNT_WRITE_LIMITER",
+      "ACCOUNT_PORTAL_LIMITER",
+      "WHOP_CHECKOUT_LIMITER",
+    ]);
+    expect(json.ratelimits.map((r: { namespace_id: string }) => r.namespace_id)).toEqual([
+      "27101",
+      "27102",
+      "27103",
+      "27104",
+      "27105",
+      "27106",
+      "27112",
+      "27113",
+      "27114",
+      "27115",
+    ]);
     expect(previews.ratelimits.map((r: { namespace_id: string }) => r.namespace_id)).toEqual([
       "27201",
       "27202",
@@ -170,6 +194,12 @@ describe("B1/B5/B6/B7 build config", () => {
       "27214",
       "27215",
     ]);
+    const byName = (arr: Array<{ name: string; simple: { limit: number; period: number } }>) =>
+      Object.fromEntries(arr.map((r) => [r.name, r.simple]));
+    expect(byName(json.ratelimits)).toEqual(byName(previews.ratelimits));
+    expect(byName(json.ratelimits).ACCOUNT_WRITE_LIMITER).toEqual({ limit: 15, period: 60 });
+    expect(byName(json.ratelimits).ACCOUNT_PORTAL_LIMITER).toEqual({ limit: 10, period: 60 });
+    expect(byName(json.ratelimits).WHOP_CHECKOUT_LIMITER).toEqual({ limit: 10, period: 60 });
   });
 
   it("CI push branches include main and staging", () => {
