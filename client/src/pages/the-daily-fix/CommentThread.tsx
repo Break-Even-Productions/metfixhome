@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getMetfixLoginUrl } from "@/const";
+import { fetchCsrf } from "@/lib/authRequest";
 import { isAuthUiHost } from "./authHost";
 import {
   clampClientRetryAfter,
@@ -39,21 +40,6 @@ type CommentThreadProps = {
    */
   showHeader?: boolean;
 };
-
-async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await commentsHttp("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
-  }
-}
 
 function commentUrl(id: number, dateIso: string): string {
   return `/api/daily-fix/comments/${id}?date=${encodeURIComponent(dateIso)}`;

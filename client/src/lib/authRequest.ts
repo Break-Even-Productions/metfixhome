@@ -26,13 +26,18 @@ export function clearCsrfCache(): void {
   noteCsrfSessionChange();
 }
 
-export async function fetchCsrf(opts?: { force?: boolean }): Promise<string | null> {
+export async function fetchCsrf(opts?: {
+  force?: boolean;
+  /** Injectable fetch (JoinModal authHttp / CommentThread); defaults to global fetch. */
+  http?: typeof fetch;
+}): Promise<string | null> {
   const sessionKey = csrfSessionKey();
   if (!opts?.force && csrfCache && csrfCache.sessionKey === sessionKey) {
     return csrfCache.token;
   }
+  const http = opts?.http ?? fetch;
   try {
-    const res = await fetch("/api/auth/csrf", {
+    const res = await http("/api/auth/csrf", {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",

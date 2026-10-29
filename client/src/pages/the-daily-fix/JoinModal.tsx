@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { buildLoginBody } from "@shared/join";
-import { getRecaptchaToken } from "@/lib/authRequest";
+import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
 import { clampClientRetryAfter } from "./comments";
 import { ensureRecaptchaScript } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
@@ -32,21 +32,6 @@ function playShake(element: HTMLElement | null) {
   element.classList.remove("df-join-shake");
   void element.offsetWidth;
   element.classList.add("df-join-shake");
-}
-
-async function fetchCsrf(http: typeof fetch): Promise<string | null> {
-  try {
-    const res = await http("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
-  }
 }
 
 function GoogleLogo({ className }: { className?: string }) {
@@ -153,7 +138,7 @@ export function JoinModal({
             setBusy(true);
             void (async () => {
               try {
-                const csrf = await fetchCsrf(authHttp);
+                const csrf = await fetchCsrf({ http: authHttp });
                 if (!csrf) {
                   setError("Sign-in is unavailable right now.");
                   return;

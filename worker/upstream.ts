@@ -317,15 +317,6 @@ function oauthFormHeaders(): Record<string, string> {
   };
 }
 
-/** GET /wp-json/bsi/v1/me headers (§0v.1 Q2 — Bearer only, no X-API-Key). */
-function bsiMeHeaders(accessToken: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${accessToken}`,
-    Accept: "application/json",
-    "User-Agent": UPSTREAM_USER_AGENT,
-  };
-}
-
 /** DP9 / DP42 / DP45 / T1: User-acting Bearer-only headers (NEVER sends X-API-Key, Referer, Origin, or client IP). */
 export function bsiAccountBearerHeaders(
   accessToken: string,
@@ -776,7 +767,7 @@ export async function bsiFetchMe(
     url,
     {
       method: "GET",
-      headers: bsiMeHeaders(accessToken),
+      headers: { ...bsiAccountBearerHeaders(accessToken) } as unknown as Record<string, string>,
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
     fetchImpl,

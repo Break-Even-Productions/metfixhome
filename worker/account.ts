@@ -45,7 +45,7 @@ import { sha256Hex } from "./auth/crypto";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
 import { clientIp } from "./auth/throttle";
-import { requireSidCsrf } from "./auth/sid-guards";
+import { readJsonBody as readJsonBodyShared, requireSidCsrf } from "./auth/sid-guards";
 import {
   assertBsiHost,
   bsiAccountBearerHeaders,
@@ -208,35 +208,11 @@ async function checkAccountLimit(
   return null;
 }
 
-function isJsonContentType(ct: string | null): boolean {
-  if (!ct) return false;
-  const base = ct.split(";")[0]?.trim().toLowerCase() ?? "";
-  return base === "application/json";
-}
-
 async function readJsonBody(
   request: Request,
   maxBytes = MAX_JSON_BYTES,
 ): Promise<{ ok: true; json: unknown } | Response> {
-  if (!isJsonContentType(request.headers.get("Content-Type"))) {
-    return accountJson({ error: "unsupported_media_type" }, 415);
-  }
-  const cl = request.headers.get("Content-Length");
-  if (cl != null) {
-    const n = Number(cl);
-    if (Number.isFinite(n) && n > maxBytes) {
-      return accountJson({ error: "payload_too_large" }, 413);
-    }
-  }
-  const buf = await request.arrayBuffer();
-  if (buf.byteLength > maxBytes) {
-    return accountJson({ error: "payload_too_large" }, 413);
-  }
-  try {
-    return { ok: true, json: JSON.parse(new TextDecoder().decode(buf)) };
-  } catch {
-    return accountJson({ error: "invalid_request" }, 400);
-  }
+  return readJsonBodyShared(request, accountJson, maxBytes);
 }
 
 async function accountBsiFetch(
