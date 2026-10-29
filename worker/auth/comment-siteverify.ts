@@ -1,10 +1,12 @@
-import type { FetchImpl } from "../upstream";
+import type { Env, FetchImpl } from "../upstream";
+import { isAllowedRecaptchaHostname } from "./host";
 
-/** reCAPTCHA v3 for comment POST/PATCH (action `comment`, hostname `metfix.org`, score ≥ 0.5). */
+/** reCAPTCHA v3 for comment POST/PATCH (action `comment`, hostname allowlist, score ≥ 0.5). */
 export async function siteverifyComment(
   token: string,
   secret: string,
   fetchImpl: FetchImpl,
+  env: Env,
 ): Promise<"pass" | "fail" | "outage"> {
   try {
     const body = new URLSearchParams({ secret, response: token });
@@ -22,7 +24,7 @@ export async function siteverifyComment(
       hostname?: unknown;
     };
     if (json.success !== true) return "fail";
-    if (json.hostname !== "metfix.org") return "fail";
+    if (!isAllowedRecaptchaHostname(json.hostname, env)) return "fail";
     if (json.action !== "comment") return "fail";
     if (typeof json.score !== "number" || json.score < 0.5) return "fail";
     return "pass";
