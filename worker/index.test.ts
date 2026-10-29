@@ -233,6 +233,7 @@ describe("W1 wrangler.jsonc", () => {
       "/posts/*",
       "/library",
       "/library/*",
+      "/topic/*",
     ]);
     const pkg = JSON.parse(
       readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),

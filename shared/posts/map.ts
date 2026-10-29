@@ -1,4 +1,7 @@
 import { decodeHtmlEntitiesOnce, stripTags } from "../daily-fix/text";
+import { mapAccessDisplay } from "../library/access";
+import { mapTerms } from "../library/map";
+import { mapResourceVideo } from "../library/video";
 import {
   BSI_ORIGIN,
   EXCERPT_MAX,
@@ -156,6 +159,12 @@ export function mapDetailPost(raw: unknown): DetailPost | null {
 
   const contentRaw = typeof item.content === "string" ? item.content : "";
   const content = sanitizeHtml(contentRaw);
+  const access = mapAccessDisplay(item.content_access_display ?? item.access);
+  const locked = access.access === "none";
+  const allowPlayable = !locked || access.show_video_in_preview === true;
+  const categories = mapTerms(item.categories);
+  const content_types = mapTerms(item.content_types ?? item.content_type_terms);
+  const topics = mapTerms(item.topics);
 
   return {
     id,
@@ -164,9 +173,17 @@ export function mapDetailPost(raw: unknown): DetailPost | null {
     date,
     image: mapImageUrl(item.featured_image),
     author: mapAuthor(item.author),
-    category: mapCategory(item.categories),
-    content,
+    category: mapCategory(item.categories) ?? (categories[0]
+      ? { name: categories[0].name, slug: categories[0].slug }
+      : null),
+    content: locked ? "" : content,
     permalink: mapPermalink(item.permalink),
+    video: mapResourceVideo(item.video, { allowPlayable }),
+    categories,
+    content_types,
+    topics,
+    locked,
+    access,
   };
 }
 

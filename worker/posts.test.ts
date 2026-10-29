@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PAGE_SIZE, MAX_UPSTREAM_BYTES, isPostListBody, isPostDetailBody } from "../shared/posts";
 import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
+import { DETAIL_PAGE_CSP } from "./csp";
 import { handleRequest, type Env } from "./index";
 import { parseListPage, isValidPostId } from "./posts";
 import { assertBsiHost } from "./upstream";
@@ -308,7 +309,7 @@ describe("PW posts API", () => {
     const zzzHeaders = Object.fromEntries(zzz.headers);
     expect(zzz.headers.get("Cache-Control")).toBeNull();
     const paths = [
-      "/api/posts/1/comments",
+      "/api/posts/1/unknown",
       "/api/posts/abc",
       "/api/posts/0",
       "/api/posts/2147483648",
@@ -998,7 +999,23 @@ describe("PW posts API", () => {
     const body = (await res.json()) as { post: Record<string, unknown> };
     expect(Object.keys(body).sort()).toEqual(["post"]);
     expect(Object.keys(body.post).sort()).toEqual(
-      ["author", "category", "content", "date", "excerpt", "id", "image", "permalink", "title"].sort(),
+      [
+        "access",
+        "author",
+        "categories",
+        "category",
+        "content",
+        "content_types",
+        "date",
+        "excerpt",
+        "id",
+        "image",
+        "locked",
+        "permalink",
+        "title",
+        "topics",
+        "video",
+      ].sort(),
     );
     expect(String(body.post.content)).toContain("<p>");
     expect(String(body.post.content)).not.toContain("alert");
@@ -1311,19 +1328,19 @@ describe("PW posts API", () => {
     mockListOk([unlockedItem(1)], 1);
     await call("/api/posts?page=2&x=1");
     await flush(ctx);
-    expect(cache.puts[0]?.key).toBe("https://metfix.org/__cache/posts/list?page=2");
+    expect(cache.puts[0]?.key).toBe("https://metfix.org/__cache/v2/posts/list?page=2");
 
     cache.puts.length = 0;
     mockListOk([unlockedItem(1)], 1);
     await call("/api/posts");
     await flush(ctx);
-    expect(cache.puts[0]?.key).toBe("https://metfix.org/__cache/posts/list?page=1");
+    expect(cache.puts[0]?.key).toBe("https://metfix.org/__cache/v2/posts/list?page=1");
 
     cache.puts.length = 0;
     mockDetailOk(unlockedItem(5));
     await call("/api/posts/5");
     await flush(ctx);
-    expect(cache.puts[0]?.key).toBe("https://metfix.org/__cache/posts/5");
+    expect(cache.puts[0]?.key).toBe("https://metfix.org/__cache/v2/posts/5");
   });
 
   it("PW37 stored s-maxage; client headers = apiOkHeaders", async () => {
@@ -1370,7 +1387,7 @@ describe("PW posts API", () => {
     expect(isPostListBody).toBeTypeOf("function");
     expect(isPostDetailBody).toBeTypeOf("function");
     await cache.put(
-      "https://metfix.org/__cache/posts/list?page=1",
+      "https://metfix.org/__cache/v2/posts/list?page=1",
       new Response(JSON.stringify({ posts: [], page: 1, per_page: 12 }), {
         status: 200,
       }),
@@ -1382,7 +1399,7 @@ describe("PW posts API", () => {
     // Extra key
     fetchMock.mockClear();
     await cache.put(
-      "https://metfix.org/__cache/posts/list?page=1",
+      "https://metfix.org/__cache/v2/posts/list?page=1",
       new Response(
         JSON.stringify({ posts: [], page: 1, per_page: 12, has_more: false, extra: 1 }),
         { status: 200 },
@@ -1411,10 +1428,10 @@ describe("PW posts API", () => {
     const apiRes = await call("/api/posts");
     expect(apiRes.status).toBe(200);
     expect(waitSpy).toHaveBeenCalled();
-    expect(cache.store.has("https://metfix.org/__cache/posts/list?page=1")).toBe(false);
+    expect(cache.store.has("https://metfix.org/__cache/v2/posts/list?page=1")).toBe(false);
     resolvePut();
     await flush(ctx);
-    expect(cache.store.has("https://metfix.org/__cache/posts/list?page=1")).toBe(true);
+    expect(cache.store.has("https://metfix.org/__cache/v2/posts/list?page=1")).toBe(true);
 
     // Restore immediate put for HTML path assertion.
     cache.put = origPut;
@@ -1425,7 +1442,7 @@ describe("PW posts API", () => {
     const html = await call("/posts/5", { headers: { Accept: "text/html" } });
     expect(html.status).toBe(200);
     // HTML path awaits put — entry present when response resolves
-    expect(cache.store.has("https://metfix.org/__cache/posts/5")).toBe(true);
+    expect(cache.store.has("https://metfix.org/__cache/v2/posts/5")).toBe(true);
     // waitUntil not used for the HTML put (count unchanged for put)
     expect(waitSpy.mock.calls.length).toBe(waitUntilCountBefore);
   });
@@ -1466,7 +1483,7 @@ describe("PW posts API", () => {
     const html = await call("/posts/5", { headers: { Accept: "text/html" } });
     expect(html.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const cached = cache.store.get("https://metfix.org/__cache/posts/5");
+    const cached = cache.store.get("https://metfix.org/__cache/v2/posts/5");
     expect(cached).toBeTruthy();
     const cachedText = await cached!.clone().text();
     fetchMock.mockClear();
@@ -1497,7 +1514,7 @@ describe("PW posts API", () => {
     fetchMock.mockClear();
     await call("/api/posts?page=2");
     expect(fetchMock).toHaveBeenCalledTimes(0);
-    expect(cache.store.has("https://metfix.org/__cache/posts/list?page=2")).toBe(true);
+    expect(cache.store.has("https://metfix.org/__cache/v2/posts/list?page=2")).toBe(true);
 
     // (d) warm HTML → 0 upstream
     fetchMock.mockClear();
@@ -1795,5 +1812,22 @@ describe("PW posts API", () => {
     const html = await (await call("/posts", { headers: { Accept: "text/html" } })).text();
     expect(html).toContain("<title>Posts — MetFix</title>");
     expect(html).toContain("Articles from Broken Science.");
+  });
+
+  it("TC14 handlePostsHtml sets DETAIL_PAGE_CSP and reCAPTCHA site key", async () => {
+    mockDetailOk(unlockedItem(42));
+    const reqEnv = makeEnv(assetsFetch);
+    reqEnv.RECAPTCHA_SITE_KEY = "6LeTestSiteKey_abc-123";
+    const res = await handleRequest(
+      new Request("https://metfix.org/posts/42", { headers: { Accept: "text/html" } }),
+      reqEnv,
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(res.headers.get("Content-Security-Policy")).toBe(DETAIL_PAGE_CSP);
+    const html = await res.text();
+    expect(html).toContain("window.__MFX_RECAPTCHA_SITE_KEY__");
+    expect(html).toContain("6LeTestSiteKey_abc-123");
+    expect(DETAIL_PAGE_CSP).toContain("https://brokenscience.org");
   });
 });
