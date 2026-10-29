@@ -12,10 +12,15 @@ import {
   type DetailPost,
 } from "@shared/posts";
 import { BackToTop } from "@/components/BackToTop";
+import { SiteFooter } from "@/components/SiteFooter";
+import { DetailReader } from "@/components/post-detail/DetailReader";
+import { PostReaderSkeleton } from "@/components/post-detail/PostReaderSkeleton";
+import { toDetailReaderModel } from "@/components/post-detail/types";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import NotFound from "@/pages/NotFound";
-import { PostsError, PostsLayout, PostsLoading } from "./PostsLayout";
+import "@/styles/post-prose.css";
+import { PostsError, PostsLayout } from "./PostsLayout";
 
 type DetailState =
   | { status: "loading" }
@@ -28,16 +33,6 @@ function parsePostId(raw: string | undefined): number | null {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > POST_ID_MAX) return null;
   return n;
-}
-
-function formatPostDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 export default function PostDetailPage({
@@ -119,35 +114,22 @@ export default function PostDetailPage({
   };
 
   return (
-    <PostsLayout>
-      {state.status === "loading" ? <PostsLoading /> : null}
-      {state.status === "error" ? <PostsError onRetry={onRetry} /> : null}
-      {state.status === "data" ? <DetailBody post={state.post} /> : null}
-    </PostsLayout>
+    <>
+      <PostsLayout wide={state.status === "data" || state.status === "loading"}>
+        {state.status === "loading" ? <PostReaderSkeleton /> : null}
+        {state.status === "error" ? <PostsError onRetry={onRetry} /> : null}
+        {state.status === "data" ? <DetailBody post={state.post} /> : null}
+      </PostsLayout>
+      <SiteFooter />
+    </>
   );
 }
 
 function DetailBody({ post }: { post: DetailPost }) {
+  const model = toDetailReaderModel(post);
   return (
     <>
-      <article>
-        <header className="posts-detail-header">
-          <h1 className="posts-title">{post.title}</h1>
-          <div className="posts-detail-meta">
-            <time dateTime={post.date}>{formatPostDate(post.date)}</time>
-            {post.author ? <span>{post.author}</span> : null}
-            {post.category ? <span>{post.category.name}</span> : null}
-          </div>
-        </header>
-        {post.image ? (
-          <img
-            className="posts-detail-image"
-            src={post.image}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-        ) : null}
+      <DetailReader model={model}>
         <SafeHtml html={post.content} className="posts-detail-content" as="div" />
         {post.permalink ? (
           <a
@@ -159,7 +141,7 @@ function DetailBody({ post }: { post: DetailPost }) {
             Read on Broken Science
           </a>
         ) : null}
-      </article>
+      </DetailReader>
       <BackToTop mode="document" />
     </>
   );

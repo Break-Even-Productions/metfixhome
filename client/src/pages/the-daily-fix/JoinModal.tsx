@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { clampClientRetryAfter } from "./comments";
-import { ensureRecaptchaScript } from "./recaptcha";
+import { ensureRecaptchaScript, getRecaptchaToken } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
 
 type JoinModalProps = {
@@ -46,25 +46,6 @@ async function fetchCsrf(http: typeof fetch): Promise<string | null> {
     return null;
   }
 }
-async function getRecaptchaToken(action: string): Promise<string> {
-  const g = (
-    window as unknown as {
-      grecaptcha?: {
-        ready: (cb: () => void) => void;
-        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
-      };
-    }
-  ).grecaptcha;
-  const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
-    .__MFX_RECAPTCHA_SITE_KEY__;
-  if (!g || !siteKey) {
-    // Tests / local without widget: non-empty placeholder (Worker shape-checks only).
-    return "test-recaptcha-token";
-  }
-  await new Promise<void>((resolve) => g.ready(() => resolve()));
-  return g.execute(siteKey, { action });
-}
-
 function GoogleLogo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">

@@ -23,6 +23,12 @@ export function exclusiveBaseFromOrigin(origin: string): string {
   return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/exclusive-resources`;
 }
 
+export function coursesBaseFromOrigin(origin: string): string {
+  return `${origin.replace(/\/$/, "")}/wp-json/bsi/v1/courses`;
+}
+
+export const BSI_COURSES_BASE = coursesBaseFromOrigin(BSI_ORIGIN);
+
 export const MAX_UPSTREAM_BYTES = 1_500_000;
 export const DEFAULT_LIMIT = 12;
 export const MAX_LIMIT = 48;
@@ -51,6 +57,9 @@ export const RESOURCE_TYPE_RE = new RegExp(
 
 export const RESOURCE_ID_RE = /^[1-9][0-9]{0,9}$/;
 export const RESOURCE_ID_MAX = 2_147_483_647;
+
+/** Taxonomy / term slug (TX2 / SEC13). */
+export const SLUG_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 /** Browse chips (Emily IA → BSI content_type slugs). */
 export const CONTENT_TYPE_CHIPS: ReadonlyArray<{ slug: string; label: string }> = [

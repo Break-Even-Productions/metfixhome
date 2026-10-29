@@ -19,10 +19,27 @@ const listBody = {
   has_more: false,
 };
 
+const access = {
+  access: "full" as const,
+  has_content_access: false,
+  user_has_access: true,
+  has_preview: false,
+  is_exclusive: false,
+  show_same: 0,
+  show_video_in_preview: false,
+  access_group_labels: [] as string[],
+};
+
 const detailPost = {
   ...post,
   content: "<p>x</p>",
   permalink: "https://brokenscience.org/x",
+  video: null,
+  categories: [{ id: 1, name: "News", slug: "news" }],
+  content_types: [{ id: 2, name: "Articles", slug: "articles" }],
+  topics: [],
+  locked: false,
+  access,
 };
 
 describe("isPostListBody (A6 exact key set)", () => {

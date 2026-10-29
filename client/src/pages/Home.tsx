@@ -20,8 +20,8 @@ import {
   BookOpen,
   ChevronRight,
 } from "lucide-react";
-import { assetUrl, basePath, HOME_SCROLL_KEY, scrollToHomeSection } from "@/const";
-import CopyrightText from "@/components/CopyrightText";
+import { assetUrl, HOME_SCROLL_KEY, scrollToHomeSection } from "@/const";
+import { SiteFooter } from "@/components/SiteFooter";
 import { CmsLink } from "@/components/CmsLink";
 import { HighlightedHeadlineText } from "@/lib/highlightedText";
 import { useHomeContent } from "@/hooks/useSanityContent";
@@ -46,7 +46,6 @@ const HERO_IMG = assetUrl("/hero.png");
 
 const COURSE_HERO_IMG = assetUrl("/what-is-metfix-course-hero.png");
 const AFFILIATION_BG_IMG = assetUrl("/affiliation-bg.png");
-const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";
 const MAILCHIMP_NEWSLETTER_ACTION =
   "https://brokenscience.us13.list-manage.com/subscribe/post?u=473a65a0067d6101d3a6277c8&id=abdc550935&f_id=001a53eaf0";
 
@@ -1305,78 +1304,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ═══ FOOTER ═══════════════════════════════════════════════ */}
-      <footer style={{ background: "#050505", borderTop: "1px solid rgba(255,255,255,0.06)", padding: "4rem 0 2rem", paddingBottom: "calc(2rem + env(safe-area-inset-bottom, 0px))" }} className="footer-mobile-pad">
-        <div className="container">
-          <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "3rem", marginBottom: "3rem" }}>
-            <div>
-              <div style={{ marginBottom: "1.25rem" }}>
-                <img src={assetUrl("/metfix-lockup.png")} alt="MetFix" style={{ height: "2.25rem", width: "auto", display: "block" }} />
-              </div>
-              <p style={{ fontFamily: "'DM Sans'", fontSize: "0.85rem", lineHeight: 1.7, color: "rgba(239,239,239,0.82)", maxWidth: "280px", marginBottom: "1.25rem" }}>
-                The metabolic health education platform for coaches, gym owners, and health leaders fighting chronic disease.
-              </p>
-              <a href="https://brokenscience.org/" target="_blank" rel="noopener noreferrer"
-                style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.12em", color: "rgba(201,169,110,0.5)", textDecoration: "none", textTransform: "uppercase" }}>
-                A Broken Science Initiative Project
-              </a>
-            </div>
-            <div>
-              <div style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.25rem" }}>Learn</div>
-              {[
-                { label: "The Daily Fix", href: "/the-daily-fix" },
-                { label: "What Is MetFix?", href: "https://whatis.metfix.org/" },
-                { label: "Foundations Seminar", href: "https://brokenscience.org/events/" },
-              ].map(l => (
-                <a key={l.label} href={basePath(l.href)} target={l.href.startsWith("http") ? "_blank" : "_self"} rel="noopener noreferrer"
-                  style={{ display: "block", fontFamily: "'DM Sans'", fontSize: "0.85rem", color: "rgba(239,239,239,0.8)", textDecoration: "none", marginBottom: "0.75rem", transition: "color 0.2s" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#EFEFEF")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "rgba(239,239,239,0.5)")}>{l.label}</a>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.25rem" }}>Specialty</div>
-              {[
-                { label: "Courses", href: "/courses" },
-              ].map(l => (
-                <a key={l.label} href={basePath(l.href)} target={l.href.startsWith("http") ? "_blank" : "_self"} rel="noopener noreferrer"
-                  style={{ display: "block", fontFamily: "'DM Sans'", fontSize: "0.85rem", color: "rgba(239,239,239,0.8)", textDecoration: "none", marginBottom: "0.75rem", transition: "color 0.2s" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#EFEFEF")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "rgba(239,239,239,0.5)")}>{l.label}</a>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.15em", color: "#C9A96E", textTransform: "uppercase", marginBottom: "1.25rem" }}>Community</div>
-              {[
-                { label: "Find a Gym", href: METFIX_MAP_URL },
-                { label: "Become an Affiliate", href: "/become-an-affiliate" },
-                { label: "Broken Science Initiative", href: "https://brokenscience.org/" },
-                { label: "Login", href: "https://brokenscience.org/login/" },
-              ].map(l => (
-                <a key={l.label} href={basePath(l.href)}
-                  target={l.href.startsWith("http") ? "_blank" : "_self"} rel="noopener noreferrer"
-                  style={{ display: "block", fontFamily: "'DM Sans'", fontSize: "0.85rem", color: "rgba(239,239,239,0.8)", textDecoration: "none", marginBottom: "0.75rem", transition: "color 0.2s" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#EFEFEF")}
-                  onMouseLeave={e => (e.currentTarget.style.color = "rgba(239,239,239,0.5)")}>{l.label}</a>
-              ))}
-            </div>
-          </div>
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "2rem", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1.25rem 2rem" }}>
-            <CopyrightText variant="home" />
-            <div style={{ fontFamily: "'DM Mono'", fontSize: "0.75rem", letterSpacing: "0.1em", color: "rgba(239,239,239,0.75)", textTransform: "uppercase", flexShrink: 0 }}>
-              <a href="https://brokenscience.org/privacy-policy/" target="_blank" rel="noopener noreferrer"
-                style={{ color: "inherit", textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "#EFEFEF")}
-                onMouseLeave={e => (e.currentTarget.style.color = "rgba(239,239,239,0.75)")}>Privacy</a>
-              {' · '}
-              <a href="https://brokenscience.org/terms-and-conditions/" target="_blank" rel="noopener noreferrer"
-                style={{ color: "inherit", textDecoration: "none", transition: "color 0.2s" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "#EFEFEF")}
-                onMouseLeave={e => (e.currentTarget.style.color = "rgba(239,239,239,0.75)")}>Terms</a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
 
       {/* ═══ STICKY MOBILE CTA BAR ══════════════════════════════ */}
       <div style={{

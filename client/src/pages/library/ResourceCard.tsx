@@ -10,6 +10,7 @@ import {
 import {
   isLockedCard,
   isProfessionalTagged,
+  parseFromParam,
   type LibraryResource,
 } from "@shared/library";
 
@@ -115,22 +116,50 @@ function typeVisual(r: LibraryResource): TypeVisual {
   return { label: String(r.type).replace(/_/g, " "), Icon: FileText };
 }
 
+const PLAYABLE_CONTENT_SLUGS = new Set([
+  "video",
+  "videos",
+  "webinar",
+  "webinars",
+  "live-stream",
+  "live-streams",
+  "livestream",
+  "whiteboard",
+  "whiteboards",
+]);
+
+function showsPlayButton(r: LibraryResource): boolean {
+  return r.content_types.some((t) => PLAYABLE_CONTENT_SLUGS.has(t.slug.toLowerCase()));
+}
+
 type ResourceCardProps = {
   resource: LibraryResource;
   onOpenLocked: (r: LibraryResource) => void;
+  /** Breadcrumb context `?from=` (PL9 / TX7). */
+  from?: string;
 };
 
-export function ResourceCard({ resource, onOpenLocked }: ResourceCardProps) {
+function hrefWithFrom(href: string, from?: string): string {
+  if (!from) return href;
+  const valid = parseFromParam(from) ? from : null;
+  if (!valid) return href;
+  const sep = href.includes("?") ? "&" : "?";
+  return `${href}${sep}from=${encodeURIComponent(valid)}`;
+}
+
+export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps) {
   const locked = isLockedCard(resource);
   const exclusive = isProfessionalTagged(resource);
   const showLock = locked || exclusive;
-  const href = resource.daily_fix_date
+  const baseHref = resource.daily_fix_date
     ? `/the-daily-fix/${resource.daily_fix_date.replace(/-/g, "").slice(2)}`
     : resource.type === "daily_fix"
       ? "/the-daily-fix"
       : `/library/${resource.type}/${resource.id}`;
+  const href = hrefWithFrom(baseHref, from);
 
   const visual = typeVisual(resource);
+  const playable = showsPlayButton(resource);
   const TypeIcon = visual.Icon;
   const dateLabel = formatDate(resource.date);
   const category = resource.categories[0]?.name;
@@ -189,6 +218,13 @@ export function ResourceCard({ resource, onOpenLocked }: ResourceCardProps) {
           ) : null}
           {visual.label}
         </span>
+        {playable ? (
+          <span className="library-card-play" aria-hidden>
+            <span className="library-card-play-btn">
+              <Play size={18} fill="currentColor" strokeWidth={2} />
+            </span>
+          </span>
+        ) : null}
         {showLock ? (
           <span className="library-card-lock" aria-label="Exclusive content">
             <Lock size={12} strokeWidth={2.25} aria-hidden />

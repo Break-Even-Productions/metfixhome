@@ -4,6 +4,7 @@
  * X-API-Key always; Bearer when a metfix.org session is present. No metfix-only allowlist.
  */
 import {
+  BSI_COURSES_BASE,
   BSI_EXCLUSIVE_BASE,
   BSI_POSTS_DETAIL_BASE,
   BSI_RESOURCES_BASE,
@@ -14,8 +15,11 @@ import {
   QUERY_MAX,
   RESOURCE_ID_MAX,
   RESOURCE_ID_RE,
+  archiveSearchLegs,
   buildLibraryHead,
+  coursesBaseFromOrigin,
   exclusiveBaseFromOrigin,
+  htmlShowsMembershipGate,
   isLibraryDetailBody,
   isLibraryFiltersBody,
   isLibrarySearchBody,
@@ -29,8 +33,10 @@ import {
   mapFiltersPayload,
   mapPopularResponse,
   mapSearchResponse,
+  mergeArchivePages,
   postsDetailBaseFromOrigin,
   resourcesBaseFromOrigin,
+  SLUG_RE,
   type LibraryDetailBody,
   type LibraryFiltersBody,
   type LibraryHead,
@@ -43,6 +49,7 @@ import {
   runUserBsiCall,
   type ActingContext,
 } from "./auth/acting";
+import { finishDetailPageHtml } from "./detailHtml";
 import { rewriteHtml, type HeadMode } from "./head";
 import {
   assertBsiHost,
@@ -81,6 +88,10 @@ function exclusiveBase(env: Env, opts?: { baseUrl?: string }): string {
   return exclusiveBaseFromOrigin(resolveBsiOrigin(env, opts));
 }
 
+function coursesBase(env: Env, opts?: { baseUrl?: string }): string {
+  return coursesBaseFromOrigin(resolveBsiOrigin(env, opts));
+}
+
 function resourcesBase(env: Env, opts?: { baseUrl?: string }): string {
   if (!opts?.baseUrl) return BSI_RESOURCES_BASE;
   return resourcesBaseFromOrigin(resolveBsiOrigin(env, opts));
@@ -89,7 +100,9 @@ function resourcesBase(env: Env, opts?: { baseUrl?: string }): string {
 function apiOkHeaders(privateCache: boolean): HeadersInit {
   return {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": privateCache ? "private, max-age=30" : "public, max-age=60",
+    "Cache-Control": privateCache
+      ? "private, max-age=30"
+      : "public, max-age=60",
     "X-Content-Type-Options": "nosniff",
   };
 }
@@ -131,7 +144,12 @@ function badRequestJson(head: boolean, error = "invalid_request"): Response {
 }
 
 function methodNotAllowed(head: boolean): Response {
-  return jsonResponse({ error: "method_not_allowed" }, 405, { Allow: "GET, HEAD" }, head);
+  return jsonResponse(
+    { error: "method_not_allowed" },
+    405,
+    { Allow: "GET, HEAD" },
+    head,
+  );
 }
 
 function redirectResponse(location: string): Response {
@@ -172,9 +190,14 @@ async function htmlNotFound(request: Request, env: Env): Promise<Response> {
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic_noindex" });
-  const headers = new Headers(rewritten.headers);
-  if (isHead) return new Response(null, { status: 404, headers });
-  return new Response(rewritten.body, { status: 404, headers });
+  const finished = finishDetailPageHtml(rewritten, env);
+  if (isHead) {
+    return new Response(null, { status: 404, headers: finished.headers });
+  }
+  return new Response(finished.body, {
+    status: 404,
+    headers: finished.headers,
+  });
 }
 
 async function htmlServiceUnavailable(
@@ -199,11 +222,12 @@ async function htmlServiceUnavailable(
     });
   }
   const rewritten = rewriteHtml(assetRes, { mode: "generic" });
-  const headers = new Headers(rewritten.headers);
+  const finished = finishDetailPageHtml(rewritten, env);
+  const headers = new Headers(finished.headers);
   headers.set("Retry-After", "300");
   headers.set("Cache-Control", "no-store");
   if (isHead) return new Response(null, { status: 503, headers });
-  return new Response(rewritten.body, { status: 503, headers });
+  return new Response(finished.body, { status: 503, headers });
 }
 
 async function htmlOk(
@@ -219,13 +243,14 @@ async function htmlOk(
     return htmlServiceUnavailable(request, env, isHead, true);
   }
   const bodyRes = rewriteHtml(assetRes, plan);
-  const headers = new Headers(bodyRes.headers);
+  const finished = finishDetailPageHtml(bodyRes, env);
+  const headers = new Headers(finished.headers);
   const cc = headers.get("Cache-Control");
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
   }
   if (isHead) return new Response(null, { status: 200, headers });
-  return new Response(bodyRes.body, { status: 200, headers });
+  return new Response(finished.body, { status: 200, headers });
 }
 
 function libraryHeadPlan(head: LibraryHead): HeadMode {
@@ -266,7 +291,10 @@ function userSalt(acting: ActingContext | null): string | null {
   return id && id !== "0" ? `u${id}` : acting.hex.slice(0, 16);
 }
 
-function bsiHeaders(apiKey: string, accessToken: string | null): Record<string, string> {
+function bsiHeaders(
+  apiKey: string,
+  accessToken: string | null,
+): Record<string, string> {
   const h: Record<string, string> = {
     Accept: "application/json",
     "User-Agent": UPSTREAM_USER_AGENT,
@@ -353,7 +381,10 @@ async function fetchBsi(
       console.info("library:timeout");
       return { kind: "timeout" };
     }
-    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+    if (
+      err instanceof Error &&
+      (err.name === "TimeoutError" || err.name === "AbortError")
+    ) {
       console.info("library:timeout");
       return { kind: "timeout" };
     }
@@ -386,7 +417,9 @@ async function storeMapped(
 }
 
 /** Allowlisted search query → upstream URL search string. */
-export function buildSearchUpstreamQuery(searchParams: URLSearchParams): string | null {
+export function buildSearchUpstreamQuery(
+  searchParams: URLSearchParams,
+): string | null {
   const out = new URLSearchParams();
 
   const query = searchParams.get("query");
@@ -419,7 +452,8 @@ export function buildSearchUpstreamQuery(searchParams: URLSearchParams): string 
     ...searchParams.getAll("content_types[]"),
     ...searchParams.getAll("content_types"),
   ]) {
-    if (!/^(post|event|course|daily_fix|exclusive_resource)$/.test(v)) return null;
+    if (!/^(post|event|course|daily_fix|exclusive_resource)$/.test(v))
+      return null;
     out.append("content_types[]", v);
   }
 
@@ -432,12 +466,24 @@ export function buildSearchUpstreamQuery(searchParams: URLSearchParams): string 
     out.append("content_type_terms[]", v);
   }
 
-  // topics[] / categories[] — integers
+  const appendCategoryId = (v: string): boolean => {
+    if (!/^[1-9][0-9]{0,9}$/.test(v)) return false;
+    out.append("categories[]", v);
+    return true;
+  };
+
+  // topics[] / categories[] — integers (+ singular category)
   for (const name of ["topics", "categories"] as const) {
-    for (const v of [...searchParams.getAll(`${name}[]`), ...searchParams.getAll(name)]) {
+    for (const v of [
+      ...searchParams.getAll(`${name}[]`),
+      ...searchParams.getAll(name),
+    ]) {
       if (!/^[1-9][0-9]{0,9}$/.test(v)) return null;
       out.append(`${name}[]`, v);
     }
+  }
+  for (const v of searchParams.getAll("category")) {
+    if (!appendCategoryId(v)) return null;
   }
 
   // Do NOT forward content_access[] on the main catalog (narrows to exclusive path).
@@ -449,7 +495,9 @@ export function buildSearchUpstreamQuery(searchParams: URLSearchParams): string 
  * Popular query allowlist — same page size as search.
  * Forwards `offset` so BSI can paginate once `/resources/popular` supports it.
  */
-export function buildPopularUpstreamQuery(searchParams: URLSearchParams): string | null {
+export function buildPopularUpstreamQuery(
+  searchParams: URLSearchParams,
+): string | null {
   const out = new URLSearchParams();
 
   const limitRaw = searchParams.get("limit");
@@ -474,11 +522,43 @@ export function buildPopularUpstreamQuery(searchParams: URLSearchParams): string
     ...searchParams.getAll("content_types[]"),
     ...searchParams.getAll("content_types"),
   ]) {
-    if (!/^(post|event|course|daily_fix|exclusive_resource)$/.test(v)) return null;
+    if (!/^(post|event|course|daily_fix|exclusive_resource)$/.test(v))
+      return null;
     out.append("content_types[]", v);
   }
 
   return out.toString();
+}
+
+/**
+ * Society shortcodes (`bsi-society-member`, etc.) are not in search `content_access_display`.
+ * Anonymous catalog: look at the public page and lock the card when BSI would demand a login.
+ */
+async function flagMembershipGatedPages(
+  body: LibrarySearchBody,
+  apiKey: string,
+  fetchImpl: FetchImpl,
+  env: Env,
+): Promise<void> {
+  const pages = body.resources.filter(
+    (r) => r.type === "page" && r.access.access === "full" && r.permalink,
+  );
+  await Promise.all(
+    pages.map(async (resource) => {
+      const permalink = resource.permalink;
+      if (!permalink) return;
+      const upstream = await fetchBsi(permalink, apiKey, null, fetchImpl, env);
+      if (upstream.kind !== "http" || upstream.status !== 200) return;
+      if (!htmlShowsMembershipGate(upstream.text)) return;
+      resource.access = {
+        ...resource.access,
+        access: "none",
+        is_exclusive: true,
+        has_content_access: true,
+        user_has_access: false,
+      };
+    }),
+  );
 }
 
 async function getSearch(
@@ -510,7 +590,12 @@ async function getSearch(
       const text = await cached.clone().text();
       const json: unknown = JSON.parse(text);
       if (isLibrarySearchBody(json)) {
-        return { kind: "ok", body: json, jsonText: text, private: privateCache };
+        return {
+          kind: "ok",
+          body: json,
+          jsonText: text,
+          private: privateCache,
+        };
       }
     } catch {
       /* refetch */
@@ -560,6 +645,10 @@ async function getSearch(
     return { kind: "unavailable" };
   }
 
+  if (!acting) {
+    await flagMembershipGatedPages(mapped, key, fetchImpl, env);
+  }
+
   const jsonText = JSON.stringify(mapped);
   const sMax = privateCache ? SEARCH_S_MAXAGE_USER : SEARCH_S_MAXAGE_ANON;
   await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
@@ -595,7 +684,12 @@ async function getPopular(
       const text = await cached.clone().text();
       const json: unknown = JSON.parse(text);
       if (isLibrarySearchBody(json)) {
-        return { kind: "ok", body: json, jsonText: text, private: privateCache };
+        return {
+          kind: "ok",
+          body: json,
+          jsonText: text,
+          private: privateCache,
+        };
       }
     } catch {
       /* refetch */
@@ -649,6 +743,10 @@ async function getPopular(
     return { kind: "unavailable" };
   }
 
+  if (!acting) {
+    await flagMembershipGatedPages(mapped, key, fetchImpl, env);
+  }
+
   const jsonText = JSON.stringify(mapped);
   const sMax = privateCache ? SEARCH_S_MAXAGE_USER : SEARCH_S_MAXAGE_ANON;
   await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
@@ -680,7 +778,12 @@ async function getFilters(
       const text = await cached.clone().text();
       const json: unknown = JSON.parse(text);
       if (isLibraryFiltersBody(json)) {
-        return { kind: "ok", body: json, jsonText: text, private: privateCache };
+        return {
+          kind: "ok",
+          body: json,
+          jsonText: text,
+          private: privateCache,
+        };
       }
     } catch {
       /* refetch */
@@ -718,7 +821,15 @@ async function getFilters(
     categories: parsed[2],
   });
   const jsonText = JSON.stringify(mapped);
-  await storeMapped(cache, keyReq, jsonText, FILTERS_S_MAXAGE, putMode, ctx, privateCache);
+  await storeMapped(
+    cache,
+    keyReq,
+    jsonText,
+    FILTERS_S_MAXAGE,
+    putMode,
+    ctx,
+    privateCache,
+  );
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -737,7 +848,12 @@ async function getDetail(
   | { kind: "nokey" }
   | { kind: "not_found" }
   | { kind: "unavailable" }
-  | { kind: "locked"; body: LibraryDetailBody; jsonText: string; private: boolean }
+  | {
+      kind: "locked";
+      body: LibraryDetailBody;
+      jsonText: string;
+      private: boolean;
+    }
 > {
   const key = readApiKey(env);
   if (key == null) return { kind: "nokey" };
@@ -802,9 +918,11 @@ async function getDetail(
   if (type === "exclusive_resource") {
     const base = opts?.baseUrl ? exclusiveBase(env, opts) : BSI_EXCLUSIVE_BASE;
     url = `${base}/${id}`;
-  } else if (type === "course" || type === "event" || type === "infographic") {
-    // No first-party body renderer yet — return search-shaped metadata via posts if numeric,
-    // else locked shell with permalink from a lightweight search.
+  } else if (type === "course") {
+    const base = opts?.baseUrl ? coursesBase(env, opts) : BSI_COURSES_BASE;
+    url = `${base}/${id}`;
+  } else if (type === "event" || type === "infographic") {
+    // No first-party body renderer yet — posts detail, else locked shell.
     const base = opts?.baseUrl ? postsBase(env, opts) : BSI_POSTS_DETAIL_BASE;
     url = `${base}/${id}`;
   } else {
@@ -813,7 +931,8 @@ async function getDetail(
     url = `${base}/${id}`;
   }
 
-  const call = (access: string | null) => fetchBsi(url, key, access, fetchImpl, env);
+  const call = (access: string | null) =>
+    fetchBsi(url, key, access, fetchImpl, env);
 
   let upstream: UpstreamResult;
   if (acting) {
@@ -845,7 +964,15 @@ async function getDetail(
     const body: LibraryDetailBody = { resource: shell };
     const jsonText = JSON.stringify(body);
     const sMax = privateCache ? DETAIL_S_MAXAGE_USER : DETAIL_S_MAXAGE_ANON;
-    await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      sMax,
+      putMode,
+      ctx,
+      privateCache,
+    );
     return { kind: "locked", body, jsonText, private: privateCache };
   }
 
@@ -872,7 +999,15 @@ async function getDetail(
       if (alt) {
         const jsonText = JSON.stringify(alt);
         const sMax = privateCache ? DETAIL_S_MAXAGE_USER : DETAIL_S_MAXAGE_ANON;
-        await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
+        await storeMapped(
+          cache,
+          keyReq,
+          jsonText,
+          sMax,
+          putMode,
+          ctx,
+          privateCache,
+        );
         return {
           kind: alt.resource.locked ? "locked" : "ok",
           body: alt,
@@ -901,7 +1036,114 @@ export function isValidLibraryId(id: string): boolean {
   return Number.isInteger(n) && n >= 1 && n <= RESOURCE_ID_MAX;
 }
 
-/** API: /api/library/search | /popular | /filters | /item/:type/:id */
+function archivePage(
+  searchParams: URLSearchParams,
+): { limit: number; offset: number } | null {
+  if (
+    searchParams.getAll("limit").length > 1 ||
+    searchParams.getAll("offset").length > 1
+  ) {
+    return null;
+  }
+  for (const key of searchParams.keys()) {
+    if (key !== "limit" && key !== "offset") return null;
+  }
+  const only = new URLSearchParams();
+  const limitRaw = searchParams.get("limit");
+  const offsetRaw = searchParams.get("offset");
+  if (limitRaw != null) only.set("limit", limitRaw);
+  if (offsetRaw != null) only.set("offset", offsetRaw);
+  const qs = buildSearchUpstreamQuery(only);
+  if (qs == null) return null;
+  const parsed = new URLSearchParams(qs);
+  const limit = Number(parsed.get("limit"));
+  const offset = Number(parsed.get("offset"));
+  if (!Number.isInteger(limit) || !Number.isInteger(offset)) return null;
+  return { limit, offset };
+}
+
+function archiveLegQuery(
+  limit: number,
+  offset: number,
+  leg: ReturnType<typeof archiveSearchLegs>[number],
+): string | null {
+  const sp = new URLSearchParams();
+  sp.set("limit", String(limit));
+  sp.set("offset", String(offset));
+  if (leg.kind === "topic") sp.append("topics[]", String(leg.id));
+  else if (leg.kind === "category") sp.append("categories[]", String(leg.id));
+  else sp.append("content_type_terms[]", leg.slug);
+  return buildSearchUpstreamQuery(sp);
+}
+
+/**
+ * One merged Glassman topic + category page, plus Book Library when that
+ * content type exists. Filters resolve slugs to ids; legs run in parallel.
+ */
+async function getArchive(
+  limit: number,
+  offset: number,
+  env: Env,
+  fetchImpl: FetchImpl,
+  cache: Cache,
+  ctx: ExecutionContext,
+  putMode: CachePutMode,
+  acting: ActingContext | null,
+  opts?: { baseUrl?: string },
+): Promise<
+  | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
+  | { kind: "nokey" }
+  | { kind: "unavailable" }
+> {
+  const filters = await getFilters(
+    env,
+    fetchImpl,
+    cache,
+    ctx,
+    putMode,
+    acting,
+    opts,
+  );
+  if (filters.kind !== "ok") return filters;
+
+  const legs = archiveSearchLegs(filters.body);
+  const privateCache = userSalt(acting) != null;
+  if (legs.length === 0) {
+    const body: LibrarySearchBody = {
+      resources: [],
+      meta: { total: 0, count: 0, limit, offset, has_more: false },
+    };
+    return {
+      kind: "ok",
+      body,
+      jsonText: JSON.stringify(body),
+      private: privateCache,
+    };
+  }
+
+  const results = await Promise.all(
+    legs.map(async (leg) => {
+      const qs = archiveLegQuery(limit, offset, leg);
+      if (qs == null) return { kind: "unavailable" as const };
+      return getSearch(qs, env, fetchImpl, cache, ctx, putMode, acting, opts);
+    }),
+  );
+  if (results.some((result) => result.kind !== "ok"))
+    return { kind: "unavailable" };
+
+  const pages = results.flatMap((result) =>
+    result.kind === "ok" ? [result.body] : [],
+  );
+  const body = mergeArchivePages(pages, { limit, offset });
+  return {
+    kind: "ok",
+    body,
+    jsonText: JSON.stringify(body),
+    private: privateCache,
+  };
+}
+
+/** API: /api/library/search | /archive | /popular | /filters | /item/:type/:id */
 export async function handleLibraryApi(
   request: Request,
   env: Env,
@@ -982,6 +1224,28 @@ export async function handleLibraryApi(
     return unavailableJson(isHead);
   }
 
+  if (path === "/api/library/archive" || path === "/api/library/archive/") {
+    const page = archivePage(url.searchParams);
+    if (page == null) return badRequestJson(isHead);
+    const result = await getArchive(
+      page.limit,
+      page.offset,
+      env,
+      fetchImpl,
+      cache,
+      ctx,
+      "waitUntil",
+      acting,
+      opts,
+    );
+    if (result.kind === "ok") {
+      const headers = new Headers(apiOkHeaders(result.private));
+      if (isHead) return new Response(null, { status: 200, headers });
+      return new Response(result.jsonText, { status: 200, headers });
+    }
+    return unavailableJson(isHead);
+  }
+
   const itemMatch = path.match(/^\/api\/library\/item\/([^/]+)\/([^/]+)\/?$/);
   if (itemMatch) {
     const typePart = itemMatch[1]!;
@@ -1037,6 +1301,30 @@ export async function handleLibraryHtml(
   const acting = await optionalActing(request, env, fetchImpl, opts);
 
   if (path === "/library") {
+    const head = buildLibraryHead({ kind: "hub" });
+    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+  }
+
+  // SR18 / E1: SPA search page (not a resource type/id). Same shell as hub.
+  if (path === "/library/search") {
+    const head = buildLibraryHead({ kind: "hub" });
+    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+  }
+
+  const topicRoot = path.match(/^\/topic\/([^/]+)$/);
+  if (topicRoot) {
+    const slug = topicRoot[1]!;
+    if (!SLUG_RE.test(slug)) return htmlNotFound(request, env);
+    const head = buildLibraryHead({ kind: "hub" });
+    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+  }
+
+  const taxonomy = path.match(
+    /^\/library\/(topic|content-type|category)\/([^/]+)$/,
+  );
+  if (taxonomy) {
+    const slug = taxonomy[2]!;
+    if (!SLUG_RE.test(slug)) return htmlNotFound(request, env);
     const head = buildLibraryHead({ kind: "hub" });
     return htmlOk(request, env, libraryHeadPlan(head), isHead);
   }
