@@ -20,11 +20,6 @@ export default function JoinPage() {
   }, [search]);
 
   return (
-    <JoinFlow
-      open
-      standalone
-      initialStep={initialStep}
-      onClose={() => setLocation(basePath("/"))}
-    />
+    <JoinFlow open initialStep={initialStep} onClose={() => setLocation(basePath("/"))} />
   );
 }

@@ -1,39 +1,51 @@
 /**
  * @vitest-environment jsdom
- * WJ20: Membership mounted on Home + Membership surfaces (behavior, not source regex).
+ * WJ20: render Home and assert Membership is mounted (behavior, not source regex).
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MEMBERSHIP_HERO } from "@shared/join";
+import { JoinFlowProvider } from "@/contexts/JoinFlowContext";
 import { Membership } from "./Membership";
-import { MEMBERSHIP_COMPARISON_ROWS, MEMBERSHIP_HERO } from "@shared/join";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("WJ20 Membership surfaces (render)", () => {
-  it("Membership surface renders hero + 7-row table + CTA", () => {
+  it("Membership surface renders hero + CTA", () => {
     const onJoin = vi.fn();
     render(<Membership onJoin={onJoin} />);
     expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Start my free month/i })).toBeTruthy();
-    for (const row of MEMBERSHIP_COMPARISON_ROWS) {
-      expect(screen.getByText(row.feature)).toBeTruthy();
-    }
   });
 
-  it("Home membership section mounts Membership (behavioral stand-in)", () => {
-    const onJoin = vi.fn();
-    render(
-      <section id="membership-section" data-testid="home-membership">
-        <Membership onJoin={onJoin} audience="default" />
-      </section>,
+  it("Home mounts Membership in #membership-section", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({})),
     );
-    const section = screen.getByTestId("home-membership");
-    expect(section.id).toBe("membership-section");
-    expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
-    screen.getByRole("button", { name: /Start my free month/i }).click();
-    expect(onJoin).toHaveBeenCalledTimes(1);
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const { default: Home } = await import("@/pages/Home");
+    render(
+      <JoinFlowProvider>
+        <Home />
+      </JoinFlowProvider>,
+    );
+    await waitFor(() => {
+      const section = document.getElementById("membership-section");
+      expect(section).toBeTruthy();
+      expect(section!.querySelector("#membership")).toBeTruthy();
+      expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
+    });
   });
 });

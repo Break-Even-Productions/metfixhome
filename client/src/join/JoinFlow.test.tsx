@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LOGIN_BODY_KEYS,
   ONBOARDING_ROLES,
+  PRO_CARD_HEADER,
   SIGNUP_BODY_KEYS,
   clampJoinDeepLink,
   facilityFlagsForRoles,
@@ -134,6 +135,124 @@ describe("JoinFlow P-WJ-1..8", () => {
     fireEvent.change(last, { target: { value: "Lee" } });
     fireEvent.submit(first.closest("form")!);
     await screen.findByText(/How would you like to continue/i);
+  });
+
+  it("WJ1: empty / >80 name shows error+aria-describedby; Enter submits; /me prefills", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Alex Rivera",
+      moderator: false,
+    });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () =>
+          Response.json({ signed_in: true, public_name: "Alex Rivera" }),
+        "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+        "/api/account/onboarding": () => Response.json({ ok: true }),
+      }),
+    );
+
+    const { unmount } = render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByDisplayValue("Alex");
+    expect(screen.getByDisplayValue("Rivera")).toBeTruthy();
+    unmount();
+
+    vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
+    render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByText(/What’s your name/i);
+    const first = screen.getByLabelText(/First name/i);
+    fireEvent.submit(first.closest("form")!);
+    await waitFor(() => {
+      expect(screen.getAllByText(/^Required$/i).length).toBeGreaterThanOrEqual(1);
+    });
+    expect(first.getAttribute("aria-describedby")).toBe("join-first-name-err");
+    expect(document.getElementById("join-first-name-err")?.textContent).toMatch(/Required/i);
+
+    fireEvent.change(first, { target: { value: "x".repeat(81) } });
+    fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
+    expect(screen.getByText(/80 characters or fewer/i)).toBeTruthy();
+    expect(first.getAttribute("aria-describedby")).toBe("join-first-name-err");
+
+    fireEvent.change(first, { target: { value: "Pat" } });
+    fireEvent.submit(first.closest("form")!);
+    await screen.findByText(/How would you like to continue/i);
+  });
+
+  it("WJ11: exact PRO header, busy/disabled, double-click → 1 checkout; affiliate includes Pro", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    let checkoutN = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/auth/csrf")) return Response.json({ csrf: "tok" });
+      if (url.includes("/api/account/onboarding")) return Response.json({ ok: true });
+      if (url.includes("/api/billing/whop/checkout-session")) {
+        checkoutN += 1;
+        await new Promise((r) => setTimeout(r, 40));
+        return Response.json({ checkout_url: "https://whop.com/c/x" });
+      }
+      if (url.includes("/api/auth/me")) {
+        return Response.json({ signed_in: true, public_name: "Pat Lee" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+
+    render(<JoinFlow open onClose={() => {}} initialStep="roles" />);
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Gym owner"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/physical gym location/i);
+    fireEvent.click(screen.getByRole("button", { name: /^Yes$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByTestId("pro-plan-card");
+
+    expect(screen.getByTestId("pro-plan-card").textContent).toContain(
+      PRO_CARD_HEADER.replace(/ · /g, "\n").split("\n")[0]!,
+    );
+    expect(screen.getByTestId("pro-plan-card").textContent).toMatch(/First month free/);
+    expect(screen.getByTestId("pro-plan-card").textContent).toMatch(/\$30\/month/);
+    expect(screen.getByTestId("org-plan-card").textContent).toMatch(/\$30\/month MetFix Pro is included/);
+
+    const cta = screen.getByRole("button", { name: /Start my free month/i });
+    fireEvent.click(cta);
+    fireEvent.click(cta);
+    await waitFor(() => expect(cta).toHaveProperty("disabled", true));
+    await waitFor(() => expect(checkoutN).toBe(1));
+  });
+
+  it("Google start uses return= (handler param) round-trip", async () => {
+    const fetchImpl = mockFetch({
+      "/api/auth/me": () => Response.json({ signed_in: false }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const assign = vi.fn();
+    const loc = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...loc, assign, href: "https://metfix.org/join", origin: "https://metfix.org" },
+    });
+    try {
+      render(<JoinFlow open onClose={() => {}} />);
+      await screen.findByText(/What’s your name/i);
+      fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
+      fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
+      fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+      await screen.findByText(/Continue with Google/i);
+      fireEvent.click(screen.getByRole("button", { name: /Continue with Google/i }));
+      expect(assign).toHaveBeenCalled();
+      const url = String(assign.mock.calls.find((c) => String(c[0]).includes("google/start"))?.[0] ?? "");
+      expect(url).toMatch(/\/api\/auth\/google\/start\?return=/);
+      expect(url).not.toMatch(/return_to=/);
+      const ret = new URL(url, "https://metfix.org").searchParams.get("return");
+      expect(ret).toBe("/join?step=roles");
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: loc });
+    }
   });
 
   it("P-WJ-2 AuthScreen wires real auth endpoints (no demo account picker)", async () => {
