@@ -9,7 +9,7 @@ import {
   type WhopCheckoutPlan,
 } from "../shared/join/membership-domain";
 import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
-import { sanitizeReturnPath } from "../shared/sanitize-return-path";
+import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey } from "./auth/account-rate-limit";
 import { isAuthHost } from "./auth/host";

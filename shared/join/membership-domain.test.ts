@@ -16,7 +16,7 @@ import {
 } from "./membership-domain";
 import { BEP_WHOP_COMPANY_ID, WHOP_ALLOWED_COMPANY_IDS } from "../account/whop";
 import { sanitizeExternalBillingUrl } from "../account/url-allowlist";
-import { sanitizeReturnPath } from "../sanitize-return-path";
+import { sanitizeReturnPath } from "../account/returnPath";
 import { computeThreeYearExpiryIso } from "../account/foundations-coach";
 
 describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {

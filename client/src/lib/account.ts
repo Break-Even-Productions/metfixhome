@@ -7,7 +7,7 @@ import { fetchCsrf } from "@/lib/authRequest";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
-import { sanitizeReturnPath as sanitizeReturnPathShared } from "@shared/sanitize-return-path";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -231,11 +231,6 @@ function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
   });
 }
 
-/** Same rules as Worker sanitizeReturnPath; invalid → `/account`. */
-export function sanitizeReturnPath(raw: string | null | undefined): string {
-  return sanitizeReturnPathShared(raw) ?? "/account";
-}
-
 function redirectToLogin(currentPath?: string): never {
   clearAccountCache();
   const path =
@@ -243,7 +238,7 @@ function redirectToLogin(currentPath?: string): never {
     (typeof window !== "undefined"
       ? `${window.location.pathname}${window.location.search}`
       : "/account");
-  const next = sanitizeReturnPath(path);
+  const next = sanitizeReturnPath(path) ?? "/account";
   if (typeof window !== "undefined") {
     window.location.assign(getMetfixLoginUrl(next));
   }

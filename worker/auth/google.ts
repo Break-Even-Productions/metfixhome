@@ -37,7 +37,7 @@ import {
 import { attemptR8b, clientIp } from "./throttle";
 import { createSession, destroySession } from "./session";
 import type { OauthStateRecord } from "../do/oauth-state";
-import { sanitizeReturnPath } from "../../shared/sanitize-return-path";
+import { sanitizeReturnPath } from "../../shared/account/returnPath";
 
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
