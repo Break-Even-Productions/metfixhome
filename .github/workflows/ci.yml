@@ -41,13 +41,21 @@ jobs:
           VITE_SANITY_PROJECT_ID: etg9lezr
           VITE_SANITY_DATASET: production
 
-      - name: No Sanity token in dist
+      - name: No Sanity token or wp-json in dist
         run: |
           test -d dist/public
           if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' '\bsk[A-Za-z0-9]{40,}\b' dist/public; then
             exit 1
           fi
           if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'VITE_SANITY_API_READ_TOKEN' dist/public; then
+            exit 1
+          fi
+          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'wp-json' dist/public; then
+            echo "CQ-T3 failed: wp-json found in dist/public" >&2
+            exit 1
+          fi
+          if grep -rIlE --include='*.js' --include='*.html' --include='*.css' --include='*.map' 'brokenscience\.org/wp-json' dist/public; then
+            echo "CQ-T3 failed: brokenscience.org/wp-json found in dist/public" >&2
             exit 1
           fi
 

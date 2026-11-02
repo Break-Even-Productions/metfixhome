@@ -24,6 +24,7 @@ export function useSiteSettings() {
   const [settings, setSettings] = useState<SiteSettings>({
     copyrightText: DEFAULT_COPYRIGHT_TEXT,
     navLinks: DEFAULT_NAV_LINKS,
+    searchTopics: [],
   });
   const [loading, setLoading] = useState(true);
 

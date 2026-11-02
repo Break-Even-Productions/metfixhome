@@ -8,6 +8,8 @@ export {
   DEFAULT_LIMIT,
   DESC_MAX,
   EXCERPT_MAX,
+  BSI_COURSES_BASE,
+  coursesBaseFromOrigin,
   exclusiveBaseFromOrigin,
   IMAGE_HOST,
   MAX_LIMIT,
@@ -21,17 +23,27 @@ export {
   RESOURCE_TYPE_RE,
   RESOURCE_TYPES,
   resourcesBaseFromOrigin,
+  SLUG_RE,
   TITLE_MAX,
   type ResourceType,
 } from "./constants";
 
 export {
+  htmlShowsMembershipGate,
   isFreeOpen,
   isLockedCard,
   isProfessionalTagged,
   joinCtaHref,
   mapAccessDisplay,
 } from "./access";
+
+export {
+  SEARCH_TYPE_PILLS,
+  isSearchTypePillSlug,
+  resolveSearchTabs,
+  type SearchTab,
+  type SearchTopicRow,
+} from "./searchTopics";
 
 export {
   libraryDetailCacheKey,
@@ -53,6 +65,8 @@ export {
   lockedDetailShell,
   mapDetailBody,
   mapDetailFromPostLike,
+  mapFilterDescription,
+  mapFilterTerms,
   mapFiltersPayload,
   mapImageUrl,
   mapCompositeThumbnail,
@@ -60,11 +74,33 @@ export {
   mapPermalink,
   mapPopularResponse,
   mapSearchResponse,
+  mapTerms,
+  pickImage,
 } from "./map";
+
+export {
+  formatFromParam,
+  fromParamHref,
+  humanizeSlug,
+  parseFromParam,
+  type FromKind,
+  type ParsedFromParam,
+} from "./fromParam";
+
+export {
+  BOOK_LIBRARY_CONTENT_TYPE_SLUG,
+  GLASSMAN_ARCHIVE_SLUG,
+  archiveSearchLegs,
+  mergeArchivePages,
+  type ArchiveLeg,
+} from "./archiveMerge";
+
+export { isResourceVideo, mapResourceVideo } from "./video";
 
 export type {
   BuildLibraryHeadInput,
   ContentAccessDisplay,
+  DetailReaderModel,
   LibraryCompositeThumbnail,
   LibraryDetail,
   LibraryDetailBody,
@@ -74,5 +110,6 @@ export type {
   LibraryResource,
   LibrarySearchBody,
   LibrarySearchMeta,
+  ResourceVideo,
   TermRef,
 } from "./types";
