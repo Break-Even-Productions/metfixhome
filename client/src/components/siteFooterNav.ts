@@ -26,6 +26,7 @@ export const SITE_FOOTER_LINKS = {
     { label: "Membership", href: "/#membership-section" },
     { label: "Foundations", href: "/#foundations" },
     { label: "Library", href: "/library" },
+    { label: "The Daily Fix", href: "/the-daily-fix" },
   ],
   company: [
     { label: "Testimonials", href: "/#testimonials" },
