@@ -99,7 +99,7 @@ function mapSearchTopics(
 /** Module-level memo (CQ B1): nav, footer, and /library/search share one request. */
 let siteSettingsPromise: Promise<SiteSettings> | null = null;
 
-function mapNavLinks(links: SanitySiteSettings["navLinks"]): NavLink[] {
+function mapNavLinks(links: SanitySiteSettings["navLinks"]): readonly NavLink[] {
   const mapped = (links || [])
     .filter((l): l is { label: string; href: string; openInNewTab?: boolean } =>
       Boolean(l?.label && l?.href)

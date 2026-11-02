@@ -49,7 +49,7 @@ export type SearchTopicSetting = {
 
 export type SiteSettings = {
   copyrightText: string;
-  navLinks: NavLink[];
+  navLinks: readonly NavLink[];
   searchTopics: SearchTopicSetting[];
 };
 
