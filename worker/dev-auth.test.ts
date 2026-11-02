@@ -9,7 +9,16 @@ import {
   stagingAuthHostsSet,
 } from "./auth/host";
 import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
-import { assertBsiHost, resolveBsiOrigin, resolveDailyFixBase, type Env } from "./upstream";
+import {
+  assertBsiHost,
+  BSI_ORIGIN,
+  BSI_STAGING_ORIGIN,
+  parsePreviewBsiOrigin,
+  resolveBsiOrigin,
+  resolveDailyFixBase,
+  scopeEnvBsiOrigin,
+  type Env,
+} from "./upstream";
 
 function req(host: string): Request {
   return new Request("https://example.test/api/auth/login", {
@@ -360,5 +369,59 @@ describe("local auth helpers", () => {
         BSI_ORIGIN: "http://127.0.0.1:8080",
       }),
     ).toBe("http://127.0.0.1:8080/wp-json/metfix/v1/daily-fix");
+  });
+
+  it("production env with BSI_ORIGIN set still resolves brokenscience.org", () => {
+    // Production has no STAGING_AUTH_HOSTS — even an exact staging override is ignored.
+    const prodWithLeak = {
+      ...emptyEnv,
+      BSI_ORIGIN: BSI_STAGING_ORIGIN,
+    };
+    expect(resolveBsiOrigin(prodWithLeak)).toBe(BSI_ORIGIN);
+    expect(resolveBsiOrigin(prodWithLeak, { request: req("metfix.org") })).toBe(BSI_ORIGIN);
+    expect(parsePreviewBsiOrigin(prodWithLeak, { request: req("metfix.org") })).toBeNull();
+    expect(scopeEnvBsiOrigin(prodWithLeak, req("metfix.org")).BSI_ORIGIN).toBeUndefined();
+  });
+
+  it("resolveBsiOrigin rejects any BSI_ORIGIN other than exact brokenstaging", () => {
+    const previewReq = req(PREVIEW_HOST);
+    const cases = [
+      "https://evil.example",
+      "https://brokenscience.org",
+      "http://brokenstaging.wpengine.com",
+      "https://brokenstaging.wpengine.com/",
+      "https://brokenstaging.wpengine.com/path",
+      "https://BrokenStaging.wpengine.com",
+      " https://brokenstaging.wpengine.com",
+    ];
+    for (const bad of cases) {
+      const env = { ...emptyEnv, ...stagingEnv, BSI_ORIGIN: bad };
+      expect(resolveBsiOrigin(env, { request: previewReq })).toBe(BSI_ORIGIN);
+      expect(parsePreviewBsiOrigin(env, { request: previewReq })).toBeNull();
+      expect(scopeEnvBsiOrigin(env, previewReq).BSI_ORIGIN).toBeUndefined();
+    }
+  });
+
+  it("preview with exact brokenstaging + STAGING_AUTH_HOSTS host resolves staging BSI", () => {
+    const previewEnv = {
+      ...emptyEnv,
+      ...stagingEnv,
+      BSI_ORIGIN: BSI_STAGING_ORIGIN,
+    };
+    const previewReq = req(PREVIEW_HOST);
+    expect(parsePreviewBsiOrigin(previewEnv, { request: previewReq })).toBe(BSI_STAGING_ORIGIN);
+    expect(resolveBsiOrigin(previewEnv, { request: previewReq })).toBe(BSI_STAGING_ORIGIN);
+    // Does not require LOCAL_AUTH.
+    expect(previewEnv.LOCAL_AUTH).toBeUndefined();
+    expect(resolveDailyFixBase(previewEnv, { request: previewReq })).toBe(
+      `${BSI_STAGING_ORIGIN}/wp-json/metfix/v1/daily-fix`,
+    );
+    // After request-boundary scoping, downstream resolve (no Request) still sees staging.
+    const scoped = scopeEnvBsiOrigin(previewEnv, previewReq);
+    expect(scoped.BSI_ORIGIN).toBe(BSI_STAGING_ORIGIN);
+    expect(resolveBsiOrigin(scoped)).toBe(BSI_STAGING_ORIGIN);
+    // Non-allowlisted Host never gets staging even when both preview vars are set.
+    expect(resolveBsiOrigin(previewEnv, { request: req("metfix.org") })).toBe(BSI_ORIGIN);
+    expect(scopeEnvBsiOrigin(previewEnv, req("metfix.org")).BSI_ORIGIN).toBeUndefined();
   });
 });
