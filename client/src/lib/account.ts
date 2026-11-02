@@ -14,7 +14,6 @@ import type {
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
-import { sanitizeReturnPath } from "@shared/account/returnPath";
 
 export { sanitizeReturnPath } from "@shared/account/returnPath";
 export type { ClaimOptionsDto, ClaimPathId };

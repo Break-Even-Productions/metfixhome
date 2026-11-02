@@ -403,10 +403,15 @@ function bsiPostCommentsBearerHeaders(
   accessToken: string,
   opts?: { jsonBody?: boolean },
 ): Record<string, string> {
-  return {
-    ...bsiMeHeaders(accessToken),
-    ...(opts?.jsonBody ? { "Content-Type": "application/json" } : {}),
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
   };
+  if (opts?.jsonBody) {
+    headers["Content-Type"] = "application/json";
+  }
+  return headers;
 }
 
 /** Shared POST helper for `/wp-json/bsi/v1/me…` write paths (N6) — one Bearer builder. */

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { buildLoginBody } from "@shared/join";
 import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
 import { clampClientRetryAfter } from "./comments";
-import { ensureRecaptchaScript, getRecaptchaToken } from "./recaptcha";
+import { ensureRecaptchaScript } from "./recaptcha";
 import { refreshMeAfterAuthChange } from "@/lib/session";
 
 type JoinModalProps = {
