@@ -48,7 +48,7 @@ describe("T-E-NAV-9 LR-4 search link", () => {
     const links = screen.getAllByRole("link", { name: "Search" });
     expect(links.length).toBeGreaterThanOrEqual(1);
     expect(links[0]?.getAttribute("href")).toBe(SEARCH_HREF);
-    expect(SEARCH_HREF).toBe("/library");
+    expect(SEARCH_HREF).toBe("/library/search");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
   });
