@@ -752,7 +752,6 @@ export function CommentThread({
       {!authHost ? (
         <a
           className="df-btn df-btn-accent df-signin-to-comment"
-<<<<<<< HEAD
           href={getMetfixLoginUrl(loginReturnPath)}
         >
           Sign In To Comment
