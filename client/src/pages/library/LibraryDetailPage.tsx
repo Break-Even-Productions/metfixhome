@@ -182,7 +182,6 @@ export default function LibraryDetailPage({
                   <a
                     className="library-btn library-btn-gold"
                     href={basePath("/account/billing")}
-                    data-testid="library-locked-billing"
                   >
                     Manage membership
                   </a>

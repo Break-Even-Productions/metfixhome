@@ -260,7 +260,7 @@ describe("/library/search mount", () => {
     });
     render(<Mounted />);
     await waitFor(() => {
-      expect(screen.getByTestId("search-count").textContent).toContain("40 resources");
+      expect(document.querySelector(".search-count")?.textContent).toContain("40 resources");
     });
   });
 
@@ -318,7 +318,7 @@ describe("/library/search mount", () => {
     render(<Mounted />);
     await waitFor(() => expect(screen.getByText("EXCL-A")).toBeTruthy());
     expect(screen.getByText("GATE-B")).toBeTruthy();
-    expect(screen.getByTestId("search-count").textContent).toContain("40 resources");
+    expect(document.querySelector(".search-count")?.textContent).toContain("40 resources");
     expect(document.querySelectorAll(".library-card-lock").length).toBe(2);
     fireEvent.click(screen.getByLabelText(/Locked: EXCL-A/i));
     expect(await screen.findByRole("dialog")).toBeTruthy();

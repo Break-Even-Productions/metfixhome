@@ -8,12 +8,7 @@ export function LibraryRailSkeleton({
 }) {
   const cards = Math.max(1, count);
   return (
-    <div
-      className="library-rail-skeleton"
-      role="status"
-      aria-busy="true"
-      data-testid="library-rail-skeleton"
-    >
+    <div className="library-rail-skeleton" role="status" aria-busy="true">
       <p className="library-skel-status">{label}</p>
       <div className="library-rail">
         {Array.from({ length: cards }, (_, i) => (
