@@ -27,6 +27,7 @@ const KNOWN_ROUTES = new Set([
   "account",
   "members",
   "library",
+  "checkout",
 ]);
 
 /** Wouter base path from Vite `base` (Cloudflare Workers; `base: "/"`). */

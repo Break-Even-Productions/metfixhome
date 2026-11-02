@@ -491,10 +491,29 @@ export async function purchaseCourseCheckout(
 export async function convertToWhop(body: {
   sub_ref?: string;
   target_tier: "metfix_pro" | "organization_owner";
+  return_path?: string;
 }): Promise<{ purchase_url?: string; trial_period_days?: number; stripe_period_end?: string }> {
   return accountMutate("/api/account/subscriptions/convert-to-whop", {
     method: "POST",
-    body,
+    body: {
+      ...body,
+      return_path: body.return_path ?? "/checkout/complete",
+    },
+    invalidate: ["subscriptions", "overview"],
+  });
+}
+
+/** Mint a BEP Whop subscription checkout (plan: pro | org). */
+export async function startWhopCheckout(body: {
+  plan: "pro" | "org";
+  return_path?: string;
+}): Promise<{ checkout_url?: string; plan?: string; expires_at?: string }> {
+  return accountMutate("/api/billing/whop/checkout-session", {
+    method: "POST",
+    body: {
+      plan: body.plan,
+      return_path: body.return_path ?? "/checkout/complete",
+    },
     invalidate: ["subscriptions", "overview"],
   });
 }

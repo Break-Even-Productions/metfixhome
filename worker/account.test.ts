@@ -1200,9 +1200,14 @@ describe("worker/account routes", () => {
 
   it("grandfathered med society + convert-to-whop happy path", async () => {
     const sess = await withSession(h);
-    const { fetchImpl } = makeFetchMock([
-      async ({ path }) => {
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, bodyText }) => {
         if (path.includes("convert-to-whop")) {
+          expect(JSON.parse(bodyText)).toMatchObject({
+            target_tier: "metfix_pro",
+            sub_ref: "opaque_med_2",
+            return_path: "/checkout/complete",
+          });
           return Response.json({
             purchase_url: "https://whop.com/checkout/be",
             trial_period_days: 12,
@@ -1225,6 +1230,7 @@ describe("worker/account routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { purchase_url: string };
     expect(body.purchase_url).toContain("whop.com");
+    expect(recorded.some((r) => r.url.includes("convert-to-whop"))).toBe(true);
   });
 
   it("DP-T-CFG3: real limiter keys for '', '0', absent; two no-uid sessions differ; 123→acct:123", async () => {

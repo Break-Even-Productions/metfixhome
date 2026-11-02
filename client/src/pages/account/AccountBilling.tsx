@@ -12,12 +12,14 @@ import {
   loadSubscriptions,
   portalLink,
   safeBillingHref,
+  startWhopCheckout,
   type AccountOverview,
   type AccountSubscriptions,
   type LtvCertificates,
   type PaymentsPage,
   type SubscriptionItem,
 } from "@/lib/account";
+import { WHOP_SUBSCRIPTION_PLAN_COPY, type WhopCheckoutPlan } from "@shared/account/whop-plans";
 import DashboardLayout from "./DashboardLayout";
 import { MetricStrip } from "./MetricStrip";
 import { ConversionBanner } from "./ConversionBanner";
@@ -115,7 +117,11 @@ export default function AccountBilling() {
     setBusy(`convert:${item.sub_ref}`);
     setError(null);
     try {
-      const res = await convertToWhop({ sub_ref: item.sub_ref, target_tier: target });
+      const res = await convertToWhop({
+        sub_ref: item.sub_ref,
+        target_tier: target,
+        return_path: "/checkout/complete",
+      });
       if (res.purchase_url) {
         assignBillingUrl(res.purchase_url, "whop_only");
       }
@@ -123,6 +129,24 @@ export default function AccountBilling() {
       setSubs(su);
     } catch {
       setError("Conversion failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onStartCheckout(plan: WhopCheckoutPlan) {
+    setBusy(`checkout:${plan}`);
+    setError(null);
+    try {
+      const res = await startWhopCheckout({
+        plan,
+        return_path: "/checkout/complete",
+      });
+      if (!assignBillingUrl(res.checkout_url, "whop_only")) {
+        setError("Checkout is temporarily unavailable.");
+      }
+    } catch {
+      setError("Checkout is temporarily unavailable.");
     } finally {
       setBusy(null);
     }
@@ -177,6 +201,33 @@ export default function AccountBilling() {
         ltv={ltv}
       />
       <ConversionBanner conversion={subs?.conversion} />
+
+      {tier === "free" || tier === "member" ? (
+        <section className="account-card">
+          <h2>Start a Whop membership</h2>
+          <p className="account-muted">
+            Subscription checkouts mint in Break Even Productions Whop only and return to{" "}
+            <span className="account-mono">/checkout/complete</span>.
+          </p>
+          <div className="account-course-card__actions">
+            {(["pro", "org"] as const).map((plan) => (
+              <button
+                key={plan}
+                type="button"
+                className="account-btn"
+                disabled={busy === `checkout:${plan}`}
+                onClick={() => void onStartCheckout(plan)}
+              >
+                {WHOP_SUBSCRIPTION_PLAN_COPY[plan].cta}
+              </button>
+            ))}
+          </div>
+          <p className="account-muted" style={{ marginTop: "0.75rem" }}>
+            {WHOP_SUBSCRIPTION_PLAN_COPY.pro.price}. Organization Owner:{" "}
+            {WHOP_SUBSCRIPTION_PLAN_COPY.org.price}.
+          </p>
+        </section>
+      ) : null}
 
       {grandfathered.map((item) => (
         <section key={`gf-${item.sub_ref}`} className="account-card">
@@ -255,17 +306,26 @@ export default function AccountBilling() {
                     {item.card.brand} ···· {item.card.last4}
                   </div>
                 ) : null}
-                {item.is_duplicate_stripe ? (
+                <div className="account-course-card__actions" style={{ marginTop: "0.65rem" }}>
                   <button
                     type="button"
-                    className="account-btn"
-                    style={{ marginTop: "0.65rem" }}
-                    disabled={busy === `cancel:${item.sub_ref}`}
-                    onClick={() => void onCancelDuplicate(item)}
+                    className="account-btn account-btn--ghost"
+                    disabled={busy === `portal:${item.sub_ref}`}
+                    onClick={() => void onManage(item)}
                   >
-                    Cancel duplicate Stripe subscription
+                    Manage in billing portal
                   </button>
-                ) : null}
+                  {item.is_duplicate_stripe ? (
+                    <button
+                      type="button"
+                      className="account-btn"
+                      disabled={busy === `cancel:${item.sub_ref}`}
+                      onClick={() => void onCancelDuplicate(item)}
+                    >
+                      Cancel duplicate Stripe subscription
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

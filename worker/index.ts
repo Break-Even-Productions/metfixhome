@@ -30,6 +30,7 @@ import { DAILY_FIX_CSP } from "./csp";
 import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import { handleAccountRoutes } from "./account";
+import { handleWhopCheckoutRoutes } from "./whop-checkout";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
@@ -149,6 +150,11 @@ export async function handleRequest(
   if (path.startsWith("/api/account") || path.startsWith("/api/members/")) {
     const accountRes = await handleAccountRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (accountRes) return accountRes;
+  }
+  // Whop subscription checkout mint (before /api/* catch-all)
+  if (path.startsWith("/api/billing/")) {
+    const billingRes = await handleWhopCheckoutRoutes(request, env, { fetchImpl, bsiBaseUrl });
+    if (billingRes) return billingRes;
   }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");

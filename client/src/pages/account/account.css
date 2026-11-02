@@ -235,6 +235,15 @@
 }
 
 .account-conversion-banner a,
+a.account-btn {
+  text-decoration: none;
+  color: var(--color-paper);
+}
+
+a.account-btn.account-btn--ghost {
+  color: var(--color-ink);
+}
+
 .account-btn {
   display: inline-flex;
   align-items: center;

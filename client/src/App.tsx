@@ -23,6 +23,8 @@ import AccountFavorites from "./pages/account/AccountFavorites";
 import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
+import AccountOrganization from "./pages/account/AccountOrganization";
+import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
@@ -59,10 +61,12 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/library"} component={LibraryPage} />
+      <Route path={"/checkout/complete"} component={CheckoutComplete} />
       <Route path={"/account/billing"} component={AccountBilling} />
       <Route path={"/account/profile"} component={AccountProfile} />
       <Route path={"/account/courses"} component={AccountCourses} />
       <Route path={"/account/favorites"} component={AccountFavorites} />
+      <Route path={"/account/organization"} component={AccountOrganization} />
       <Route path={"/account/referrals"} component={AccountReferrals} />
       <Route path={"/account/notifications"} component={AccountNotifications} />
       <Route path={"/account/privacy"} component={AccountPrivacy} />
@@ -79,6 +83,8 @@ function AppShell() {
   const hideGlobalNav =
     location === "/login" ||
     location.startsWith("/login?") ||
+    location === "/checkout/complete" ||
+    location.startsWith("/checkout/") ||
     location === "/account" ||
     location.startsWith("/account/") ||
     location === "/members" ||

@@ -110,7 +110,7 @@ describe("B1/B5/B6/B7 build config", () => {
     expect(json.preview_urls).toBe(true);
   });
 
-  it("previews mirrors vars, preview KV, DO bindings, and 9 ratelimits", () => {
+  it("previews mirrors vars, preview KV, DO bindings, and 10 ratelimits", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
     const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
     const previews = json.previews;
@@ -131,8 +131,8 @@ describe("B1/B5/B6/B7 build config", () => {
     // DP-CFG-2: preview KV id must equal top-level preview_id
     expect(previews.kv_namespaces[0].id).toBe(json.kv_namespaces[0].preview_id);
     expect(previews.durable_objects.bindings).toEqual(json.durable_objects.bindings);
-    expect(previews.ratelimits).toHaveLength(9);
-    expect(json.ratelimits).toHaveLength(9);
+    expect(previews.ratelimits).toHaveLength(10);
+    expect(json.ratelimits).toHaveLength(10);
     expect(previews.ratelimits.map((r: { name: string }) => r.name)).toEqual(
       json.ratelimits.map((r: { name: string }) => r.name),
     );
@@ -149,6 +149,7 @@ describe("B1/B5/B6/B7 build config", () => {
       "27212",
       "27213",
       "27214",
+      "27215",
     ]);
   });
 
