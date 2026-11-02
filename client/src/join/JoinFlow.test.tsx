@@ -654,7 +654,8 @@ describe("WJ15 /join + useJoinFlow modal Esc focus", () => {
     );
     window.history.pushState({}, "", "/join?x=1");
     expect(APP_TSX).not.toMatch(/startsWith\("\/join\?"\)/);
-    expect(APP_TSX).toMatch(/location === "\/join"/);
+    // Pathname-only hideGlobalNav covers `/join?x=1` without a dead startsWith.
+    expect(APP_TSX).toMatch(/pathOnly === "\/join"/);
     const { default: JoinPage } = await import("@/pages/join/JoinPage");
     render(<JoinPage />);
     expect(await screen.findByRole("dialog", { name: /Join MetFix/i })).toBeTruthy();

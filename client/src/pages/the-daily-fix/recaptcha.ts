@@ -11,10 +11,8 @@ export async function getRecaptchaToken(action: string): Promise<string> {
   ).grecaptcha;
   const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
     .__MFX_RECAPTCHA_SITE_KEY__;
-  if (!g || !siteKey) {
-    // Tests / local without widget: non-empty placeholder (Worker shape-checks only).
-    return "test-recaptcha-token";
-  }
+  // Empty when grecaptcha / site key missing — Worker rejects empty (same as authRequest).
+  if (!g || !siteKey) return "";
   await new Promise<void>((resolve) => g.ready(() => resolve()));
   return g.execute(siteKey, { action });
 }

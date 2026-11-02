@@ -85,12 +85,13 @@ describe("LB11 post-prose import scope (PL12)", () => {
     expect(names.filter((f) => /cq/i.test(f))).toEqual([]);
   });
 
-  it("/library list keeps Plus Jakarta Sans (main font token)", () => {
+  it("/library list keeps sans via F1 font token (main font token)", () => {
     const css = fs.readFileSync(
       path.resolve(import.meta.dirname, "../pages/library/library.css"),
       "utf8",
     );
-    expect(css).toMatch(/--lib-font-sans:\s*"Plus Jakarta Sans"/);
+    // F1 style-parity maps library tokens to global --font-sans (Plus Jakarta).
+    expect(css).toMatch(/--lib-font-sans:\s*var\(--font-sans\)/);
     expect(css).not.toMatch(/@import[^;]*post-prose\.css/);
   });
 });

@@ -6,9 +6,9 @@ export const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";
 /**
  * Nav search href (LR-4 / ER-11 / ER-14). Literal unshadowed renderable
  * `/library/search` Route only; otherwise `/library`. Defined once (T-E-60).
- * Current base → `/library`.
+ * Current staging has `/library/search` (PR #24 / #18).
  */
-export const SEARCH_HREF = "/library" as const;
+export const SEARCH_HREF = "/library/search" as const;
 
 /** Legacy BSI WordPress login (site chrome that still points off-site). */
 export const LOGIN_URL = "https://brokenscience.org/login/";

@@ -95,16 +95,16 @@ describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
     expect(gym?.href).toBe("https://brokenscience.org/metfix/metfix-map/");
   });
 
-  it("ER-11/14: SEARCH_HREF needs literal unshadowed /library/search — current AppRoutes → /library", () => {
+  it("ER-11/14: SEARCH_HREF tracks literal unshadowed /library/search (PR #24)", () => {
     const app = readFileSync(APP_TSX, "utf8");
     const paths = listRoutePathsInOrder(app);
     expect(paths).toContain("/library");
-    expect(paths).not.toContain("/library/search");
-    expect(expectedSearchHrefFromApp(app)).toBe("/library");
-    expect(resolveSearchHref(app)).toBe("/library");
-    expect(SEARCH_HREF).toBe("/library");
-    expect(GLOBAL_NAV_SEARCH_HREF).toBe("/library");
-    expect(CONST_SEARCH_HREF).toBe("/library");
+    expect(paths).toContain("/library/search");
+    expect(expectedSearchHrefFromApp(app)).toBe("/library/search");
+    expect(resolveSearchHref(app)).toBe("/library/search");
+    expect(SEARCH_HREF).toBe("/library/search");
+    expect(GLOBAL_NAV_SEARCH_HREF).toBe("/library/search");
+    expect(CONST_SEARCH_HREF).toBe("/library/search");
   });
 
   it("ER-11/14 planted: param routes do not count; shadowed literal → /library", () => {

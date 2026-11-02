@@ -380,7 +380,12 @@ describe("account.repo-scan", () => {
 
   it("CL3: CL1=READ / CL2=WRITE limiter lockstep (top + previews)", () => {
     const raw = readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      ratelimits: Array<{ name: string; namespace_id: string; simple: { limit: number; period: number } }>;
+      previews: {
+        ratelimits: Array<{ name: string; namespace_id: string; simple: { limit: number; period: number } }>;
+      };
+    };
     const byName = Object.fromEntries(
       (json.ratelimits as Array<{ name: string; namespace_id: string; simple: { limit: number; period: number } }>).map(
         (r) => [r.name, r],

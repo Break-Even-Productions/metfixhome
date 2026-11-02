@@ -13,8 +13,10 @@ const appSrc = readFileSync(
 );
 
 describe("search href ER-11 / ER-14", () => {
-  it("current AppRoutes fall back to /library (no literal search route)", () => {
-    expect(expectedSearchHrefFromApp(appSrc)).toBe("/library");
+  it("current AppRoutes resolve literal /library/search (PR #24)", () => {
+    expect(librarySearchRendersSearchPage(appSrc)).toBe(true);
+    expect(librarySearchIsShadowed(appSrc)).toBe(false);
+    expect(expectedSearchHrefFromApp(appSrc)).toBe("/library/search");
   });
 
   it("literal /library/search with Search page resolves", () => {
@@ -24,23 +26,35 @@ describe("search href ER-11 / ER-14", () => {
     expect(expectedSearchHrefFromApp(planted)).toBe("/library/search");
   });
 
-  it("param /library/:slug does NOT count alone (ER-11)", () => {
-    const planted = `${appSrc}\n<Route path={"/library/:slug"} component={LibrarySlug} />\n`;
+  it("param /library/:slug alone does NOT resolve search (ER-11)", () => {
+    const planted = [
+      `function AppRoutes(){ return (<>`,
+      `<Route path={"/library/:slug"} component={LibrarySlug} />`,
+      `<Route path={"/library"} component={LibraryPage} />`,
+      `</>); }`,
+    ].join("\n");
     expect(expectedSearchHrefFromApp(planted)).toBe("/library");
   });
 
   it("param route before literal shadows → fallback /library (ER-14)", () => {
     const planted = [
-      appSrc,
+      `function AppRoutes(){ return (<>`,
       `<Route path={"/library/:slug"} component={LibrarySlug} />`,
       `<Route path={"/library/search"} component={LibrarySearchPage} />`,
+      `<Route path={"/library"} component={LibraryPage} />`,
+      `</>); }`,
     ].join("\n");
     expect(librarySearchIsShadowed(planted)).toBe(true);
     expect(expectedSearchHrefFromApp(planted)).toBe("/library");
   });
 
   it("literal wired to NotFound does not resolve (ER-14)", () => {
-    const planted = `${appSrc}\n<Route path={"/library/search"} component={NotFound} />\n`;
+    const planted = [
+      `function AppRoutes(){ return (<>`,
+      `<Route path={"/library/search"} component={NotFound} />`,
+      `<Route path={"/library"} component={LibraryPage} />`,
+      `</>); }`,
+    ].join("\n");
     expect(librarySearchRendersSearchPage(planted)).toBe(false);
     expect(expectedSearchHrefFromApp(planted)).toBe("/library");
   });
