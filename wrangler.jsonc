@@ -17,7 +17,8 @@
 			"/posts",
 			"/posts/*",
 			"/library",
-			"/library/*"
+			"/library/*",
+			"/topic/*"
 		]
 	},
 	"kv_namespaces": [
@@ -37,8 +38,9 @@
 	},
 	// Ten Rate Limiting bindings (S-RL / P8 + DP-CFG-1 account + WHOP_CHECKOUT).
 	// ACCOUNT_WRITE 27113/27213 owned by #21; WHOP_CHECKOUT 27115/27215 from join.
-	// namespace_id is account-unique (not created in the dashboard). 27101–27106
-	// and 27112–27115 are reserved for metfixhome on account 84da09b9….
+	// namespace_id is an account-unique integer you choose (not created in the
+	// dashboard). 27101–27106 and 27112–27115 are reserved for metfixhome on
+	// account 84da09b9… so they do not collide with other Workers.
 	"ratelimits": [
 		{
 			"name": "SIGNUP_LIMITER",
@@ -153,9 +155,8 @@
 	],
 	// Non-secret: dedicated metfix.org WP OAuth client_id for BSI-C10 web-login (§0s.2).
 	// Never from the browser; Worker never holds/sends METFIX_ORG_OAUTH_CLIENT_SECRET.
-	// RECAPTCHA_SITE_KEY (public v3 site key) is intentionally omitted here — set it as a
-	// plain Worker Variable in the Cloudflare dashboard (or wrangler vars) for prod/preview.
-	// Do not put RECAPTCHA_SECRET in vars; use `wrangler secret put RECAPTCHA_SECRET`.
+	// RECAPTCHA_SITE_KEY: public v3 site key (safe in vars). Do not put RECAPTCHA_SECRET in vars;
+	// use `wrangler secret put RECAPTCHA_SECRET`.
 	"vars": {
 		"BSI_OAUTH_CLIENT_ID": "BuaC0wOnq90L9H3d83gkCbmX736sWuG3dX9l7n1J",
 		"GOOGLE_AUTH_ENABLED": "1",
@@ -173,7 +174,11 @@
 			// AUTH-HOST allowlist for Worker Previews: previews.vars applies to every
 			// preview (branch/PR), not only the staging branch. Exact hostnames only.
 			// Never copy into top-level / production vars.
-			"STAGING_AUTH_HOSTS": "staging-metfixhome.wispy-mode-982d.workers.dev"
+			"STAGING_AUTH_HOSTS": "staging-metfixhome.wispy-mode-982d.workers.dev",
+			// Preview-only BSI origin (Ethan: purchase/data-change tests use staging BSI).
+			// resolveBsiOrigin honors this only when it equals exactly this value AND the
+			// request Host is in STAGING_AUTH_HOSTS. Never copy into top-level / production vars.
+			"BSI_ORIGIN": "https://brokenstaging.wpengine.com"
 		},
 		"kv_namespaces": [
 			{

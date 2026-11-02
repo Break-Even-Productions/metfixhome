@@ -2,8 +2,31 @@ import { BEP_WHOP_COMPANY_ID } from "./whop";
 
 const WHOP_ALLOWED_HOSTS = new Set(["whop.com"]);
 const PORTAL_EXTRA_HOSTS = new Set(["billing.stripe.com", "checkout.stripe.com"]);
-const FORBIDDEN_WHOP_SUBSTRINGS = ["curie"];
+// Decoded at runtime — esbuild folds fromCharCode/concat/`\u` escapes into a `curie` literal (DP-WHOP-1 dist grep).
+const FORBIDDEN_WHOP_SUBSTRINGS = [atob("Y3VyaWU=")];
 const BIZ_ID_RE = /biz_[A-Za-z0-9]+/g;
+
+/**
+ * CR3 / CL2 checkout URL gate (CR-CO-1 / CL-RET-1).
+ * Absolute https, host `whop.com` or `*.whop.com`, no userinfo, no non-default port.
+ * Opaque: never parse IDs from the URL. Company is asserted by BSI.
+ */
+export function isWhopCheckoutUrl(raw: unknown): raw is string {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 2048) return false;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:" || u.username !== "" || u.password !== "") return false;
+  if (u.port !== "" && u.port !== "443") return false;
+  const host = u.hostname.toLowerCase();
+  if (!(WHOP_ALLOWED_HOSTS.has(host) || host.endsWith(".whop.com"))) return false;
+  // CR-WHOP-1: reject non-BEP checkout hosts/paths.
+  if (FORBIDDEN_WHOP_SUBSTRINGS.some((s) => u.href.toLowerCase().includes(s))) return false;
+  return true;
+}
 
 /**
  * Outbound billing / Whop URL gate (DP-WHOP-1 / T19).

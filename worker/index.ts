@@ -29,13 +29,16 @@ import { SessionDO } from "./do/session";
 import { DAILY_FIX_CSP } from "./csp";
 import { handleJoinRoutes } from "./join";
 import { handleLibraryApi, handleLibraryHtml } from "./library";
+import { handlePostCommentsRoutes } from "./postComments";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import { handleAccountRoutes } from "./account";
+import { handleWhopCheckoutRoutes } from "./whop-checkout";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
   isPublicListItem,
   LIST_PAGE_SIZE,
+  scopeEnvBsiOrigin,
   SITEMAP_MAX_SUBREQUESTS,
   type CommentType,
   type Env,
@@ -90,6 +93,8 @@ export async function handleRequest(
     bsiBaseUrl?: string;
   } = {},
 ): Promise<Response> {
+  // Preview BSI_ORIGIN is only honored when Host ∈ STAGING_AUTH_HOSTS; strip otherwise.
+  env = scopeEnvBsiOrigin(env, request);
   const fetchImpl = deps.fetchImpl ?? fetch;
   const cache = deps.cachesDefault ?? caches.default;
   const bsiBaseUrl = deps.bsiBaseUrl;
@@ -132,6 +137,11 @@ export async function handleRequest(
     return handlePostsApi(request, env, ctx, null, { fetchImpl, cachesDefault: cache });
   }
   if (path.startsWith("/api/posts/")) {
+    const commentsRes = await handlePostCommentsRoutes(request, env, {
+      fetchImpl,
+      bsiBaseUrl,
+    });
+    if (commentsRes) return commentsRes;
     const idPart = path.slice("/api/posts/".length);
     // Valid id only — anything else falls through to catch-all 404 (A3 / CQ2)
     if (idPart && !idPart.includes("/") && isValidPostId(idPart)) {
@@ -151,7 +161,7 @@ export async function handleRequest(
     const joinRes = await handleJoinRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (joinRes) return joinRes;
   }
-  // Account dashboard + public member profiles + course checkout (before /api/* catch-all)
+  // Account dashboard + public member profiles + course referral checkout (before /api/* catch-all)
   if (
     path.startsWith("/api/account") ||
     path.startsWith("/api/members/") ||
@@ -159,6 +169,11 @@ export async function handleRequest(
   ) {
     const accountRes = await handleAccountRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (accountRes) return accountRes;
+  }
+  // Whop subscription checkout mint (before /api/* catch-all)
+  if (path.startsWith("/api/billing/")) {
+    const billingRes = await handleWhopCheckoutRoutes(request, env, { fetchImpl, bsiBaseUrl });
+    if (billingRes) return billingRes;
   }
   if (path.startsWith("/api/")) {
     return jsonResponse({ error: "not_found" }, 404, {}, request.method.toUpperCase() === "HEAD");
@@ -181,6 +196,24 @@ export async function handleRequest(
       return env.ASSETS.fetch(request);
     }
     return handlePostsHtml(request, env, ctx, { fetchImpl, cachesDefault: cache });
+  }
+
+  // Topic taxonomy HTML (same shell as library)
+  if (path === "/topic" || path.startsWith("/topic/")) {
+    const method = request.method.toUpperCase();
+    const accept = request.headers.get("Accept") ?? "";
+    const wantsHtml = accept.includes("text/html");
+    if (method !== "GET" && method !== "HEAD") {
+      return env.ASSETS.fetch(request);
+    }
+    if (!wantsHtml) {
+      return env.ASSETS.fetch(request);
+    }
+    return handleLibraryHtml(request, env, ctx, {
+      fetchImpl,
+      cachesDefault: cache,
+      bsiBaseUrl,
+    });
   }
 
   // Resource Library HTML

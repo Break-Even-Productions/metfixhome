@@ -3,12 +3,21 @@
  * Never fetch /api/auth/me here; callers use loadMe() from session.ts.
  */
 import { getMetfixLoginUrl } from "@/const";
+import { fetchCsrf } from "@/lib/authRequest";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
+import { isWhopCheckoutUrl } from "@shared/account/url-allowlist";
+import type {
+  ClaimOptionsDto,
+  ClaimPathId,
+} from "@shared/account/claimOptions";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
+import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 
-export { sanitizeReturnPath };
+export { sanitizeReturnPath } from "@shared/account/returnPath";
+export type { ClaimOptionsDto, ClaimPathId };
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -58,12 +67,15 @@ export type AccountSubscriptions = {
 };
 
 export type ClaimedCertificate = {
-  course_id: number | string | null;
+  /** S-R3-2: number or null only (digit-strings normalized in worker). */
+  course_id: number | null;
   course_slug: string | null;
   course_title: string | null;
-  allocated_cents: number;
+  /** S-R3-2: number|null for null-safety (Worker Branch A drops bad rows). */
+  allocated_cents: number | null;
   claimed_at: string | null;
-  claim_method: "ltv" | "direct_purchase" | null;
+  /** Read-side only; includes legacy `direct_purchase` (BSI §R120). Never outbound `'ltv'`. */
+  claim_method: StoredClaimMethod | null;
   certificate_url?: string;
 };
 
@@ -105,7 +117,7 @@ export type CourseItem = {
   included_with_subscription: boolean;
   purchased_directly: boolean;
   certificate_claimed: boolean;
-  certificate_claim_method: "ltv" | "direct_purchase" | null;
+  certificate_claim_method: StoredClaimMethod | null;
   certificate_url: string | null;
 };
 
@@ -218,6 +230,9 @@ export type MemberSummary = {
   };
 };
 
+/** CL-REQ-1: single cache key for claim options (invalidateQueries equivalent). */
+export const CLAIM_OPTIONS_QUERY_KEY = "certificate-claim-options" as const;
+
 type CacheKey =
   | "overview"
   | "subscriptions"
@@ -229,19 +244,13 @@ type CacheKey =
   | "gifts"
   | "notifications"
   | "privacy"
+  | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
   | `member:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
-
-/** Single in-flight LTV certificate claim (CQ §1.2 / CERT3b). */
-let claimInflight: Promise<unknown> | null = null;
-
-export function isClaimInFlight(): boolean {
-  return claimInflight != null;
-}
 
 function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
@@ -284,28 +293,12 @@ function redirectToLogin(currentPath?: string): never {
 export function clearAccountCache(): void {
   cache.clear();
   inflight.clear();
-  claimInflight = null;
 }
 
 function invalidateKeys(keys: CacheKey[]): void {
   for (const key of keys) {
     cache.delete(key);
     inflight.delete(key);
-  }
-}
-
-async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await globalThis.fetch("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
   }
 }
 
@@ -326,6 +319,8 @@ async function accountGet<T>(
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
+      // S-R3-3: forward AbortSignal so unmount aborts in-flight CL1 refresh.
+      signal: options?.signal,
     });
     if (res.status === 401) {
       redirectToLogin();
@@ -354,6 +349,7 @@ async function accountMutate<T>(
     bodyInit?: BodyInit;
     contentType?: string | null;
     invalidate?: CacheKey[];
+    headers?: Record<string, string>;
   },
 ): Promise<T> {
   const csrf = await fetchCsrf();
@@ -362,6 +358,7 @@ async function accountMutate<T>(
   const headers: Record<string, string> = {
     Accept: "application/json",
     "X-CSRF-Token": csrf,
+    ...init.headers,
   };
   let body: BodyInit | undefined = init.bodyInit;
   if (init.body !== undefined) {
@@ -496,36 +493,10 @@ export function loadMember(
   return accountGet(`/api/members/${encodeURIComponent(memberId)}`, `member:${memberId}`, options);
 }
 
-export async function claimCertificate(courseId: string | number): Promise<unknown> {
-  if (claimInflight) return claimInflight;
-  const shared = accountMutate(`/api/account/courses/${courseId}/claim-certificate`, {
-    method: "POST",
-    body: { method: "ltv" },
-    invalidate: ["ltv", "courses", "overview"],
-  }).finally(() => {
-    claimInflight = null;
-  });
-  claimInflight = shared;
-  return shared;
-}
-
 export async function purchaseCourseCheckout(
   courseId: string | number,
   opts?: { bsi_ref?: string; return_path?: string },
-): Promise<{
-  attempt_id?: string;
-  course_id?: number;
-  checkout_url?: string;
-  course_price_cents?: number;
-  currency?: string;
-  attribution?: {
-    attribution_source: string;
-    bsi_ref_slug: string | null;
-    whop_affiliate_code: string | null;
-    commission_percent: number;
-    commission_bps: number;
-  };
-}> {
+): Promise<{ checkout_url: string }> {
   const body: Record<string, string> = {};
   if (opts?.bsi_ref) body.bsi_ref = opts.bsi_ref;
   if (opts?.return_path) body.return_path = opts.return_path;
@@ -535,13 +506,88 @@ export async function purchaseCourseCheckout(
   });
 }
 
+export function loadClaimOptions(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<ClaimOptionsDto> {
+  return accountGet(
+    "/api/account/certificate-claim-options",
+    CLAIM_OPTIONS_QUERY_KEY,
+    options,
+  );
+}
+
+export function invalidateClaimOptions(): void {
+  invalidateKeys([CLAIM_OPTIONS_QUERY_KEY]);
+}
+
+export type ClaimPathResult =
+  | { already_claimed: boolean; checkout_url?: never }
+  | { checkout_url: string; already_claimed?: never };
+
+/**
+ * CL2 three-path claim. Caller owns Idempotency-Key (created in click handler).
+ * Invalidates CL1 on success / ineligible / 502 (CQ S3).
+ */
+export async function claimCoursePath(
+  courseId: string | number,
+  path: ClaimPathId,
+  idempotencyKey: string,
+): Promise<ClaimPathResult> {
+  try {
+    const res = await accountMutate<ClaimPathResult>(
+      `/api/account/courses/${courseId}/claim`,
+      {
+        method: "POST",
+        body: { path },
+        headers: { "Idempotency-Key": idempotencyKey },
+        invalidate: [CLAIM_OPTIONS_QUERY_KEY, "ltv", "courses", "overview"],
+      },
+    );
+    return res;
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    // 402/403/502: invalidate CL1. 409: no re-fetch. 503: handled by UI (one delayed re-fetch).
+    if (status === 402 || status === 403 || status === 502) {
+      invalidateClaimOptions();
+    }
+    throw err;
+  }
+}
+
+/** CL-UI-1 N2: single Whop checkout handoff — re-check host then assign. */
+export function openWhopCheckout(url: unknown): boolean {
+  if (!isWhopCheckoutUrl(url)) return false;
+  window.location.assign(url);
+  return true;
+}
+
 export async function convertToWhop(body: {
   sub_ref?: string;
   target_tier: "metfix_pro" | "organization_owner";
+  return_path?: string;
 }): Promise<{ purchase_url?: string; trial_period_days?: number; stripe_period_end?: string }> {
   return accountMutate("/api/account/subscriptions/convert-to-whop", {
     method: "POST",
-    body,
+    body: {
+      ...body,
+      return_path: body.return_path ?? "/checkout/complete",
+    },
+    invalidate: ["subscriptions", "overview"],
+  });
+}
+
+/** Mint a BEP Whop subscription checkout (plan: pro | org). */
+export async function startWhopCheckout(body: {
+  plan: "pro" | "org";
+  return_path?: string;
+}): Promise<{ checkout_url?: string; plan?: string; expires_at?: string }> {
+  return accountMutate("/api/billing/whop/checkout-session", {
+    method: "POST",
+    body: {
+      plan: body.plan,
+      return_path: body.return_path ?? "/checkout/complete",
+    },
     invalidate: ["subscriptions", "overview"],
   });
 }

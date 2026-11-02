@@ -25,12 +25,16 @@ import AccountFavorites from "./pages/account/AccountFavorites";
 import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
+import AccountOrganization from "./pages/account/AccountOrganization";
+import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
 const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
+const LibraryTaxonomyPage = lazy(() => import("./pages/library/LibraryTaxonomyPage"));
+const SearchPage = lazy(() => import("./pages/search/SearchPage"));
 import { useLocation } from "wouter";
 
 function BsiRefCapture() {
@@ -63,6 +67,41 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/posts"} component={PostsPage} />
+      <Route path={"/library/search"}>
+        {() => (
+          <Suspense fallback={null}>
+            <SearchPage />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/topic/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="topic" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/topic/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="topic" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/content-type/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="content-type" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/category/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="category" />
+          </Suspense>
+        )}
+      </Route>
       <Route path={"/library/:type/:id"}>
         {() => (
           <Suspense fallback={null}>
@@ -71,10 +110,12 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/library"} component={LibraryPage} />
+      <Route path={"/checkout/complete"} component={CheckoutComplete} />
       <Route path={"/account/billing"} component={AccountBilling} />
       <Route path={"/account/profile"} component={AccountProfile} />
       <Route path={"/account/courses"} component={AccountCourses} />
       <Route path={"/account/favorites"} component={AccountFavorites} />
+      <Route path={"/account/organization"} component={AccountOrganization} />
       <Route path={"/account/referrals"} component={AccountReferrals} />
       <Route path={"/account/notifications"} component={AccountNotifications} />
       <Route path={"/account/privacy"} component={AccountPrivacy} />
@@ -91,6 +132,8 @@ function AppShell() {
   const hideGlobalNav =
     location === "/login" ||
     location.startsWith("/login?") ||
+    location === "/checkout/complete" ||
+    location.startsWith("/checkout/") ||
     location === "/account" ||
     location.startsWith("/account/") ||
     location === "/members" ||

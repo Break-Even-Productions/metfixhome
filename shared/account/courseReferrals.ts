@@ -569,104 +569,61 @@ export function logEarningsUpstreamOmitted(): void {
   );
 }
 
-export type CheckoutAttributionDto = {
-  attribution_source: AttributionSource;
-  bsi_ref_slug: string | null;
-  whop_affiliate_code: string | null;
-  commission_percent: number;
-  commission_bps: number;
-};
-
-export type CheckoutDto = {
-  attempt_id: string;
-  course_id: number;
+/** CR3 / CL2 checkout browser body — exactly one key (lead ruling A / CR-CO-1). */
+export type CheckoutUrlDto = {
   checkout_url: string;
-  course_price_cents: number;
-  currency: string;
-  attribution: CheckoutAttributionDto;
 };
 
-export type BuildCheckoutResult =
-  | { ok: true; dto: CheckoutDto }
-  | { ok: false; error: "upstream_error" | "whop_company_mismatch"; status?: number };
-
-const ATTRIBUTION_SOURCES = new Set<string>([
-  "primary_org",
-  "explicit_slug",
-  "bsi_ref_cookie",
-  "none",
-]);
+export type BuildCheckoutUrlResult =
+  | { ok: true; dto: CheckoutUrlDto }
+  | { ok: false; error: "upstream_error" };
 
 /**
- * Build sanitized client checkout DTO. Caller must verify checkout_url via
- * sanitizeExternalBillingUrl(whop_only) before/after — this checks company + attempt_id + attribution.
+ * When `whop_company_id` is present it must equal BEP (1.2.4 ruling 1).
+ * Unknown extras are otherwise ignored. Missing company is allowed.
  */
-export function buildCheckoutDto(
+function knownWhopCompanyOk(obj: Record<string, unknown>, expectedCompanyId: string): boolean {
+  if (!("whop_company_id" in obj)) return true;
+  return obj.whop_company_id === expectedCompanyId;
+}
+
+/**
+ * CR3 builder (1.2.4): ignore unknown extras; require `checkout_url`.
+ * Known `whop_company_id` when present must be BEP (else fail).
+ * Caller must verify via `isWhopCheckoutUrl` before returning to the browser.
+ */
+export function buildCheckoutUrlDto(
   raw: unknown,
   expectedCompanyId: string,
-): BuildCheckoutResult {
+): BuildCheckoutUrlResult {
   const obj = asRecord(raw);
   if (!obj) return { ok: false, error: "upstream_error" };
-
-  if (obj.whop_company_id !== expectedCompanyId) {
+  if (!knownWhopCompanyOk(obj, expectedCompanyId)) {
     return { ok: false, error: "upstream_error" };
   }
-
-  const attempt_id = strField(obj.attempt_id);
-  if (!attempt_id || !ATTEMPT_ID_RE.test(attempt_id)) {
-    return { ok: false, error: "upstream_error" };
-  }
-
-  const course_id = safeNonNegInt(obj.course_id);
-  if (course_id == null || course_id < 1) {
-    return { ok: false, error: "upstream_error" };
-  }
-
   const checkout_url = strField(obj.checkout_url);
   if (!checkout_url) return { ok: false, error: "upstream_error" };
+  const dto = { checkout_url } satisfies CheckoutUrlDto;
+  return { ok: true, dto };
+}
 
-  const course_price_cents = safeNonNegInt(obj.course_price_cents);
-  if (course_price_cents == null) return { ok: false, error: "upstream_error" };
-
-  const currency = strField(obj.currency);
-  if (!currency || !CURRENCY_RE.test(currency)) {
+/**
+ * CL2 buy_outright / prepay_credit checkout builder — own literal (CL-RET-1 N1).
+ * Does not reuse the CR3 builder. Same known-field company rule as CR3.
+ */
+export function buildClaimCheckoutUrlDto(
+  raw: unknown,
+  expectedCompanyId: string,
+): BuildCheckoutUrlResult {
+  const obj = asRecord(raw);
+  if (!obj) return { ok: false, error: "upstream_error" };
+  if (!knownWhopCompanyOk(obj, expectedCompanyId)) {
     return { ok: false, error: "upstream_error" };
   }
-
-  const attr = asRecord(obj.attribution);
-  if (!attr) return { ok: false, error: "upstream_error" };
-
-  const attribution_source = strField(attr.attribution_source);
-  if (!attribution_source || !ATTRIBUTION_SOURCES.has(attribution_source)) {
-    return { ok: false, error: "upstream_error" };
-  }
-
-  if (isBadCommissionBps(attr.commission_bps)) {
-    return { ok: false, error: "upstream_error" };
-  }
-  const bps = attr.commission_bps as number;
-  // W2: percent/bps mismatch in checkout attribution → 502
-  if (!commissionPercentMatchesBps(attr.commission_percent, bps)) {
-    return { ok: false, error: "upstream_error" };
-  }
-
-  return {
-    ok: true,
-    dto: {
-      attempt_id,
-      course_id,
-      checkout_url,
-      course_price_cents,
-      currency,
-      attribution: {
-        attribution_source: attribution_source as AttributionSource,
-        bsi_ref_slug: strField(attr.bsi_ref_slug),
-        whop_affiliate_code: strField(attr.whop_affiliate_code),
-        commission_percent: attr.commission_percent as number,
-        commission_bps: bps,
-      },
-    },
-  };
+  const checkout_url = strField(obj.checkout_url);
+  if (!checkout_url) return { ok: false, error: "upstream_error" };
+  const dto = { checkout_url } satisfies CheckoutUrlDto;
+  return { ok: true, dto };
 }
 
 export function emitDropLogs(logs: DropLogEvent[]): void {

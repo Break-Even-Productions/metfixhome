@@ -1,13 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { isFreeOpen, isLockedCard, isProfessionalTagged, mapAccessDisplay } from "./access";
+import {
+  htmlShowsMembershipGate,
+  isFreeOpen,
+  isLockedCard,
+  isProfessionalTagged,
+  mapAccessDisplay,
+} from "./access";
 import { buildLibraryHead } from "./head";
 import {
   mapCompositeThumbnail,
+  mapDetailBody,
+  mapFilterDescription,
   mapLibraryResource,
   mapPopularResponse,
   mapSearchResponse,
 } from "./map";
 import type { LibraryResource } from "./types";
+
+describe("mapFilterDescription (TX5)", () => {
+  it("preserves paragraph breaks from HTML", () => {
+    const mapped = mapFilterDescription(
+      "<p>Para 1</p><p>Para 2</p><p>Para 3</p>",
+    );
+    expect(mapped).toBe("Para 1\n\nPara 2\n\nPara 3");
+  });
+});
 
 describe("library access mapping", () => {
   it("maps false / none to none", () => {
@@ -30,6 +47,84 @@ describe("library access mapping", () => {
     expect(isLockedCard({ ...locked, type: "post", id: 1 } as LibraryResource)).toBe(true);
     expect(isProfessionalTagged(preview)).toBe(true);
     expect(isFreeOpen({ ...open, type: "post", id: 2 } as LibraryResource)).toBe(true);
+  });
+});
+
+describe("listing access locks", () => {
+  it("locks paid courses the viewer is not enrolled in", () => {
+    const paid = mapLibraryResource({
+      id: 1,
+      type: "course",
+      title: "Paid",
+      price: 500,
+      is_enrolled: false,
+    });
+    expect(paid && isLockedCard(paid)).toBe(true);
+
+    const owned = mapLibraryResource({
+      id: 2,
+      type: "course",
+      title: "Owned",
+      price: "350",
+      is_enrolled: true,
+    });
+    expect(owned && isLockedCard(owned)).toBe(false);
+
+    const free = mapLibraryResource({
+      id: 3,
+      type: "course",
+      title: "Free",
+      price: 0,
+      is_enrolled: false,
+    });
+    expect(free && isLockedCard(free)).toBe(false);
+  });
+
+  it("honors explicit is_locked and detects the public membership gate", () => {
+    const locked = mapLibraryResource({
+      id: 4,
+      type: "page",
+      title: "Members",
+      is_locked: true,
+      content_access_display: { access: "full", is_exclusive: false, has_content_access: false },
+    });
+    expect(locked && isLockedCard(locked)).toBe(true);
+    expect(htmlShowsMembershipGate(
+      "<h2>This content is exclusive to members of one of our BSI Societies</h2>",
+    )).toBe(true);
+    expect(htmlShowsMembershipGate("<p>Open access article about ketosis.</p>")).toBe(false);
+  });
+
+  it("maps a locked course detail without leaking the body", () => {
+    const locked = mapDetailBody(
+      {
+        course: {
+          id: 9,
+          title: "Paid course",
+          content: "<p>secret curriculum</p>",
+          is_locked: true,
+        },
+      },
+      "course",
+    );
+    expect(locked?.resource.locked).toBe(true);
+    expect(locked?.resource.content).toBe("");
+    expect(locked?.resource.type).toBe("course");
+
+    const open = mapDetailBody(
+      {
+        course: {
+          id: 8,
+          title: "Free course",
+          content: "<p>Hello</p>",
+          is_locked: false,
+          price: 0,
+        },
+      },
+      "course",
+    );
+    expect(open?.resource.locked).toBe(false);
+    expect(open?.resource.content).toContain("Hello");
   });
 });
 

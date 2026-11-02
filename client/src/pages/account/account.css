@@ -242,6 +242,15 @@
 }
 
 .account-conversion-banner a,
+a.account-btn {
+  text-decoration: none;
+  color: var(--color-paper);
+}
+
+a.account-btn.account-btn--ghost {
+  color: var(--color-ink);
+}
+
 .account-btn {
   display: inline-flex;
   align-items: center;
@@ -375,6 +384,21 @@
   border: 1px solid var(--color-line);
   border-radius: 1.75rem;
   padding: 1.15rem;
+}
+
+.account-course-card-title {
+  font-size: 1.2rem;
+  margin-bottom: 0.35rem;
+}
+
+.account-claim-title {
+  font-size: 1.35rem;
+  margin-top: 1rem;
+}
+
+.account-claim-path-title {
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
 }
 
 @media (min-width: 768px) {

@@ -33,11 +33,13 @@ const KNOWN_ROUTES = new Set([
   "the-daily-fix",
   "posts",
   "library",
+  "topic",
   "login",
   "join",
   "404",
   "account",
   "members",
+  "checkout",
 ]);
 
 /** Wouter base path from Vite `base` (Cloudflare Workers; `base: "/"`). */

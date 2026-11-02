@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "wouter";
 import {
   buildLibraryHead,
@@ -8,13 +8,21 @@ import {
   RESOURCE_ID_RE,
   type LibraryDetail,
 } from "@shared/library";
+import { SiteFooter } from "@/components/SiteFooter";
+import { DetailReader } from "@/components/post-detail/DetailReader";
+import { PostReaderSkeleton } from "@/components/post-detail/PostReaderSkeleton";
+import { KeepLearning } from "@/components/post-detail/KeepLearning";
+import { toDetailReaderModel } from "@/components/post-detail/types";
 import { SafeHtml } from "@/components/SafeHtml";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import NotFound from "@/pages/NotFound";
 import { UpgradePrompt } from "@/components/UpgradePrompt";
 import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
+import { basePath } from "@/const";
+import { loadMe, peekMe } from "@/lib/session";
 import { JoinModal } from "./JoinModal";
 import { fetchLibraryItem } from "./api";
+import "@/styles/post-prose.css";
 import "./library.css";
 
 type DetailState =
@@ -23,21 +31,20 @@ type DetailState =
   | { status: "error" }
   | { status: "not_found" };
 
+function LibraryFrame({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <div className="library-page">{children}</div>
+      <SiteFooter />
+    </>
+  );
+}
+
 function parseId(raw: string | undefined): number | null {
   if (raw == null || !RESOURCE_ID_RE.test(raw)) return null;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > RESOURCE_ID_MAX) return null;
   return n;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 export default function LibraryDetailPage({
@@ -56,6 +63,17 @@ export default function LibraryDetailPage({
 
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [showJoin, setShowJoin] = useState(false);
+  const [signedIn, setSignedIn] = useState(() => peekMe()?.status === "signed_in");
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadMe().then((me) => {
+      if (!cancelled) setSignedIn(me.status === "signed_in");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const headInput = useMemo(() => {
     if (state.status === "data") {
@@ -89,7 +107,6 @@ export default function LibraryDetailPage({
       return;
     }
     if (typeRaw === "daily_fix") {
-      // Prefer Daily Fix surface
       window.location.replace("/the-daily-fix");
       return;
     }
@@ -101,7 +118,8 @@ export default function LibraryDetailPage({
         const body = await fetchLibraryItem(typeRaw!, id, controller.signal);
         if (controller.signal.aborted) return;
         setState({ status: "data", resource: body.resource });
-        if (body.resource.locked) setShowJoin(true);
+        // Signed-out locked → optional why-locked modal; signed-in uses billing CTA (WJ18).
+        if (body.resource.locked && peekMe()?.status !== "signed_in") setShowJoin(true);
       } catch {
         if (controller.signal.aborted) return;
         setState({ status: "error" });
@@ -116,95 +134,105 @@ export default function LibraryDetailPage({
 
   if (state.status === "loading") {
     return (
-      <div className="library-page">
-        <div className="library-reader">
-          <p className="library-status">Loading…</p>
+      <LibraryFrame>
+        <div className="library-reader library-reader--wide">
+          <PostReaderSkeleton />
         </div>
-      </div>
+      </LibraryFrame>
     );
   }
 
   if (state.status === "error") {
     return (
-      <div className="library-page">
+      <LibraryFrame>
         <div className="library-reader">
           <p className="library-status">This resource is temporarily unavailable.</p>
           <Link href="/library" className="library-reader-back">
             ← Back to library
           </Link>
         </div>
-      </div>
+      </LibraryFrame>
     );
   }
 
   const r = state.resource;
   const isPreview = r.access.access === "preview" && !r.locked;
+  const model = toDetailReaderModel(r);
+  const showComments = r.type === "post" || r.type === "page";
 
   return (
-    <div className="library-page">
-      <article className="library-reader">
-        <Link href="/library" className="library-reader-back">
-          ← Resource Library
-        </Link>
-        {r.access.is_exclusive || r.access.has_content_access ? (
-          <p className="library-card-pro">Professional</p>
-        ) : null}
-        <h1 className="library-reader-title">{r.title}</h1>
-        <div className="library-reader-meta">
-          <time dateTime={r.date}>{formatDate(r.date)}</time>
-          {r.author ? <> · {r.author}</> : null}
-        </div>
-
-        {r.locked ? (
-          <div className="library-stub">
-            <strong>Members-only</strong>
-            Sign in with an entitled MetFix account to read this resource on metfix.org.
-            <div className="library-modal-actions" style={{ marginTop: "1rem" }}>
-              {joinFlow ? (
+    <LibraryFrame>
+      <div className="library-reader library-reader--wide">
+        <DetailReader
+          model={model}
+          titleClassName="library-reader-title"
+          showComments={showComments}
+          beforeTitle={
+            r.access.is_exclusive || r.access.has_content_access ? (
+              <p className="library-card-pro">Professional</p>
+            ) : null
+          }
+        >
+          {r.locked ? (
+            <div className="library-stub">
+              <strong>Members-only</strong>
+              Sign in with an entitled MetFix account to read this resource on metfix.org.
+              <div className="library-modal-actions" style={{ marginTop: "1rem" }}>
+                {signedIn ? (
+                  <a
+                    className="library-btn library-btn-gold"
+                    href={basePath("/account/billing")}
+                    data-testid="library-locked-billing"
+                  >
+                    Manage membership
+                  </a>
+                ) : joinFlow ? (
+                  <button
+                    type="button"
+                    className="library-btn library-btn-gold"
+                    onClick={() => joinFlow.openJoinFlow()}
+                  >
+                    Start my free month
+                  </button>
+                ) : (
+                  <a className="library-btn library-btn-gold" href={joinCtaHref()}>
+                    Log in / Join
+                  </a>
+                )}
                 <button
                   type="button"
-                  className="library-btn library-btn-gold"
-                  onClick={() => joinFlow.openJoinFlow()}
+                  className="library-btn library-btn-ghost"
+                  onClick={() => setShowJoin(true)}
                 >
-                  Start my free month
+                  Why is this locked?
                 </button>
-              ) : (
-                <a className="library-btn library-btn-gold" href={joinCtaHref()}>
-                  Log in / Join
-                </a>
-              )}
-              <button
-                type="button"
-                className="library-btn library-btn-ghost"
-                onClick={() => setShowJoin(true)}
-              >
-                Why is this locked?
-              </button>
+              </div>
+              {/* B6: one CTA only — join/billing above; no second UpgradePrompt */}
             </div>
-            {/* B6: one CTA only — join button above; no second UpgradePrompt */}
-          </div>
-        ) : isPreview ? (
-          <div className="library-preview-wrap">
+          ) : isPreview ? (
+            <div className="library-preview-wrap">
+              <div className="library-reader-body">
+                <SafeHtml html={r.content} />
+              </div>
+              <div className="library-preview-fade">
+                <div className="library-preview-fade-inner">
+                  <UpgradePrompt
+                    title="Continue with MetFix"
+                    body="You’re seeing a preview. Join or sign in for the full piece."
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
             <div className="library-reader-body">
               <SafeHtml html={r.content} />
             </div>
-            <div className="library-preview-fade">
-              <div className="library-preview-fade-inner">
-                <UpgradePrompt
-                  title="Continue with MetFix"
-                  body="You’re seeing a preview. Join or sign in for the full piece."
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="library-reader-body">
-            <SafeHtml html={r.content} />
-          </div>
-        )}
-      </article>
+          )}
+        </DetailReader>
+        <KeepLearning model={model} />
+      </div>
 
       <JoinModal open={showJoin} title={r.title} onClose={() => setShowJoin(false)} />
-    </div>
+    </LibraryFrame>
   );
 }

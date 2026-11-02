@@ -97,14 +97,14 @@ describe("AccountReferrals PR D", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     mount();
-    await waitFor(() => expect(screen.getByTestId("referrals-locked")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Referral links locked/i })).toBeTruthy());
     expect(screen.getByText(/Organization Owner/i)).toBeTruthy();
     expect(screen.getAllByText(/Foundations Coach/i).length).toBeGreaterThan(0);
     expect(screen.getByText("2025-01-01T00:00:00.000Z").className).toMatch(/font-mono|account-mono/);
     expect(screen.getByText(/Renew qualification/i).closest("a")?.getAttribute("href")).toBe(
       "/account/courses",
     );
-    expect(screen.queryByTestId("generate-referral")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Generate Referral Link/i })).toBeNull();
     expect(screen.queryByText("Rotate")).toBeNull();
     expect(fetchMock.mock.calls.every((c) => (c[1] as RequestInit)?.method !== "POST")).toBe(true);
   });
@@ -132,8 +132,8 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     mount();
-    await waitFor(() => expect(screen.getByTestId("referrals-dropped-notice")).toBeTruthy());
-    const notice = screen.getByTestId("referrals-dropped-notice");
+    await waitFor(() => expect(screen.getByText(/couldn.t be shown right now/i)).toBeTruthy());
+    const notice = screen.getByText(/couldn.t be shown right now/i);
     expect(notice.getAttribute("role")).toBeNull();
     expect(notice.className).toMatch(/muted/);
     expect(screen.queryByRole("alert")).toBeNull();
@@ -167,7 +167,7 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     mount();
-    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Join code$/i })).toBeTruthy());
     expect(screen.queryByText("Copy Referral Link")).toBeNull();
     expect(writeText).not.toHaveBeenCalled();
   });
@@ -211,12 +211,12 @@ describe("AccountReferrals PR D", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     mount();
-    await waitFor(() => expect(screen.getByTestId("referrals-earnings")).toBeTruthy());
-    expect(screen.getByTestId("referrals-earnings").textContent).toMatch(/\$12\.50/);
-    expect(screen.getByTestId("referrals-earnings").textContent).toMatch(/\$30\.00/);
-    fireEvent.click(screen.getByTestId("generate-referral"));
-    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
-    expect(screen.getByTestId("referrals-earnings").textContent).toMatch(/\$12\.50/);
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Earnings$/i }).closest("section")!).toBeTruthy());
+    expect(screen.getByRole("heading", { name: /^Earnings$/i }).closest("section")!.textContent).toMatch(/\$12\.50/);
+    expect(screen.getByRole("heading", { name: /^Earnings$/i }).closest("section")!.textContent).toMatch(/\$30\.00/);
+    fireEvent.click(screen.getByRole("button", { name: /Generate Referral Link/i }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Join code$/i })).toBeTruthy());
+    expect(screen.getByRole("heading", { name: /^Earnings$/i }).closest("section")!.textContent).toMatch(/\$12\.50/);
   });
 
   it("[t451u] shows stored percents, never policy 25%", async () => {
@@ -244,7 +244,7 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     const { container } = mount();
-    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Join code$/i })).toBeTruthy());
     expect(container.textContent).toContain("15% referral commission");
     expect(container.textContent).toContain("20% referral commission");
     expect(container.textContent).not.toContain("25%");
@@ -282,13 +282,13 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     const first = mount();
-    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Join code$/i })).toBeTruthy());
     expect(first.container.textContent).toContain("15% referral commission");
     expect(first.container.textContent).not.toContain("25%");
     cleanup();
     clearAccountCache();
     const second = mount();
-    await waitFor(() => expect(screen.getByTestId("join-code-card")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Join code$/i })).toBeTruthy());
     expect(second.container.textContent).toContain("15% referral commission");
     expect(second.container.textContent).not.toContain("25%");
     expect(load).toBe(2);
@@ -317,8 +317,8 @@ describe("AccountReferrals PR D", () => {
     );
     mount();
     await waitFor(() => expect(screen.getByText("Unable to load referrals.")).toBeTruthy());
-    expect(screen.queryByTestId("join-code-card")).toBeNull();
-    expect(screen.queryByTestId("generate-referral")).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Join code$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Generate Referral Link/i })).toBeNull();
   });
 
   it("CR-DROP notice + estimate shown as sent; W3 after join_code drop", async () => {
@@ -344,9 +344,9 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     mount();
-    await waitFor(() => expect(screen.getByTestId("referrals-dropped-notice")).toBeTruthy());
-    expect(screen.queryByTestId("generate-referral")).toBeNull();
-    expect(screen.getByTestId("generate-referral-after-drop")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/couldn.t be shown right now/i)).toBeTruthy());
+    // W3: after join_code drop, only the after-drop Generate (not bare-generate path).
+    expect(screen.getAllByRole("button", { name: /Generate Referral Link/i })).toHaveLength(1);
   });
 
   it("brand-new eligible user sees bare Generate", async () => {
@@ -372,7 +372,7 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     const { container } = mount();
-    await waitFor(() => expect(screen.getByTestId("generate-referral")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: /Generate Referral Link/i })).toBeTruthy());
     expect(container.textContent).not.toMatch(/%/);
   });
 
@@ -487,7 +487,7 @@ describe("AccountReferrals PR D", () => {
     mount();
     await waitFor(() => expect(screen.getByText("GIFT1")).toBeTruthy());
     expect(screen.getByText(/MetFix Essentials/i)).toBeTruthy();
-    fireEvent.click(screen.getByTestId("generate-referral"));
+    fireEvent.click(screen.getByRole("button", { name: /Generate Referral Link/i }));
     await waitFor(() => expect(actions).toContain("generate"));
     await waitFor(() => expect(screen.getByText("Rotate")).toBeTruthy());
     fireEvent.click(screen.getByText("Rotate"));
@@ -517,9 +517,9 @@ describe("AccountReferrals PR D", () => {
       }),
     );
     mount();
-    await waitFor(() => expect(screen.getByTestId("referrals-locked")).toBeTruthy());
-    expect(screen.queryByTestId("generate-referral")).toBeNull();
-    expect(screen.queryByTestId("join-code-card")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Referral links locked/i })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Generate Referral Link/i })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /^Join code$/i })).toBeNull();
   });
 
   it("E4 / R3-N1 / R3-N2 / R4-N1 / R4-N2 static", async () => {

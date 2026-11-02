@@ -1,6 +1,8 @@
 import { RESOURCE_TYPES, type ResourceType } from "./constants";
+import { isResourceVideo } from "./video";
 import type {
   LibraryDetailBody,
+  LibraryFilterTerm,
   LibraryFiltersBody,
   LibrarySearchBody,
 } from "./types";
@@ -24,6 +26,10 @@ export function isLibrarySearchBody(raw: unknown): raw is LibrarySearchBody {
   );
 }
 
+function isTermArray(raw: unknown): boolean {
+  return Array.isArray(raw);
+}
+
 export function isLibraryDetailBody(raw: unknown): raw is LibraryDetailBody {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const b = raw as Record<string, unknown>;
@@ -31,21 +37,48 @@ export function isLibraryDetailBody(raw: unknown): raw is LibraryDetailBody {
     return false;
   }
   const r = b.resource as Record<string, unknown>;
-  return (
-    typeof r.id === "number" &&
-    typeof r.type === "string" &&
-    typeof r.title === "string" &&
-    typeof r.content === "string" &&
-    typeof r.locked === "boolean"
-  );
+  if (
+    typeof r.id !== "number" ||
+    typeof r.type !== "string" ||
+    typeof r.title !== "string" ||
+    typeof r.content !== "string" ||
+    typeof r.locked !== "boolean"
+  ) {
+    return false;
+  }
+  if (!(r.video === null || typeof r.video === "string" || isResourceVideo(r.video))) {
+    return false;
+  }
+  if (!isTermArray(r.topics) || !isTermArray(r.categories) || !isTermArray(r.content_types)) {
+    return false;
+  }
+  return true;
+}
+
+function isFilterTerm(raw: unknown): raw is LibraryFilterTerm {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.id !== "number" || typeof t.name !== "string" || typeof t.slug !== "string") {
+    return false;
+  }
+  if (!(t.description === null || typeof t.description === "string")) return false;
+  if (!(t.image === null || typeof t.image === "string")) return false;
+  return true;
 }
 
 export function isLibraryFiltersBody(raw: unknown): raw is LibraryFiltersBody {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const b = raw as Record<string, unknown>;
+  if (
+    !Array.isArray(b.topics) ||
+    !Array.isArray(b.content_type_terms) ||
+    !Array.isArray(b.categories)
+  ) {
+    return false;
+  }
   return (
-    Array.isArray(b.topics) &&
-    Array.isArray(b.content_type_terms) &&
-    Array.isArray(b.categories)
+    b.topics.every(isFilterTerm) &&
+    b.content_type_terms.every(isFilterTerm) &&
+    b.categories.every(isFilterTerm)
   );
 }

@@ -5,6 +5,8 @@ type PostsLayoutProps = {
   children: ReactNode;
   /** Optional eyebrow above the main content (default: Posts). */
   kicker?: string;
+  /** Wider shell for detail + author rail (Emily ResourceDetail ~1280px). */
+  wide?: boolean;
 };
 
 /**
@@ -12,10 +14,14 @@ type PostsLayoutProps = {
  * Class-based styles only — no inline style props.
  * Shared chrome footer on non-home routes is PR F (LR-E21); PR E mounts it on Home only.
  */
-export function PostsLayout({ children, kicker = "Posts" }: PostsLayoutProps) {
+export function PostsLayout({
+  children,
+  kicker = "Posts",
+  wide = false,
+}: PostsLayoutProps) {
   return (
     <main className="posts-page">
-      <div className="posts-shell">
+      <div className={wide ? "posts-shell posts-shell--wide" : "posts-shell"}>
         <div className="posts-kicker">
           <span className="posts-kicker-line" aria-hidden="true" />
           <span className="posts-kicker-label">{kicker}</span>

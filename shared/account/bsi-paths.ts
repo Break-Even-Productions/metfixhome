@@ -22,6 +22,11 @@ export function accountConvertToWhopPath(): string {
   return `${BSI}/me/subscriptions/convert-to-whop`;
 }
 
+/** WJ22: mint Whop subscription checkout (Break Even Productions). */
+export function accountWhopCheckoutSessionPath(): string {
+  return `${BSI}/me/whop/checkout-session`;
+}
+
 export function accountCancelDuplicatePath(subRef: string): string {
   return `${BSI}/me/subscriptions/${encodeURIComponent(subRef)}/cancel-duplicate`;
 }
@@ -42,9 +47,19 @@ export function accountPurchaseCheckoutPath(courseId: string): string {
   return `${BSI}/courses/${encodeURIComponent(courseId)}/purchase-checkout`;
 }
 
-/** PR D CR3 — preferred upstream checkout path (alias of purchase-checkout). */
+/** PR D CR3 / CL2 buy_outright — upstream checkout path (rev1.7 §PD-2 (A)). */
 export function accountCourseCheckoutPath(courseId: string): string {
   return `${BSI}/courses/${encodeURIComponent(courseId)}/checkout`;
+}
+
+/** CL1 — three-path claim options (BSI §DTO). */
+export function certificateClaimOptionsPath(): string {
+  return `${BSI}/me/certificate-claim-options`;
+}
+
+/** CL2 prepay_credit — Whop credit prepay checkout. */
+export function certificatePrepayCheckoutPath(courseId: string): string {
+  return `${BSI}/courses/${encodeURIComponent(courseId)}/certificate-prepay-checkout`;
 }
 
 export function accountReferralsPath(): string {

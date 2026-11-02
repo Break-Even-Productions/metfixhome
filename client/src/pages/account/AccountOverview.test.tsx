@@ -214,7 +214,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(css).not.toMatch(/emilydesigns/i);
   });
 
-  it("nav lists exactly 8 routes in order (DP-T-UI2)", async () => {
+  it("nav lists account routes including organization (DP-T-UI2)", async () => {
     const { ACCOUNT_NAV } = await import("./DashboardLayout");
     expect(ACCOUNT_NAV.map((n) => n.href)).toEqual([
       "/account",
@@ -222,6 +222,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       "/account/profile",
       "/account/courses",
       "/account/favorites",
+      "/account/organization",
       "/account/referrals",
       "/account/notifications",
       "/account/privacy",

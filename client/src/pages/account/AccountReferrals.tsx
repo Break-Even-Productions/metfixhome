@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { type ReferralsDto } from "@shared/account/courseReferrals";
 import { formatUsdFromCents } from "@shared/account/ltv";
 import {
@@ -94,33 +94,30 @@ export default function AccountReferrals(_props: Props) {
     };
   }, []);
 
-  const onAction = useCallback(
-    async (action: "generate" | "rotate" | "revoke") => {
-      if (busy) return;
-      setBusy(true);
-      setError(null);
-      try {
-        // R3-N2: single preserve path lives in referralCodeAction / preserveReferralEarnings.
-        const next = await referralCodeAction(action, {
-          previousEarnings: data?.earnings,
-        });
-        setData(asDto(next));
-      } catch {
-        setError(`Could not ${action} referral code.`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, data?.earnings],
-  );
+  async function onAction(action: "generate" | "rotate" | "revoke") {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // R3-N2: single preserve path lives in referralCodeAction / preserveReferralEarnings.
+      const next = await referralCodeAction(action, {
+        previousEarnings: data?.earnings,
+      });
+      setData(asDto(next));
+    } catch {
+      setError(`Could not ${action} referral code.`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const copy = useCallback(async (text: string) => {
+  async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
       /* ignore */
     }
-  }, []);
+  }
 
   // R3-N1: Worker `eligible` is authoritative — no client canGenerate re-check.
   const eligible = data?.eligible === true;
@@ -142,7 +139,7 @@ export default function AccountReferrals(_props: Props) {
       {error ? <p className="account-error">{error}</p> : null}
 
       {data && !eligible ? (
-        <section className="account-card" data-testid="referrals-locked">
+        <section className="account-card">
           <h2>Referral links locked</h2>
           <p>
             Generating course referral links requires either an active Organization
@@ -153,9 +150,9 @@ export default function AccountReferrals(_props: Props) {
           </p>
           {data.reason_code === "bsi_referral_coach_expired" &&
           data.foundations_coach_expires_at ? (
-            <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+            <p className="account-mono">
               Foundations Coach expired{" "}
-              <span className="font-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              <span className="font-mono">
                 {data.foundations_coach_expires_at}
               </span>
               .{" "}
@@ -168,9 +165,9 @@ export default function AccountReferrals(_props: Props) {
       ) : null}
 
       {data?.earnings ? (
-        <section className="account-card" data-testid="referrals-earnings">
+        <section className="account-card">
           <h2>Earnings</h2>
-          <p className="account-mono font-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+          <p className="account-mono font-mono">
             Pending {formatUsdFromCents(data.earnings.pending_cents)} · Ready{" "}
             {formatUsdFromCents(data.earnings.ready_cents)} · Paid{" "}
             {formatUsdFromCents(data.earnings.paid_total_cents)}
@@ -181,10 +178,7 @@ export default function AccountReferrals(_props: Props) {
       {eligible && data ? (
         <>
           {showMutedNotice ? (
-            <p
-              className="account-muted"
-              data-testid="referrals-dropped-notice"
-            >
+            <p className="account-muted">
               {data.join_code_dropped
                 ? "Your join link couldn't be shown right now."
                 : "Some course links couldn't be shown right now."}
@@ -197,7 +191,6 @@ export default function AccountReferrals(_props: Props) {
                 type="button"
                 className="account-btn"
                 disabled={busy}
-                data-testid="generate-referral"
                 onClick={() => void onAction("generate")}
               >
                 Generate Referral Link
@@ -206,19 +199,18 @@ export default function AccountReferrals(_props: Props) {
           ) : null}
 
           {data.join_code ? (
-            <section className="account-card" data-testid="join-code-card">
+            <section className="account-card">
               <h2>Join code</h2>
-              <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              <p className="account-mono">
                 {data.join_code.slug}
               </p>
-              <p className="account-mono font-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+              <p className="account-mono font-mono">
                 {commissionBadge(data.join_code.commission_percent)}
               </p>
               {data.join_code.join_url ? (
                 <button
                   type="button"
                   className="account-btn account-btn--ghost account-mono"
-                  style={{ fontFamily: '"JetBrains Mono", monospace' }}
                   onClick={() => void copy(data.join_code!.join_url!)}
                 >
                   Copy Referral Link
@@ -254,7 +246,6 @@ export default function AccountReferrals(_props: Props) {
                 type="button"
                 className="account-btn"
                 disabled={busy}
-                data-testid="generate-referral-after-drop"
                 onClick={() => void onAction("generate")}
               >
                 Generate Referral Link
@@ -269,18 +260,17 @@ export default function AccountReferrals(_props: Props) {
                 {data.course_links.map((link) => (
                   <li key={link.course_id} className="account-course-card">
                     <div className="account-course-card__title">{link.course_title}</div>
-                    <div className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                    <div className="account-mono">
                       {formatUsdFromCents(link.course_price_cents)} ·{" "}
                       {commissionBadge(link.commission_percent)} · est.{" "}
                       {formatUsdFromCents(link.estimated_commission_cents)}
                     </div>
-                    <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
+                    <p className="account-mono">
                       {link.share_url}
                     </p>
                     <button
                       type="button"
                       className="account-btn account-btn--ghost account-mono"
-                      style={{ fontFamily: '"JetBrains Mono", monospace' }}
                       onClick={() => void copy(link.share_url)}
                     >
                       Copy Referral Link
