@@ -25,10 +25,10 @@ const KNOWN_ROUTES = new Set([
   "library",
   "topic",
   "login",
+  "join",
   "404",
   "account",
   "members",
-  "library",
   "checkout",
 ]);
 

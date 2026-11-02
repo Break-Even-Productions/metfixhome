@@ -3,9 +3,11 @@
  * Never fetch /api/auth/me here; callers use loadMe() from session.ts.
  */
 import { getMetfixLoginUrl } from "@/const";
+import { fetchCsrf } from "@/lib/authRequest";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -229,14 +231,6 @@ function withCallerAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
   });
 }
 
-/** Same rules as Login safeNextPath / Worker sanitizeReturn. */
-export function sanitizeReturnPath(raw: string | null | undefined): string {
-  if (!raw || raw.length > 512) return "/account";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/account";
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return "/account";
-  return raw;
-}
-
 function redirectToLogin(currentPath?: string): never {
   clearAccountCache();
   const path =
@@ -244,7 +238,7 @@ function redirectToLogin(currentPath?: string): never {
     (typeof window !== "undefined"
       ? `${window.location.pathname}${window.location.search}`
       : "/account");
-  const next = sanitizeReturnPath(path);
+  const next = sanitizeReturnPath(path) ?? "/account";
   if (typeof window !== "undefined") {
     window.location.assign(getMetfixLoginUrl(next));
   }
@@ -261,21 +255,6 @@ function invalidateKeys(keys: CacheKey[]): void {
   for (const key of keys) {
     cache.delete(key);
     inflight.delete(key);
-  }
-}
-
-async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await globalThis.fetch("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
   }
 }
 
