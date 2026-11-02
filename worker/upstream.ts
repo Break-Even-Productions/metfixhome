@@ -113,6 +113,7 @@ export type Env = {
   ACCOUNT_READ_LIMITER?: RateLimitBinding;
   ACCOUNT_WRITE_LIMITER?: RateLimitBinding;
   ACCOUNT_PORTAL_LIMITER?: RateLimitBinding;
+  WHOP_CHECKOUT_LIMITER?: RateLimitBinding;
 };
 
 /** DP9 / DP42 / DP45 / T1: Bearer-only headers — TypeScript rejects X-API-Key. */

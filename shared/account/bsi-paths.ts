@@ -22,6 +22,11 @@ export function accountConvertToWhopPath(): string {
   return `${BSI}/me/subscriptions/convert-to-whop`;
 }
 
+/** WJ22: mint Whop subscription checkout (Break Even Productions). */
+export function accountWhopCheckoutSessionPath(): string {
+  return `${BSI}/me/whop/checkout-session`;
+}
+
 export function accountCancelDuplicatePath(subRef: string): string {
   return `${BSI}/me/subscriptions/${encodeURIComponent(subRef)}/cancel-duplicate`;
 }

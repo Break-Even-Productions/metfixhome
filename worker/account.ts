@@ -9,6 +9,7 @@ import {
   resolveAccountCanonicalTier,
   type LegacySubscriptionSource,
 } from "../shared/account/tiers";
+import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import {
   accountCancelDuplicatePath,
@@ -39,12 +40,15 @@ import {
   accountSubscriptionsPath,
 } from "../shared/account/bsi-paths";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
+import { accountRateLimitKey } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
 import { csrfForSid, sha256Hex, timingSafeEqualStr } from "./auth/crypto";
 import { isAllowedAuthOrigin } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
 import { clientIp } from "./auth/throttle";
+
+export { accountRateLimitKey } from "./auth/account-rate-limit";
 import {
   assertBsiHost,
   bsiAccountBearerHeaders,
@@ -181,20 +185,6 @@ function limiterBinding(env: Env, kind: LimiterKind): RateLimitBinding | undefin
   if (kind === "read") return env.ACCOUNT_READ_LIMITER;
   if (kind === "write") return env.ACCOUNT_WRITE_LIMITER;
   return env.ACCOUNT_PORTAL_LIMITER;
-}
-
-/**
- * CQ B3 / DP-T-CFG3 / R2-N3: per-user limiter key.
- * Prefer real `bsi_user_id`. Treat missing, `""`, and `"0"` (session.ts stores
- * `String(user_id ?? "0")`) as absent → hashed sid fallback. Never raw sid;
- * never `acct:0`.
- */
-export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
-  const uid = ctx.record.bsi_user_id;
-  if (typeof uid === "string" && uid.length > 0 && uid !== "0") {
-    return `acct:${uid}`;
-  }
-  return `sid:${await sha256Hex(ctx.sid)}`;
 }
 
 function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
@@ -396,6 +386,17 @@ function boolOrFalse(v: unknown): boolean {
   return v === true;
 }
 
+/** BSI may send badge strings (`none` / `owner` / `approved`) or booleans. */
+function badgePresent(v: unknown): boolean {
+  if (v === true) return true;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s !== "" && s !== "none" && s !== "false" && s !== "0";
+  }
+  if (typeof v === "number") return v !== 0;
+  return false;
+}
+
 function normalizeLegacySource(raw: unknown): LegacySubscriptionSource {
   if (raw === "medical_society_stripe" || raw === "affiliate_stripe") return raw;
   return null;
@@ -509,9 +510,9 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
     email: typeof obj.email === "string" ? obj.email : null,
     member_since: strOrNull(obj.member_since),
     badges: {
-      medical: boolOrFalse(badges.medical),
-      affiliate: boolOrFalse(badges.affiliate),
-      subscription: boolOrFalse(badges.subscription),
+      medical: badgePresent(badges.medical),
+      affiliate: badgePresent(badges.affiliate),
+      subscription: badgePresent(badges.subscription),
       // CQ B1: badge only when coach is active (not expired / not missing granted_at).
       foundations_coach: coach.active,
     },
@@ -1021,11 +1022,19 @@ async function dispatch(
       if (typeof body.target_tier !== "string" || !CONVERT_TIERS.has(body.target_tier)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
-      const payload: Record<string, unknown> = { target_tier: body.target_tier };
+      const payload: Record<string, unknown> = {
+        target_tier: body.target_tier,
+        return_path: "/checkout/complete",
+      };
       if (typeof body.sub_ref === "string") {
         const ref = opaqueSubRef(body.sub_ref);
         if (!ref) return accountJson({ error: "invalid_request" }, 400);
         payload.sub_ref = ref;
+      }
+      if (typeof body.return_path === "string") {
+        const sanitized = sanitizeReturnPath(body.return_path);
+        if (!sanitized) return accountJson({ error: "invalid_return_path" }, 400);
+        payload.return_path = sanitized;
       }
       const ran = await runBearer(
         ctx!,

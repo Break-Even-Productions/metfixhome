@@ -265,5 +265,9 @@ describe("account.repo-scan", () => {
       namespace_id: "27114",
       simple: { limit: 10, period: 60 },
     });
+    expect(byName.WHOP_CHECKOUT_LIMITER).toMatchObject({
+      namespace_id: "27115",
+      simple: { limit: 10, period: 60 },
+    });
   });
 });
