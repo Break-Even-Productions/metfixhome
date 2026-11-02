@@ -129,17 +129,17 @@ function AppRoutes() {
 
 function AppShell() {
   const [location] = useLocation();
+  // Pathname only — `/join?x=1` still hides nav without a dead `/join?` startsWith (WJ15).
+  const pathOnly = location.split("?")[0] ?? location;
   const hideGlobalNav =
-    location === "/login" ||
-    location.startsWith("/login?") ||
-    location === "/checkout/complete" ||
-    location.startsWith("/checkout/") ||
-    location === "/account" ||
-    location.startsWith("/account/") ||
-    location === "/members" ||
-    location.startsWith("/members/") ||
-    location === "/join" ||
-    location.startsWith("/join?");
+    pathOnly === "/login" ||
+    pathOnly === "/checkout/complete" ||
+    pathOnly.startsWith("/checkout/") ||
+    pathOnly === "/account" ||
+    pathOnly.startsWith("/account/") ||
+    pathOnly === "/members" ||
+    pathOnly.startsWith("/members/") ||
+    pathOnly === "/join";
   return (
     <>
       <BsiRefCapture />

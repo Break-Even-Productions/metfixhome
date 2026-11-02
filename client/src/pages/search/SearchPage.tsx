@@ -239,11 +239,11 @@ export default function SearchPage() {
       <div className="search-shell">
         <div className="search-toolbar">
           {infinite.status === "loading" ? (
-            <p className="search-count" data-testid="search-count" aria-busy="true">
+            <p className="search-count" aria-busy="true">
               …
             </p>
           ) : (
-            <p className="search-count" data-testid="search-count">
+            <p className="search-count">
               {countLineText({
                 n: infinite.total,
                 query: urlState.query,

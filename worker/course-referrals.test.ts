@@ -19,6 +19,7 @@ import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseJsonc } from "./test/parse-jsonc";
 
 setupAuthHooks();
 
@@ -1062,7 +1063,10 @@ describe("PR D course referrals + checkout", () => {
 describe("CR5 limiter lockstep", () => {
   it("ACCOUNT_READ/WRITE ids lockstep in wrangler", () => {
     const raw = readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      ratelimits: Array<{ name: string; namespace_id: string; simple: unknown }>;
+      previews: { ratelimits: Array<{ name: string; namespace_id: string; simple: unknown }> };
+    };
     const top = Object.fromEntries(
       json.ratelimits.map((r: { name: string; namespace_id: string; simple: unknown }) => [
         r.name,

@@ -61,7 +61,7 @@ describe("LibraryDetailPage WJ18 locked CTA", () => {
       </JoinFlowProvider>,
     );
 
-    const link = await screen.findByTestId("library-locked-billing");
+    const link = await screen.findByRole("link", { name: /Manage membership/i });
     expect(link.getAttribute("href")).toBe("/account/billing");
     expect(screen.queryByRole("dialog", { name: /Join MetFix/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Start my free month/i })).toBeNull();

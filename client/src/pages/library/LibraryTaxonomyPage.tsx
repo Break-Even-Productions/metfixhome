@@ -190,7 +190,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
         <div className="taxonomy-hero">
           <div className="taxonomy-hero-copy">
             <h1 className="taxonomy-hero-title">{term.name}</h1>
-            <p className="taxonomy-hero-count" data-testid="taxonomy-resource-count">
+            <p className="taxonomy-hero-count">
               {archiveState.total} resources
             </p>
             {visibleParagraphs.map((p, i) => (
@@ -238,7 +238,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
         ) : null}
 
         {archiveState.status === "data" && archiveState.items.length === 0 ? (
-          <div className="taxonomy-empty" data-testid="taxonomy-empty">
+          <div className="taxonomy-empty">
             {showTypeTabs && contentTypeSlug != null ? (
               <>
                 <p>No {activeTypeLabel} resources yet</p>

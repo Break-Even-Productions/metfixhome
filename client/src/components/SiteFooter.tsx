@@ -77,7 +77,10 @@ export function SiteFooter({
   };
 
   return (
-    <footer className="footer-root section-card relative bg-footer-band" data-site-footer="">
+    <footer
+      className="footer-root footer-mobile-pad section-card relative bg-footer-band"
+      data-site-footer=""
+    >
       <img
         src="/footer.jpg"
         alt=""
