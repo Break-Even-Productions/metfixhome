@@ -386,6 +386,21 @@ a.account-btn.account-btn--ghost {
   padding: 1.15rem;
 }
 
+.account-course-card-title {
+  font-size: 1.2rem;
+  margin-bottom: 0.35rem;
+}
+
+.account-claim-title {
+  font-size: 1.35rem;
+  margin-top: 1rem;
+}
+
+.account-claim-path-title {
+  font-size: 1.05rem;
+  margin-bottom: 0.25rem;
+}
+
 @media (min-width: 768px) {
   .account-course-card {
     border-radius: 2.5rem;

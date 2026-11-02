@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -28,6 +28,7 @@ import AccountPrivacy from "./pages/account/AccountPrivacy";
 import AccountOrganization from "./pages/account/AccountOrganization";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
+import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
@@ -35,6 +36,13 @@ const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage")
 const LibraryTaxonomyPage = lazy(() => import("./pages/library/LibraryTaxonomyPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
 import { useLocation } from "wouter";
+
+function BsiRefCapture() {
+  useEffect(() => {
+    captureBsiRef(window.location.search, sessionStorage);
+  }, []);
+  return null;
+}
 
 function AppRoutes() {
   return (
@@ -132,6 +140,7 @@ function AppShell() {
     location === "/join";
   return (
     <>
+      <BsiRefCapture />
       {hideGlobalNav ? null : <GlobalNav />}
       <AppRoutes />
     </>

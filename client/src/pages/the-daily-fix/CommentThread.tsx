@@ -583,13 +583,13 @@ export function CommentThread({
             Comments
           </h3>
           {loggedIn ? (
-            <p className="df-muted df-comments-viewer" data-testid="df-comments-viewer">
+            <p className="df-muted df-comments-viewer">
               Signed in as {viewerDisplayName}
             </p>
           ) : null}
         </div>
       ) : loggedIn ? (
-        <p className="df-muted df-comments-viewer" data-testid="df-comments-viewer">
+        <p className="df-muted df-comments-viewer">
           Signed in as {viewerDisplayName}
         </p>
       ) : null}
@@ -781,7 +781,7 @@ export function CommentThread({
                 </DropdownMenu>
               )}
               {replyTo ? (
-                <p className="df-muted" data-testid="df-replying-to">
+                <p className="df-muted df-replying-to">
                   Replying to {replyTo.author}{" "}
                   <button
                     type="button"

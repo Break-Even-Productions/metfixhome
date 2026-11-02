@@ -1248,6 +1248,7 @@ describe("AU22.1", () => {
       return false;
     };
     // Catalog pin (HOME_SCROLL_KEY) + content-pinned pre-existing non-auth UI storage.
+    // PR D CR4: non-sensitive bsi_ref attribution slug in session storage (mfx_bsi_ref only).
     const allow = new Set([
       "client/src/const.ts\0sessionStorage.setItem(HOME_SCROLL_KEY, sectionId);",
       "client/src/pages/Home.tsx\0const pending = sessionStorage.getItem(HOME_SCROLL_KEY);",
@@ -1255,6 +1256,10 @@ describe("AU22.1", () => {
       'client/src/contexts/ThemeContext.tsx\0const stored = localStorage.getItem("theme");',
       'client/src/contexts/ThemeContext.tsx\0localStorage.setItem("theme", theme);',
       "client/src/components/ui/sidebar.tsx\0document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;",
+      "client/src/App.tsx\0if (typeof window === \"undefined\" || typeof sessionStorage === \"undefined\") return;",
+      "client/src/App.tsx\0captureBsiRef(window.location.search, sessionStorage);",
+      'client/src/lib/referralAttribution.ts\0if (typeof sessionStorage === "undefined") return null;',
+      "client/src/lib/referralAttribution.ts\0return readBsiRef(sessionStorage);",
     ]);
     const clientSrc = path.join(REPO_ROOT, "client/src");
     if (!existsSync(clientSrc)) {

@@ -161,8 +161,12 @@ export async function handleRequest(
     const joinRes = await handleJoinRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (joinRes) return joinRes;
   }
-  // Account dashboard + public member profiles (before /api/* catch-all)
-  if (path.startsWith("/api/account") || path.startsWith("/api/members/")) {
+  // Account dashboard + public member profiles + course referral checkout (before /api/* catch-all)
+  if (
+    path.startsWith("/api/account") ||
+    path.startsWith("/api/members/") ||
+    path.startsWith("/api/courses/")
+  ) {
     const accountRes = await handleAccountRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (accountRes) return accountRes;
   }
