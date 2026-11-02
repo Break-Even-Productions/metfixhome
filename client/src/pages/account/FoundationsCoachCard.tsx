@@ -31,7 +31,7 @@ export function FoundationsCoachCard({ coach }: Props) {
               : "MetFix Essentials certificate"}
             .
           </p>
-          <p className="account-mono" style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>
+          <p className="account-mono">
             Granted {formatDate(coach.granted_at)} · Expires {formatDate(coach.expires_at)}
           </p>
         </>
@@ -39,7 +39,7 @@ export function FoundationsCoachCard({ coach }: Props) {
         <>
           <p role="status">
             Foundations Coach expired on{" "}
-            <span className="account-mono" style={{ fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}>
+            <span className="account-mono">
               {formatDate(coach.expires_at)}
             </span>
             . Renew by attending an in-person seminar or reclaiming MetFix Essentials.

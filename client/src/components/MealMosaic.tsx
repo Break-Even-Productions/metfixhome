@@ -1,12 +1,13 @@
 /**
  * MealMosaic — Scroll-animated food photo mosaic
- * Design: "Earned Authority" dark system — #0A0A0A bg | #C9A96E gold
+ * F1 style parity — cream / ink / gold (Playfair + Plus Jakarta)
  *
  * A grid of food photo tiles that assemble as the user scrolls,
  * forming a striking visual that connects food to performance.
  * Uses IntersectionObserver for scroll-triggered animation.
  */
 import { useEffect, useRef, useState } from "react";
+import "./meal-mosaic.css";
 
 // Reliable Unsplash food & fitness images (metabolic health aesthetic)
 const FOOD_IMGS = [
@@ -99,23 +100,9 @@ export function MealMosaic() {
   return (
     <section
       ref={sectionRef}
-      style={{
-        background: "#080808",
-        borderTop: "1px solid rgba(255,255,255,0.06)",
-        overflow: "hidden",
-        position: "relative",
-      }}
+      className="meal-mosaic section-card"
     >
-      {/* Subtle radial glow */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(ellipse 70% 50% at 70% 50%, rgba(201,169,110,0.05) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
+      <div className="mm-glow" aria-hidden="true" />
 
       <div className="container" style={{ paddingTop: "6rem", paddingBottom: "6rem" }}>
         <div
@@ -143,10 +130,10 @@ export function MealMosaic() {
               <span className="display-serif-italic text-gold">what you eat.</span>
             </h2>
             <p
+              className="mm-body"
               style={{
                 fontSize: "1.05rem",
                 lineHeight: 1.8,
-                color: "rgba(239,239,239,0.65)",
                 fontWeight: 300,
                 marginBottom: "2rem",
                 maxWidth: "480px",
@@ -167,53 +154,24 @@ export function MealMosaic() {
                 {
                   label: "Prevent",
                   desc: "Reverse prediabetes before it becomes diabetes",
-                  color: "#C9A96E",
                 },
                 {
                   label: "Perform",
                   desc: "Maximize athletic output through metabolic optimization",
-                  color: "#C9A96E",
                 },
                 {
                   label: "Protect",
                   desc: "Build the metabolic resilience that outlasts any fitness trend",
-                  color: "#C9A96E",
                 },
               ].map((item) => (
                 <div
                   key={item.label}
                   style={{ display: "flex", gap: "1rem", alignItems: "center" }}
                 >
-                  <div
-                    style={{
-                      width: "2px",
-                      height: "2rem",
-                      background: item.color,
-                      flexShrink: 0,
-                    }}
-                  />
+                  <div className="mm-rule" />
                   <div>
-                    <span
-                      style={{
-                        fontFamily: "'DM Mono'",
-                        fontSize: "0.7rem",
-                        letterSpacing: "0.15em",
-                        color: item.color,
-                        textTransform: "uppercase",
-                        marginRight: "0.75rem",
-                      }}
-                    >
-                      {item.label}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "'DM Sans'",
-                        fontSize: "0.9rem",
-                        color: "rgba(239,239,239,0.55)",
-                      }}
-                    >
-                      {item.desc}
-                    </span>
+                    <span className="mm-label">{item.label}</span>
+                    <span className="mm-desc">{item.desc}</span>
                   </div>
                 </div>
               ))}
@@ -269,9 +227,9 @@ export function MealMosaic() {
                   overflow: "hidden",
                   opacity: inView ? 1 : 0,
                   transition: `opacity 0.7s ease ${tiles.length * 40 + 80}ms, transform 0.7s cubic-bezier(0.16,1,0.3,1) ${tiles.length * 40 + 80}ms`,
-                  border: "2px solid rgba(201,169,110,0.35)",
+                  border: "2px solid color-mix(in srgb, var(--color-accent) 35%, transparent)",
                   boxShadow: inView
-                    ? "0 0 30px rgba(201,169,110,0.15)"
+                    ? "0 0 30px color-mix(in srgb, var(--color-accent) 15%, transparent)"
                     : "none",
                 }}
               >
@@ -289,7 +247,7 @@ export function MealMosaic() {
                   style={{
                     position: "absolute",
                     inset: 0,
-                    background: "rgba(201,169,110,0.06)",
+                    background: "color-mix(in srgb, var(--color-accent) 8%, transparent)",
                   }}
                 />
               </div>
@@ -364,7 +322,7 @@ export function MealMosaic() {
                   inset: -2,
                   pointerEvents: "none",
                   boxShadow: inView
-                    ? "0 0 80px rgba(201,169,110,0.1), 0 0 160px rgba(201,169,110,0.05)"
+                    ? "0 0 80px color-mix(in srgb, var(--color-accent) 12%, transparent)"
                     : "none",
                   transition: `box-shadow 1.2s ease ${tiles.length * 40 + 400}ms`,
                 }}
@@ -379,15 +337,7 @@ export function MealMosaic() {
                   transition: `opacity 0.6s ease ${tiles.length * 40 + 600}ms`,
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: "'DM Mono'",
-                    fontSize: "0.52rem",
-                    letterSpacing: "0.2em",
-                    color: "rgba(201,169,110,0.4)",
-                    textTransform: "uppercase",
-                  }}
-                >
+                <div className="mm-caption">
                   Built from food. Powered by knowledge.
                 </div>
               </div>

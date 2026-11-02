@@ -1,0 +1,4 @@
+/* Visual-test only (LR-F23 / T-F-62). Production CSS must never hide the badge. */
+.grecaptcha-badge {
+  visibility: hidden !important;
+}

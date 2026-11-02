@@ -1,31 +1,38 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 /* ═══════════════════════════════════════════════════════════════
-   METFIX v3 — "EARNED AUTHORITY"
-   Design Philosophy: Editorial confidence. Warm intelligence.
-   The Atlantic meets Nike Training meets MasterClass.
-   
-   Color System — "Ink and Light"
-   - Background: #0A0A0A (near-black, warm)
-   - Surface: #111111 (card backgrounds)
-   - Surface 2: #181818 (elevated cards)
-   - Primary Text: #EFEFEF (warm off-white)
-   - Secondary Text: #888888 (muted, readable)
-   - Accent: #C9A96E (warm gold — authority, intelligence)
-   - Action: #FFFFFF (pure white CTAs)
-   - Data: #4A9EFF (blue — used sparingly)
-   - Border: rgba(255,255,255,0.07)
-   
-   Typography
-   - Display: Playfair Display (serif — editorial, authoritative)
-   - UI: DM Sans (clean, modern, professional)
-   - Data: DM Mono (technical precision)
+   METFIX — cream / ink / gold (mia-metfix parity, F1)
+   Shared tokens live ONLY here (:root + @theme inline).
 ═══════════════════════════════════════════════════════════════ */
 
 @theme inline {
+  --font-serif: "Playfair Display", ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans--size-adjust: 100%;
+  --font-serif--size-adjust: 100%;
+
+  --color-cream: #f3eee4;
+  --color-cream-2: #e9e1d2;
+  --color-paper: #faf7f1;
+  --color-ink: #171512;
+  --color-ink-2: #221f1b;
+  --color-ink-3: #2c2925;
+  --color-accent: #c4a46c;
+  --color-accent-2: #b08d52;
+  --color-accent-3: #d4bc8a;
+  --color-accent-text: #775f37;
+  --color-muted: #686158;
+  --color-muted-2: #8a8378;
+  --color-danger-text: #9a4a2e;
+  --color-line: rgba(23, 21, 18, 0.1);
+  --color-line-light: rgba(243, 238, 228, 0.14);
+  --color-backdrop: rgb(0 0 0 / 0.5);
+  --color-footer-band: #100e0c;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -40,9 +47,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
@@ -52,48 +57,44 @@
 }
 
 :root {
-  --radius: 0.25rem;
-  --background: oklch(0.09 0.004 60);
-  --foreground: oklch(0.95 0.006 60);
-  --card: oklch(0.11 0.004 60);
-  --card-foreground: oklch(0.95 0.006 60);
-  --popover: oklch(0.11 0.004 60);
-  --popover-foreground: oklch(0.95 0.006 60);
-  --primary: oklch(0.95 0.006 60);
-  --primary-foreground: oklch(0.09 0.004 60);
-  --secondary: oklch(0.15 0.004 60);
-  --secondary-foreground: oklch(0.75 0.006 60);
-  --muted: oklch(0.13 0.004 60);
-  --muted-foreground: oklch(0.55 0.006 60);
-  --accent: oklch(0.75 0.08 70);
-  --accent-foreground: oklch(0.09 0.004 60);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 7%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.75 0.08 70);
+  --radius: 1.75rem;
+  --background: var(--color-cream);
+  --foreground: var(--color-ink);
+  --card: var(--color-paper);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-paper);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-ink);
+  --primary-foreground: var(--color-paper);
+  --secondary: var(--color-cream-2);
+  --secondary-foreground: var(--color-ink-2);
+  --muted: var(--color-cream-2);
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-accent);
+  --accent-foreground: var(--color-ink);
+  --destructive: var(--color-danger-text);
+  --destructive-foreground: var(--color-paper);
+  --border: var(--color-line);
+  --input: var(--color-line);
+  --ring: var(--color-accent);
 }
 
-.dark {
-  --background: oklch(0.09 0.004 60);
-  --foreground: oklch(0.95 0.006 60);
-  --card: oklch(0.11 0.004 60);
-  --card-foreground: oklch(0.95 0.006 60);
-  --popover: oklch(0.11 0.004 60);
-  --popover-foreground: oklch(0.95 0.006 60);
-  --primary: oklch(0.95 0.006 60);
-  --primary-foreground: oklch(0.09 0.004 60);
-  --secondary: oklch(0.15 0.004 60);
-  --secondary-foreground: oklch(0.75 0.006 60);
-  --muted: oklch(0.13 0.004 60);
-  --muted-foreground: oklch(0.55 0.006 60);
-  --accent: oklch(0.75 0.08 70);
-  --accent-foreground: oklch(0.09 0.004 60);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 7%);
-  --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.75 0.08 70);
+@font-face {
+  font-family: "Plus Jakarta Sans Fallback";
+  src: local("Arial");
+  size-adjust: 105%;
+  ascent-override: 95%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "Playfair Display Fallback";
+  src: local("Times New Roman");
+  size-adjust: 100%;
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
 }
 
 @layer base {
@@ -106,7 +107,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans), "Plus Jakarta Sans Fallback", ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
@@ -133,7 +134,42 @@
   }
 }
 
+
 @layer components {
+  .page-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 7.15rem 0.5rem 0.5rem;
+  }
+  @media (min-width: 768px) {
+    .page-stack {
+      gap: 0.75rem;
+      padding: 7.15rem 0.75rem 0.75rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .page-stack {
+      padding-left: 1rem;
+      padding-right: 1rem;
+      padding-bottom: 1rem;
+    }
+  }
+  .section-card {
+    overflow: hidden;
+    border-radius: 1.75rem;
+    box-shadow: none;
+  }
+  @media (min-width: 768px) {
+    .section-card {
+      border-radius: 2.5rem;
+    }
+  }
+  /* Footer band fill lives on SiteFooter (PR E); token --color-footer-band is F1-declared only. */
+  .footer-root.section-card {
+    overflow: hidden;
+    border-radius: 2.5rem;
+  }
   .container {
     width: 100%;
     margin-left: auto;
@@ -162,28 +198,28 @@
 
   /* ─── Typography ─── */
   .display-serif {
-    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    font-family: var(--font-serif), "Playfair Display Fallback", Georgia, "Times New Roman", serif;
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1.05;
   }
   .display-serif-italic {
-    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    font-family: var(--font-serif), "Playfair Display Fallback", Georgia, "Times New Roman", serif;
     font-style: italic;
     font-weight: 700;
     letter-spacing: -0.01em;
     line-height: 1.1;
   }
   .label-mono {
-    font-family: 'DM Mono', ui-monospace, 'Courier New', monospace;
+    font-family: var(--font-sans); font-variant-numeric: tabular-nums;
     font-size: 0.75rem;
     font-weight: 400;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--color-accent);
+    color: var(--color-accent-text);
   }
   .label-sans {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.12em;
@@ -195,9 +231,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    background: #EFEFEF;
-    color: #0A0A0A;
-    font-family: 'DM Sans', sans-serif;
+    background: var(--color-accent);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
     font-size: 0.875rem;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -209,7 +245,7 @@
     white-space: nowrap;
   }
   .btn-primary:hover {
-    background: #FFFFFF;
+    background: var(--color-accent-2);
     transform: translateY(-1px);
   }
   .btn-primary svg {
@@ -223,8 +259,8 @@
     align-items: center;
     gap: 0.5rem;
     background: transparent;
-    color: #EFEFEF;
-    font-family: 'DM Sans', sans-serif;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
     font-size: 0.875rem;
     font-weight: 600;
     letter-spacing: 0.1em;
@@ -236,16 +272,16 @@
     white-space: nowrap;
   }
   .btn-outline:hover {
-    border-color: rgba(255,255,255,0.5);
-    background: rgba(255,255,255,0.04);
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
   .btn-gold {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     background: transparent;
-    color: #C9A96E;
-    font-family: 'DM Sans', sans-serif;
+    color: var(--color-accent-text);
+    font-family: var(--font-sans);
     font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.1em;
@@ -257,7 +293,7 @@
     white-space: nowrap;
   }
   .btn-gold:hover {
-    color: #E0C080;
+    color: var(--color-accent-2);
   }
   .btn-gold svg {
     transition: transform 0.2s ease;
@@ -296,7 +332,7 @@
     display: block;
     width: 2rem;
     height: 1px;
-    background: #C9A96E;
+    background: var(--color-accent);
   }
 
   /* ─── Reveal Animation ─── */
@@ -330,19 +366,19 @@
 
   /* ─── Stat Counter ─── */
   .stat-number {
-    font-family: 'Playfair Display', serif;
+    font-family: var(--font-serif);
     font-size: clamp(3rem, 6vw, 5rem);
     font-weight: 800;
     line-height: 1;
-    color: #EFEFEF;
+    color: var(--color-ink);
   }
   .stat-suffix {
-    color: #C9A96E;
+    color: var(--color-accent-text);
   }
 
   /* ─── Course Card ─── */
   .course-card {
-    background: #111111;
+    background: var(--color-paper);
     border: 1px solid rgba(255,255,255,0.06);
     padding: 2rem;
     transition: border-color 0.3s ease, background 0.3s ease;
@@ -356,13 +392,13 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #C9A96E, transparent);
+    background: linear-gradient(90deg, var(--color-accent), transparent);
     opacity: 0;
     transition: opacity 0.3s ease;
   }
   .course-card:hover {
     border-color: rgba(201,169,110,0.3);
-    background: #141414;
+    background: var(--color-cream-2);
   }
   .course-card:hover::before {
     opacity: 1;
@@ -383,13 +419,13 @@
   }
   .funnel-step:hover .funnel-arrow {
     transform: translateX(6px);
-    color: #C9A96E;
+    color: var(--color-accent-text);
   }
   .funnel-step:hover .funnel-title {
-    color: #C9A96E;
+    color: var(--color-accent-text);
   }
   .funnel-number {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-sans); font-variant-numeric: tabular-nums;
     font-size: 0.65rem;
     font-weight: 400;
     letter-spacing: 0.1em;
@@ -398,7 +434,7 @@
     padding-top: 0.25rem;
   }
   .funnel-badge {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-sans); font-variant-numeric: tabular-nums;
     font-size: 0.6rem;
     font-weight: 500;
     letter-spacing: 0.12em;
@@ -409,7 +445,7 @@
     margin-bottom: 0.5rem;
   }
   .funnel-badge.free {
-    color: #C9A96E;
+    color: var(--color-accent-text);
     border-color: rgba(201,169,110,0.4);
   }
   .funnel-badge.paid {
@@ -421,15 +457,15 @@
     border-color: rgba(74,158,255,0.4);
   }
   .funnel-title {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-size: 1.1rem;
     font-weight: 600;
-    color: #EFEFEF;
+    color: var(--color-ink);
     transition: color 0.3s ease;
     margin-bottom: 0.35rem;
   }
   .funnel-desc {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.875rem;
     color: rgba(255,255,255,0.4);
     line-height: 1.6;
@@ -445,17 +481,17 @@
 
   /* ─── Testimonial ─── */
   .testimonial-quote {
-    font-family: 'Playfair Display', serif;
+    font-family: var(--font-serif);
     font-style: italic;
     font-size: clamp(1.1rem, 2vw, 1.35rem);
     line-height: 1.65;
-    color: #EFEFEF;
+    color: var(--color-ink);
     font-weight: 400;
   }
 
   /* ─── Nav ─── */
   .nav-link {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.75rem;
     font-weight: 500;
     letter-spacing: 0.08em;
@@ -465,12 +501,12 @@
     transition: color 0.2s ease;
   }
   .nav-link:hover {
-    color: #EFEFEF;
+    color: var(--color-ink);
   }
 
   /* ─── Gold Accent Text ─── */
   .text-gold {
-    color: #C9A96E;
+    color: var(--color-accent-text);
   }
   .text-muted-warm {
     color: rgba(239,239,239,0.45);
@@ -484,7 +520,7 @@
 
   /* ─── Specialty Card ─── */
   .specialty-card {
-    background: #111111;
+    background: var(--color-paper);
     border: 1px solid rgba(255,255,255,0.06);
     overflow: hidden;
     transition: border-color 0.3s ease;
@@ -525,14 +561,14 @@
     padding-left: 0.5rem;
   }
   .seminar-row:hover .seminar-arrow {
-    color: #C9A96E;
+    color: var(--color-accent-text);
     transform: translateX(4px);
   }
   .seminar-date {
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-sans); font-variant-numeric: tabular-nums;
     font-size: 0.7rem;
     letter-spacing: 0.08em;
-    color: #C9A96E;
+    color: var(--color-accent-text);
     min-width: 5rem;
   }
   .seminar-arrow {
@@ -558,11 +594,11 @@
   }
   .ticker-wrap::before {
     left: 0;
-    background: linear-gradient(to right, #111111, transparent);
+    background: linear-gradient(to right, var(--color-cream-2), transparent);
   }
   .ticker-wrap::after {
     right: 0;
-    background: linear-gradient(to left, #111111, transparent);
+    background: linear-gradient(to left, var(--color-cream-2), transparent);
   }
   .ticker-track {
     display: flex;
@@ -574,7 +610,7 @@
     animation-play-state: paused;
   }
   .ticker-item {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.8rem;
     font-weight: 400;
     color: rgba(239,239,239,0.55);
@@ -585,7 +621,7 @@
     gap: 0.75rem;
   }
   .ticker-dot {
-    color: #C9A96E;
+    color: var(--color-accent-text);
     font-size: 0.4rem;
     flex-shrink: 0;
   }
@@ -599,7 +635,7 @@
   }
   .marquee-strip {
     overflow: hidden;
-    background: #C9A96E;
+    background: var(--color-accent);
     padding: 0.875rem 0;
     white-space: nowrap;
   }
@@ -613,12 +649,12 @@
     align-items: center;
     gap: 1.5rem;
     padding: 0 2rem;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-sans); font-variant-numeric: tabular-nums;
     font-size: 0.65rem;
     font-weight: 400;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #0A0A0A;
+    color: var(--color-ink);
   }
   .marquee-dot {
     width: 4px;
@@ -628,20 +664,12 @@
     flex-shrink: 0;
   }
 
-  /* ─── Responsive Utilities ─── */
-  .hidden { display: none !important; }
-  @media (min-width: 768px) {
-    .hidden.md\:flex, .md\:flex { display: flex !important; }
-    .hidden.md\:inline-flex, .md\:inline-flex { display: inline-flex !important; }
-    .hidden.md\:block, .md\:block { display: block !important; }
-    .md\:hidden { display: none !important; }
-  }
 
   /* ─── Class Card Hover Effects ─── */
 
   /* Specialty grid cards */
   .specialty-card {
-    background: #0D0D0D;
+    background: var(--color-paper);
     padding: 2rem;
     height: 100%;
     display: flex;
@@ -667,15 +695,15 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(to right, #C9A96E, rgba(201,169,110,0.3));
+    background: linear-gradient(to right, var(--color-accent), color-mix(in srgb, var(--color-accent) 30%, transparent));
     transform: scaleX(0);
     transform-origin: left;
     transition: transform 0.4s ease;
     z-index: 3;
   }
   .specialty-card:hover {
-    background: #111111;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(201,169,110,0.15);
+    background: var(--color-paper);
+    box-shadow: none;
     transform: translateY(-4px);
   }
   .specialty-card:hover::before {
@@ -706,14 +734,14 @@
   .specialty-card:hover .card-explore-btn {
     background: rgba(201,169,110,0.12) !important;
     border-color: rgba(201,169,110,0.6) !important;
-    color: #C9A96E !important;
+    color: var(--color-accent-text) !important;
     transform: translateX(4px);
   }
   .specialty-card .card-price {
     transition: color 0.25s ease;
   }
   .specialty-card:hover .card-price {
-    color: #C9A96E !important;
+    color: var(--color-accent-text) !important;
   }
 
   /* What Is MetFix hero card */
@@ -771,7 +799,7 @@
     transition: color 0.25s ease;
   }
   .hero-course-card:hover .hero-card-stat {
-    color: #C9A96E !important;
+    color: var(--color-accent-text) !important;
   }
 
   /* Essentials card */
@@ -808,7 +836,7 @@
     width: 4px;
   }
   ::-webkit-scrollbar-track {
-    background: #0A0A0A;
+    background: var(--color-cream);
   }
   ::-webkit-scrollbar-thumb {
     background: rgba(255,255,255,0.1);

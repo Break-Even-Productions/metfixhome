@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
-  it("renders 4-metric strip with LTV300+A+C copy and JetBrains Mono", async () => {
+  it("renders 4-metric strip with LTV300+A+C copy and tabular-nums mono", async () => {
     render(
       <Router>
         <AccountOverview />
@@ -84,15 +84,14 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
 
     const mono = document.querySelectorAll(".account-metric, .account-mono");
     expect(mono.length).toBeGreaterThan(0);
-    const styled = Array.from(document.querySelectorAll(".account-mono")).find(
-      (el) => (el as HTMLElement).style.fontFamily.includes("JetBrains Mono"),
-    );
-    expect(styled || mono[0]?.className).toBeTruthy();
-    expect(
-      styled
-        ? (styled as HTMLElement).style.fontFamily
-        : (mono[0] as HTMLElement).className,
-    ).toMatch(/JetBrains Mono|account-metric|account-mono/);
+    expect(document.querySelector(".account-mono")).toBeTruthy();
+    const css = readFileSync(path.join(import.meta.dirname, "account.css"), "utf8");
+    expect(css).toMatch(/\.account-mono[\s\S]*?font-variant-numeric:\s*tabular-nums/);
+    expect(css).toMatch(/Plus Jakarta Sans/);
+    expect(css).not.toMatch(/JetBrains/);
+    Array.from(document.querySelectorAll(".account-mono")).forEach((el) => {
+      expect((el as HTMLElement).style.fontFamily).not.toMatch(/JetBrains/);
+    });
   });
 
   it("shows Foundations Coach card with grant path and expires_at in mono", async () => {
@@ -200,16 +199,18 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
 
   it("CSS tokens include warm-cream palette (DP-T-UI1)", () => {
     const css = readFileSync(path.join(import.meta.dirname, "account.css"), "utf8");
-    expect(css).toMatch(/--color-cream:\s*#f5efe4/);
-    expect(css).toMatch(/--color-paper:\s*#fbf7ef/);
-    expect(css).toMatch(/--color-ink:\s*#171512/);
-    expect(css).toMatch(/--color-muted:\s*#5a534a/);
-    expect(css).toMatch(/--color-accent:\s*#e0b869/);
-    expect(css).toMatch(/--color-line:\s*rgba\(23,\s*21,\s*18,\s*0\.12\)/);
+    // Exact F1 shared-palette values (no loose alternation).
+    expect(css).toMatch(/--color-cream:\s*#f3eee4\b/);
+    expect(css).toMatch(/--color-paper:\s*#faf7f1\b/);
+    expect(css).toMatch(/--color-ink:\s*#171512\b/);
+    expect(css).toMatch(/--color-muted:\s*#686158\b/);
+    expect(css).toMatch(/--color-accent:\s*#c4a46c\b/);
+    expect(css).toMatch(/--color-line:\s*rgba\(23,\s*21,\s*18,\s*0\.1\)/);
     expect(css).toMatch(/Playfair Display/);
-    expect(css).toMatch(/Instrument Serif/);
-    expect(css).toMatch(/Inter/);
-    expect(css).toMatch(/JetBrains Mono/);
+    expect(css).toMatch(/Plus Jakarta Sans/);
+    expect(css).not.toMatch(/Instrument Serif/);
+    expect(css).not.toMatch(/\bInter\b/);
+    expect(css).not.toMatch(/JetBrains/);
     expect(css).not.toMatch(/emilydesigns/i);
   });
 
