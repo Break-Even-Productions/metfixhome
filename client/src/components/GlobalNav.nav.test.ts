@@ -129,14 +129,13 @@ describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
     expect(expectedSearchHrefFromApp(shadowed)).toBe("/library");
   });
 
-  it("T-E-60: no overlay symbols; SEARCH_HREF once; visible Search link text", () => {
+  it("T-E-60: icon search opens NavSearchModal; SEARCH_HREF once in const", () => {
     const src = readFileSync(GLOBAL_NAV_SRC, "utf8");
     expect(src).not.toMatch(/SearchOverlay/);
     expect(src).not.toMatch(/SEARCH_ITEMS/);
-    expect(src).not.toMatch(/searchOpen/);
-    expect(src).not.toMatch(/setSearchOpen/);
-    expect(src).toMatch(/<span>Search<\/span>/);
-    expect(src).not.toMatch(/sr-only">Search/);
+    expect(src).toMatch(/NavSearchModal/);
+    expect(src).toMatch(/searchOpen/);
+    expect(src).toMatch(/aria-label="Search"/);
     expect(src).toMatch(/@\/style-parity\/searchHref/);
     expect(src).not.toMatch(/@\/lib\/searchHref/);
     const constSrc = readFileSync(CONST_SRC, "utf8");

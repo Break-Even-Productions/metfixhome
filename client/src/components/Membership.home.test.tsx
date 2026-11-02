@@ -5,7 +5,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Membership } from "./Membership";
-import { MEMBERSHIP_COMPARISON_ROWS, MEMBERSHIP_HERO } from "@shared/join";
+import { MEMBERSHIP_HERO } from "@shared/join";
+import { FALLBACK_MEMBERSHIP_COMPARISON } from "@/data/home/membershipComparison";
 
 afterEach(() => {
   cleanup();
@@ -13,12 +14,12 @@ afterEach(() => {
 });
 
 describe("WJ20 Membership surfaces (render)", () => {
-  it("Membership surface renders hero + 7-row table + CTA", () => {
+  it("Membership surface renders hero + comparison + CTA", () => {
     const onJoin = vi.fn();
     render(<Membership onJoin={onJoin} />);
     expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Start my free month/i })).toBeTruthy();
-    for (const row of MEMBERSHIP_COMPARISON_ROWS) {
+    for (const row of FALLBACK_MEMBERSHIP_COMPARISON.rows) {
       expect(screen.getByText(row.feature)).toBeTruthy();
     }
   });
@@ -27,7 +28,7 @@ describe("WJ20 Membership surfaces (render)", () => {
     const onJoin = vi.fn();
     render(
       <section id="membership-section" data-testid="home-membership">
-        <Membership onJoin={onJoin} audience="default" />
+        <Membership onJoin={onJoin} audience="#for-individuals" />
       </section>,
     );
     const section = screen.getByTestId("home-membership");

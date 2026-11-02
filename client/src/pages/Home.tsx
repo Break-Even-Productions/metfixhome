@@ -5,7 +5,6 @@
  */
 import { Membership } from "@/components/Membership";
 import { SiteFooter } from "@/components/SiteFooter";
-import { AudienceTabs } from "@/components/home/AudienceTabs";
 import { HomeClasses } from "@/components/home/HomeClasses";
 import { HomeExperts } from "@/components/home/HomeExperts";
 import { HomeFaq } from "@/components/home/HomeFaq";
@@ -95,20 +94,12 @@ export default function Home() {
     else window.location.assign(basePath("/join"));
   }, [joinFlow]);
 
-  const onAudienceChange = useCallback((href: AudienceHref) => {
-    setAudience(href);
-    window.history.replaceState(null, "", href === DEFAULT_AUDIENCE ? "/" : href);
-  }, []);
-
-  const membershipAudience =
-    audience === "#for-coaches"
-      ? "coaches"
-      : audience === "#for-clinicians"
-        ? "clinicians"
-        : "default";
-
   return (
-    <div className="home-root pt-14 md:pt-16" data-theme={theme}>
+    <div
+      className="home-root"
+      data-theme={theme}
+      style={{ paddingTop: "var(--global-nav-offset, 7.25rem)" }}
+    >
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-accent focus:px-4 focus:py-2 focus:text-ink"
@@ -116,13 +107,16 @@ export default function Home() {
         Skip to content
       </a>
       <div className="grain" aria-hidden="true" />
-      <AudienceTabs audience={audience} onAudienceChange={onAudienceChange} />
       <main id="main" className="page-stack">
         <HomeHero onJoin={onJoin} copy={copy} audience={audience} />
         <HomeClasses onJoin={onJoin} courses={homeCourses} />
         <section id="membership-section" className="section-card bg-paper">
           <div className="px-3 py-4 md:px-4 md:py-5">
-            <Membership onJoin={onJoin} audience={membershipAudience} />
+            <Membership
+              onJoin={onJoin}
+              audience={audience}
+              comparison={home.membershipComparison}
+            />
           </div>
         </section>
         {showFoundations ? <HomeFoundations foundations={home.foundations} /> : null}

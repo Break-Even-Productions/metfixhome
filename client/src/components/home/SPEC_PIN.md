@@ -7,6 +7,6 @@
 - e2: ER-9 vendor advisory = `navigator.webdriver` only; ER-10 full-command `-u` scan; ER-11 literal `/library/search`
 - Order: **#22 → #20 → E** (staging-only until both land; no draft PR yet)
 - Tokens: muted `#686158`; `--color-backdrop`; `--color-footer-band: #100e0c`
-- LR-4: no overlay; Search `<a>` visible text; `SEARCH_HREF` = `/library` until literal unshadowed `/library/search`
+- Search: icon opens `NavSearchModal`; submit → `SEARCH_HREF?query=` (`/library/search` when unshadowed)
 - Footer: `siteFooterLinks.ts`; Home-only mount; terms `/terms-and-conditions/`
 - App.tsx: target 0 route lines

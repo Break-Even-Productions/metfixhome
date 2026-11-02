@@ -7,6 +7,7 @@ import {
   highlightedHeadline,
   libraryCategoryTag,
   libraryResource,
+  membershipComparisonCell,
 } from "./objects";
 import { siteSettings } from "./siteSettings";
 import { testimonial } from "./testimonial";
@@ -24,4 +25,5 @@ export const schemaTypes = [
   highlightedHeadline,
   libraryCategoryTag,
   libraryResource,
+  membershipComparisonCell,
 ];

@@ -4,6 +4,12 @@ import {
   FALLBACK_HOME_COURSES,
   FALLBACK_TESTIMONIALS,
 } from "@/data/fallbackHome";
+import {
+  FALLBACK_MEMBERSHIP_COMPARISON,
+  type MembershipComparisonCell,
+  type MembershipComparisonContent,
+  type MembershipComparisonRow,
+} from "@/data/home/membershipComparison";
 import type {
   CtaLink,
   HighlightedHeadline,
@@ -30,6 +36,73 @@ function asHeadline(
   return {
     text: value.text,
     goldPhrase: value.goldPhrase || fallback.goldPhrase,
+  };
+}
+
+function asComparisonCell(
+  value: any,
+  fallback: MembershipComparisonCell,
+): MembershipComparisonCell {
+  const kind = value?.kind;
+  if (kind === "check") return { kind: "check" };
+  if (kind === "cross") return { kind: "cross" };
+  if (kind === "number" && typeof value.number === "number" && Number.isFinite(value.number)) {
+    return {
+      kind: "number",
+      value: value.number,
+      suffix: typeof value.suffix === "string" ? value.suffix : undefined,
+    };
+  }
+  if (kind === "text" && typeof value.text === "string" && value.text.trim()) {
+    return { kind: "text", value: value.text.trim() };
+  }
+  return fallback;
+}
+
+function asComparisonRow(
+  value: any,
+  fallback: MembershipComparisonRow,
+): MembershipComparisonRow | null {
+  if (!value?.feature || typeof value.feature !== "string") return null;
+  return {
+    feature: value.feature,
+    pro: asComparisonCell(value.pro, fallback.pro),
+    free: asComparisonCell(value.free, fallback.free),
+    affiliate: value.affiliate
+      ? asComparisonCell(value.affiliate, fallback.affiliate ?? { kind: "cross" })
+      : fallback.affiliate,
+  };
+}
+
+function asMembershipComparison(doc: any): MembershipComparisonContent {
+  const f = FALLBACK_MEMBERSHIP_COMPARISON;
+  if (!doc) return f;
+
+  const rows =
+    Array.isArray(doc.rows) && doc.rows.length
+      ? doc.rows
+          .map((row: any, i: number) => asComparisonRow(row, f.rows[i] ?? f.rows[0]!))
+          .filter(Boolean)
+      : f.rows;
+
+  const affiliateExtraRows =
+    Array.isArray(doc.affiliateExtraRows) && doc.affiliateExtraRows.length
+      ? doc.affiliateExtraRows
+          .map((row: any, i: number) =>
+            asComparisonRow(row, f.affiliateExtraRows[i] ?? f.affiliateExtraRows[0]!),
+          )
+          .filter(Boolean)
+      : f.affiliateExtraRows;
+
+  return {
+    featuresLabel: doc.featuresLabel || f.featuresLabel,
+    proLabel: doc.proLabel || f.proLabel,
+    proSublabel: doc.proSublabel || f.proSublabel,
+    freeLabel: doc.freeLabel || f.freeLabel,
+    affiliateLabel: doc.affiliateLabel || f.affiliateLabel,
+    affiliateSublabel: doc.affiliateSublabel || f.affiliateSublabel,
+    rows: rows.length ? rows : f.rows,
+    affiliateExtraRows: affiliateExtraRows.length ? affiliateExtraRows : f.affiliateExtraRows,
   };
 }
 
@@ -94,6 +167,26 @@ const HOME_QUERY = `*[_type == "homePage"][0]{
     eyebrow,
     headline{text, goldPhrase},
     subtext
+  },
+  membershipComparison{
+    featuresLabel,
+    proLabel,
+    proSublabel,
+    freeLabel,
+    affiliateLabel,
+    affiliateSublabel,
+    rows[]{
+      feature,
+      pro{kind, text, number, suffix},
+      free{kind, text, number, suffix},
+      affiliate{kind, text, number, suffix}
+    },
+    affiliateExtraRows[]{
+      feature,
+      pro{kind, text, number, suffix},
+      free{kind, text, number, suffix},
+      affiliate{kind, text, number, suffix}
+    }
   },
   affiliation{
     eyebrow,
@@ -243,6 +336,7 @@ function mapHome(doc: any): HomePageContent {
       headline: asHeadline(doc.specialtyTracks?.headline, f.specialtyTracks.headline),
       subtext: doc.specialtyTracks?.subtext || f.specialtyTracks.subtext,
     },
+    membershipComparison: asMembershipComparison(doc.membershipComparison),
     affiliation: {
       eyebrow: doc.affiliation?.eyebrow || f.affiliation.eyebrow,
       headline: asHeadline(doc.affiliation?.headline, f.affiliation.headline),

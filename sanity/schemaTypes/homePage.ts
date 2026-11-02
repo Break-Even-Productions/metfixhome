@@ -5,6 +5,7 @@ import {
   highlightedHeadline,
   libraryCategoryTag,
   libraryResource,
+  membershipComparisonRow,
   networkLocation,
 } from "./objects";
 
@@ -18,6 +19,7 @@ export const homePage = defineType({
     { name: "notes", title: "3. Locked Sections (instructions)" },
     { name: "playbook", title: "4. Playbook CTA" },
     { name: "specialty", title: "5. Specialty Tracks" },
+    { name: "membership", title: "5b. Membership Comparison" },
     { name: "affiliation", title: "6. Affiliation" },
     { name: "foundations", title: "7. Foundations" },
     { name: "about", title: "8. Why MetFix Is Different" },
@@ -184,6 +186,70 @@ export const homePage = defineType({
           type: highlightedHeadline.name,
         }),
         defineField({ name: "subtext", title: "Supporting Text", type: "text", rows: 3 }),
+      ],
+    }),
+
+    // ─── 5b. MEMBERSHIP COMPARISON ─────────────────────────────
+    defineField({
+      name: "membershipComparison",
+      title: "Membership Comparison Table",
+      type: "object",
+      group: "membership",
+      description:
+        "Check / X / text / number cells. Most For-X pages show MetFix Pro vs Free. Gym Owners, Clinicians, and Organizations also get the Affiliate column plus the extra affiliate rows.",
+      options: { collapsible: true, collapsed: false },
+      fields: [
+        defineField({
+          name: "featuresLabel",
+          title: "Features Column Label",
+          type: "string",
+          initialValue: "Membership Features",
+        }),
+        defineField({
+          name: "proLabel",
+          title: "Pro Column Label",
+          type: "string",
+          initialValue: "MetFix Pro",
+        }),
+        defineField({
+          name: "proSublabel",
+          title: "Pro Column Sublabel",
+          type: "string",
+          description: 'e.g. "$30/mo · 1st month free"',
+        }),
+        defineField({
+          name: "freeLabel",
+          title: "Free Column Label",
+          type: "string",
+          initialValue: "Free",
+        }),
+        defineField({
+          name: "affiliateLabel",
+          title: "Affiliate Column Label",
+          type: "string",
+          initialValue: "Affiliate",
+        }),
+        defineField({
+          name: "affiliateSublabel",
+          title: "Affiliate Column Sublabel",
+          type: "string",
+          description: 'e.g. "$170/mo"',
+        }),
+        defineField({
+          name: "rows",
+          title: "Base Rows (all audiences)",
+          type: "array",
+          of: [membershipComparisonRow],
+          description: "Shown for every For-X page (Pro vs Free; Affiliate cell used when that column is visible).",
+        }),
+        defineField({
+          name: "affiliateExtraRows",
+          title: "Affiliate-Only Extra Rows",
+          type: "array",
+          of: [membershipComparisonRow],
+          description:
+            "Appended only for Gym Owners, Clinicians, and Organizations (third Affiliate column).",
+        }),
       ],
     }),
 

@@ -179,24 +179,21 @@ vi.mock("@/hooks/usePageMeta", () => ({
   usePageMeta: () => undefined,
 }));
 
-vi.mock("@/lib/fetchPostsPage", () => ({
-  fetchPostsPage: async () => ({
-    posts: [
+vi.mock("@/lib/substack", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/substack")>("@/lib/substack");
+  return {
+    ...actual,
+    loadSubstackPosts: async () => [
       {
-        id: 1,
         title: "Sample post",
         excerpt: "Excerpt",
-        date: "2026-01-01",
+        date: "2026-01-01T00:00:00.000Z",
         image: null,
-        author: "MetFix",
-        category: null,
+        url: "https://letsstartwiththetruth.substack.com/p/sample",
       },
     ],
-    page: 1,
-    per_page: 10,
-    has_more: false,
-  }),
-}));
+  };
+});
 
 import Home from "./Home";
 

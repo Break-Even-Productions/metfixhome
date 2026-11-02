@@ -11,7 +11,7 @@ const defaultCache: PostsPageCache = {
 };
 
 /**
- * Shared `/api/posts?page=N` fetcher for PostsPage + HomeResources (B4).
+ * Shared `/api/posts?page=N` fetcher for PostsPage (B4).
  * Passes `AbortSignal` through to `fetch` (Lead / PC* mount gates).
  * Abort clears the in-flight + resolved entry so a remount/page-return refetches (PC6).
  * Optional `cache` injects maps for tests (Rule 4 — no test-only reset export).

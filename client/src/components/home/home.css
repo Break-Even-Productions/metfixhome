@@ -81,7 +81,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  /* GlobalNav is fixed; AudienceTabs sits above this stack on Home. */
+  /* GlobalNav (audience + primary) is fixed; offset comes from --global-nav-offset. */
   padding: 0.5rem 0.5rem 0.5rem;
 }
 @media (min-width: 768px) {
@@ -124,8 +124,16 @@
 .home-root .masthead-bar {
   border: 0;
   border-radius: 50px;
-  background: transparent;
+  background: rgba(23, 21, 18, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   box-shadow: none;
+  overflow: hidden;
+}
+.home-root .is-glass .masthead-bar {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: visible;
 }
 .home-root .masthead-mark {
@@ -135,16 +143,28 @@
   z-index: 20;
   width: 4.75rem;
   height: 4.75rem;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--color-cream) 18%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-cream) 35%, transparent);
+  overflow: visible;
   pointer-events: none;
+}
+.home-root .masthead-mark-fallback {
+  width: 100%;
+  height: 100%;
+  fill: rgba(255, 255, 255, 0.28);
+}
+/* LiquidGlass canvases overhang their element; site-wide max-width:100% squashes them. */
+.home-root .masthead-mark canvas,
+.home-root .masthead-bar canvas {
+  max-width: none;
 }
 @media (min-width: 1024px) {
   .home-root .masthead-mark { top: 1.75rem; right: 1.75rem; width: 6.5rem; height: 6.5rem; }
 }
 
-.home-root .join-card { isolation: isolate; }
+.home-root .join-card {
+  isolation: isolate;
+  width: 100%;
+  max-width: 22rem;
+}
 .home-root .join-card-aura,
 .home-root .join-card-sheen {
   pointer-events: none;
@@ -248,15 +268,7 @@
   --color-accent-2: #21483f;
   --color-accent-3: #74aa9f;
 }
-.home-root[data-theme="coach"] .audience-bar,
-.home-root[data-theme="gym"] .audience-bar {
-  --color-ink: #0067b2;
-  --color-ink-2: #00508a;
-}
-.home-root[data-theme="coach"] .audience-bar :is(.text-ink, .audience-tab-active),
-.home-root[data-theme="gym"] .audience-bar :is(.text-ink, .audience-tab-active) {
-  --color-ink: #171512;
-}
+/* Audience strip theme overrides live in global-nav.css (strip is outside .home-root). */
 .home-root[data-theme="clinician"] .surface-ink {
   --color-ink: #183a34;
   --color-ink-2: #21483f;

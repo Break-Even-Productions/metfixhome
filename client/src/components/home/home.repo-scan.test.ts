@@ -120,11 +120,12 @@ describe("T-E-NAV-10 returnPath usage", () => {
 describe("B2 / S6 / T-E-60 Search link + Map + Forge URL", () => {
   const clientSrc = fileURLToPath(new URL("..", import.meta.url));
 
-  it("GlobalNav has no SearchOverlay / SEARCH_ITEMS / searchOpen (LR-4)", () => {
+  it("GlobalNav uses NavSearchModal (icon → modal → SEARCH_HREF)", () => {
     const src = readFileSync(GLOBAL_NAV, "utf8");
     expect(src).not.toMatch(/SearchOverlay/);
     expect(src).not.toMatch(/SEARCH_ITEMS/);
-    expect(src).not.toMatch(/searchOpen/);
+    expect(src).toMatch(/NavSearchModal/);
+    expect(src).toMatch(/searchOpen/);
     expect(src).toMatch(/SEARCH_HREF/);
   });
 

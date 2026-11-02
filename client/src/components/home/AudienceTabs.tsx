@@ -1,5 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
+import { ShoppingBag } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import {
   audienceLinks,
   type AudienceHref,
@@ -8,9 +10,11 @@ import {
 type AudienceTabsProps = {
   audience: AudienceHref;
   onAudienceChange: (href: AudienceHref) => void;
+  /** Sign-in href for the strip (design: right of Shop). */
+  loginHref?: string;
 };
 
-export function AudienceTabs({ audience, onAudienceChange }: AudienceTabsProps) {
+export function AudienceTabs({ audience, onAudienceChange, loginHref }: AudienceTabsProps) {
   const reduceMotion = useReducedMotion();
   const audienceNavRef = useRef<HTMLElement>(null);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -71,7 +75,7 @@ export function AudienceTabs({ audience, onAudienceChange }: AudienceTabsProps) 
   };
 
   return (
-    <div className="audience-bar surface-ink sticky top-14 z-40 flex items-end bg-ink pl-2 pr-4 pt-2.5 md:top-16 md:pl-3 md:pr-5 lg:pl-4 lg:pr-6">
+    <div className="audience-bar surface-ink flex items-end bg-ink pl-2 pr-4 pt-2.5 md:pl-3 md:pr-5 lg:pl-4 lg:pr-6">
       <nav
         ref={audienceNavRef}
         className="relative flex min-w-0 flex-1 items-end gap-1 overflow-x-auto pl-6 scrollbar-hide md:pl-7"
@@ -125,8 +129,18 @@ export function AudienceTabs({ audience, onAudienceChange }: AudienceTabsProps) 
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-[12px] font-semibold leading-none text-white transition-colors duration-300 ease-out hover:text-cream md:text-[13px]"
         >
+          <ShoppingBag className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={2.2} />
           Shop
         </a>
+        {loginHref ? (
+          <Link
+            href={loginHref}
+            className="inline-flex items-center rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold leading-none text-ink transition-colors duration-300 ease-out hover:bg-cream md:px-5 md:text-[13px]"
+            data-nav-auth="login"
+          >
+            Sign in
+          </Link>
+        ) : null}
       </div>
     </div>
   );

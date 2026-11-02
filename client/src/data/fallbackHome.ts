@@ -1,4 +1,6 @@
 import { assetUrl, METFIX_MAP_URL } from "@/const";
+import { FALLBACK_MEMBERSHIP_COMPARISON } from "@/data/home/membershipComparison";
+import { SUBSTACK_ARCHIVE_URL } from "@/data/newsletter";
 import type { HomeCourseCard, HomeFaq, HomePageContent, HomeTestimonial } from "@/lib/homeTypes";
 
 export const FALLBACK_HOME: HomePageContent = {
@@ -46,6 +48,7 @@ export const FALLBACK_HOME: HomePageContent = {
     subtext:
       "Each specialty track applies the MetFix framework to a specific population. Built by practitioners who work with that population every day.",
   },
+  membershipComparison: FALLBACK_MEMBERSHIP_COMPARISON,
   affiliation: {
     eyebrow: "MetFix Affiliation",
     headline: {
@@ -114,8 +117,7 @@ export const FALLBACK_HOME: HomePageContent = {
       text: "Full Resource Library. Cutting Edge Classes.\nA Community Raising the Standard.",
       goldPhrase: "A Community Raising the Standard.",
     },
-    subtext:
-      "Journal clubs, live streams, whiteboards, book reports, and original articles from Dr. Ben Bikman, Nina Teicholz, Dr. Malcolm Kendrick, and more. The research your clients need, organized for coaches.",
+    subtext: "",
     categoryTags: [
       { label: "Videos", href: "/library?content_type_terms[]=videos" },
       { label: "Articles", href: "/library?content_type_terms[]=articles" },
@@ -124,8 +126,8 @@ export const FALLBACK_HOME: HomePageContent = {
       { label: "Coach Briefings", href: "/library?content_type_terms[]=whiteboards" },
     ],
     fullLibraryCta: {
-      label: "Full Library",
-      href: "/library",
+      label: "Read the archive",
+      href: SUBSTACK_ARCHIVE_URL,
     },
     featured: {
       category: "Unbreakable Keynote",
@@ -179,8 +181,8 @@ export const FALLBACK_HOME: HomePageContent = {
       },
     ],
     bottomCta: {
-      label: "Access the Full Library",
-      href: "/library",
+      label: "Sign up for the newsletter",
+      href: "#newsletter",
     },
   },
   gap: {

@@ -1,3 +1,7 @@
+import type { MembershipComparisonContent } from "@/data/home/membershipComparison";
+
+export type { MembershipComparisonContent };
+
 export type CtaLink = {
   label: string;
   href: string;
@@ -75,6 +79,7 @@ export type HomePageContent = {
     headline: HighlightedHeadline;
     subtext: string;
   };
+  membershipComparison: MembershipComparisonContent;
   affiliation: {
     eyebrow: string;
     headline: HighlightedHeadline;

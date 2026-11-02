@@ -205,3 +205,97 @@ export const libraryResource = {
     },
   },
 };
+
+/** One cell in the home Membership comparison (check / X / text / number). */
+export const membershipComparisonCell = {
+  name: "membershipComparisonCell",
+  title: "Comparison Cell",
+  type: "object" as const,
+  fields: [
+    defineField({
+      name: "kind",
+      title: "Display",
+      type: "string",
+      options: {
+        list: [
+          { title: "Check mark", value: "check" },
+          { title: "X (not included)", value: "cross" },
+          { title: "Text", value: "text" },
+          { title: "Number (e.g. courses/mo)", value: "number" },
+        ],
+        layout: "radio",
+      },
+      initialValue: "check",
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "text",
+      title: "Text",
+      type: "string",
+      description: 'Shown when Display is Text (e.g. "All included").',
+      hidden: ({ parent }) => parent?.kind !== "text",
+    }),
+    defineField({
+      name: "number",
+      title: "Number",
+      type: "number",
+      description: "Shown when Display is Number (e.g. 4 for courses per month).",
+      hidden: ({ parent }) => parent?.kind !== "number",
+    }),
+    defineField({
+      name: "suffix",
+      title: "Number Suffix",
+      type: "string",
+      description: 'Optional suffix after the number, e.g. "/mo".',
+      hidden: ({ parent }) => parent?.kind !== "number",
+    }),
+  ],
+  preview: {
+    select: { kind: "kind", text: "text", number: "number", suffix: "suffix" },
+    prepare({ kind, text, number, suffix }) {
+      if (kind === "check") return { title: "✓ Included" };
+      if (kind === "cross") return { title: "✕ Not included" };
+      if (kind === "number") return { title: `${number ?? "?"}${suffix ?? ""}` };
+      return { title: text || "Text" };
+    },
+  },
+};
+
+export const membershipComparisonRow = defineArrayMember({
+  type: "object",
+  name: "membershipComparisonRow",
+  title: "Comparison Row",
+  fields: [
+    defineField({
+      name: "feature",
+      title: "Feature",
+      type: "string",
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "pro",
+      title: "MetFix Pro",
+      type: membershipComparisonCell.name,
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "free",
+      title: "Free",
+      type: membershipComparisonCell.name,
+      validation: (Rule) => Rule.required(),
+    }),
+    defineField({
+      name: "affiliate",
+      title: "Affiliate",
+      type: membershipComparisonCell.name,
+      description:
+        "Shown for Gym Owners, Clinicians, and Organizations. Defaults to X if empty.",
+    }),
+  ],
+  preview: {
+    select: { title: "feature" },
+    prepare({ title }) {
+      return { title: title || "Feature row" };
+    },
+  },
+});

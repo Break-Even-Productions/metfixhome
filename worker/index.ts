@@ -32,6 +32,7 @@ import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostCommentsRoutes } from "./postComments";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import { handleAccountRoutes } from "./account";
+import { handleSubstackArchive } from "./substack";
 import { handleWhopCheckoutRoutes } from "./whop-checkout";
 import {
   fetchDailyFixDay,
@@ -155,6 +156,10 @@ export async function handleRequest(
       cachesDefault: cache,
       bsiBaseUrl,
     });
+  }
+  // Substack archive proxy for home resources rail
+  if (path === "/api/substack/archive") {
+    return handleSubstackArchive(request, { fetchImpl });
   }
   // Join onboarding + Whop checkout BEFORE account catch-all (which 404s unknown /api/account/*)
   if (path === "/api/account/onboarding" || path === "/api/billing/whop/checkout-session") {

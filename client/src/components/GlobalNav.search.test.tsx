@@ -1,11 +1,12 @@
 /**
  * @vitest-environment jsdom
- * T-E-NAV-9 (gates): LR-4 search link — no overlay (rev1.0.10 §18).
- * T-E-46 PARKED.
+ * Search opens a modal; submit navigates to SEARCH_HREF?query=.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SEARCH_HREF } from "@/const";
+
+const setLocation = vi.fn();
 
 vi.mock("@/hooks/useSanityContent", () => ({
   useSiteSettings: () => ({
@@ -18,9 +19,31 @@ vi.mock("@/contexts/JoinFlowContext", () => ({
   useJoinFlowOptional: () => null,
 }));
 
+vi.mock("wouter", async () => {
+  const actual = await vi.importActual<typeof import("wouter")>("wouter");
+  return {
+    ...actual,
+    useLocation: () => ["/", setLocation] as const,
+    Link: ({
+      href,
+      children,
+      ...rest
+    }: {
+      href: string;
+      children?: React.ReactNode;
+      [key: string]: unknown;
+    }) => (
+      <a href={href} {...rest}>
+        {children}
+      </a>
+    ),
+  };
+});
+
 import GlobalNav from "./GlobalNav";
 
 beforeEach(() => {
+  setLocation.mockClear();
   vi.stubGlobal(
     "matchMedia",
     (query: string) =>
@@ -35,6 +58,15 @@ beforeEach(() => {
         dispatchEvent: () => false,
       }) as MediaQueryList,
   );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
@@ -42,14 +74,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("T-E-NAV-9 LR-4 search link", () => {
-  it("nav Search is an <a> named Search pointing at SEARCH_HREF; no dialog", () => {
+describe("GlobalNav search modal", () => {
+  it("Search is an icon button that opens a dialog; submit goes to SEARCH_HREF", () => {
     render(<GlobalNav />);
-    const links = screen.getAllByRole("link", { name: "Search" });
-    expect(links.length).toBeGreaterThanOrEqual(1);
-    expect(links[0]?.getAttribute("href")).toBe(SEARCH_HREF);
-    expect(SEARCH_HREF).toBe("/library/search");
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Search" })).toBeNull();
+    const buttons = screen.getAllByRole("button", { name: "Search" });
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(buttons[0]!);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    const input = screen.getByRole("searchbox", { name: /search classes/i });
+    fireEvent.change(input, { target: { value: "ketosis" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(setLocation).toHaveBeenCalledWith(`${SEARCH_HREF}?query=ketosis`);
+    expect(SEARCH_HREF).toBe("/library/search");
   });
 });

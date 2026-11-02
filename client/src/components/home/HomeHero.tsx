@@ -1,8 +1,10 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Dumbbell, Library, Mail, UtensilsCrossed } from "lucide-react";
+import { useRef } from "react";
 import { Link } from "wouter";
 import { METFIX_MAP_URL } from "@/const";
 import type { AudienceHref, LandingCopy } from "@/data/home/audience";
+import { AsteriskFallback, useHomeHeroGlass } from "./HomeHeroGlass";
 import { easeOutExpo } from "./motion";
 import { SectionCard } from "./SectionCard";
 
@@ -49,40 +51,58 @@ const overlayLinks = [
 export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
   const photoSrc = heroPhotos[audience];
   const reduce = useReducedMotion();
+  const heroRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const markRef = useRef<HTMLDivElement>(null);
+  const glassReady = useHomeHeroGlass(heroRef, barRef, markRef);
 
   return (
     <SectionCard className="hero-viewport">
       <div className="relative flex h-full min-h-0 flex-col lg:block lg:h-auto lg:min-h-[calc(100svh-10rem)]">
-        <motion.div
-          className="relative min-h-[18rem] overflow-hidden sm:min-h-[22rem] lg:absolute lg:inset-0 lg:min-h-0"
-          initial={reduce ? false : { opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.1, ease: easeOutExpo, delay: 0.08 }}
+        {/*
+          Glass root: mark + bar must be direct children (LiquidGlass skips nested).
+          Photo is also a direct child; copy stays outside so mobile stacks cleanly.
+        */}
+        <div
+          ref={heroRef}
+          className={`relative min-h-[18rem] sm:min-h-[22rem] lg:absolute lg:inset-0 lg:min-h-0${glassReady ? " is-glass" : ""}`}
         >
-          <img
-            key={photoSrc}
-            src={photoSrc}
-            alt=""
-            width={1600}
-            height={1067}
-            fetchPriority="high"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover object-[68%_center] lg:object-[62%_center]"
-          />
-          <div
-            className="pointer-events-none absolute inset-0 hidden bg-gradient-to-r from-paper from-[26%] via-paper/80 via-[38%] to-transparent to-[54%] lg:block"
-            aria-hidden="true"
-          />
-          {!reduce ? (
-            <div className="masthead-mark" role="img" aria-label="MetFix" aria-hidden="true" />
-          ) : null}
+          <motion.div
+            className="absolute inset-0 overflow-hidden"
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1.1, ease: easeOutExpo, delay: 0.08 }}
+          >
+            <img
+              key={photoSrc}
+              src={photoSrc}
+              alt=""
+              width={1600}
+              height={1067}
+              fetchPriority="high"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover object-[68%_center] lg:object-[62%_center]"
+            />
+            <div
+              className="pointer-events-none absolute inset-0 hidden bg-gradient-to-r from-paper from-[26%] via-paper/80 via-[38%] to-transparent to-[54%] lg:block"
+              aria-hidden="true"
+            />
+          </motion.div>
 
-          <motion.nav
+          <div
+            ref={markRef}
+            className="masthead-mark"
+            data-config='{"shape":1}'
+            role="img"
+            aria-label="MetFix"
+          >
+            {glassReady ? null : <AsteriskFallback />}
+          </div>
+
+          <nav
+            ref={barRef}
             className="masthead-bar surface-ink absolute inset-x-5 bottom-10 z-20 grid grid-cols-1 divide-y divide-white/15 sm:grid-cols-3 sm:divide-x sm:divide-y-0"
             aria-label="Quick links"
-            initial={reduce ? false : { opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.35, ease: easeOutExpo }}
           >
             {overlayLinks.map((item) => {
               const Icon = item.icon;
@@ -129,8 +149,8 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
                 </Link>
               );
             })}
-          </motion.nav>
-        </motion.div>
+          </nav>
+        </div>
 
         <motion.div
           className="relative z-10 flex min-h-0 flex-1 flex-col justify-center px-6 py-8 md:px-10 md:py-10 lg:min-h-[calc(100svh-10rem)] lg:max-w-[40rem] lg:flex-none lg:px-12 lg:pt-10 lg:pb-36"
@@ -145,19 +165,19 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
               </span>
             ))}
           </h1>
-          <p className="mt-3 max-w-md text-[14px] leading-relaxed text-muted md:text-[15px]">
+          <p className="mt-3 max-w-md text-[14px] leading-relaxed text-ink/80 md:text-[15px]">
             {copy.heroSubtitle}
           </p>
 
           <motion.div
-            className="join-card relative mt-5 w-full max-w-none rounded-[1.35rem] md:mt-6"
+            className="join-card relative mt-5 rounded-[1.35rem] md:mt-6"
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, delay: 0.18, ease: easeOutExpo }}
           >
             {!reduce ? <span className="join-card-aura" aria-hidden="true" /> : null}
             {!reduce ? <span className="join-card-sheen" aria-hidden="true" /> : null}
-            <div className="relative z-[1] rounded-[1.35rem] border border-line bg-white px-5 py-4 shadow-[0_18px_40px_rgba(23,21,18,0.08)] md:px-5 md:py-5">
+            <div className="relative z-[1] rounded-[1.35rem] border border-ink/15 bg-white px-5 py-4 shadow-[0_18px_40px_rgba(23,21,18,0.12)] md:px-5 md:py-5">
               <h2 className="font-serif text-[1.45rem] leading-tight text-ink md:text-[1.55rem]">
                 Join Today — 1 Month Free
               </h2>
@@ -171,21 +191,21 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-ink/20 bg-white py-2.5 text-sm font-semibold text-ink transition-colors duration-300 ease-out hover:bg-cream"
               >
                 Continue with Google
               </button>
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-ink/20 bg-white py-2.5 text-sm font-semibold text-ink transition-colors duration-300 ease-out hover:bg-cream"
               >
                 Continue with Apple
               </button>
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-ink/20 bg-white py-2.5 text-sm font-semibold text-ink transition-colors duration-300 ease-out hover:bg-cream"
               >
                 <Mail className="h-4 w-4" strokeWidth={1.8} />
                 Continue with Email

@@ -1,7 +1,6 @@
 /**
- * GlobalNav — restyled to beta Header (P-E-NAV).
- * Audience tabs live on Home only. Search is an LR-4 link (no modal).
- * Login returnTo via shared/account/returnPath (LR-8).
+ * GlobalNav — cream primary bar with For-X audience strip above (home).
+ * Search is an icon that opens a modal; submit → /library/search?query=.
  */
 import {
   assetUrl,
@@ -10,14 +9,23 @@ import {
   scrollToHomeSection,
   SEARCH_HREF,
 } from "@/const";
+import { AudienceTabs } from "@/components/home/AudienceTabs";
+import "@/components/home/home.css";
+import { NavSearchModal } from "@/components/NavSearchModal";
 import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useSiteSettings } from "@/hooks/useSanityContent";
+import {
+  audienceFromHash,
+  audienceTheme,
+  DEFAULT_AUDIENCE,
+  type AudienceHref,
+} from "@/data/home/audience";
 import { DEFAULT_NAV_LINKS, type NavLink } from "@/lib/contentTypes";
 import { expectedSearchHrefFromApp } from "@/style-parity/searchHref";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
 import { Menu, Search, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import "./global-nav.css";
 
@@ -39,6 +47,8 @@ const DROPPED_NAV_LABELS = new Set([
   "scholarship",
   "host a seminar",
   "team seminar",
+  // Shop lives on the audience strip (home) / mobile actions.
+  "shop",
 ]);
 
 function homeHashSection(href: string): string | null {
@@ -54,7 +64,6 @@ function isAllowedNavHref(href: string): boolean {
   if (href.startsWith("/") || href.startsWith("#")) return true;
   try {
     const url = new URL(href);
-    // Host allowlist only — never allow BSI REST path segments in nav hrefs (PX1 / E-T-SEC2).
     return ALLOWED_EXTERNAL_HOSTS.some(
       (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
     );
@@ -76,6 +85,11 @@ function isActiveRoute(location: string, href: string): boolean {
   return location === path || location.startsWith(`${path}/`);
 }
 
+function readAudience(): AudienceHref {
+  if (typeof window === "undefined") return DEFAULT_AUDIENCE;
+  return audienceFromHash(window.location.hash) ?? DEFAULT_AUDIENCE;
+}
+
 /** §3a nav list — Sanity links filtered; dropped beta items removed. */
 export function navLinksFromSettings(links: readonly NavLink[] | undefined): NavLink[] {
   const source = links && links.length > 0 ? links : DEFAULT_NAV_LINKS;
@@ -90,13 +104,16 @@ export const GLOBAL_NAV_ITEMS: NavLink[] = navLinksFromSettings([...DEFAULT_NAV_
 
 export default function GlobalNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [audience, setAudience] = useState<AudienceHref>(() => readAudience());
   const [location, setLocation] = useLocation();
   const { settings } = useSiteSettings();
   const navLinks = navLinksFromSettings(settings.navLinks);
   const joinFlow = useJoinFlowOptional();
   const menuId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const searchBtnRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLElement>(null);
   const onHome = location === "/" || location === "";
 
@@ -111,7 +128,15 @@ export default function GlobalNav() {
 
   useEffect(() => {
     setMobileOpen(false);
+    setSearchOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    const onHash = () => setAudience(readAudience());
+    window.addEventListener("hashchange", onHash);
+    onHash();
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -130,6 +155,13 @@ export default function GlobalNav() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen]);
 
+  const onAudienceChange = useCallback((href: AudienceHref) => {
+    setAudience(href);
+    const next = href === DEFAULT_AUDIENCE ? "/" : href;
+    window.history.replaceState(null, "", next);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }, []);
+
   const goToHomeSection = (sectionId: string, closeMenu?: () => void) => {
     closeMenu?.();
     if (onHome) {
@@ -144,6 +176,11 @@ export default function GlobalNav() {
     setMobileOpen(false);
     if (joinFlow) joinFlow.openJoinFlow();
     else window.location.assign("/join");
+  };
+
+  const openSearch = () => {
+    setMobileOpen(false);
+    setSearchOpen(true);
   };
 
   const renderNavItem = (item: NavLink, className: string, onNavigate?: () => void) => {
@@ -200,16 +237,23 @@ export default function GlobalNav() {
       : getMetfixLoginUrl("/");
 
   return (
-    <header className="global-nav">
+    <header
+      className={`global-nav${onHome ? " global-nav--home" : ""}`}
+      data-theme={onHome ? audienceTheme[audience] : undefined}
+    >
       <a href="#main" className="global-nav__skip">
         Skip to content
       </a>
+
+      {onHome ? (
+        <AudienceTabs audience={audience} onAudienceChange={onAudienceChange} loginHref={loginHref} />
+      ) : null}
 
       <div className={`global-nav__primary${scrolled || mobileOpen ? " is-solid" : ""}`}>
         <div className="global-nav__row">
           <Link href="/" className="global-nav__logo" aria-label="MetFix">
             <img
-              src={assetUrl("/metfix-lockup.png")}
+              src={assetUrl("/MetFixLogoBlack.png")}
               alt="MetFix"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src = assetUrl("/metfix-lockup.png");
@@ -222,15 +266,22 @@ export default function GlobalNav() {
           </nav>
 
           <div className="global-nav__actions">
-            <Link href={SEARCH_HREF} className="global-nav__icon-btn" aria-label="Search">
+            <button
+              ref={searchBtnRef}
+              type="button"
+              className="global-nav__icon-btn"
+              aria-label="Search"
+              onClick={openSearch}
+            >
               <Search size={18} aria-hidden="true" />
-              <span>Search</span>
-            </Link>
-            <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
-              Login
-            </Link>
+            </button>
+            {!onHome ? (
+              <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
+                Sign in
+              </Link>
+            ) : null}
             <button type="button" className="global-nav__join" onClick={openJoin}>
-              Join
+              Join Today — 1 Month Free
             </button>
             <button
               ref={toggleRef}
@@ -267,25 +318,32 @@ export default function GlobalNav() {
                   style={{ display: "inline-flex" }}
                   onClick={() => setMobileOpen(false)}
                 >
-                  Login
+                  Sign in
                 </Link>
                 <button type="button" className="global-nav__join" onClick={openJoin}>
-                  Join
+                  Join Today — 1 Month Free
                 </button>
-                <Link
-                  href={SEARCH_HREF}
+                <button
+                  type="button"
                   className="global-nav__icon-btn"
                   aria-label="Search"
-                  onClick={() => setMobileOpen(false)}
+                  onClick={openSearch}
                 >
                   <Search size={18} aria-hidden="true" />
-                  <span>Search</span>
-                </Link>
+                </button>
               </div>
             </div>
           </nav>
         ) : null}
       </div>
+
+      <NavSearchModal
+        open={searchOpen}
+        onClose={() => {
+          setSearchOpen(false);
+          searchBtnRef.current?.focus();
+        }}
+      />
     </header>
   );
 }
