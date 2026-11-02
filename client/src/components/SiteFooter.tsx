@@ -1,7 +1,12 @@
+import { useEffect, useState } from "react";
 import CopyrightText from "@/components/CopyrightText";
 import { assetUrl, basePath } from "@/const";
+import {
+  fetchClinicDirectoryMeta,
+  METFIX_DIRECTORY_MAP_URL,
+} from "@/lib/clinicDirectory";
 
-const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";
+const METFIX_MAP_URL = METFIX_DIRECTORY_MAP_URL;
 
 const linkStyle = {
   display: "block",
@@ -34,6 +39,18 @@ function FooterLink({ href, label }: { href: string; label: string }) {
 
 /** Site footer used on the homepage and resource readers. */
 export function SiteFooter() {
+  const [showFindADoctor, setShowFindADoctor] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    void fetchClinicDirectoryMeta(ctrl.signal).then((meta) => {
+      if (meta?.find_a_doctor_enabled) {
+        setShowFindADoctor(true);
+      }
+    });
+    return () => ctrl.abort();
+  }, []);
+
   return (
     <footer
       style={{
@@ -137,6 +154,9 @@ export function SiteFooter() {
               Community
             </div>
             <FooterLink href={METFIX_MAP_URL} label="Find a Gym" />
+            {showFindADoctor ? (
+              <FooterLink href={METFIX_MAP_URL} label="Find a Doctor" />
+            ) : null}
             <FooterLink href="/become-an-affiliate" label="Become an Affiliate" />
             <FooterLink href="https://brokenscience.org/" label="Broken Science Initiative" />
             <FooterLink href="https://brokenscience.org/login/" label="Login" />
