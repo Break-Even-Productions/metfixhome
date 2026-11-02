@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installHtmlRewriterPolyfill } from "./test/htmlrewriter-polyfill";
+import { parseJsonc } from "./test/parse-jsonc";
 import { handleRequest, type Env } from "./index";
 import { assertBsiHost } from "./upstream";
 import { cacheTtlSeconds, cutDescription, nextDfxMidnight } from "../shared/daily-fix";
@@ -219,7 +220,15 @@ afterEach(() => {
 describe("W1 wrangler.jsonc", () => {
   it("matches Spec assets config", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      main: string;
+      assets: {
+        directory: string;
+        binding: string;
+        not_found_handling: string;
+        run_worker_first: string[];
+      };
+    };
     expect(json.main).toBe("worker/index.ts");
     expect(json.assets.directory).toBe("./dist/public");
     expect(json.assets.binding).toBe("ASSETS");
@@ -233,6 +242,7 @@ describe("W1 wrangler.jsonc", () => {
       "/posts/*",
       "/library",
       "/library/*",
+      "/topic/*",
     ]);
     const pkg = JSON.parse(
       readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
@@ -342,12 +352,9 @@ describe("Worker HTML / API / sitemap", () => {
     expect(fetchMock).toHaveBeenCalledTimes(0);
     const body = await res.text();
     expect(body).not.toContain('"belly"');
-    const wrangler = JSON.parse(
-      readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8").replace(
-        /\/\/.*$/gm,
-        "",
-      ),
-    );
+    const wrangler = parseJsonc(
+      readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8"),
+    ) as { assets: { run_worker_first: string[] } };
     expect(wrangler.assets.run_worker_first).not.toContain("/__dfcache/*");
   });
 
@@ -909,9 +916,10 @@ describe("Worker HTML / API / sitemap", () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/javascript; charset=utf-8");
-    expect(await res.text()).toBe(
-      'window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n',
-    );
+    const withKeyBody = await res.text();
+    expect(withKeyBody).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n');
+    // S4: production / empty STAGING_AUTH_HOSTS must not emit the staging hosts line.
+    expect(withKeyBody).not.toContain("__MFX_STAGING_AUTH_HOSTS__");
     expect(fetchMock).toHaveBeenCalledTimes(0);
 
     const empty = await handleRequest(
@@ -920,7 +928,9 @@ describe("Worker HTML / API / sitemap", () => {
       ctx,
       { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
     );
-    expect(await empty.text()).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+    const emptyBody = await empty.text();
+    expect(emptyBody).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+    expect(emptyBody).not.toContain("__MFX_STAGING_AUTH_HOSTS__");
 
     const rejected = await handleRequest(
       new Request("https://metfix.org/api/recaptcha-site-key.js"),
@@ -928,7 +938,21 @@ describe("Worker HTML / API / sitemap", () => {
       ctx,
       { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
     );
-    expect(await rejected.text()).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+    const rejectedBody = await rejected.text();
+    expect(rejectedBody).toBe('window.__MFX_RECAPTCHA_SITE_KEY__="";\n');
+    expect(rejectedBody).not.toContain("__MFX_STAGING_AUTH_HOSTS__");
+
+    const stagingHost = "staging-metfixhome.wispy-mode-982d.workers.dev";
+    const withStaging = await handleRequest(
+      new Request("https://metfix.org/api/recaptcha-site-key.js"),
+      { ...withKey, STAGING_AUTH_HOSTS: stagingHost },
+      ctx,
+      { fetchImpl: fetchMock as unknown as typeof fetch, cachesDefault: cache },
+    );
+    expect(await withStaging.text()).toBe(
+      'window.__MFX_RECAPTCHA_SITE_KEY__="6LeTestSiteKey_abc-123";\n' +
+        `window.__MFX_STAGING_AUTH_HOSTS__=${JSON.stringify([stagingHost])};\n`,
+    );
 
     const head = await handleRequest(
       new Request("https://metfix.org/api/recaptcha-site-key.js", { method: "HEAD" }),

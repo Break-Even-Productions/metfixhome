@@ -1,10 +1,6 @@
 /*
  * BecomeAnAffiliate.tsx
- * MetFix v3 - "Earned Authority" Design System
- * Philosophy: Editorial confidence. Warm intelligence.
- * Colors: #0A0A0A bg, #C9A96E gold accent, #EFEFEF text
- * Fonts: Playfair Display (display), DM Sans (body), DM Mono (labels)
- * Interactions: Gold reveals on hover, translateY lifts, arrow slides
+ * F1 style parity — cream / ink / gold tokens (Playfair + Plus Jakarta)
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -28,6 +24,7 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { useAffiliatePage } from "@/hooks/useSanityContent";
 import type { AffiliateBenefitIcon } from "@/data/fallbackAffiliate";
 import { HighlightedHeadlineText } from "@/lib/highlightedText";
+import "./become-an-affiliate.css";
 
 const AFFILIATE_HERO_IMG =
   "https://d2xsxph8kpxj0f.cloudfront.net/310519663584830808/YwiuoEuxWg23nCV8GiFWnu/mfv3-community-Pq4JjmJNpqXxFJcxmJVrVW.webp";
@@ -105,13 +102,13 @@ function BenefitCard({
   return (
     <Reveal delay={delay}>
       <div className="course-card" style={{ height: "100%" }}>
-        <div style={{ color: "#C9A96E", marginBottom: "1.25rem" }}>{icon}</div>
+        <div style={{ color: "var(--color-accent-text)", marginBottom: "1.25rem" }}>{icon}</div>
         <div
           style={{
-            fontFamily: "'DM Sans'",
+            fontFamily: "var(--font-sans)",
             fontWeight: 700,
             fontSize: "1rem",
-            color: "#fdf6f6",
+            color: "var(--color-ink)",
             marginBottom: "0.5rem",
           }}
         >
@@ -119,10 +116,10 @@ function BenefitCard({
         </div>
         <div
           style={{
-            fontFamily: "'DM Sans'",
+            fontFamily: "var(--font-sans)",
             fontSize: "0.875rem",
             lineHeight: 1.7,
-            color: "rgba(239,239,239,0.5)",
+            color: "var(--color-muted)",
             fontWeight: 300,
           }}
         >
@@ -152,16 +149,16 @@ function StepRow({
           gap: "2rem",
           paddingTop: "2rem",
           paddingBottom: "2rem",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid var(--color-line)",
           alignItems: "flex-start",
         }}
       >
         <div
           style={{
-            fontFamily: "'DM Mono'",
+            fontFamily: "var(--font-sans)",
             fontSize: "0.65rem",
             letterSpacing: "0.1em",
-            color: "#C9A96E",
+            color: "var(--color-accent-text)",
             minWidth: "2.5rem",
             paddingTop: "0.2rem",
             flexShrink: 0,
@@ -172,10 +169,10 @@ function StepRow({
         <div>
           <div
             style={{
-              fontFamily: "'DM Sans'",
+              fontFamily: "var(--font-sans)",
               fontWeight: 600,
               fontSize: "1.05rem",
-              color: "#fdf6f6",
+              color: "var(--color-ink)",
               marginBottom: "0.4rem",
             }}
           >
@@ -183,10 +180,10 @@ function StepRow({
           </div>
           <div
             style={{
-              fontFamily: "'DM Sans'",
+              fontFamily: "var(--font-sans)",
               fontSize: "0.875rem",
               lineHeight: 1.7,
-              color: "rgba(239,239,239,0.45)",
+              color: "var(--color-muted)",
               fontWeight: 300,
             }}
           >
@@ -213,17 +210,10 @@ export default function BecomeAnAffiliate() {
   }, []);
 
   return (
-    <div
-      style={{
-        background: "#0A0A0A",
-        color: "#fdf6f6",
-        minHeight: "100vh",
-        overflowX: "hidden",
-        maxWidth: "100vw",
-      }}
-    >
+    <div className="affiliate-page page-stack">
       {/* ═══ HERO ══════════════════════════════════════════════════ */}
       <section
+        className="section-card section-card--hero"
         style={{
           position: "relative",
           minHeight: "70vh",
@@ -248,13 +238,13 @@ export default function BecomeAnAffiliate() {
               position: "absolute",
               inset: 0,
               background:
-                "linear-gradient(105deg, rgba(10,10,10,0.97) 0%, rgba(10,10,10,0.88) 50%, rgba(10,10,10,0.4) 100%)",
+                "linear-gradient(105deg, rgba(23, 21, 18,0.97) 0%, rgba(23, 21, 18,0.88) 50%, rgba(23, 21, 18,0.4) 100%)",
             }}
           />
         </div>
         <div
           className="container affiliate-hero-content"
-          style={{ position: "relative", zIndex: 1, paddingTop: "6rem", paddingBottom: "4rem" }}
+          style={{ position: "relative", zIndex: 1, paddingTop: "3rem", paddingBottom: "3.5rem" }}
         >
           <div style={{ maxWidth: "700px" }}>
             <Reveal>
@@ -271,7 +261,7 @@ export default function BecomeAnAffiliate() {
                 style={{
                   fontSize: "clamp(1rem, 1.5vw, 1.15rem)",
                   lineHeight: 1.8,
-                  color: "rgba(239,239,239,0.65)",
+                  color: "color-mix(in srgb, var(--color-cream) 72%, transparent)",
                   maxWidth: "560px",
                   marginBottom: "3rem",
                   fontWeight: 300,
@@ -283,7 +273,7 @@ export default function BecomeAnAffiliate() {
                 <CmsLink cta={{ ...page.hero.primaryCta, href: applyUrl }} className="btn-primary">
                   {page.hero.primaryCta.label} <ArrowRight size={15} />
                 </CmsLink>
-                <CmsLink cta={page.hero.secondaryCta} className="btn-outline">
+                <CmsLink cta={page.hero.secondaryCta} className="btn-outline btn-outline--on-ink">
                   {page.hero.secondaryCta.label}
                 </CmsLink>
               </div>
@@ -293,20 +283,20 @@ export default function BecomeAnAffiliate() {
                 <div key={s.label}>
                   <div
                     style={{
-                      fontFamily: "'Playfair Display'",
+                      fontFamily: "var(--font-serif)",
                       fontWeight: 700,
                       fontSize: "1.4rem",
-                      color: "#fdf6f6",
+                      color: "var(--color-cream)",
                     }}
                   >
                     {s.value}
                   </div>
                   <div
                     style={{
-                      fontFamily: "'DM Mono'",
+                      fontFamily: "var(--font-sans)",
                       fontSize: "0.6rem",
                       letterSpacing: "0.12em",
-                      color: "rgba(239,239,239,0.35)",
+                      color: "color-mix(in srgb, var(--color-cream) 55%, transparent)",
                       textTransform: "uppercase",
                       marginTop: "0.2rem",
                     }}
@@ -321,7 +311,7 @@ export default function BecomeAnAffiliate() {
       </section>
 
       {/* ═══ WHAT IT MEANS ══════════════════════════════════════════ */}
-      <section style={{ background: "#0D0D0D", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-paper)", borderTop: "1px solid var(--color-line)" }}>
         <div className="container section-pad">
           <div
             style={{
@@ -348,7 +338,7 @@ export default function BecomeAnAffiliate() {
                     style={{
                       fontSize: "1rem",
                       lineHeight: 1.8,
-                      color: i === 0 ? "rgba(239,239,239,0.6)" : "rgba(239,239,239,0.45)",
+                      color: i === 0 ? "var(--color-muted)" : "var(--color-muted)",
                       marginBottom: i === 0 ? "1.5rem" : 0,
                       fontWeight: 300,
                     }}
@@ -364,7 +354,7 @@ export default function BecomeAnAffiliate() {
                   style={{
                     marginBottom: "1.75rem",
                     paddingBottom: "1.75rem",
-                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                    borderBottom: "1px solid var(--color-line)",
                   }}
                 >
                   <div
@@ -377,10 +367,10 @@ export default function BecomeAnAffiliate() {
                   >
                     <span
                       style={{
-                        fontFamily: "'Playfair Display'",
+                        fontFamily: "var(--font-serif)",
                         fontWeight: 700,
                         fontSize: "2.5rem",
-                        color: "#C9A96E",
+                        color: "var(--color-accent-text)",
                         lineHeight: 1,
                       }}
                     >
@@ -389,10 +379,10 @@ export default function BecomeAnAffiliate() {
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
                       <span
                         style={{
-                          fontFamily: "'DM Mono'",
+                          fontFamily: "var(--font-sans)",
                           fontSize: "0.6rem",
                           letterSpacing: "0.12em",
-                          color: "rgba(239,239,239,0.5)",
+                          color: "var(--color-muted)",
                           textTransform: "uppercase",
                         }}
                       >
@@ -400,10 +390,10 @@ export default function BecomeAnAffiliate() {
                       </span>
                       <span
                         style={{
-                          fontFamily: "'DM Mono'",
+                          fontFamily: "var(--font-sans)",
                           fontSize: "0.6rem",
                           letterSpacing: "0.12em",
-                          color: "rgba(239,239,239,0.3)",
+                          color: "var(--color-muted)",
                           textTransform: "uppercase",
                         }}
                       >
@@ -413,10 +403,10 @@ export default function BecomeAnAffiliate() {
                   </div>
                   <p
                     style={{
-                      fontFamily: "'DM Sans'",
+                      fontFamily: "var(--font-sans)",
                       fontSize: "0.82rem",
                       lineHeight: 1.65,
-                      color: "rgba(239,239,239,0.4)",
+                      color: "var(--color-muted)",
                       fontWeight: 300,
                     }}
                   >
@@ -425,10 +415,10 @@ export default function BecomeAnAffiliate() {
                 </div>
                 <div
                   style={{
-                    fontFamily: "'DM Mono'",
+                    fontFamily: "var(--font-sans)",
                     fontSize: "0.58rem",
                     letterSpacing: "0.12em",
-                    color: "#C9A96E",
+                    color: "var(--color-accent-text)",
                     textTransform: "uppercase",
                     marginBottom: "1.25rem",
                   }}
@@ -444,18 +434,18 @@ export default function BecomeAnAffiliate() {
                         alignItems: "flex-start",
                         gap: "1rem",
                         padding: "1rem 1.5rem",
-                        background: i % 2 === 0 ? "#111111" : "#0D0D0D",
-                        borderLeft: "2px solid #C9A96E",
+                        background: i % 2 === 0 ? "var(--color-cream)" : "var(--color-paper)",
+                        borderLeft: "2px solid var(--color-accent)",
                       }}
                     >
-                      <div style={{ color: "#C9A96E", flexShrink: 0, marginTop: "0.1rem" }}>
+                      <div style={{ color: "var(--color-accent-text)", flexShrink: 0, marginTop: "0.1rem" }}>
                         <Check size={13} />
                       </div>
                       <span
                         style={{
-                          fontFamily: "'DM Sans'",
+                          fontFamily: "var(--font-sans)",
                           fontSize: "0.875rem",
-                          color: "rgba(239,239,239,0.8)",
+                          color: "var(--color-ink)",
                           lineHeight: 1.5,
                         }}
                       >
@@ -471,9 +461,9 @@ export default function BecomeAnAffiliate() {
       </section>
 
       {/* ═══ BENEFITS ═══════════════════════════════════════════════ */}
-      <section
+      <section className="section-card section-card--paper"
         id="what-you-get"
-        style={{ background: "#0A0A0A", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+        style={{ background: "var(--color-cream)", borderTop: "1px solid var(--color-line)" }}
       >
         <div className="container section-pad">
           <Reveal>
@@ -494,7 +484,7 @@ export default function BecomeAnAffiliate() {
               style={{
                 fontSize: "1rem",
                 lineHeight: 1.75,
-                color: "rgba(239,239,239,0.5)",
+                color: "var(--color-muted)",
                 maxWidth: "560px",
                 marginBottom: "3.5rem",
                 fontWeight: 300,
@@ -508,7 +498,7 @@ export default function BecomeAnAffiliate() {
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
               gap: "1px",
-              background: "rgba(255,255,255,0.06)",
+              background: "var(--color-line)",
             }}
           >
             {page.benefits.items.map((item, i) => (
@@ -525,7 +515,7 @@ export default function BecomeAnAffiliate() {
       </section>
 
       {/* ═══ REQUIREMENTS ═══════════════════════════════════════════ */}
-      <section style={{ background: "#0D0D0D", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-paper)", borderTop: "1px solid var(--color-line)" }}>
         <div className="container section-pad">
           <div
             style={{
@@ -552,7 +542,7 @@ export default function BecomeAnAffiliate() {
                     style={{
                       fontSize: i === 0 ? "1rem" : "0.9rem",
                       lineHeight: 1.8,
-                      color: i === 0 ? "rgba(239,239,239,0.6)" : "rgba(239,239,239,0.4)",
+                      color: i === 0 ? "var(--color-muted)" : "var(--color-muted)",
                       marginBottom: i === 0 ? "1.5rem" : 0,
                       fontWeight: 300,
                     }}
@@ -576,7 +566,7 @@ export default function BecomeAnAffiliate() {
             </Reveal>
             <Reveal direction="right">
               <div>
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ borderTop: "1px solid var(--color-line)" }}>
                   {page.whoQualifies.requirements.map((req, i) => (
                     <div
                       key={`${req.title}-${i}`}
@@ -584,7 +574,7 @@ export default function BecomeAnAffiliate() {
                         display: "flex",
                         gap: "1.5rem",
                         padding: "1.75rem 0",
-                        borderBottom: "1px solid rgba(255,255,255,0.06)",
+                        borderBottom: "1px solid var(--color-line)",
                         alignItems: "flex-start",
                       }}
                     >
@@ -593,8 +583,8 @@ export default function BecomeAnAffiliate() {
                           width: "1.5rem",
                           height: "1.5rem",
                           borderRadius: "50%",
-                          background: "rgba(201,169,110,0.12)",
-                          border: "1px solid rgba(201,169,110,0.3)",
+                          background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+                          border: "1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -602,15 +592,15 @@ export default function BecomeAnAffiliate() {
                           marginTop: "0.1rem",
                         }}
                       >
-                        <Check size={10} style={{ color: "#C9A96E" }} />
+                        <Check size={10} style={{ color: "var(--color-accent-text)" }} />
                       </div>
                       <div>
                         <div
                           style={{
-                            fontFamily: "'DM Sans'",
+                            fontFamily: "var(--font-sans)",
                             fontWeight: 600,
                             fontSize: "0.95rem",
-                            color: "#fdf6f6",
+                            color: "var(--color-ink)",
                             marginBottom: "0.35rem",
                           }}
                         >
@@ -618,10 +608,10 @@ export default function BecomeAnAffiliate() {
                         </div>
                         <div
                           style={{
-                            fontFamily: "'DM Sans'",
+                            fontFamily: "var(--font-sans)",
                             fontSize: "0.85rem",
                             lineHeight: 1.7,
-                            color: "rgba(239,239,239,0.45)",
+                            color: "var(--color-muted)",
                             fontWeight: 300,
                           }}
                         >
@@ -638,7 +628,7 @@ export default function BecomeAnAffiliate() {
       </section>
 
       {/* ═══ HOW IT WORKS ═══════════════════════════════════════════ */}
-      <section style={{ background: "#0A0A0A", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-cream)", borderTop: "1px solid var(--color-line)" }}>
         <div className="container section-pad">
           <div
             style={{
@@ -663,7 +653,7 @@ export default function BecomeAnAffiliate() {
                   style={{
                     fontSize: "1rem",
                     lineHeight: 1.75,
-                    color: "rgba(239,239,239,0.5)",
+                    color: "var(--color-muted)",
                     fontWeight: 300,
                   }}
                 >
@@ -672,7 +662,7 @@ export default function BecomeAnAffiliate() {
               </div>
             </Reveal>
             <div>
-              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ borderTop: "1px solid var(--color-line)" }}>
                 {page.process.steps.map((step, i) => (
                   <StepRow
                     key={`${step.title}-${i}`}
@@ -689,16 +679,16 @@ export default function BecomeAnAffiliate() {
       </section>
 
       {/* ═══ TESTIMONIAL ════════════════════════════════════════════ */}
-      <section style={{ background: "#0D0D0D", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="section-card section-card--paper" style={{ background: "var(--color-paper)", borderTop: "1px solid var(--color-line)" }}>
         <div className="container section-pad">
           <Reveal>
             <div style={{ maxWidth: "800px", margin: "0 auto", textAlign: "center" }}>
               <div
                 style={{
-                  fontFamily: "'DM Mono'",
+                  fontFamily: "var(--font-sans)",
                   fontSize: "0.6rem",
                   letterSpacing: "0.2em",
-                  color: "#C9A96E",
+                  color: "var(--color-accent-text)",
                   textTransform: "uppercase",
                   marginBottom: "2rem",
                 }}
@@ -710,10 +700,10 @@ export default function BecomeAnAffiliate() {
               </blockquote>
               <div
                 style={{
-                  fontFamily: "'DM Mono'",
+                  fontFamily: "var(--font-sans)",
                   fontSize: "0.6rem",
                   letterSpacing: "0.1em",
-                  color: "rgba(239,239,239,0.3)",
+                  color: "var(--color-muted)",
                   textTransform: "uppercase",
                 }}
               >
@@ -725,9 +715,9 @@ export default function BecomeAnAffiliate() {
       </section>
 
       {/* ═══ APPLICATION ════════════════════════════════════════════ */}
-      <section
+      <section className="section-card section-card--paper"
         id="affiliate-form"
-        style={{ background: "#080808", borderTop: "1px solid rgba(255,255,255,0.06)" }}
+        style={{ background: "var(--color-cream-2)", borderTop: "1px solid var(--color-line)" }}
       >
         <div className="container" style={{ paddingTop: "6rem", paddingBottom: "6rem" }}>
           <div style={{ marginBottom: "3rem" }}>
@@ -744,7 +734,7 @@ export default function BecomeAnAffiliate() {
               style={{
                 fontSize: "0.95rem",
                 lineHeight: 1.75,
-                color: "rgba(239,239,239,0.45)",
+                color: "var(--color-muted)",
                 maxWidth: "560px",
                 fontWeight: 300,
               }}
@@ -764,18 +754,11 @@ export default function BecomeAnAffiliate() {
         </div>
       </section>
 
-      <style>{`
-        @media (max-width: 767px) {
-          .affiliate-hero-content { padding-top: 5rem !important; padding-bottom: 2rem !important; }
-          .affiliate-footer-row { flex-direction: column !important; gap: 1.5rem !important; }
-        }
-      `}</style>
-
       {/* ═══ FOOTER ═══════════════════════════════════════════ */}
       <footer
         style={{
-          background: "#080808",
-          borderTop: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--color-cream-2)",
+          borderTop: "1px solid var(--color-line)",
           paddingTop: "3rem",
           paddingBottom: "2.5rem",
         }}
@@ -795,11 +778,11 @@ export default function BecomeAnAffiliate() {
             <div>
               <div
                 style={{
-                  fontFamily: "'DM Sans'",
+                  fontFamily: "var(--font-sans)",
                   fontWeight: 800,
                   fontSize: "1rem",
                   letterSpacing: "0.15em",
-                  color: "#fdf6f6",
+                  color: "var(--color-ink)",
                   textTransform: "uppercase",
                 }}
               >
@@ -807,10 +790,10 @@ export default function BecomeAnAffiliate() {
               </div>
               <div
                 style={{
-                  fontFamily: "'DM Mono'",
+                  fontFamily: "var(--font-sans)",
                   fontSize: "0.5rem",
                   letterSpacing: "0.18em",
-                  color: "#C9A96E",
+                  color: "var(--color-accent-text)",
                   textTransform: "uppercase",
                 }}
               >
@@ -821,9 +804,9 @@ export default function BecomeAnAffiliate() {
               <Link
                 href="/"
                 style={{
-                  fontFamily: "'DM Sans'",
+                  fontFamily: "var(--font-sans)",
                   fontSize: "0.8rem",
-                  color: "rgba(239,239,239,0.4)",
+                  color: "var(--color-muted)",
                   textDecoration: "none",
                 }}
               >
@@ -834,9 +817,9 @@ export default function BecomeAnAffiliate() {
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  fontFamily: "'DM Sans'",
+                  fontFamily: "var(--font-sans)",
                   fontSize: "0.8rem",
-                  color: "rgba(239,239,239,0.4)",
+                  color: "var(--color-muted)",
                   textDecoration: "none",
                 }}
               >
@@ -850,21 +833,9 @@ export default function BecomeAnAffiliate() {
 
       {/* Sticky mobile CTA bar */}
       <div
+        className="aff-sticky-cta"
         style={{
           display: isDesktop ? "none" : "flex",
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 200,
-          background: "rgba(10,10,10,0.97)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-          borderTop: "1px solid rgba(255,255,255,0.08)",
-          padding: "0.875rem 1.5rem",
-          paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom))",
-          gap: "0.75rem",
-          alignItems: "center",
         }}
       >
         <a
@@ -877,23 +848,7 @@ export default function BecomeAnAffiliate() {
           {page.application.stickyButtonLabel || page.hero.primaryCta.label}{" "}
           <ArrowRight size={14} />
         </a>
-        <Link
-          href="/"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "0.625rem 1rem",
-            border: "1px solid rgba(255,255,255,0.15)",
-            color: "rgba(239,239,239,0.7)",
-            textDecoration: "none",
-            fontFamily: "'DM Mono'",
-            fontSize: "0.65rem",
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <Link href="/" className="aff-sticky-home">
           Home
         </Link>
       </div>

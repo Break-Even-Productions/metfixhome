@@ -19,19 +19,51 @@ import {
   methodNotAllowed,
 } from "./responses";
 import { isLocalAuthEnabled } from "../dev-auth";
-import { isAuthHost } from "./host";
+import {
+  AUTH_HOST,
+  isAuthHost,
+  isStagingAuthHost,
+  normalizeHostname,
+} from "./host";
 
 const PRE_MAX_AGE = 1800;
-const ORIGIN = "https://metfix.org";
 
-/** Production Origin only; with LOCAL_AUTH, also http(s)://localhost|127.0.0.1. */
+/** Browser Origins omit the port for defaults; reject any explicit port. */
+function isDefaultOriginPort(port: string): boolean {
+  return port === "";
+}
+
+/**
+ * Production: https://metfix.org (case / one trailing-dot on hostname OK).
+ * Staging: exact https://{STAGING_AUTH_HOSTS} (same trailing-dot rules).
+ * LOCAL_AUTH: also http(s)://localhost|127.0.0.1 (any port).
+ * Raw Origin must equal scheme://host (rejects trailing slash / userinfo / path).
+ * Hostname is normalized once for allowlist match.
+ */
 export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
-  if (origin === ORIGIN) return true;
-  if (!isLocalAuthEnabled(env) || !origin) return false;
+  if (!origin) return false;
   try {
     const u = new URL(origin);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    return u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    // Exact Origin form: protocol//host (no trailing slash, userinfo, path, query, hash).
+    // Case-insensitive so https://MetFix.ORG still matches URL-lowercased host.
+    if (origin.toLowerCase() !== `${u.protocol}//${u.host}`) return false;
+    // Normalize once (trailing-dot + case) for metfix.org and preview alike.
+    const bare = normalizeHostname(u.hostname);
+    if (!bare) return false;
+
+    if (
+      u.protocol === "https:" &&
+      isDefaultOriginPort(u.port) &&
+      (bare === AUTH_HOST || isStagingAuthHost(bare, env))
+    ) {
+      return true;
+    }
+
+    if (isLocalAuthEnabled(env)) {
+      return bare === "localhost" || bare === "127.0.0.1";
+    }
+    return false;
   } catch {
     return false;
   }

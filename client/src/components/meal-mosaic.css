@@ -1,0 +1,103 @@
+/* F1 style parity — MealMosaic */
+
+.meal-mosaic {
+  --color-cream: #f3eee4;
+  --color-cream-2: #e9e1d2;
+  --color-paper: #faf7f1;
+  --color-ink: #171512;
+  --color-accent: #c4a46c;
+  --color-accent-text: #775f37;
+  --color-muted: #686158;
+  --color-line: rgba(23, 21, 18, 0.1);
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+
+  background: var(--color-cream-2);
+  border: 0;
+  overflow: hidden;
+  position: relative;
+  border-radius: 1.75rem;
+  box-shadow: none;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+@media (min-width: 768px) {
+  .meal-mosaic {
+    border-radius: 2.5rem;
+  }
+}
+
+.meal-mosaic .display-serif,
+.meal-mosaic .display-serif-italic {
+  font-family: var(--font-serif);
+  color: var(--color-ink);
+}
+
+.meal-mosaic .text-gold {
+  color: var(--color-accent-text);
+}
+
+.meal-mosaic .label-mono {
+  font-family: var(--font-sans);
+  color: var(--color-accent-text);
+}
+
+.meal-mosaic .rule::before {
+  background: var(--color-accent);
+}
+
+.meal-mosaic .btn-primary {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.meal-mosaic .btn-primary:hover {
+  background: #b08d52;
+  color: var(--color-ink);
+}
+
+.meal-mosaic .mm-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 70% 50% at 70% 50%,
+    color-mix(in srgb, var(--color-accent) 10%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.meal-mosaic .mm-body {
+  color: var(--color-muted);
+}
+
+.meal-mosaic .mm-label {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: var(--color-accent-text);
+  text-transform: uppercase;
+  margin-right: 0.75rem;
+}
+
+.meal-mosaic .mm-desc {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.meal-mosaic .mm-rule {
+  width: 2px;
+  height: 2rem;
+  background: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.meal-mosaic .mm-caption {
+  font-family: var(--font-sans);
+  font-size: 0.52rem;
+  letter-spacing: 0.2em;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}

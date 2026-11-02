@@ -76,6 +76,26 @@ export async function fetchLibraryPopular(
   return json;
 }
 
+/** Glassman topic ∪ category, plus Book Library when that content type exists. */
+export async function fetchLibraryArchive(
+  params: { limit?: number; offset?: number } = {},
+  signal?: AbortSignal,
+): Promise<LibrarySearchBody> {
+  const sp = new URLSearchParams();
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.offset != null) sp.set("offset", String(params.offset));
+  const qs = sp.toString();
+  const res = await fetch(`/api/library/archive${qs ? `?${qs}` : ""}`, {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    signal,
+  });
+  if (!res.ok) throw new Error(`archive_${res.status}`);
+  const json: unknown = await res.json();
+  if (!isLibrarySearchBody(json)) throw new Error("archive_shape");
+  return json;
+}
+
 export async function fetchLibraryFilters(
   signal?: AbortSignal,
 ): Promise<LibraryFiltersBody> {

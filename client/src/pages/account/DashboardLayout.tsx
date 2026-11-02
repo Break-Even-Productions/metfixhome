@@ -3,27 +3,45 @@ import { Link, useLocation } from "wouter";
 import { basePath, getMetfixLoginUrl } from "@/const";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { loadMe } from "@/lib/session";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 import {
   clearAccountCache,
   deriveMembershipStatus,
   loadOverview,
   loadSubscriptions,
-  sanitizeReturnPath,
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
 import "./account.css";
 
 export const ACCOUNT_NAV = [
-  { href: "/account", label: "Overview" },
-  { href: "/account/billing", label: "Billing & Subscriptions" },
-  { href: "/account/profile", label: "Profile" },
-  { href: "/account/courses", label: "My Courses & Certificates" },
-  { href: "/account/favorites", label: "Saved / Favorites" },
-  { href: "/account/referrals", label: "Referrals & Gifts" },
-  { href: "/account/notifications", label: "Notifications" },
-  { href: "/account/privacy", label: "Privacy & Security" },
+  { href: "/account", label: "Overview", always: true },
+  { href: "/account/billing", label: "Billing & Subscriptions", always: true },
+  { href: "/account/profile", label: "Profile", always: true },
+  { href: "/account/courses", label: "My Courses & Certificates", always: true },
+  { href: "/account/favorites", label: "Saved / Favorites", always: true },
+  { href: "/account/organization", label: "Organization", always: false, org: true },
+  { href: "/account/referrals", label: "Referrals & Gifts", always: false, referrals: true },
+  { href: "/account/notifications", label: "Notifications", always: true },
+  { href: "/account/privacy", label: "Privacy & Security", always: true },
 ] as const;
+
+export function accountNavVisible(
+  item: (typeof ACCOUNT_NAV)[number],
+  overview: AccountOverview | null,
+  subs: AccountSubscriptions | null,
+): boolean {
+  if (item.always) return true;
+  const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
+  const affiliate = overview?.badges.affiliate === true;
+  const orgOwner = tier === "organization_owner";
+  const tabs = Array.isArray(overview?.tabs) ? overview!.tabs.map(String) : [];
+  if ("org" in item && item.org) return orgOwner || affiliate;
+  if ("referrals" in item && item.referrals) {
+    return orgOwner || affiliate || tabs.includes("referrals");
+  }
+  return true;
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -98,6 +116,10 @@ export default function DashboardLayout({ title, description, children }: Props)
   }, [overview]);
 
   const displayName = overview?.display_name ?? "Member";
+  const navItems = useMemo(
+    () => ACCOUNT_NAV.filter((item) => accountNavVisible(item, overview, subs)),
+    [overview, subs],
+  );
 
   return (
     <div className="account-shell">
@@ -129,7 +151,7 @@ export default function DashboardLayout({ title, description, children }: Props)
             </div>
           </div>
           <nav className="account-nav">
-            {ACCOUNT_NAV.map((item) => {
+            {navItems.map((item) => {
               const current =
                 item.href === "/account"
                   ? location === "/account" || location === "/account/"
@@ -149,7 +171,7 @@ export default function DashboardLayout({ title, description, children }: Props)
 
         <div>
           <nav className="account-mobile-nav" aria-label="Account tabs">
-            {ACCOUNT_NAV.map((item) => {
+            {navItems.map((item) => {
               const current =
                 item.href === "/account"
                   ? location === "/account" || location === "/account/"

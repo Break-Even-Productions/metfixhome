@@ -66,6 +66,20 @@ export function isLockedCard(r: LibraryResource): boolean {
   return r.access.access === "none";
 }
 
+/**
+ * Public BSI page HTML for legacy membership shortcodes
+ * (`bsi-society-member`, `med-member-only`, `metfix-only`, …).
+ * The resource search API still reports `access: "full"` for these pages.
+ */
+export function htmlShowsMembershipGate(html: string): boolean {
+  const hay = html.toLowerCase();
+  return (
+    hay.includes("exclusive to members") ||
+    hay.includes("exclusive to metfix affiliates") ||
+    hay.includes("not currently logged into a profile with access")
+  );
+}
+
 /** Open / free rail: full access and not exclusive. */
 export function isFreeOpen(r: LibraryResource): boolean {
   return r.access.access === "full" && !r.access.is_exclusive && !r.access.has_content_access;

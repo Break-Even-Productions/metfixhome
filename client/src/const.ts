@@ -22,11 +22,14 @@ const KNOWN_ROUTES = new Set([
   "affiliate-seminars",
   "the-daily-fix",
   "posts",
+  "library",
+  "topic",
   "login",
+  "join",
   "404",
   "account",
   "members",
-  "library",
+  "checkout",
 ]);
 
 /** Wouter base path from Vite `base` (Cloudflare Workers; `base: "/"`). */

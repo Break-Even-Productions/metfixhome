@@ -1,0 +1,252 @@
+/* F1 style parity — Affiliate Seminars (cream / ink / gold) */
+
+.seminars-page {
+  --color-cream: #f3eee4;
+  --color-cream-2: #e9e1d2;
+  --color-paper: #faf7f1;
+  --color-ink: #171512;
+  --color-ink-2: #221f1b;
+  --color-ink-3: #2c2925;
+  --color-accent: #c4a46c;
+  --color-accent-2: #b08d52;
+  --color-accent-3: #d4bc8a;
+  --color-accent-text: #775f37;
+  --color-muted: #686158;
+  --color-line: rgba(23, 21, 18, 0.1);
+  --color-danger-text: #9a4a2e;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-font-smoothing: antialiased;
+}
+
+.seminars-page.page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 7.15rem 0.5rem 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .seminars-page.page-stack {
+    gap: 0.75rem;
+    padding: 7.15rem 0.75rem 0.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .seminars-page.page-stack {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
+  }
+}
+
+.seminars-page .section-card {
+  overflow: hidden;
+  border-radius: 1.75rem;
+  background: var(--color-paper);
+  box-shadow: none;
+}
+
+.seminars-page .section-card--cream {
+  background: var(--color-cream);
+}
+
+.seminars-page .section-card--cream-2 {
+  background: var(--color-cream-2);
+}
+
+.seminars-page .section-card--paper {
+  background: var(--color-paper);
+}
+
+@media (min-width: 768px) {
+  .seminars-page .section-card {
+    border-radius: 2.5rem;
+  }
+}
+
+.seminars-page .display-serif,
+.seminars-page .display-serif-italic {
+  font-family: var(--font-serif);
+  color: var(--color-ink);
+}
+
+.seminars-page .label-mono {
+  font-family: var(--font-sans);
+  color: var(--color-accent-text);
+}
+
+.seminars-page .text-gold {
+  color: var(--color-accent-text);
+}
+
+.seminars-page .rule::before {
+  background: var(--color-accent);
+}
+
+.seminars-page .btn-primary {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.seminars-page .btn-primary:hover {
+  background: var(--color-accent-2);
+  color: var(--color-ink);
+}
+
+.seminars-page .btn-outline {
+  border-color: var(--color-line);
+  color: var(--color-ink);
+}
+
+.seminars-page .btn-outline:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.seminars-page .sem-muted {
+  color: var(--color-muted);
+}
+
+.seminars-page .sem-accent-text {
+  color: var(--color-accent-text);
+}
+
+.seminars-page .sem-serif {
+  font-family: var(--font-serif);
+}
+
+.seminars-page .sem-sans {
+  font-family: var(--font-sans);
+}
+
+.seminars-page .sem-panel {
+  border: 1px solid var(--color-line);
+  background: var(--color-cream);
+  box-shadow: none;
+}
+
+.seminars-page .sem-filter-btn {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.5rem 1.25rem;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid var(--color-line);
+  color: var(--color-muted);
+}
+
+.seminars-page .sem-filter-btn.is-active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  /* ink (not accent-text) — accent-text on cream-2 mix fails 4.5:1 (T-F-32) */
+  color: var(--color-ink);
+}
+
+.seminars-page .seminar-row {
+  background: var(--color-paper);
+  transition: background 0.2s;
+}
+
+.seminars-page .seminar-row:hover {
+  background: var(--color-cream-2);
+}
+
+.seminars-page .sem-sticky-cta {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  background: color-mix(in srgb, var(--color-paper) 94%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--color-line);
+  padding: 0.875rem 1.5rem;
+  padding-bottom: calc(0.875rem + env(safe-area-inset-bottom));
+}
+
+.seminars-page .sem-sticky-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1rem;
+  border: 1px solid var(--color-line);
+  color: var(--color-ink);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .seminars-page .affiliate-seminars-hero {
+    padding-top: 2rem;
+    padding-bottom: 2.5rem;
+  }
+  .seminars-page .video-testimonials-grid {
+    grid-template-columns: 1fr;
+  }
+  .seminars-page .expect-row {
+    grid-template-columns: 2.5rem 1fr;
+    gap: 1rem;
+    padding: 1.25rem 0;
+  }
+  .seminars-page .expect-row .expect-desc {
+    display: none;
+  }
+  .seminars-page .seminar-row {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 0.75rem 1rem;
+    padding: 1.25rem 1rem;
+  }
+  .seminars-page .seminar-date {
+    grid-column: 1 / 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .seminars-page .seminar-location {
+    grid-column: 1 / 2;
+    grid-row: 2;
+  }
+  .seminars-page .seminar-cta {
+    grid-column: 2 / 3;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+  .seminars-page .seminar-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .seminars-page .featured-caption {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .seminars-page .seminar-cta {
+    font-size: 0.7rem;
+    padding: 0.5rem 0.875rem;
+  }
+  .seminars-page .expect-row {
+    padding: 1rem 0;
+  }
+}

@@ -203,6 +203,7 @@ describe("AccountBilling (P-DB-4, P-DB-5, P-DB-6)", () => {
       expect(JSON.parse(String((posts[0]![1] as RequestInit).body))).toEqual({
         sub_ref: "ref_med_1",
         target_tier: "metfix_pro",
+        return_path: "/checkout/complete",
       });
     });
   });
@@ -245,12 +246,49 @@ describe("AccountBilling (P-DB-4, P-DB-5, P-DB-6)", () => {
     );
     await waitFor(() => expect(screen.getByText("$12.34")).toBeTruthy());
     expect(screen.getByText("MetFix Pro")).toBeTruthy();
-    expect(screen.getByText("whop")).toBeTruthy();
+    expect(screen.getAllByText("whop").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Receipt/i })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
     await waitFor(() => expect(screen.getByText("Earlier charge")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /^Prev$/i }));
     await waitFor(() => expect(screen.getByText("$12.34")).toBeTruthy());
+  });
+
+  it("active Whop subscription shows Manage in billing portal", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+      if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+      if (url.includes("/api/account/subscriptions") && method === "GET") {
+        return jsonResponse(SUBS_ACTIVE);
+      }
+      if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+      if (url.includes("/api/account/payments")) return jsonResponse(PAYMENTS_PAGE1);
+      if (url.includes("/portal-link") && method === "POST") {
+        return jsonResponse({ url: "https://whop.com/orders/mber_test/manage" });
+      }
+      return jsonResponse({ error: "not_found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(
+      <Router>
+        <AccountBilling />
+      </Router>,
+    );
+    const manage = await screen.findAllByRole("button", { name: /Manage in billing portal/i });
+    expect(manage.length).toBeGreaterThan(0);
+    fireEvent.click(manage[0]!);
+    await waitFor(() => {
+      const posts = fetchImpl.mock.calls.filter(
+        (c) => String(c[0]).includes("/portal-link") && (c[1] as RequestInit)?.method === "POST",
+      );
+      expect(posts.length).toBeGreaterThan(0);
+      expect(JSON.parse(String((posts[0]![1] as RequestInit).body))).toMatchObject({
+        intent: "manage",
+        sub_ref: "ref_pro_1",
+      });
+    });
   });
 
   it("canonical tier labels only use the 4 tiers", async () => {

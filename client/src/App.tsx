@@ -6,12 +6,14 @@ import { Route, Router, Switch } from "wouter";
 import { getRouterBase } from "@/const";
 import ErrorBoundary from "./components/ErrorBoundary";
 import GlobalNav from "./components/GlobalNav";
+import { JoinFlowProvider } from "./contexts/JoinFlowContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import BecomeAnAffiliate from "./pages/BecomeAnAffiliate";
 import Classes from "./pages/Classes";
 import AffiliateSeminars from "./pages/AffiliateSeminars";
 import Login from "./pages/Login";
+import JoinPage from "./pages/join/JoinPage";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
 import PostsPage from "./pages/posts/PostsPage";
 import LibraryPage from "./pages/library/LibraryPage";
@@ -23,12 +25,16 @@ import AccountFavorites from "./pages/account/AccountFavorites";
 import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
+import AccountOrganization from "./pages/account/AccountOrganization";
+import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
 const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
+const LibraryTaxonomyPage = lazy(() => import("./pages/library/LibraryTaxonomyPage"));
+const SearchPage = lazy(() => import("./pages/search/SearchPage"));
 import { useLocation } from "wouter";
 
 function BsiRefCapture() {
@@ -43,6 +49,7 @@ function AppRoutes() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/login"} component={Login} />
+      <Route path={"/join"} component={JoinPage} />
       <Route path={"/become-an-affiliate"} component={BecomeAnAffiliate} />
       <Route path={"/classes"} component={Classes} />
       <Route path={"/courses"} component={Classes} />
@@ -59,6 +66,41 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/posts"} component={PostsPage} />
+      <Route path={"/library/search"}>
+        {() => (
+          <Suspense fallback={null}>
+            <SearchPage />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/topic/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="topic" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/topic/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="topic" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/content-type/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="content-type" />
+          </Suspense>
+        )}
+      </Route>
+      <Route path={"/library/category/:slug"}>
+        {() => (
+          <Suspense fallback={null}>
+            <LibraryTaxonomyPage taxonomyKind="category" />
+          </Suspense>
+        )}
+      </Route>
       <Route path={"/library/:type/:id"}>
         {() => (
           <Suspense fallback={null}>
@@ -67,10 +109,12 @@ function AppRoutes() {
         )}
       </Route>
       <Route path={"/library"} component={LibraryPage} />
+      <Route path={"/checkout/complete"} component={CheckoutComplete} />
       <Route path={"/account/billing"} component={AccountBilling} />
       <Route path={"/account/profile"} component={AccountProfile} />
       <Route path={"/account/courses"} component={AccountCourses} />
       <Route path={"/account/favorites"} component={AccountFavorites} />
+      <Route path={"/account/organization"} component={AccountOrganization} />
       <Route path={"/account/referrals"} component={AccountReferrals} />
       <Route path={"/account/notifications"} component={AccountNotifications} />
       <Route path={"/account/privacy"} component={AccountPrivacy} />
@@ -87,10 +131,13 @@ function AppShell() {
   const hideGlobalNav =
     location === "/login" ||
     location.startsWith("/login?") ||
+    location === "/checkout/complete" ||
+    location.startsWith("/checkout/") ||
     location === "/account" ||
     location.startsWith("/account/") ||
     location === "/members" ||
-    location.startsWith("/members/");
+    location.startsWith("/members/") ||
+    location === "/join";
   return (
     <>
       <BsiRefCapture />
@@ -103,11 +150,13 @@ function AppShell() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark">
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router base={getRouterBase()}>
-            <AppShell />
+            <JoinFlowProvider>
+              <AppShell />
+            </JoinFlowProvider>
           </Router>
         </TooltipProvider>
       </ThemeProvider>

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
+import { parseJsonc } from "./test/parse-jsonc";
 
 /** Main's run_worker_first before PR3 posts entries (A16 / PH1). */
 const MAIN_RUN_WORKER_FIRST = [
@@ -79,13 +80,14 @@ describe("B1/B5/B6/B7 build config", () => {
 
   it("A16/PH1 run_worker_first = main + /posts + /library; no sitemap-posts", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as { assets: { run_worker_first: string[] } };
     expect(json.assets.run_worker_first).toEqual([
       ...MAIN_RUN_WORKER_FIRST,
       "/posts",
       "/posts/*",
       "/library",
       "/library/*",
+      "/topic/*",
     ]);
     expect(json.assets.run_worker_first).not.toContain("/sitemap-posts.xml");
     const workerSrc = readFileSync(
@@ -105,22 +107,39 @@ describe("B1/B5/B6/B7 build config", () => {
 
   it("preview_urls is true while workers_dev stays false", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as { workers_dev: boolean; preview_urls: boolean };
     expect(json.workers_dev).toBe(false);
     expect(json.preview_urls).toBe(true);
   });
 
-  it("previews mirrors vars, preview KV, DO bindings, and 9 ratelimits", () => {
+  it("previews mirrors vars, preview KV, DO bindings, and 10 ratelimits (account + whop)", () => {
     const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
+    const json = parseJsonc(raw) as {
+      vars: Record<string, string>;
+      previews: {
+        vars: Record<string, string>;
+        kv_namespaces: unknown[];
+        durable_objects: { bindings: unknown };
+        ratelimits: { name: string; simple: unknown; namespace_id: string }[];
+      };
+      kv_namespaces: { preview_id: string }[];
+      durable_objects: { bindings: unknown };
+      ratelimits: { name: string; simple: unknown }[];
+    };
     const previews = json.previews;
     expect(previews).toBeTruthy();
-    // STAGING_AUTH_HOSTS is preview-only — must never appear in top-level / production vars.
+    // STAGING_AUTH_HOSTS / BSI_ORIGIN are preview-only — never top-level / production vars.
     expect(json.vars.STAGING_AUTH_HOSTS).toBeUndefined();
+    expect(json.vars.BSI_ORIGIN).toBeUndefined();
     expect(previews.vars.STAGING_AUTH_HOSTS).toBe(
       "staging-metfixhome.wispy-mode-982d.workers.dev",
     );
-    const { STAGING_AUTH_HOSTS: _stagingOnly, ...previewVarsRest } = previews.vars;
+    expect(previews.vars.BSI_ORIGIN).toBe("https://brokenstaging.wpengine.com");
+    const {
+      STAGING_AUTH_HOSTS: _stagingOnly,
+      BSI_ORIGIN: _bsiOriginOnly,
+      ...previewVarsRest
+    } = previews.vars;
     expect(previewVarsRest).toEqual(json.vars);
     expect(previews.kv_namespaces).toEqual([
       {
@@ -131,14 +150,38 @@ describe("B1/B5/B6/B7 build config", () => {
     // DP-CFG-2: preview KV id must equal top-level preview_id
     expect(previews.kv_namespaces[0].id).toBe(json.kv_namespaces[0].preview_id);
     expect(previews.durable_objects.bindings).toEqual(json.durable_objects.bindings);
-    expect(previews.ratelimits).toHaveLength(9);
-    expect(json.ratelimits).toHaveLength(9);
+    expect(previews.ratelimits).toHaveLength(10);
+    expect(json.ratelimits).toHaveLength(10);
     expect(previews.ratelimits.map((r: { name: string }) => r.name)).toEqual(
       json.ratelimits.map((r: { name: string }) => r.name),
     );
     expect(previews.ratelimits.map((r: { simple: unknown }) => r.simple)).toEqual(
       json.ratelimits.map((r: { simple: unknown }) => r.simple),
     );
+    expect(json.ratelimits.map((r: { name: string; namespace_id: string }) => r.name)).toEqual([
+      "SIGNUP_LIMITER",
+      "USERNAME_CHECK_LIMITER",
+      "GOOGLE_AUTH_LIMITER",
+      "COMMENT_WRITE_LIMITER",
+      "COMMENT_LIKE_LIMITER",
+      "COMMENT_LIKE_TOGGLE_LIMITER",
+      "ACCOUNT_READ_LIMITER",
+      "ACCOUNT_WRITE_LIMITER",
+      "ACCOUNT_PORTAL_LIMITER",
+      "WHOP_CHECKOUT_LIMITER",
+    ]);
+    expect(json.ratelimits.map((r: { namespace_id: string }) => r.namespace_id)).toEqual([
+      "27101",
+      "27102",
+      "27103",
+      "27104",
+      "27105",
+      "27106",
+      "27112",
+      "27113",
+      "27114",
+      "27115",
+    ]);
     expect(previews.ratelimits.map((r: { namespace_id: string }) => r.namespace_id)).toEqual([
       "27201",
       "27202",
@@ -149,7 +192,14 @@ describe("B1/B5/B6/B7 build config", () => {
       "27212",
       "27213",
       "27214",
+      "27215",
     ]);
+    const byName = (arr: Array<{ name: string; simple: { limit: number; period: number } }>) =>
+      Object.fromEntries(arr.map((r) => [r.name, r.simple]));
+    expect(byName(json.ratelimits)).toEqual(byName(previews.ratelimits));
+    expect(byName(json.ratelimits).ACCOUNT_WRITE_LIMITER).toEqual({ limit: 15, period: 60 });
+    expect(byName(json.ratelimits).ACCOUNT_PORTAL_LIMITER).toEqual({ limit: 10, period: 60 });
+    expect(byName(json.ratelimits).WHOP_CHECKOUT_LIMITER).toEqual({ limit: 10, period: 60 });
   });
 
   it("CI push branches include main and staging", () => {
@@ -166,7 +216,23 @@ describe("B1/B5/B6/B7 build config", () => {
       "utf8",
     );
     expect(wrangler).not.toMatch(/LOCAL_AUTH/);
-    expect(wrangler).not.toMatch(/BSI_ORIGIN/);
+  });
+
+  it("STAGING_AUTH_HOSTS and BSI_ORIGIN are only under previews.vars, never top-level vars", () => {
+    const raw = readFileSync(fileURLToPath(new URL("../wrangler.jsonc", import.meta.url)), "utf8");
+    const json = parseJsonc(raw) as {
+      vars: Record<string, string>;
+      previews: { vars: Record<string, string> };
+    };
+    expect(Object.prototype.hasOwnProperty.call(json.vars, "STAGING_AUTH_HOSTS")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(json.vars, "BSI_ORIGIN")).toBe(false);
+    expect(json.previews.vars.STAGING_AUTH_HOSTS).toBe(
+      "staging-metfixhome.wispy-mode-982d.workers.dev",
+    );
+    expect(json.previews.vars.BSI_ORIGIN).toBe("https://brokenstaging.wpengine.com");
+    // Top-level vars block (first "vars") must not mention BSI_ORIGIN.
+    const topVarsBlock = raw.match(/"vars"\s*:\s*\{[\s\S]*?\n\t\},/);
+    expect(topVarsBlock?.[0] ?? "").not.toMatch(/BSI_ORIGIN/);
   });
 });
 

@@ -4,6 +4,8 @@ import {
   type DailyFixDay,
   type UpstreamOutcome,
 } from "../shared/daily-fix";
+import { postsDetailBaseFromOrigin } from "../shared/library/constants";
+import { isStagingAuthHost, normalizeHost, stagingAuthHostsSet } from "./auth/host";
 import { parseLocalBsiOrigin, type LocalAuthEnv } from "./dev-auth";
 
 export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
@@ -67,6 +69,8 @@ export type RateLimitBinding = {
 export type Env = {
   ASSETS: Fetcher;
   DAILY_FIX_API_KEY?: string;
+  /** Optional broad BSI key (anonymous post comments GET fallback). */
+  BSI_API_KEY?: string;
   /** Posts proxy secret — read only from worker/posts.ts (never DAILY_FIX_API_KEY). */
   BSI_POSTS_API_KEY?: string;
   AUTH_SESSIONS: KVNamespace;
@@ -96,8 +100,19 @@ export type Env = {
    * Never set in production.
    */
   LOCAL_AUTH?: string;
-  /** Local only: override BSI origin (e.g. http://127.0.0.1:8080) when LOCAL_AUTH is on. */
+  /**
+   * BSI site origin override.
+   * - Local (`.dev.vars` + LOCAL_AUTH): e.g. http://127.0.0.1:8080
+   * - Worker Previews only (`previews.vars`, never top-level): must be exactly
+   *   `https://brokenstaging.wpengine.com`, and only honored when the request
+   *   Host is in STAGING_AUTH_HOSTS. Any other value is ignored.
+   */
   BSI_ORIGIN?: string;
+  /**
+   * Comma-separated exact auth hostnames for Worker Previews / staging only.
+   * Set in wrangler `previews.vars` — never top-level production vars.
+   */
+  STAGING_AUTH_HOSTS?: string;
   SIGNUP_LIMITER?: RateLimitBinding;
   USERNAME_CHECK_LIMITER?: RateLimitBinding;
   GOOGLE_AUTH_LIMITER?: RateLimitBinding;
@@ -108,6 +123,8 @@ export type Env = {
   ACCOUNT_READ_LIMITER?: RateLimitBinding;
   ACCOUNT_WRITE_LIMITER?: RateLimitBinding;
   ACCOUNT_PORTAL_LIMITER?: RateLimitBinding;
+  /** Whop checkout session mint — 10/60s (27115 / preview 27215). */
+  WHOP_CHECKOUT_LIMITER?: RateLimitBinding;
 };
 
 /** DP9 / DP42 / DP45 / T1: Bearer-only headers — TypeScript rejects X-API-Key. */
@@ -133,8 +150,50 @@ export function assertBsiHost(url: string, env?: LocalAuthEnv): void {
   throw new Error(`BSI host not allowed: ${host}`);
 }
 
-/** Resolved BSI site origin (production, opts.baseUrl, or LOCAL_AUTH BSI_ORIGIN). */
-export function resolveBsiOrigin(env: Env, opts?: { baseUrl?: string }): string {
+export type ResolveBsiOriginOpts = {
+  /** Test / harness override — treated as a full origin (or daily-fix base for resolveDailyFixBase). */
+  baseUrl?: string;
+  /**
+   * Incoming Worker request. Required to honor preview `BSI_ORIGIN`:
+   * Host must be an exact STAGING_AUTH_HOSTS entry.
+   */
+  request?: Request;
+};
+
+/**
+ * Preview-only staging BSI. Returns BSI_STAGING_ORIGIN only when:
+ * - env.BSI_ORIGIN equals exactly `https://brokenstaging.wpengine.com` (no LOCAL_AUTH), and
+ * - opts.request Host is in STAGING_AUTH_HOSTS.
+ * Any other BSI_ORIGIN value is rejected. Does not require LOCAL_AUTH.
+ */
+export function parsePreviewBsiOrigin(
+  env: Pick<Env, "BSI_ORIGIN" | "STAGING_AUTH_HOSTS">,
+  opts?: { request?: Request },
+): string | null {
+  // Exact string match only — do not URL-parse or accept trailing slash / other hosts.
+  if (env.BSI_ORIGIN !== BSI_STAGING_ORIGIN) return null;
+  const request = opts?.request;
+  if (!request) return null;
+  const raw = request.headers.get("Host") ?? new URL(request.url).host;
+  const bare = normalizeHost(raw);
+  if (!bare || !isStagingAuthHost(bare, env)) return null;
+  return BSI_STAGING_ORIGIN;
+}
+
+/**
+ * Strip BSI_ORIGIN unless this request may use preview staging BSI.
+ * Call once at the Worker request boundary so downstream resolveBsiOrigin
+ * (which often has no Request) still cannot honor a leaked override.
+ */
+export function scopeEnvBsiOrigin(env: Env, request: Request): Env {
+  if (parsePreviewBsiOrigin(env, { request })) return env;
+  if (env.BSI_ORIGIN == null) return env;
+  const { BSI_ORIGIN: _dropped, ...rest } = env;
+  return rest;
+}
+
+/** Resolved BSI site origin (production, opts.baseUrl, LOCAL_AUTH, or preview staging). */
+export function resolveBsiOrigin(env: Env, opts?: ResolveBsiOriginOpts): string {
   if (opts?.baseUrl) {
     try {
       return new URL(opts.baseUrl).origin;
@@ -142,15 +201,28 @@ export function resolveBsiOrigin(env: Env, opts?: { baseUrl?: string }): string 
       /* fall through */
     }
   }
-  return parseLocalBsiOrigin(env) ?? BSI_ORIGIN;
+  const local = parseLocalBsiOrigin(env);
+  if (local) return local;
+
+  // Preview path never requires LOCAL_AUTH. Exact origin only; any other value rejected.
+  if (env.BSI_ORIGIN === BSI_STAGING_ORIGIN) {
+    if (opts?.request) {
+      return parsePreviewBsiOrigin(env, opts) ?? BSI_ORIGIN;
+    }
+    // No Request in opts (most upstream call sites): honor only when
+    // STAGING_AUTH_HOSTS is configured. handleRequest calls scopeEnvBsiOrigin
+    // so a non-allowlisted Host never leaves BSI_ORIGIN set on env.
+    if (stagingAuthHostsSet(env).size > 0) return BSI_STAGING_ORIGIN;
+  }
+  return BSI_ORIGIN;
 }
 
 /** Daily Fix REST base path under the resolved BSI origin. */
-export function resolveDailyFixBase(env: Env, opts?: { baseUrl?: string }): string {
+export function resolveDailyFixBase(env: Env, opts?: ResolveBsiOriginOpts): string {
   if (opts?.baseUrl) return opts.baseUrl;
-  const local = parseLocalBsiOrigin(env);
-  if (local) return `${local}/wp-json/metfix/v1/daily-fix`;
-  return BSI_DAILY_FIX_URL;
+  const origin = resolveBsiOrigin(env, opts);
+  if (origin === BSI_ORIGIN) return BSI_DAILY_FIX_URL;
+  return `${origin}/wp-json/metfix/v1/daily-fix`;
 }
 
 /** W5 + Content-Type for JSON POSTs. Never forwards IP or Authorization. */
@@ -310,15 +382,6 @@ function oauthFormHeaders(): Record<string, string> {
   };
 }
 
-/** GET /wp-json/bsi/v1/me headers (§0v.1 Q2 — Bearer only, no X-API-Key). */
-function bsiMeHeaders(accessToken: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${accessToken}`,
-    Accept: "application/json",
-    "User-Agent": UPSTREAM_USER_AGENT,
-  };
-}
-
 /** DP9 / DP42 / DP45 / T1: User-acting Bearer-only headers (NEVER sends X-API-Key, Referer, Origin, or client IP). */
 export function bsiAccountBearerHeaders(
   accessToken: string,
@@ -333,6 +396,67 @@ export function bsiAccountBearerHeaders(
     headers["Content-Type"] = contentType;
   }
   return headers;
+}
+
+/** Authenticated BSI post comment routes — Bearer only (BK3/BK12). */
+function bsiPostCommentsBearerHeaders(
+  accessToken: string,
+  opts?: { jsonBody?: boolean },
+): Record<string, string> {
+  return {
+    ...bsiMeHeaders(accessToken),
+    ...(opts?.jsonBody ? { "Content-Type": "application/json" } : {}),
+  };
+}
+
+/** Shared POST helper for `/wp-json/bsi/v1/me…` write paths (N6) — one Bearer builder. */
+async function bsiPostMe(
+  mePath: string,
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  const cfg = requireAuthConfig(env, { needApiKey: false, baseUrl: opts?.baseUrl });
+  if (!cfg) return { kind: "nokey" };
+  const path = mePath.startsWith("/") ? mePath : `/${mePath}`;
+  const url = `${cfg.origin}/wp-json/bsi/v1/me${path}`;
+  const headers = bsiAccountBearerHeaders(accessToken, "application/json");
+  return bsiFetch(
+    url,
+    {
+      method: "POST",
+      // UserBearerHeaders forbids X-API-Key at the type level; RequestInit wants Record.
+      headers: { ...headers } as unknown as Record<string, string>,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts?.timeoutMs ?? 15_000),
+    },
+    fetchImpl,
+    env,
+  );
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/onboarding — Bearer only (WJ21). */
+export async function bsiPostMeOnboarding(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  return bsiPostMe("/onboarding", accessToken, body, env, fetchImpl, opts);
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/whop/checkout-session — Bearer only (WJ22). */
+export async function bsiPostWhopCheckoutSession(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  return bsiPostMe("/whop/checkout-session", accessToken, body, env, fetchImpl, opts);
 }
 
 async function oauthTokenFetch(
@@ -719,7 +843,7 @@ export async function bsiFetchMe(
     url,
     {
       method: "GET",
-      headers: bsiMeHeaders(accessToken),
+      headers: { ...bsiAccountBearerHeaders(accessToken) } as unknown as Record<string, string>,
       signal: AbortSignal.timeout(opts?.timeoutMs ?? 5000),
     },
     fetchImpl,
@@ -1040,6 +1164,154 @@ export async function bsiDeleteComment(
         "X-API-Key": env.DAILY_FIX_API_KEY,
         Authorization: `Bearer ${accessToken}`,
       },
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+function resolvePostsDetailBase(env: Env, opts?: { baseUrl?: string }): string {
+  return postsDetailBaseFromOrigin(resolveBsiOrigin(env, opts));
+}
+
+/** API key for anonymous post-comments reads (PL17 / OQ-14). */
+export function postsCommentsApiKey(env: Env): string | null {
+  for (const candidate of [env.BSI_API_KEY, env.DAILY_FIX_API_KEY, env.BSI_POSTS_API_KEY]) {
+    if (candidate != null && candidate !== "" && !/^\s*$/.test(candidate)) return candidate;
+  }
+  return null;
+}
+
+export async function fetchPostComments(
+  postId: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; accessToken?: string },
+): Promise<CommentsUpstream> {
+  const accessToken = opts?.accessToken ?? null;
+  const apiKey = accessToken ? null : postsCommentsApiKey(env);
+  if (!accessToken && !apiKey) return { kind: "nokey" };
+
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments`;
+  try {
+    assertBsiHost(url, env);
+  } catch {
+    return { kind: "unavailable" };
+  }
+
+  try {
+    const headers = accessToken
+      ? bsiPostCommentsBearerHeaders(accessToken)
+      : bsiGetHeaders(apiKey!);
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.status === 400) return { kind: "bad_request" };
+    if (response.status === 404) return { kind: "not_found" };
+    if (response.status === 401) return { kind: "unauthorized" };
+    if (response.status === 403) return { kind: "forbidden" };
+    if (response.status === 429) {
+      return {
+        kind: "rate_limited",
+        retryAfter: parseRetryAfter(response.headers.get("Retry-After")),
+      };
+    }
+    if (!response.ok) return { kind: "unavailable" };
+    return { kind: "ok", bodyText: await response.text() };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+export async function bsiPostPostComment(
+  postId: string,
+  body: { content: string; parent_comment_id?: number },
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "POST",
+      headers: bsiPostCommentsBearerHeaders(accessToken, { jsonBody: true }),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+export async function bsiPatchPostComment(
+  postId: string,
+  commentId: string,
+  body: { content: string },
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "PATCH",
+      headers: bsiPostCommentsBearerHeaders(accessToken, { jsonBody: true }),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+export async function bsiDeletePostComment(
+  postId: string,
+  commentId: string,
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "DELETE",
+      headers: bsiPostCommentsBearerHeaders(accessToken),
+      signal: AbortSignal.timeout(5000),
+    },
+    fetchImpl,
+    env,
+  );
+  return mapWriteResult(r);
+}
+
+export async function bsiTogglePostCommentLike(
+  postId: string,
+  commentId: string,
+  liked: boolean,
+  accessToken: string,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string },
+): Promise<CommentWriteUpstream> {
+  const url = `${resolvePostsDetailBase(env, opts)}/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/like`;
+  const r = await bsiFetch(
+    url,
+    {
+      method: "POST",
+      headers: bsiPostCommentsBearerHeaders(accessToken, { jsonBody: true }),
+      body: JSON.stringify({ liked }),
       signal: AbortSignal.timeout(5000),
     },
     fetchImpl,

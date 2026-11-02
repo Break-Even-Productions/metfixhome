@@ -5,10 +5,12 @@ import {
   EXCERPT_MAX,
   IMAGE_HOST,
   RESOURCE_TYPES,
+  SLUG_RE,
   TITLE_MAX,
   type ResourceType,
 } from "./constants";
 import { mapAccessDisplay } from "./access";
+import { mapResourceVideo } from "./video";
 import type {
   LibraryCompositeThumbnail,
   LibraryDetail,
@@ -17,6 +19,7 @@ import type {
   LibraryFiltersBody,
   LibraryResource,
   LibrarySearchBody,
+  ResourceVideo,
   TermRef,
 } from "./types";
 
@@ -101,7 +104,17 @@ function mapAuthor(raw: unknown): string | null {
   return typeof name === "string" && name.trim() ? name.trim() : null;
 }
 
-function mapTerms(raw: unknown): TermRef[] {
+function cleanText(raw: string): string {
+  return decodeHtmlEntitiesOnce(stripTags(raw)).replace(/\s+/g, " ").trim();
+}
+
+/** Collapse horizontal whitespace only — preserves `\n` when used inside paragraphs (TX5). */
+function filterParagraphText(raw: string): string {
+  return decodeHtmlEntitiesOnce(stripTags(raw)).replace(/[^\S\n]+/g, " ").trim();
+}
+
+/** Map `[{ id, name, slug }]` — exported for posts DetailPost parity (CQ-4.1). */
+export function mapTerms(raw: unknown): TermRef[] {
   if (!Array.isArray(raw)) return [];
   const out: TermRef[] = [];
   for (const item of raw) {
@@ -110,9 +123,35 @@ function mapTerms(raw: unknown): TermRef[] {
     const id = mapId(rec.id);
     if (id == null) continue;
     if (typeof rec.name !== "string" || typeof rec.slug !== "string") continue;
-    out.push({ id, name: rec.name, slug: rec.slug });
+    if (!SLUG_RE.test(rec.slug)) continue;
+    const name = cleanText(rec.name);
+    if (!name) continue;
+    out.push({ id, name, slug: rec.slug });
   }
   return out;
+}
+
+/** Allowlisted brokenscience.org image (TX1 / SEC13). */
+export function pickImage(raw: unknown): string | null {
+  return mapImageUrl(raw);
+}
+
+/**
+ * Sanitize filter term description: strip HTML, preserve `\n\n` paragraphs (TX1 / CQ-4.3).
+ * Never safe for dangerouslySetInnerHTML — plain text only.
+ */
+export function mapFilterDescription(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const withBreaks = raw
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n\n")
+    .replace(/\r?\n\s*\r?\n/g, "\n\n");
+  const paragraphs = withBreaks
+    .split(/\n\n+/)
+    .map((p) => filterParagraphText(p))
+    .filter(Boolean);
+  if (paragraphs.length === 0) return null;
+  return paragraphs.join("\n\n");
 }
 
 function mapType(raw: unknown): ResourceType | null {
@@ -185,6 +224,7 @@ export function mapLibraryResource(raw: unknown): LibraryResource | null {
     access.is_exclusive = true;
     access.has_content_access = true;
   }
+  applyCourseListingLock(item, access, type);
 
   const composite = mapCompositeThumbnail(item.composite_thumbnail_html);
 
@@ -326,7 +366,7 @@ export function mapPopularResponse(
   };
 }
 
-function mapFilterTerms(raw: unknown): LibraryFilterTerm[] {
+export function mapFilterTerms(raw: unknown): LibraryFilterTerm[] {
   if (!Array.isArray(raw)) return [];
   const out: LibraryFilterTerm[] = [];
   for (const item of raw) {
@@ -335,7 +375,16 @@ function mapFilterTerms(raw: unknown): LibraryFilterTerm[] {
     const id = mapId(rec.id);
     if (id == null) continue;
     if (typeof rec.name !== "string" || typeof rec.slug !== "string") continue;
-    const term: LibraryFilterTerm = { id, name: rec.name, slug: rec.slug };
+    if (!SLUG_RE.test(rec.slug)) continue;
+    const name = cleanText(rec.name);
+    if (!name) continue;
+    const term: LibraryFilterTerm = {
+      id,
+      name,
+      slug: rec.slug,
+      description: mapFilterDescription(rec.description),
+      image: pickImage(rec.image ?? rec.featured_image ?? rec.thumbnail),
+    };
     if (typeof rec.count === "number" && Number.isInteger(rec.count)) {
       term.count = rec.count;
     }
@@ -400,10 +449,8 @@ export function mapDetailFromPostLike(
   const locked = access.access === "none";
   const contentRaw = typeof item.content === "string" ? item.content : "";
   const content = locked ? "" : sanitizeHtml(contentRaw);
-  const video =
-    !locked && typeof item.video === "string" && item.video
-      ? allowlistedHttpsUrl(item.video, { resolveRelative: true })
-      : null;
+  const allowPlayable = !locked || access.show_video_in_preview === true;
+  const video: ResourceVideo | null = mapResourceVideo(item.video, { allowPlayable });
 
   return {
     ...base,
@@ -413,16 +460,71 @@ export function mapDetailFromPostLike(
   };
 }
 
+function numericPrice(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/**
+ * LearnPress courses omit `content_access_display` on search rows.
+ * A positive price with no enrollment matches BSI `is_locked` for anonymous viewers.
+ * An explicit `is_locked` boolean wins when the detail payload includes it.
+ */
+function applyCourseListingLock(
+  item: Record<string, unknown>,
+  access: ReturnType<typeof mapAccessDisplay>,
+  type: ResourceType,
+): void {
+  let restricted = false;
+  if (item.is_locked === true) {
+    restricted = true;
+  } else if (type === "course" && item.is_locked !== false && item.is_enrolled !== true) {
+    const price = numericPrice(item.price);
+    restricted = price != null && price > 0;
+  }
+  if (!restricted) return;
+  access.access = "none";
+  access.is_exclusive = true;
+  access.has_content_access = true;
+  access.user_has_access = false;
+}
+
 export function mapDetailBody(
   raw: unknown,
   fallbackType: ResourceType,
 ): LibraryDetailBody | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const body = raw as Record<string, unknown>;
-  const postLike = body.post ?? body.resource ?? body;
+  const postLike = detailPostLike(body);
   const mapped = mapDetailFromPostLike(postLike, fallbackType);
   if (!mapped) return null;
   return { resource: mapped };
+}
+
+/** Course detail is `{ course }`, not `{ post }`. Honor LearnPress `is_locked`. */
+function detailPostLike(body: Record<string, unknown>): unknown {
+  const course = body.course;
+  if (course && typeof course === "object" && !Array.isArray(course)) {
+    const item: Record<string, unknown> = {
+      ...(course as Record<string, unknown>),
+      type: "course",
+    };
+    if (item.is_locked === true) {
+      item.content = "";
+      item.content_access_display = {
+        access: "none",
+        is_exclusive: true,
+        has_content_access: true,
+        user_has_access: false,
+      };
+    }
+    return item;
+  }
+  return body.post ?? body.resource ?? body;
 }
 
 /** Locked shell when BSI returns 404 for access:none (list still had the card). */

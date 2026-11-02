@@ -23,7 +23,7 @@ export default function CopyrightText({
   const baseStyle: CSSProperties =
     variant === "home"
       ? {
-          fontFamily: "'DM Mono'",
+          fontFamily: "var(--font-sans)",
           fontSize: "0.75rem",
           letterSpacing: "0.06em",
           color: "rgba(239,239,239,0.65)",
@@ -36,10 +36,11 @@ export default function CopyrightText({
           minWidth: 0,
         }
       : {
-          fontFamily: "'DM Mono'",
-          fontSize: "0.55rem",
-          letterSpacing: "0.08em",
-          color: "rgba(239,239,239,0.25)",
+          // Compact sits on cream footers (AFF/SEM) — use muted ink, not light-on-dark.
+          fontFamily: "var(--font-sans)",
+          fontSize: "0.7rem",
+          letterSpacing: "0.06em",
+          color: "var(--color-muted)",
           textTransform: "uppercase",
           lineHeight: 1.6,
           maxWidth: "min(100%, 28rem)",

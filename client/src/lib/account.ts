@@ -3,6 +3,7 @@
  * Never fetch /api/auth/me here; callers use loadMe() from session.ts.
  */
 import { getMetfixLoginUrl } from "@/const";
+import { fetchCsrf } from "@/lib/authRequest";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
 import { isWhopCheckoutUrl } from "@shared/account/url-allowlist";
@@ -13,6 +14,7 @@ import type {
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 
 export { sanitizeReturnPath } from "@shared/account/returnPath";
 export type { ClaimOptionsDto, ClaimPathId };
@@ -300,21 +302,6 @@ function invalidateKeys(keys: CacheKey[]): void {
   }
 }
 
-async function fetchCsrf(): Promise<string | null> {
-  try {
-    const res = await globalThis.fetch("/api/auth/csrf", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "same-origin",
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { csrf?: unknown };
-    return typeof json.csrf === "string" && json.csrf ? json.csrf : null;
-  } catch {
-    return null;
-  }
-}
-
 async function accountGet<T>(
   path: string,
   cacheKey: CacheKey,
@@ -578,10 +565,29 @@ export function openWhopCheckout(url: unknown): boolean {
 export async function convertToWhop(body: {
   sub_ref?: string;
   target_tier: "metfix_pro" | "organization_owner";
+  return_path?: string;
 }): Promise<{ purchase_url?: string; trial_period_days?: number; stripe_period_end?: string }> {
   return accountMutate("/api/account/subscriptions/convert-to-whop", {
     method: "POST",
-    body,
+    body: {
+      ...body,
+      return_path: body.return_path ?? "/checkout/complete",
+    },
+    invalidate: ["subscriptions", "overview"],
+  });
+}
+
+/** Mint a BEP Whop subscription checkout (plan: pro | org). */
+export async function startWhopCheckout(body: {
+  plan: "pro" | "org";
+  return_path?: string;
+}): Promise<{ checkout_url?: string; plan?: string; expires_at?: string }> {
+  return accountMutate("/api/billing/whop/checkout-session", {
+    method: "POST",
+    body: {
+      plan: body.plan,
+      return_path: body.return_path ?? "/checkout/complete",
+    },
     invalidate: ["subscriptions", "overview"],
   });
 }

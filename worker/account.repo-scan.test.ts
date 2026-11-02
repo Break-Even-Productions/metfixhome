@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
+import { parseJsonc } from "./test/parse-jsonc";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -355,12 +356,10 @@ describe("account.repo-scan", () => {
 
   it("DP-T-CFG1: wrangler prod account limiter ids 27112-27114", () => {
     const raw = readFileSync(join(REPO_ROOT, "wrangler.jsonc"), "utf8");
-    const json = JSON.parse(raw.replace(/\/\/.*$/gm, ""));
-    const byName = Object.fromEntries(
-      (json.ratelimits as Array<{ name: string; namespace_id: string; simple: { limit: number; period: number } }>).map(
-        (r) => [r.name, r],
-      ),
-    );
+    const json = parseJsonc(raw) as {
+      ratelimits: Array<{ name: string; namespace_id: string; simple: { limit: number; period: number } }>;
+    };
+    const byName = Object.fromEntries(json.ratelimits.map((r) => [r.name, r]));
     expect(byName.ACCOUNT_READ_LIMITER).toMatchObject({
       namespace_id: "27112",
       simple: { limit: 60, period: 60 },
@@ -371,6 +370,10 @@ describe("account.repo-scan", () => {
     });
     expect(byName.ACCOUNT_PORTAL_LIMITER).toMatchObject({
       namespace_id: "27114",
+      simple: { limit: 10, period: 60 },
+    });
+    expect(byName.WHOP_CHECKOUT_LIMITER).toMatchObject({
+      namespace_id: "27115",
       simple: { limit: 10, period: 60 },
     });
   });
