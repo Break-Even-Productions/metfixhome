@@ -39,6 +39,7 @@ import { useLocation } from "wouter";
 
 function BsiRefCapture() {
   useEffect(() => {
+    if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
     captureBsiRef(window.location.search, sessionStorage);
   }, []);
   return null;
@@ -137,7 +138,8 @@ function AppShell() {
     location.startsWith("/account/") ||
     location === "/members" ||
     location.startsWith("/members/") ||
-    location === "/join";
+    location === "/join" ||
+    location.startsWith("/join?");
   return (
     <>
       <BsiRefCapture />

@@ -3,11 +3,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearch } from "wouter";
-import {
-  isPostListBody,
-  MAX_PAGE,
-  type PostListBody,
-} from "@shared/posts";
+import { MAX_PAGE, type PostListBody } from "@shared/posts";
+import { fetchPostsPage } from "@/lib/fetchPostsPage";
 import { usePostsPageMeta } from "@/hooks/usePostsPageMeta";
 import { PostCard } from "./PostCard";
 import { PostsError, PostsLayout, PostsLoading } from "./PostsLayout";
@@ -40,22 +37,9 @@ export default function PostsPage() {
 
     void (async () => {
       try {
-        const res = await fetch(`/api/posts?page=${page}`, {
-          headers: { Accept: "application/json" },
-          signal: controller.signal,
-        });
+        const body = await fetchPostsPage(page, controller.signal);
         if (controller.signal.aborted) return;
-        if (!res.ok) {
-          setState({ status: "error" });
-          return;
-        }
-        const json: unknown = await res.json();
-        if (controller.signal.aborted) return;
-        if (!isPostListBody(json)) {
-          setState({ status: "error" });
-          return;
-        }
-        setState({ status: "data", body: json });
+        setState({ status: "data", body });
       } catch {
         if (controller.signal.aborted) return;
         setState({ status: "error" });

@@ -13,9 +13,8 @@ export const PAGE_RE = /^[1-9][0-9]*$/;
 /** Max list page (inclusive). */
 export const MAX_PAGE = 50;
 
+/** BSI site origin (image / relative URL resolve). No `/wp-json` here — see `bsi.ts`. */
 export const BSI_ORIGIN = "https://brokenscience.org";
-
-export const BSI_POSTS_BASE = "https://brokenscience.org/wp-json/bsi/v1/posts";
 
 /** Exact image host allowlist (DR6). */
 export const IMAGE_HOST = "brokenscience.org";
