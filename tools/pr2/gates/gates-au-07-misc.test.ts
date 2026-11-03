@@ -897,9 +897,13 @@ describe("AU19", () => {
 
   it("AU19.5 recaptcha script lazy mount", async () => {
     const { JSDOM } = await import("jsdom");
-    const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
-      url: "https://metfix.org/the-daily-fix",
-    });
+    // Include the SPA bootstrap script — must not satisfy the Google api.js check.
+    const dom = new JSDOM(
+      `<!doctype html><html><head>
+        <script src="/api/recaptcha-site-key.js"></script>
+      </head><body></body></html>`,
+      { url: "https://metfix.org/the-daily-fix" },
+    );
     const prevWindow = globalThis.window;
     const prevDocument = globalThis.document;
     // @ts-expect-error test shim
@@ -912,14 +916,15 @@ describe("AU19", () => {
       const { ensureRecaptchaScript } = await import(
         "../../../client/src/pages/the-daily-fix/recaptcha"
       );
-      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(0);
+      expect(document.querySelectorAll('script[src*="google.com/recaptcha"]').length).toBe(0);
       ensureRecaptchaScript();
-      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(1);
+      expect(document.querySelectorAll('script[src*="google.com/recaptcha"]').length).toBe(1);
       ensureRecaptchaScript();
-      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(1);
-      const src = document.querySelector('script[src*="recaptcha"]')?.getAttribute("src") ?? "";
-      expect(src).toContain("google.com");
-      expect(src).toContain("recaptcha");
+      expect(document.querySelectorAll('script[src*="google.com/recaptcha"]').length).toBe(1);
+      const src =
+        document.querySelector('script[src*="google.com/recaptcha"]')?.getAttribute("src") ?? "";
+      expect(src).toContain("google.com/recaptcha/api.js");
+      expect(src).toContain("render=test-site-key");
     } finally {
       // @ts-expect-error restore
       globalThis.window = prevWindow;

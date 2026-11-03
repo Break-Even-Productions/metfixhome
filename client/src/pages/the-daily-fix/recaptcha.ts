@@ -1,4 +1,5 @@
-const RECAPTCHA_SRC_NEEDLE = "recaptcha";
+/** Matches Google's api.js only — not `/api/recaptcha-site-key.js`. */
+const RECAPTCHA_API_SRC_NEEDLE = "google.com/recaptcha";
 
 export async function getRecaptchaToken(action: string): Promise<string> {
   const g = (
@@ -23,7 +24,7 @@ export async function getRecaptchaToken(action: string): Promise<string> {
  */
 export function ensureRecaptchaScript(): void {
   if (typeof document === "undefined") return;
-  if (document.querySelector(`script[src*="${RECAPTCHA_SRC_NEEDLE}"]`)) return;
+  if (document.querySelector(`script[src*="${RECAPTCHA_API_SRC_NEEDLE}"]`)) return;
   const siteKey = (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string })
     .__MFX_RECAPTCHA_SITE_KEY__;
   if (!siteKey) return;
