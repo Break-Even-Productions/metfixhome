@@ -35,6 +35,19 @@ describe("AU4", () => {
     expect(Object.keys(await res.json()).sort()).toStrictEqual(["csrf"]);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
+
+  it("AU4.3 csrf with sid returns sid-bound token (not pre)", async () => {
+    const h = createHarness();
+    const { sid } = await h.login();
+    const expected = await csrfSid(h.env, sid);
+    const res = await h.call("/api/auth/csrf", {
+      headers: { Cookie: `__Host-mfx_sid=${encodeURIComponent(sid)}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ csrf: expected });
+    // Must not mint a new pre cookie when already signed in.
+    expect(res.headers.get("Set-Cookie") ?? "").not.toContain("__Host-mfx_pre=");
+  });
 });
 
 describe("AU8", () => {

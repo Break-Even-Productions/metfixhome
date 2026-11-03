@@ -8,7 +8,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { assetUrl, basePath } from "@/const";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { buildLoginBody, buildSignupBody } from "@shared/join";
-import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
+import { getRecaptchaToken, postJsonWithCsrf } from "@/lib/authRequest";
 import { refreshMeAfterAuthChange } from "@/lib/session";
 import { clampClientRetryAfter } from "@/pages/the-daily-fix/comments";
 import { ensureRecaptchaScript } from "@/pages/the-daily-fix/recaptcha";
@@ -136,22 +136,16 @@ export default function Login() {
     setError(null);
     setBusy(true);
     try {
-      const csrf = await fetchCsrf();
-      if (!csrf) {
-        setError("Sign-in is unavailable right now.");
+      const recaptcha = await getRecaptchaToken("login");
+      if (!recaptcha) {
+        setError("Could not load the security check. Refresh and try again.");
         return;
       }
-      const recaptcha = await getRecaptchaToken("login");
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrf,
-        },
-        body: JSON.stringify(buildLoginBody({ identifier: id, password, recaptcha })),
-      });
+      // NB2: postJsonWithCsrf retries once on 403 with a forced fresh token
+      const res = await postJsonWithCsrf(
+        "/api/auth/login",
+        buildLoginBody({ identifier: id, password, recaptcha }),
+      );
       if (res.status === 429) {
         const wait = clampClientRetryAfter(res.headers.get("Retry-After"));
         setRetryUntil(Date.now() + wait * 1000);
@@ -165,6 +159,10 @@ export default function Login() {
       }
       if (res.status === 404) {
         setError("Sign-in is only available on metfix.org.");
+        return;
+      }
+      if (res.status === 403) {
+        setError("Could not verify this sign-in attempt. Refresh and try again.");
         return;
       }
       if (!res.ok) {
@@ -193,22 +191,15 @@ export default function Login() {
     setError(null);
     setBusy(true);
     try {
-      const csrf = await fetchCsrf();
-      if (!csrf) {
-        setError("Sign-up is unavailable right now.");
+      const recaptcha = await getRecaptchaToken("signup");
+      if (!recaptcha) {
+        setError("Could not load the security check. Refresh and try again.");
         return;
       }
-      const recaptcha = await getRecaptchaToken("signup");
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrf,
-        },
-        body: JSON.stringify(buildSignupBody({ username: u, email: e, recaptcha })),
-      });
+      const res = await postJsonWithCsrf(
+        "/api/auth/signup",
+        buildSignupBody({ username: u, email: e, recaptcha }),
+      );
       if (res.status === 429) {
         const wait = clampClientRetryAfter(res.headers.get("Retry-After"));
         setRetryUntil(Date.now() + wait * 1000);
@@ -228,6 +219,10 @@ export default function Login() {
         setSuccess("Check your email to finish creating your account.");
         setMode("signin");
         setIdentifier(e);
+        return;
+      }
+      if (res.status === 403) {
+        setError("Could not verify this sign-up attempt. Refresh and try again.");
         return;
       }
       if (!res.ok) {

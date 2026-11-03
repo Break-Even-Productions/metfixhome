@@ -79,6 +79,14 @@ export async function handleCsrf(request: Request, env: Env): Promise<Response> 
     return authJson({ error: "unavailable" }, 503, { "Retry-After": "300" });
   }
 
+  // R6: signed-in → HMAC(sid); signed-out → HMAC(pre). Client has no CSRF_SECRET,
+  // so this endpoint must return the same binding requireCsrf will check.
+  const sid = getSid(request);
+  if (sid) {
+    const csrf = await csrfForSid(env.CSRF_SECRET, sid);
+    return authJson({ csrf }, 200);
+  }
+
   const cookies: string[] = [];
   let pre = getPre(request);
   if (!pre) {
