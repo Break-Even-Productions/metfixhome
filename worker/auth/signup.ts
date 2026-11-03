@@ -8,7 +8,7 @@ import {
 } from "../upstream";
 import { checkSignupLimit, checkUsernameLimit } from "./auth-rate-limit";
 import { requireCsrf } from "./csrf";
-import { isAuthHost } from "./host";
+import { isAllowedRecaptchaHostname, isAuthHost } from "./host";
 import {
   BODY_INVALID_REQUEST,
   BODY_NOT_FOUND,
@@ -28,6 +28,7 @@ async function siteverify(
   token: string,
   secret: string,
   fetchImpl: FetchImpl,
+  env: Env,
 ): Promise<"pass" | "fail" | "outage"> {
   try {
     const body = new URLSearchParams({ secret, response: token });
@@ -45,7 +46,7 @@ async function siteverify(
       hostname?: unknown;
     };
     if (json.success !== true) return "fail";
-    if (json.hostname !== "metfix.org") return "fail";
+    if (!isAllowedRecaptchaHostname(json.hostname, env)) return "fail";
     if (json.action !== "signup") return "fail";
     if (typeof json.score !== "number" || json.score < 0.5) return "fail";
     return "pass";
@@ -90,7 +91,7 @@ export async function handleSignup(
   if (!cfg) {
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
   }
-  const sv = await siteverify(recaptcha, cfg.recaptchaSecret, fetchImpl);
+  const sv = await siteverify(recaptcha, cfg.recaptchaSecret, fetchImpl, env);
   if (sv === "fail") return authJson(BODY_TRY_AGAIN, 403);
   if (sv === "outage") return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
   const upstream = await bsiRegisterDirect(

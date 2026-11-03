@@ -132,7 +132,7 @@ describe("LibraryTaxonomyPage mount (TC12)", () => {
     mountTopic();
     expect(await screen.findByRole("heading", { name: "Metabolic Health" })).toBeTruthy();
     await waitFor(() => {
-      expect(screen.getByTestId("taxonomy-resource-count").textContent).toBe("1 resources");
+      expect(document.querySelector(".taxonomy-hero-count")?.textContent).toBe("1 resources");
     });
 
     const videosTab = await screen.findByRole("tab", { name: "Videos" });
@@ -142,7 +142,7 @@ describe("LibraryTaxonomyPage mount (TC12)", () => {
     fireEvent.click(screen.getByRole("button", { name: /View all Metabolic Health content/ }));
     expect(screen.queryByText("No Videos resources yet")).toBeNull();
     await waitFor(() => {
-      expect(screen.getByTestId("taxonomy-resource-count").textContent).toBe("1 resources");
+      expect(document.querySelector(".taxonomy-hero-count")?.textContent).toBe("1 resources");
     });
   });
 });

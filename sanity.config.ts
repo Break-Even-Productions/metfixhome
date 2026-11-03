@@ -46,6 +46,7 @@ export default defineConfig({
               ),
             S.divider(),
             S.documentTypeListItem("course").title("Courses"),
+            S.documentTypeListItem("expert").title("Experts"),
             S.documentTypeListItem("testimonial").title("Testimonials"),
             S.documentTypeListItem("faqItem").title("FAQs"),
           ]),

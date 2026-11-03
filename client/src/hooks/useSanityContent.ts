@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { fetchCourses, fetchSiteSettings } from "@/lib/content";
 import { fetchAffiliatePage } from "@/lib/affiliateContent";
 import {
+  fetchExperts,
   fetchFaqs,
   fetchHomeCourses,
   fetchHomePage,
   fetchTestimonials,
+  type Expert,
 } from "@/lib/homeContent";
 import type { Course, SiteSettings } from "@/lib/contentTypes";
 import type { HomeCourseCard, HomeFaq, HomePageContent, HomeTestimonial } from "@/lib/homeTypes";
@@ -13,12 +15,49 @@ import { DEFAULT_COPYRIGHT_TEXT, DEFAULT_NAV_LINKS } from "@/lib/contentTypes";
 import { FALLBACK_COURSES } from "@/data/fallbackCourses";
 import { FALLBACK_AFFILIATE_PAGE } from "@/data/fallbackAffiliate";
 import type { AffiliatePageContent } from "@/data/fallbackAffiliate";
+import { experts as FALLBACK_EXPERTS } from "@/data/home/experts";
 import {
   FALLBACK_FAQS,
   FALLBACK_HOME,
   FALLBACK_HOME_COURSES,
   FALLBACK_TESTIMONIALS,
 } from "@/data/fallbackHome";
+
+/** Module-level memoised caches (B3) — one network fetch per query per page load. */
+let siteSettingsPromise: Promise<SiteSettings> | null = null;
+let homeContentPromise: Promise<{
+  home: HomePageContent;
+  homeCourses: HomeCourseCard[];
+  testimonials: HomeTestimonial[];
+  faqs: HomeFaq[];
+  experts: Expert[];
+}> | null = null;
+
+export function getSiteSettingsOnce(): Promise<SiteSettings> {
+  if (!siteSettingsPromise) {
+    siteSettingsPromise = fetchSiteSettings();
+  }
+  return siteSettingsPromise;
+}
+
+export function getHomeContentOnce() {
+  if (!homeContentPromise) {
+    homeContentPromise = Promise.allSettled([
+      fetchHomePage(),
+      fetchHomeCourses(),
+      fetchTestimonials(),
+      fetchFaqs(),
+      fetchExperts(),
+    ]).then(([page, courses, quotes, faqItems, expertItems]) => ({
+      home: page.status === "fulfilled" ? page.value : FALLBACK_HOME,
+      homeCourses: courses.status === "fulfilled" ? courses.value : FALLBACK_HOME_COURSES,
+      testimonials: quotes.status === "fulfilled" ? quotes.value : FALLBACK_TESTIMONIALS,
+      faqs: faqItems.status === "fulfilled" ? faqItems.value : FALLBACK_FAQS,
+      experts: expertItems.status === "fulfilled" ? expertItems.value : [...FALLBACK_EXPERTS],
+    }));
+  }
+  return homeContentPromise;
+}
 
 export function useSiteSettings() {
   const [settings, setSettings] = useState<SiteSettings>({
@@ -30,7 +69,7 @@ export function useSiteSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchSiteSettings().then((data) => {
+    getSiteSettingsOnce().then((data) => {
       if (!cancelled) {
         setSettings(data);
         setLoading(false);
@@ -89,25 +128,25 @@ export function useHomeContent() {
   const [homeCourses, setHomeCourses] = useState<HomeCourseCard[]>(FALLBACK_HOME_COURSES);
   const [testimonials, setTestimonials] = useState<HomeTestimonial[]>(FALLBACK_TESTIMONIALS);
   const [faqs, setFaqs] = useState<HomeFaq[]>(FALLBACK_FAQS);
+  const [experts, setExperts] = useState<Expert[]>([...FALLBACK_EXPERTS]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchHomePage(), fetchHomeCourses(), fetchTestimonials(), fetchFaqs()]).then(
-      ([page, courses, quotes, faqItems]) => {
-        if (!cancelled) {
-          setHome(page);
-          setHomeCourses(courses);
-          setTestimonials(quotes);
-          setFaqs(faqItems);
-          setLoading(false);
-        }
+    getHomeContentOnce().then((data) => {
+      if (!cancelled) {
+        setHome(data.home);
+        setHomeCourses(data.homeCourses);
+        setTestimonials(data.testimonials);
+        setFaqs(data.faqs);
+        setExperts(data.experts);
+        setLoading(false);
       }
-    );
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  return { home, homeCourses, testimonials, faqs, loading };
+  return { home, homeCourses, testimonials, faqs, experts, loading };
 }

@@ -118,7 +118,7 @@ export const affiliatePage = defineType({
           name: "price",
           title: "Price Amount",
           type: "string",
-          description: 'Shown large, e.g. "$167"',
+          description: 'Shown large, e.g. "$170"',
         }),
         defineField({
           name: "pricePeriod",

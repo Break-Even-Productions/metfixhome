@@ -93,6 +93,9 @@ describe("sanity course fetch", () => {
     expect(url.searchParams.has("token")).toBe(false);
     expect(url.searchParams.has("access_token")).toBe(false);
     expect(courses).toHaveLength(9);
+    expect(courses.map((course) => course.id)).toEqual(
+      Array.from({ length: 9 }, (_, index) => `course-${index + 1}`),
+    );
     expect(courses.every((course) => !course.id.startsWith("drafts."))).toBe(true);
   });
 });

@@ -112,7 +112,7 @@ export const FALLBACK_AFFILIATE_PAGE: AffiliatePageContent = {
       "A MetFix Affiliate is a gym, box, or training facility that has been accepted into the MetFix program and committed to implementing MetFix programming in their community. It is not a badge you earn automatically. It is a standard you apply for and uphold.",
       "MetFix affiliates are the front line of a global effort to reverse chronic disease. They are the coaches their communities trust with their health, and they have the education to back it up.",
     ],
-    price: "$167",
+    price: "$170",
     pricePeriod: "per month",
     priceNote: "annual commitment",
     priceDescription:
@@ -222,7 +222,7 @@ export const FALLBACK_AFFILIATE_PAGE: AffiliatePageContent = {
       {
         title: "Annual Affiliate Agreement",
         description:
-          "Affiliate membership is $167/month with an annual commitment ($2,000/year). Affiliate status is renewed annually. Affiliates who do not maintain programming standards may have their status reviewed.",
+          "Affiliate membership is $170/month with an annual commitment ($2,000/year). Affiliate status is renewed annually. Affiliates who do not maintain programming standards may have their status reviewed.",
       },
     ],
   },

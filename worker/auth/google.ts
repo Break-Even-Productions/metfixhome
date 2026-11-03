@@ -37,6 +37,7 @@ import {
 import { attemptR8b, clientIp } from "./throttle";
 import { createSession, destroySession } from "./session";
 import type { OauthStateRecord } from "../do/oauth-state";
+import { sanitizeReturnPath } from "../../shared/account/returnPath";
 
 const GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
@@ -73,9 +74,7 @@ function googleEnabled(env: Env): boolean {
 }
 
 function sanitizeReturn(raw: string | null): string {
-  if (!raw || raw.length > 512) return "/";
-  if (!/^\/(?!\/)[A-Za-z0-9/_\-#?=&.]*$/.test(raw)) return "/";
-  return raw;
+  return sanitizeReturnPath(raw) ?? "/";
 }
 
 function authErrorRedirect(code: "state" | "google" | "unavailable"): Response {

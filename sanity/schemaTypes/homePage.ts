@@ -5,6 +5,7 @@ import {
   highlightedHeadline,
   libraryCategoryTag,
   libraryResource,
+  membershipComparisonRow,
   networkLocation,
 } from "./objects";
 
@@ -18,6 +19,7 @@ export const homePage = defineType({
     { name: "notes", title: "3. Locked Sections (instructions)" },
     { name: "playbook", title: "4. Playbook CTA" },
     { name: "specialty", title: "5. Specialty Tracks" },
+    { name: "membership", title: "5b. Membership Comparison" },
     { name: "affiliation", title: "6. Affiliation" },
     { name: "foundations", title: "7. Foundations" },
     { name: "about", title: "8. Why MetFix Is Different" },
@@ -187,6 +189,89 @@ export const homePage = defineType({
       ],
     }),
 
+    // ─── 5b. MEMBERSHIP COMPARISON ─────────────────────────────
+    defineField({
+      name: "membershipComparison",
+      title: "Membership Comparison Table",
+      type: "object",
+      group: "membership",
+      description:
+        "Check / X / text / number cells. Most For-X pages show MetFix Pro vs Free. Gym Owners, Clinicians, and Organizations also get the Affiliate column plus the extra affiliate rows.",
+      options: { collapsible: true, collapsed: false },
+      fields: [
+        defineField({
+          name: "featuresLabel",
+          title: "Features Column Label",
+          type: "string",
+          initialValue: "Membership Features",
+        }),
+        defineField({
+          name: "proLabel",
+          title: "Pro Column Label",
+          type: "string",
+          initialValue: "MetFix Pro",
+        }),
+        defineField({
+          name: "proSublabel",
+          title: "Pro Column Sublabel",
+          type: "string",
+          description: 'e.g. "$30/mo · 1st month free" (not shown in the table header UI).',
+        }),
+        defineField({
+          name: "freeLabel",
+          title: "Free Column Label",
+          type: "string",
+          initialValue: "Free",
+        }),
+        defineField({
+          name: "affiliateLabel",
+          title: "Affiliate Column Label",
+          type: "string",
+          initialValue: "Affiliate",
+        }),
+        defineField({
+          name: "affiliateSublabel",
+          title: "Affiliate Column Sublabel",
+          type: "string",
+          description: 'e.g. "$170/mo" (not shown in the table header UI).',
+        }),
+        defineField({
+          name: "proCtaLabel",
+          title: "MetFix Pro CTA Label",
+          type: "string",
+          initialValue: "Join MetFix Pro",
+        }),
+        defineField({
+          name: "affiliateCtaLabel",
+          title: "Affiliate CTA Label",
+          type: "string",
+          initialValue: "Become an Affiliate",
+          description: "Shown under the table when the Affiliate column is visible.",
+        }),
+        defineField({
+          name: "affiliateCtaHref",
+          title: "Affiliate CTA Href",
+          type: "string",
+          initialValue: "/become-an-affiliate",
+        }),
+        defineField({
+          name: "rows",
+          title: "Base Rows (all audiences)",
+          type: "array",
+          of: [membershipComparisonRow],
+          description: "Shown for every For-X page (Pro vs Free; Affiliate cell used when that column is visible).",
+        }),
+        defineField({
+          name: "affiliateExtraRows",
+          title: "Affiliate-Only Extra Rows",
+          type: "array",
+          of: [membershipComparisonRow],
+          description:
+            "Inserted after The Daily Fix for Gym Owners, Clinicians, and Organizations (e.g. The Daily Fix Embed).",
+        }),
+      ],
+    }),
+
     // ─── 6. AFFILIATION ────────────────────────────────────────
     defineField({
       name: "affiliation",
@@ -207,7 +292,7 @@ export const homePage = defineType({
           name: "monthlyPrice",
           title: "Monthly Price",
           type: "string",
-          description: 'e.g. "$167"',
+          description: 'e.g. "$170"',
         }),
         defineField({
           name: "priceNote",
@@ -263,10 +348,34 @@ export const homePage = defineType({
         }),
         defineField({
           name: "videoEmbedUrls",
-          title: "Video Embed URLs",
+          title: "Coach Videos (vertical)",
           type: "array",
-          of: [defineArrayMember({ type: "url" })],
-          description: "Vimeo/YouTube embed URLs. Add or remove as needed.",
+          of: [
+            defineArrayMember({
+              type: "url",
+              validation: (Rule) =>
+                Rule.uri({ scheme: ["https"] }).custom((value) => {
+                  if (!value) return true;
+                  try {
+                    const host = new URL(value).hostname.replace(/^www\./, "");
+                    const ok =
+                      host === "youtube.com" ||
+                      host === "m.youtube.com" ||
+                      host === "youtu.be" ||
+                      host === "youtube-nocookie.com" ||
+                      host === "vimeo.com" ||
+                      host === "player.vimeo.com";
+                    return ok
+                      ? true
+                      : "Use a YouTube or Vimeo https link (watch, Shorts, share, or embed).";
+                  } catch {
+                    return "Enter a valid https URL";
+                  }
+                }),
+            }),
+          ],
+          description:
+            "Vertical (9:16) coach testimonial videos for the Foundations carousel. Paste YouTube or Vimeo links — watch, Shorts, share, or embed URLs all work. Order here is the carousel order.",
         }),
       ],
     }),

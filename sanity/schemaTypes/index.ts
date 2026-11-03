@@ -1,5 +1,6 @@
 import { affiliatePage } from "./affiliatePage";
 import { course } from "./course";
+import { expert } from "./expert";
 import { faqItem } from "./faqItem";
 import { homePage } from "./homePage";
 import {
@@ -7,6 +8,7 @@ import {
   highlightedHeadline,
   libraryCategoryTag,
   libraryResource,
+  membershipComparisonCell,
 } from "./objects";
 import { siteSettings } from "./siteSettings";
 import { testimonial } from "./testimonial";
@@ -17,6 +19,7 @@ export const schemaTypes = [
   homePage,
   affiliatePage,
   course,
+  expert,
   testimonial,
   faqItem,
   // objects
@@ -24,4 +27,5 @@ export const schemaTypes = [
   highlightedHeadline,
   libraryCategoryTag,
   libraryResource,
+  membershipComparisonCell,
 ];

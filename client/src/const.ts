@@ -1,5 +1,15 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
+/** Find a Gym map (P-E-25 / T-E-54 — single definition). */
+export const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";
+
+/**
+ * Nav search href (LR-4 / ER-11 / ER-14). Literal unshadowed renderable
+ * `/library/search` Route only; otherwise `/library`. Defined once (T-E-60).
+ * Current staging has `/library/search` (PR #24 / #18).
+ */
+export const SEARCH_HREF = "/library/search" as const;
+
 /** Legacy BSI WordPress login (site chrome that still points off-site). */
 export const LOGIN_URL = "https://brokenscience.org/login/";
 
@@ -25,7 +35,11 @@ const KNOWN_ROUTES = new Set([
   "library",
   "topic",
   "login",
+  "join",
   "404",
+  "account",
+  "members",
+  "checkout",
 ]);
 
 /** Wouter base path from Vite `base` (Cloudflare Workers; `base: "/"`). */

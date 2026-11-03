@@ -1,3 +1,7 @@
+import type { MembershipComparisonContent } from "@/data/home/membershipComparison";
+
+export type { MembershipComparisonContent };
+
 export type CtaLink = {
   label: string;
   href: string;
@@ -32,6 +36,8 @@ export type HomeCourseCard = {
   tag: string;
   live: boolean;
   notify: boolean;
+  /** Absolute URL or site-relative path (e.g. `/Stills/...`). */
+  image?: string;
 };
 
 export type LibraryResource = {
@@ -75,6 +81,7 @@ export type HomePageContent = {
     headline: HighlightedHeadline;
     subtext: string;
   };
+  membershipComparison: MembershipComparisonContent;
   affiliation: {
     eyebrow: string;
     headline: HighlightedHeadline;
