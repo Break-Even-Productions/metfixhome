@@ -249,11 +249,19 @@ export const membershipComparisonCell = {
       description: 'Optional suffix after the number, e.g. "/mo".',
       hidden: ({ parent }) => parent?.kind !== "number",
     }),
+    defineField({
+      name: "note",
+      title: "Hover Note (asterisk)",
+      type: "string",
+      description:
+        'Optional hover text for a check mark (shows *). e.g. "Access to most resources".',
+      hidden: ({ parent }) => parent?.kind !== "check",
+    }),
   ],
   preview: {
-    select: { kind: "kind", text: "text", number: "number", suffix: "suffix" },
-    prepare({ kind, text, number, suffix }) {
-      if (kind === "check") return { title: "✓ Included" };
+    select: { kind: "kind", text: "text", number: "number", suffix: "suffix", note: "note" },
+    prepare({ kind, text, number, suffix, note }) {
+      if (kind === "check") return { title: note ? `✓ Included*` : "✓ Included" };
       if (kind === "cross") return { title: "✕ Not included" };
       if (kind === "number") return { title: `${number ?? "?"}${suffix ?? ""}` };
       return { title: text || "Text" };

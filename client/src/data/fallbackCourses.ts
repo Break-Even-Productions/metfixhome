@@ -10,6 +10,7 @@ export const FALLBACK_COURSES: Course[] = [
     comingSoon: false,
     ctaType: "start",
     landingPageUrl: "https://whatis.metfix.org/",
+    image: "https://brokenscience.org/wp-content/uploads/2026/05/WhatisMF-1024x611.png",
     audience: "Coaches · Individuals",
     price: "Free",
     stats: [
@@ -39,7 +40,9 @@ export const FALLBACK_COURSES: Course[] = [
     tagColor: "rgba(239,239,239,0.35)",
     comingSoon: true,
     ctaType: "notify",
-    landingPageUrl: "https://brokenscience.org/fit-for-life-mailing-list/",
+    landingPageUrl: "https://brokenscience.org/courses/fit-for-duty/",
+    image: "https://brokenscience.org/wp-content/uploads/2026/09/FitForDuty-th3.png",
+    bsiPostId: 28822,
     audience: "Law Enforcement · Fire · Military · ER",
     price: "Coming Soon",
     stats: [
@@ -72,7 +75,9 @@ export const FALLBACK_COURSES: Course[] = [
     tagColor: "rgba(239,239,239,0.35)",
     comingSoon: true,
     ctaType: "notify",
-    landingPageUrl: "https://brokenscience.org/the-missing-manual-mailing-list/",
+    landingPageUrl: "https://brokenscience.org/courses/womens-health-missing-manual/",
+    image: "https://brokenscience.org/wp-content/uploads/2026/09/MetFix-WomensHealthCourse-thumbnail2.png",
+    bsiPostId: 29612,
     audience: "Women · Coaches · Health Professionals",
     price: "Coming Soon",
     stats: [
@@ -101,6 +106,9 @@ export const FALLBACK_COURSES: Course[] = [
     tagColor: "rgba(239,239,239,0.35)",
     comingSoon: true,
     ctaType: "none",
+    landingPageUrl: "https://brokenscience.org/courses/the-prepared-patient/",
+    image: "https://brokenscience.org/wp-content/uploads/2026/09/MetFix-PreparedPatient-thumbnail2.png",
+    bsiPostId: 32264,
     audience: "Individuals · Patients · Health-Conscious",
     price: "Coming Soon",
     stats: [
@@ -160,6 +168,9 @@ export const FALLBACK_COURSES: Course[] = [
     tagColor: "rgba(239,239,239,0.35)",
     comingSoon: true,
     ctaType: "none",
+    landingPageUrl: "http://medicalmetfix.com/",
+    image:
+      "https://brokenscience.org/wp-content/uploads/2026/09/MFMedicalNutrition-CourseThumbnail3-1200x716.png",
     audience: "MD · DO · MBBS · Medical Students",
     price: "Coming Soon",
     stats: [
@@ -189,7 +200,9 @@ export const FALLBACK_COURSES: Course[] = [
     tagColor: "rgba(239,239,239,0.35)",
     comingSoon: true,
     ctaType: "start",
-    landingPageUrl: "https://brokenscience.org/our-courses/",
+    landingPageUrl: "https://brokenscience.org/courses/metfix-foundation-seminar-course/",
+    image: "https://brokenscience.org/wp-content/uploads/2026/06/MetFix-EssentialsCourse-thumbnail3.png",
+    bsiPostId: 20231,
     audience: "Coaches · Gym Owners · Health Professionals",
     price: "Coming Soon",
     stats: [{ value: "TBA", label: "Modules" }],

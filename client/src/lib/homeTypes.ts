@@ -36,6 +36,8 @@ export type HomeCourseCard = {
   tag: string;
   live: boolean;
   notify: boolean;
+  /** Absolute URL or site-relative path (e.g. `/Stills/...`). */
+  image?: string;
 };
 
 export type LibraryResource = {

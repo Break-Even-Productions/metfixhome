@@ -170,6 +170,11 @@
     overflow: hidden;
     border-radius: 2.5rem;
   }
+  .footer-glass {
+    background: color-mix(in srgb, #171512 48%, transparent);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
   .container {
     width: 100%;
     margin-left: auto;
@@ -1084,9 +1089,9 @@
   .nav-sticky-cta    { display: flex !important; }
 }
 
-/* ═══ Global overflow prevention — OUTSIDE @layer ═══════════════════════════
-   Prevents horizontal scrolling and text overflow on all screen sizes.
-   These rules are outside @layer so they cannot be overridden by Tailwind.
+/* ═══ Global overflow prevention ════════════════════════════════════════════
+   Do NOT set max-width on `*` outside @layer — that beats Tailwind max-w-*
+   utilities (join shell, hero column, etc.) and forces full-bleed widths.
    ═══════════════════════════════════════════════════════════════════════════ */
 html, body {
   /* clip (not hidden) stops sideways scroll without turning the page into a
@@ -1096,19 +1101,13 @@ html, body {
   max-width: 100vw;
 }
 
-/* Every element respects the viewport width */
-*, *::before, *::after {
-  box-sizing: border-box;
-  max-width: 100%;
-}
-
 /* Text wraps correctly everywhere */
 p, li, blockquote, h1, h2, h3, h4, h5, h6, span, div {
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
-/* Images and media never overflow their container */
+/* Images and media never overflow their container (mia parity). */
 img, video, iframe, embed, object {
   max-width: 100%;
 }

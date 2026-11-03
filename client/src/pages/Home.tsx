@@ -45,12 +45,12 @@ function resolveScrollTarget(raw: string): string | null {
 
 export default function Home() {
   const [audience, setAudience] = useState<AudienceHref>(() => readAudience());
-  const { home, homeCourses, faqs: sanityFaqs } = useHomeContent();
+  const { home, homeCourses, faqs: sanityFaqs, experts } = useHomeContent();
   const joinFlow = useJoinFlowOptional();
   const copy = useMemo(() => landingCopyFor(audience), [audience]);
   const meta = useMemo(() => metaForAudience(audience), [audience]);
   const theme = audienceTheme[audience];
-  const expertList = useMemo(() => expertsFor(audience), [audience]);
+  const expertList = useMemo(() => expertsFor(audience, experts), [audience, experts]);
   const faqList = useMemo(() => faqsFor(audience), [audience]);
   const showFoundations = audience === "#for-coaches";
 

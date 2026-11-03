@@ -51,7 +51,7 @@ export function JoinShell({
       aria-modal="true"
       aria-label="Join MetFix"
     >
-      <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 py-5 md:max-w-xl md:px-8">
+      <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 py-5 md:px-8">
         {onBack ? (
           <button
             type="button"
@@ -76,7 +76,7 @@ export function JoinShell({
         </button>
       </header>
       {progress != null ? (
-        <div className="mx-auto w-full max-w-lg px-5 md:max-w-xl md:px-8">
+        <div className="mx-auto w-full max-w-3xl px-5 md:px-8">
           <div className="h-[2px] overflow-hidden rounded-full bg-[var(--join-cream-2)]">
             <div
               className="h-full bg-[var(--join-accent)] transition-[width] duration-500 ease-out"
@@ -87,7 +87,7 @@ export function JoinShell({
       ) : null}
       <div className="flex-1 overflow-y-auto" id="join-scroll">
         <div
-          className={`mx-auto w-full px-5 py-10 md:px-8 md:py-16 ${wide ? "max-w-xl" : "max-w-md"}`}
+          className={`mx-auto w-full px-5 py-10 md:px-8 md:py-16 ${wide ? "max-w-3xl" : "max-w-xl"}`}
         >
           {children}
         </div>

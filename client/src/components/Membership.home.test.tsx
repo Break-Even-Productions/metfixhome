@@ -4,6 +4,7 @@
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Router } from "wouter";
 import { Membership } from "./Membership";
 import { MEMBERSHIP_HERO } from "@shared/join";
 import { FALLBACK_MEMBERSHIP_COMPARISON } from "@/data/home/membershipComparison";
@@ -16,9 +17,14 @@ afterEach(() => {
 describe("WJ20 Membership surfaces (render)", () => {
   it("Membership surface renders hero + comparison + CTA", () => {
     const onJoin = vi.fn();
-    render(<Membership onJoin={onJoin} />);
+    render(
+      <Router>
+        <Membership onJoin={onJoin} />
+      </Router>,
+    );
     expect(screen.getByText(MEMBERSHIP_HERO.headline)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Start my free month/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Join MetFix Pro/i })).toBeTruthy();
     for (const row of FALLBACK_MEMBERSHIP_COMPARISON.rows) {
       expect(screen.getByText(row.feature)).toBeTruthy();
     }
@@ -27,9 +33,11 @@ describe("WJ20 Membership surfaces (render)", () => {
   it("Home membership section mounts Membership (behavioral stand-in)", () => {
     const onJoin = vi.fn();
     render(
-      <section id="membership-section" data-testid="home-membership">
-        <Membership onJoin={onJoin} audience="#for-individuals" />
-      </section>,
+      <Router>
+        <section id="membership-section" data-testid="home-membership">
+          <Membership onJoin={onJoin} audience="#for-individuals" />
+        </section>
+      </Router>,
     );
     const section = screen.getByTestId("home-membership");
     expect(section.id).toBe("membership-section");

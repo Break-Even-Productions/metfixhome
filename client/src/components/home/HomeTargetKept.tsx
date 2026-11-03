@@ -60,13 +60,22 @@ export function HomeTargetKept({ home }: HomeTargetKeptProps) {
               </h2>
               <p className="kept-body">{home.affiliation.body}</p>
               <p className="kept-body">{home.affiliation.supportingText}</p>
+              <div className="flex flex-wrap gap-3">
+                <CmsLink cta={home.affiliation.primaryCta} className="kept-cta" />
+                <CmsLink
+                  cta={home.affiliation.secondaryCta}
+                  className="kept-cta !bg-transparent !text-cream border border-line-light"
+                />
+              </div>
+            </Reveal>
+            <Reveal>
               <div className="mb-6 inline-flex items-baseline gap-2 rounded-full border border-line-light px-4 py-2">
                 <span className="font-serif text-2xl text-accent">{home.affiliation.monthlyPrice}</span>
                 <span className="text-xs uppercase tracking-[0.12em] text-cream/55">
                   {home.affiliation.priceNote}
                 </span>
               </div>
-              <ul className="kept-list mb-8">
+              <ul className="kept-list">
                 {home.affiliation.benefits.map((item) => (
                   <li key={item}>
                     <span className="text-accent" aria-hidden="true">
@@ -76,13 +85,6 @@ export function HomeTargetKept({ home }: HomeTargetKeptProps) {
                   </li>
                 ))}
               </ul>
-              <div className="flex flex-wrap gap-3">
-                <CmsLink cta={home.affiliation.primaryCta} className="kept-cta" />
-                <CmsLink
-                  cta={home.affiliation.secondaryCta}
-                  className="kept-cta !bg-transparent !text-cream border border-line-light"
-                />
-              </div>
             </Reveal>
           </div>
         </div>

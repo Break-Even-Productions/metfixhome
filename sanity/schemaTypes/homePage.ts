@@ -215,7 +215,7 @@ export const homePage = defineType({
           name: "proSublabel",
           title: "Pro Column Sublabel",
           type: "string",
-          description: 'e.g. "$30/mo · 1st month free"',
+          description: 'e.g. "$30/mo · 1st month free" (not shown in the table header UI).',
         }),
         defineField({
           name: "freeLabel",
@@ -233,7 +233,26 @@ export const homePage = defineType({
           name: "affiliateSublabel",
           title: "Affiliate Column Sublabel",
           type: "string",
-          description: 'e.g. "$170/mo"',
+          description: 'e.g. "$170/mo" (not shown in the table header UI).',
+        }),
+        defineField({
+          name: "proCtaLabel",
+          title: "MetFix Pro CTA Label",
+          type: "string",
+          initialValue: "Join MetFix Pro",
+        }),
+        defineField({
+          name: "affiliateCtaLabel",
+          title: "Affiliate CTA Label",
+          type: "string",
+          initialValue: "Become an Affiliate",
+          description: "Shown under the table when the Affiliate column is visible.",
+        }),
+        defineField({
+          name: "affiliateCtaHref",
+          title: "Affiliate CTA Href",
+          type: "string",
+          initialValue: "/become-an-affiliate",
         }),
         defineField({
           name: "rows",
@@ -248,7 +267,7 @@ export const homePage = defineType({
           type: "array",
           of: [membershipComparisonRow],
           description:
-            "Appended only for Gym Owners, Clinicians, and Organizations (third Affiliate column).",
+            "Inserted after The Daily Fix for Gym Owners, Clinicians, and Organizations (e.g. The Daily Fix Embed).",
         }),
       ],
     }),
@@ -273,7 +292,7 @@ export const homePage = defineType({
           name: "monthlyPrice",
           title: "Monthly Price",
           type: "string",
-          description: 'e.g. "$167"',
+          description: 'e.g. "$170"',
         }),
         defineField({
           name: "priceNote",
@@ -329,10 +348,34 @@ export const homePage = defineType({
         }),
         defineField({
           name: "videoEmbedUrls",
-          title: "Video Embed URLs",
+          title: "Coach Videos (vertical)",
           type: "array",
-          of: [defineArrayMember({ type: "url" })],
-          description: "Vimeo/YouTube embed URLs. Add or remove as needed.",
+          of: [
+            defineArrayMember({
+              type: "url",
+              validation: (Rule) =>
+                Rule.uri({ scheme: ["https"] }).custom((value) => {
+                  if (!value) return true;
+                  try {
+                    const host = new URL(value).hostname.replace(/^www\./, "");
+                    const ok =
+                      host === "youtube.com" ||
+                      host === "m.youtube.com" ||
+                      host === "youtu.be" ||
+                      host === "youtube-nocookie.com" ||
+                      host === "vimeo.com" ||
+                      host === "player.vimeo.com";
+                    return ok
+                      ? true
+                      : "Use a YouTube or Vimeo https link (watch, Shorts, share, or embed).";
+                  } catch {
+                    return "Enter a valid https URL";
+                  }
+                }),
+            }),
+          ],
+          description:
+            "Vertical (9:16) coach testimonial videos for the Foundations carousel. Paste YouTube or Vimeo links — watch, Shorts, share, or embed URLs all work. Order here is the carousel order.",
         }),
       ],
     }),

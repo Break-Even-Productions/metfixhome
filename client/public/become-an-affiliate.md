@@ -25,7 +25,7 @@ Gym owners, box owners, and facility operators who want to implement MetFix meta
 
 ## Pricing note
 
-Public site copy has listed affiliation around $167 per month with an annual commitment. Confirm current pricing on the live affiliate page or application.
+Public site copy has listed affiliation around $170 per month with an annual commitment. Confirm current pricing on the live affiliate page or application.
 
 ## Related
 

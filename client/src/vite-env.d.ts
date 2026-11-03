@@ -1,5 +1,16 @@
 /// <reference types="vite/client" />
 
+interface WhopPixel {
+  track: (event: string, props?: Record<string, unknown>) => void;
+  setScope: (...accountIds: string[]) => void;
+}
+
+declare global {
+  interface Window {
+    whop?: WhopPixel;
+  }
+}
+
 interface ImportMetaEnv {
   readonly VITE_SANITY_PROJECT_ID?: string;
   readonly VITE_SANITY_DATASET?: string;

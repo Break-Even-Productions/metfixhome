@@ -15,11 +15,13 @@ export function NameScreen({
   lastName,
   onChange,
   onContinue,
+  onSignIn,
 }: {
   firstName: string;
   lastName: string;
   onChange: (field: "firstName" | "lastName", value: string) => void;
   onContinue: () => void;
+  onSignIn: () => void;
 }) {
   const [attempted, setAttempted] = useState(false);
   const showErrors = attempted || firstName.length > 0 || lastName.length > 0;
@@ -62,7 +64,14 @@ export function NameScreen({
         </GoldButton>
       </div>
       <p className="mt-6 text-center text-sm text-[var(--join-muted)]">
-        Explore MetFix free for your first month. Cancel anytime.
+        Already have an account?{" "}
+        <button
+          type="button"
+          onClick={onSignIn}
+          className="font-semibold text-[var(--join-ink)] underline decoration-[var(--join-line)] underline-offset-4 transition-colors duration-300 ease-out hover:text-[var(--join-accent-2)]"
+        >
+          Sign in
+        </button>
       </p>
     </ScreenForm>
   );

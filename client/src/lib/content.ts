@@ -112,52 +112,131 @@ function mapNavLinks(links: SanitySiteSettings["navLinks"]): readonly NavLink[] 
   return mapped.length > 0 ? mapped : DEFAULT_NAV_LINKS;
 }
 
+const FALLBACK_COURSE_BY_ID = new Map(
+  FALLBACK_COURSES.map((course) => [course.id, course]),
+);
+
+function filled(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
+function normTitle(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Exact title, or the shorter title is the start of the longer one. */
+function courseTitlesAlign(left: string, right: string): boolean {
+  const a = normTitle(left);
+  const b = normTitle(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  if (shorter.length < 8) return false;
+  return longer.startsWith(`${shorter} `);
+}
+
+function findFallbackCourse(id: string, title: string | undefined): Course | undefined {
+  const byId = FALLBACK_COURSE_BY_ID.get(id);
+  if (byId) return byId;
+  if (!title) return undefined;
+  return FALLBACK_COURSES.find((course) => courseTitlesAlign(title, course.title));
+}
+
 function mapCourse(doc: SanityCourseDoc): Course | null {
   const id = doc.slug?.current || doc._id;
-  if (!doc.title || !id) return null;
+  if (!id) return null;
 
-  const comingSoon = Boolean(doc.comingSoon);
+  const fallback = findFallbackCourse(id, doc.title);
+  const title = filled(doc.title, fallback?.title);
+  if (!title) return null;
+
+  const comingSoon =
+    typeof doc.comingSoon === "boolean" ? doc.comingSoon : Boolean(fallback?.comingSoon);
   const ctaType: CourseCtaType =
     doc.ctaType === "start" || doc.ctaType === "notify" || doc.ctaType === "none"
       ? doc.ctaType
-      : comingSoon
-        ? "notify"
-        : "start";
+      : fallback?.ctaType
+        ? fallback.ctaType
+        : comingSoon
+          ? "notify"
+          : "start";
+
+  const stats = (doc.stats || [])
+    .filter((s): s is { value: string; label: string } => Boolean(s?.value && s?.label))
+    .map((s) => ({ value: s.value, label: s.label }));
+  const modules = (doc.modules || [])
+    .filter((m): m is { number: string; title: string; description?: string } =>
+      Boolean(m?.number && m?.title),
+    )
+    .map((m) => ({
+      number: m.number,
+      title: m.title,
+      description: m.description || "",
+    }));
 
   return {
     id,
-    title: doc.title,
-    tag: doc.tag || (comingSoon ? "COMING SOON" : ""),
-    tagColor: comingSoon ? "rgba(239,239,239,0.35)" : "#C9A96E",
+    title,
+    tag: filled(doc.tag, fallback?.tag, comingSoon ? "COMING SOON" : ""),
+    tagColor: comingSoon
+      ? filled(fallback?.tagColor, "var(--color-muted)")
+      : filled(fallback?.tagColor, "var(--color-accent-text)"),
     comingSoon,
     ctaType,
-    landingPageUrl: doc.landingPageUrl || undefined,
-    audience: doc.audience || "",
-    price: doc.price || (comingSoon ? "Coming Soon" : ""),
-    stats: (doc.stats || [])
-      .filter((s): s is { value: string; label: string } => Boolean(s?.value && s?.label))
-      .map((s) => ({ value: s.value, label: s.label })),
-    details: doc.details || "",
-    modules: (doc.modules || [])
-      .filter((m): m is { number: string; title: string; description?: string } =>
-        Boolean(m?.number && m?.title)
-      )
-      .map((m) => ({
-        number: m.number,
-        title: m.title,
-        description: m.description || "",
-      })),
-    isAffiliateFree: Boolean(doc.isAffiliateFree),
-    requiredForAffiliation: Boolean(doc.requiredForAffiliation),
-    startButtonLabel: doc.startButtonLabel || undefined,
-    notifyButtonLabel: doc.notifyButtonLabel || undefined,
-    sortOrder: typeof doc.sortOrder === "number" ? doc.sortOrder : 100,
-    image: sanityImageUrl(doc.image, 960),
+    landingPageUrl:
+      filled(doc.landingPageUrl, fallback?.landingPageUrl) || undefined,
+    audience: filled(doc.audience, fallback?.audience),
+    price: filled(doc.price, fallback?.price, comingSoon ? "Coming Soon" : ""),
+    stats: stats.length > 0 ? stats : fallback?.stats || [],
+    details: filled(doc.details, fallback?.details),
+    modules: modules.length > 0 ? modules : fallback?.modules || [],
+    isAffiliateFree:
+      typeof doc.isAffiliateFree === "boolean"
+        ? doc.isAffiliateFree
+        : Boolean(fallback?.isAffiliateFree),
+    requiredForAffiliation:
+      typeof doc.requiredForAffiliation === "boolean"
+        ? doc.requiredForAffiliation
+        : Boolean(fallback?.requiredForAffiliation),
+    startButtonLabel:
+      filled(doc.startButtonLabel, fallback?.startButtonLabel) || undefined,
+    notifyButtonLabel:
+      filled(doc.notifyButtonLabel, fallback?.notifyButtonLabel) || undefined,
+    sortOrder:
+      typeof doc.sortOrder === "number"
+        ? doc.sortOrder
+        : typeof fallback?.sortOrder === "number"
+          ? fallback.sortOrder
+          : 100,
+    image: sanityImageUrl(doc.image, 960) || fallback?.image,
     bsiPostId:
       typeof doc.bsiPostId === "number" && Number.isInteger(doc.bsiPostId) && doc.bsiPostId > 0
         ? doc.bsiPostId
-        : undefined,
+        : fallback?.bsiPostId,
   };
+}
+
+/**
+ * Dedupe server courses by id and aligned title (first wins). Empty fields
+ * were already filled from the matching local fallback in mapCourse — same
+ * pattern as the home classes widget (Sanity list + fallback field merge).
+ */
+export function mergeCoursesWithFallback(serverCourses: Course[]): Course[] {
+  const usedIds = new Set<string>();
+  const out: Course[] = [];
+  for (const course of serverCourses) {
+    if (usedIds.has(course.id)) continue;
+    if (out.some((existing) => courseTitlesAlign(existing.title, course.title))) continue;
+    usedIds.add(course.id);
+    out.push(course);
+  }
+  return out;
 }
 
 export async function fetchCourses(): Promise<Course[]> {
@@ -166,7 +245,8 @@ export async function fetchCourses(): Promise<Course[]> {
   try {
     const docs = await sanityClient.fetch<SanityCourseDoc[]>(COURSES_QUERY);
     const mapped = (docs || []).map(mapCourse).filter((c): c is Course => Boolean(c));
-    return mapped.length > 0 ? mapped : FALLBACK_COURSES;
+    if (mapped.length === 0) return FALLBACK_COURSES;
+    return mergeCoursesWithFallback(mapped);
   } catch (err) {
     console.error("Failed to fetch courses from Sanity", err);
     return FALLBACK_COURSES;

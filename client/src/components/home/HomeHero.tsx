@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Link } from "wouter";
 import { METFIX_MAP_URL } from "@/const";
 import type { AudienceHref, LandingCopy } from "@/data/home/audience";
+import { AppleIcon, GoogleIcon } from "./AuthProviderIcons";
 import { AsteriskFallback, useHomeHeroGlass } from "./HomeHeroGlass";
 import { easeOutExpo } from "./motion";
 import { SectionCard } from "./SectionCard";
@@ -54,7 +55,7 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
   const heroRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
-  const glassReady = useHomeHeroGlass(heroRef, barRef, markRef);
+  const glassReady = useHomeHeroGlass(heroRef, barRef, markRef, photoSrc);
 
   return (
     <SectionCard className="hero-viewport">
@@ -165,52 +166,54 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
               </span>
             ))}
           </h1>
-          <p className="mt-3 max-w-md text-[14px] leading-relaxed text-ink/80 md:text-[15px]">
+          <p className="mt-3 max-w-md text-[14px] leading-relaxed text-muted md:text-[15px]">
             {copy.heroSubtitle}
           </p>
 
           <motion.div
-            className="join-card relative mt-5 rounded-[1.35rem] md:mt-6"
+            className="join-card relative mt-5 w-full max-w-none rounded-[1.35rem] md:mt-6"
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, delay: 0.18, ease: easeOutExpo }}
           >
-            {!reduce ? <span className="join-card-aura" aria-hidden="true" /> : null}
-            {!reduce ? <span className="join-card-sheen" aria-hidden="true" /> : null}
-            <div className="relative z-[1] rounded-[1.35rem] border border-ink/15 bg-white px-5 py-4 shadow-[0_18px_40px_rgba(23,21,18,0.12)] md:px-5 md:py-5">
+            <span className="join-card-aura" aria-hidden="true" />
+            <span className="join-card-sheen" aria-hidden="true" />
+            <div className="relative z-[1] rounded-[1.35rem] border border-line bg-white px-5 py-4 shadow-[0_18px_40px_rgba(23,21,18,0.08)] md:px-5 md:py-5">
               <h2 className="font-serif text-[1.45rem] leading-tight text-ink md:text-[1.55rem]">
                 Join Today — 1 Month Free
               </h2>
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-3 w-full rounded-full bg-accent py-2.5 text-sm font-semibold text-ink shadow-[0_8px_24px_color-mix(in_srgb,var(--color-accent-2)_35%,transparent)] transition-[background-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-px hover:bg-accent-2"
+                className="mt-3 w-full rounded-full bg-accent py-2.5 text-sm font-semibold text-ink shadow-[0_8px_24px_color-mix(in_srgb,var(--color-accent-2)_35%,transparent)] transition-[background-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:bg-accent-2 hover:shadow-[0_14px_32px_color-mix(in_srgb,var(--color-accent-2)_48%,transparent)] active:translate-y-0"
               >
                 Get Started
               </button>
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-ink/20 bg-white py-2.5 text-sm font-semibold text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0"
               >
+                <GoogleIcon />
                 Continue with Google
               </button>
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-ink/20 bg-white py-2.5 text-sm font-semibold text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0"
               >
+                <AppleIcon />
                 Continue with Apple
               </button>
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-ink/20 bg-white py-2.5 text-sm font-semibold text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0"
               >
                 <Mail className="h-4 w-4" strokeWidth={1.8} />
                 Continue with Email
               </button>
-              <p className="mt-3 text-[11px] leading-relaxed text-muted">
+              <p className="mt-3 text-[11px] leading-relaxed text-muted-2">
                 By joining, you agree to our Terms of Service and Privacy Policy.
               </p>
             </div>

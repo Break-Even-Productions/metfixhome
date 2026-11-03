@@ -2,7 +2,14 @@ import type { RoleId } from "@shared/join";
 
 export type { RoleId };
 export type AuthProvider = "google" | "email";
-export type JoinStep = "name" | "auth" | "roles" | "conditional" | "path";
+export type JoinStep =
+  | "intent"
+  | "name"
+  | "auth"
+  | "roles"
+  | "conditional"
+  | "path"
+  | "affiliate";
 export type AuthView = "choose" | "email-signin" | "email-signup";
 export type PathView = "plan" | "article" | "course";
 export type WhopPlan = "pro" | "org";

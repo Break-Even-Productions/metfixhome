@@ -1,5 +1,5 @@
 /**
- * Seed Sanity with homepage + courses (incl. home preview) + testimonials + FAQs.
+ * Seed Sanity with homepage + courses (incl. home preview) + experts + testimonials + FAQs.
  *
  * Requires SANITY_API_WRITE_TOKEN in .env (Editor+).
  * Run: npm run sanity:seed
@@ -17,6 +17,7 @@ import {
   FALLBACK_HOME_COURSES,
   FALLBACK_TESTIMONIALS,
 } from "../client/src/data/fallbackHome";
+import { experts as FALLBACK_EXPERTS } from "../client/src/data/home/experts";
 import { DEFAULT_COPYRIGHT_TEXT, DEFAULT_NAV_LINKS } from "../client/src/lib/contentTypes";
 import type { LibraryResource } from "../client/src/lib/homeTypes";
 
@@ -414,6 +415,21 @@ async function seed() {
       });
     }
     console.log(`✓ Course: ${id}`);
+  }
+
+  for (let i = 0; i < FALLBACK_EXPERTS.length; i++) {
+    const e = FALLBACK_EXPERTS[i];
+    await client.createOrReplace({
+      _id: `expert.${e.id}`,
+      _type: "expert",
+      name: e.name,
+      role: e.role,
+      bio: e.bio,
+      initials: e.initials,
+      hue: e.hue,
+      sortOrder: (i + 1) * 10,
+    });
+    console.log(`✓ Expert: ${e.name}`);
   }
 
   for (let i = 0; i < FALLBACK_TESTIMONIALS.length; i++) {

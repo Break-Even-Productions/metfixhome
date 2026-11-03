@@ -1,6 +1,7 @@
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { Check, X } from "lucide-react";
 import { useRef } from "react";
+import { Link } from "wouter";
 import { MEMBERSHIP_HERO } from "@shared/join";
 import type { AudienceHref } from "@/data/home/audience";
 import {
@@ -57,9 +58,19 @@ function ComparisonCellView({
   tone: "accent" | "muted";
 }) {
   if (cell.kind === "check") {
+    const label = cell.note ? `Included — ${cell.note}` : "Included";
     return (
-      <span className={tone === "accent" ? "text-[var(--join-accent-2)]" : "text-[var(--join-muted)]"}>
-        <Check className="h-4 w-4" strokeWidth={2.4} aria-label="Included" />
+      <span
+        className={`inline-flex items-start gap-0.5 ${
+          tone === "accent" ? "text-[var(--join-accent-2)]" : "text-[var(--join-muted)]"
+        }`}
+        title={cell.note}
+        aria-label={label}
+      >
+        <Check className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />
+        {cell.note ? (
+          <sup className="text-[10px] font-semibold leading-none text-[var(--join-muted)]">*</sup>
+        ) : null}
       </span>
     );
   }
@@ -93,21 +104,6 @@ function ComparisonCellView({
   );
 }
 
-function ColumnHeading({ label, sublabel }: { label: string; sublabel?: string }) {
-  return (
-    <span className="text-center">
-      <span className="block font-serif text-base font-medium normal-case tracking-normal text-[var(--join-ink)]">
-        {label}
-      </span>
-      {sublabel ? (
-        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--join-muted)]">
-          {sublabel}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
 /**
  * Membership hero + check/X/number comparison table (audience-aware Affiliate column).
  * CQ Trap 5 fixed: no direct DOM node removal; CSS liquid-glass only (no WebGL).
@@ -130,13 +126,14 @@ export function Membership({
   });
   const y = useTransform(scrollYProgress, [0, 1], reduce ? [0, 0] : [24, -24]);
 
-  const headerGrid = showAffiliate
-    ? "grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,1fr)_minmax(3.5rem,0.7fr)_minmax(4.5rem,1fr)] md:grid-cols-[minmax(0,1.6fr)_minmax(5rem,1fr)_minmax(4rem,0.75fr)_minmax(5rem,1fr)]"
-    : "grid-cols-[minmax(0,1.4fr)_minmax(4.5rem,1fr)_minmax(3.5rem,0.7fr)] md:grid-cols-[minmax(0,1.6fr)_minmax(5rem,1fr)_minmax(4rem,0.75fr)]";
-
   const tableLabel = showAffiliate
     ? "MetFix Pro vs Free vs Affiliate membership comparison"
     : "MetFix Pro vs Free membership comparison";
+
+  const colHeadClass =
+    "px-2 py-4 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--join-muted)] md:px-4 md:py-5";
+  const colLabelClass =
+    "block font-serif text-base font-medium normal-case tracking-normal text-[var(--join-ink)]";
 
   return (
     <div
@@ -179,28 +176,27 @@ export function Membership({
       </section>
 
       <section className="h-full rounded-[1.75rem] bg-[var(--join-cream)] p-3 md:rounded-[2.5rem] md:p-4">
-        <div className="h-full overflow-hidden rounded-[1.5rem] bg-[var(--join-paper)] md:rounded-[1.85rem]">
-          <div
-            className={`grid ${headerGrid} items-end border-b border-[var(--join-line)] px-4 py-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--join-muted)] md:px-7 md:py-5`}
-            role="row"
-          >
-            <span>{comparison.featuresLabel}</span>
-            <ColumnHeading label={comparison.proLabel} sublabel={comparison.proSublabel} />
-            <span className="text-center">{comparison.freeLabel}</span>
-            {showAffiliate ? (
-              <ColumnHeading
-                label={comparison.affiliateLabel}
-                sublabel={comparison.affiliateSublabel}
-              />
-            ) : null}
-          </div>
+        <div className="flex h-full flex-col overflow-hidden rounded-[1.5rem] bg-[var(--join-paper)] md:rounded-[1.85rem]">
           <table className="w-full border-collapse text-left" aria-label={tableLabel}>
-            <thead className="sr-only">
-              <tr>
-                <th scope="col">Feature</th>
-                <th scope="col">{comparison.proLabel}</th>
-                <th scope="col">{comparison.freeLabel}</th>
-                {showAffiliate ? <th scope="col">{comparison.affiliateLabel}</th> : null}
+            <thead>
+              <tr className="border-b border-[var(--join-line)]">
+                <th
+                  scope="col"
+                  className="px-4 py-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--join-muted)] md:px-7 md:py-5"
+                >
+                  {comparison.featuresLabel}
+                </th>
+                <th scope="col" className={colHeadClass}>
+                  <span className={colLabelClass}>{comparison.proLabel}</span>
+                </th>
+                <th scope="col" className={colHeadClass}>
+                  <span className={colLabelClass}>{comparison.freeLabel}</span>
+                </th>
+                {showAffiliate ? (
+                  <th scope="col" className={colHeadClass}>
+                    <span className={colLabelClass}>{comparison.affiliateLabel}</span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -238,6 +234,28 @@ export function Membership({
               ))}
             </tbody>
           </table>
+
+          <div
+            className={`mt-auto flex flex-col gap-2 border-t border-[var(--join-line)] px-4 py-4 sm:flex-row sm:items-center md:px-7 md:py-5 ${
+              showAffiliate ? "sm:justify-between" : "sm:justify-end"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={onJoin}
+              className="inline-flex items-center justify-center rounded-full bg-[var(--join-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--join-ink)] transition-[background-color,transform] duration-300 ease-out hover:-translate-y-px hover:bg-[var(--join-accent-2)]"
+            >
+              {comparison.proCtaLabel}
+            </button>
+            {showAffiliate ? (
+              <Link
+                href={comparison.affiliateCtaHref}
+                className="inline-flex items-center justify-center rounded-full border border-[var(--join-ink)]/20 bg-transparent px-5 py-2.5 text-sm font-semibold text-[var(--join-ink)] transition-[background-color,transform] duration-300 ease-out hover:-translate-y-px hover:bg-[var(--join-cream)]"
+              >
+                {comparison.affiliateCtaLabel}
+              </Link>
+            ) : null}
+          </div>
         </div>
       </section>
     </div>

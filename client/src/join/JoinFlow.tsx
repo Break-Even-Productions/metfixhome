@@ -13,6 +13,8 @@ import { emptyProfile } from "./data";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ConditionalScreen } from "./screens/ConditionalScreen";
 import { ArticlePage, CoursePage } from "./screens/ContentPages";
+import { AffiliateApplicationScreen } from "./screens/AffiliateApplicationScreen";
+import { IntentScreen } from "./screens/IntentScreen";
 import { NameScreen, validateNamePart } from "./screens/NameScreen";
 import { RecommendedPath } from "./screens/RecommendedPath";
 import { RolesScreen } from "./screens/RolesScreen";
@@ -58,7 +60,7 @@ export function JoinFlow({
   initialStep,
   returnFocusTo = null,
 }: JoinFlowProps) {
-  const [step, setStep] = useState<JoinStep>(initialStep ?? "name");
+  const [step, setStep] = useState<JoinStep>(initialStep ?? "intent");
   const [authView, setAuthView] = useState<AuthView>("choose");
   const [pathView, setPathView] = useState<PathView>("plan");
   const [article, setArticle] = useState<RecommendArticle | null>(null);
@@ -68,6 +70,8 @@ export function JoinFlow({
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /** When Sign in is used as a shortcut, Back returns here instead of auth choose. */
+  const [authReturnStep, setAuthReturnStep] = useState<JoinStep | null>(null);
 
   const savingRef = useRef(false);
   const lastSavedFp = useRef<string | null>(null);
@@ -103,6 +107,7 @@ export function JoinFlow({
         }),
       );
       setAuthView("choose");
+      setAuthReturnStep(null);
       setPathView("plan");
       setDirection(1);
     })();
@@ -118,6 +123,12 @@ export function JoinFlow({
   const go = (next: JoinStep, dir: 1 | -1 = 1) => {
     setDirection(dir);
     setStep(next);
+  };
+
+  const goToSignIn = (from: JoinStep) => {
+    setAuthReturnStep(from);
+    setAuthView("email-signin");
+    go("auth", 1);
   };
 
   const advanceFrom = async (from: JoinStep) => {
@@ -175,11 +186,13 @@ export function JoinFlow({
 
   const progress = useMemo(() => {
     const map: Record<JoinStep, number> = {
-      name: 0.2,
+      intent: 0.1,
+      name: 0.25,
       auth: 0.4,
       roles: 0.65,
       conditional: 0.8,
       path: 1,
+      affiliate: 1,
     };
     return map[step];
   }, [step]);
@@ -189,6 +202,13 @@ export function JoinFlow({
       setPathView("plan");
       setArticle(null);
       setCourse(null);
+      return;
+    }
+    if (step === "auth" && authReturnStep) {
+      const ret = authReturnStep;
+      setAuthReturnStep(null);
+      setAuthView("choose");
+      go(ret, -1);
       return;
     }
     if (step === "auth" && authView !== "choose") {
@@ -204,14 +224,16 @@ export function JoinFlow({
 
   if (!open) return null;
 
-  const showProgress = step !== "path";
+  const showProgress = step !== "path" && step !== "affiliate";
+  const hideBack =
+    step === "intent" || (step === "path" && pathView === "plan");
 
   return (
     <JoinShell
       onClose={onClose}
-      onBack={step === "name" || (step === "path" && pathView === "plan") ? undefined : back}
+      onBack={hideBack ? undefined : back}
       progress={showProgress ? progress : undefined}
-      wide={step === "path" && pathView === "plan"}
+      wide={(step === "path" && pathView === "plan") || step === "affiliate"}
       returnFocusTo={returnFocusTo}
     >
       {onboardingError ? (
@@ -232,6 +254,13 @@ export function JoinFlow({
           exit={{ opacity: 0, x: direction * -24 }}
           transition={{ duration: 0.4, ease: easeOutExpo }}
         >
+          {step === "intent" ? (
+            <IntentScreen
+              onIndividual={() => go("name", 1)}
+              onAffiliate={() => go("affiliate", 1)}
+              onSignIn={() => goToSignIn("intent")}
+            />
+          ) : null}
           {step === "name" ? (
             <NameScreen
               firstName={profile.firstName}
@@ -243,8 +272,10 @@ export function JoinFlow({
                 }
                 void advanceFrom("name");
               }}
+              onSignIn={() => goToSignIn("name")}
             />
           ) : null}
+          {step === "affiliate" ? <AffiliateApplicationScreen /> : null}
           {step === "auth" ? (
             <AuthScreen
               firstName={profile.firstName}
@@ -254,6 +285,7 @@ export function JoinFlow({
               onEmail={(value) => update({ email: value })}
               onAuthenticated={(provider, email) => {
                 setIsSignedIn(true);
+                setAuthReturnStep(null);
                 update({
                   authProvider: provider,
                   email: email ?? profile.email,

@@ -1,16 +1,14 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { Link } from "wouter";
 import type { HomePageContent } from "@/lib/homeTypes";
+import {
+  parseFoundationsVideos,
+  type FoundationsVideo,
+} from "@/lib/foundationsVideo";
+import { FALLBACK_HOME } from "@/data/fallbackHome";
 import { SectionCard } from "./SectionCard";
-
-const slidesFallback = [
-  { src: "/foundations/coach-1.png", alt: "Coach testimonial from a Foundations seminar" },
-  { src: "/foundations/coach-2.png", alt: "Coach testimonial from a Foundations seminar" },
-  { src: "/foundations/coach-3.png", alt: "Coach testimonial from a Foundations seminar" },
-  { src: "/foundations/coach-4.png", alt: "Coach testimonial from a Foundations seminar" },
-] as const;
 
 const SLIDE = 118;
 const GAP = 14;
@@ -20,16 +18,47 @@ type HomeFoundationsProps = {
   foundations?: HomePageContent["foundations"];
 };
 
+function VideoPoster({ video, active }: { video: FoundationsVideo; active: boolean }) {
+  if (video.posterUrl) {
+    return (
+      <img
+        src={video.posterUrl}
+        alt={active ? video.label : ""}
+        className="h-full w-full object-cover"
+        loading="lazy"
+        decoding="async"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-ink" aria-hidden={!active}>
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-cream/90 text-ink shadow">
+        <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+      </span>
+    </div>
+  );
+}
+
 export function HomeFoundations({ foundations }: HomeFoundationsProps) {
   const reduce = useReducedMotion();
-  const testimonials = slidesFallback;
+  const testimonials = useMemo(() => {
+    const fromCms = parseFoundationsVideos(foundations?.videoEmbedUrls);
+    if (fromCms.length) return fromCms;
+    return parseFoundationsVideos(FALLBACK_HOME.foundations.videoEmbedUrls);
+  }, [foundations?.videoEmbedUrls]);
+
   const count = testimonials.length;
-  const slides = [...testimonials, ...testimonials, ...testimonials];
+  const slides = count > 0 ? [...testimonials, ...testimonials, ...testimonials] : [];
   const frameRef = useRef<HTMLDivElement>(null);
   const [frameWidth, setFrameWidth] = useState(0);
-  const [pos, setPos] = useState<number>(count);
+  const [pos, setPos] = useState(count);
   const [animate, setAnimate] = useState(true);
   const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    setPos(count);
+  }, [count]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -42,7 +71,7 @@ export function HomeFoundations({ foundations }: HomeFoundationsProps) {
   }, []);
 
   useEffect(() => {
-    if (reduce || paused) return;
+    if (reduce || paused || count < 2) return;
     const frame = frameRef.current;
     if (!frame) return;
     let id: number | null = null;
@@ -67,9 +96,10 @@ export function HomeFoundations({ foundations }: HomeFoundationsProps) {
       io.disconnect();
       stop();
     };
-  }, [reduce, paused]);
+  }, [reduce, paused, count]);
 
   useEffect(() => {
+    if (count < 1) return;
     if (pos >= count && pos < count * 2) return;
     const id = window.setTimeout(() => {
       setAnimate(false);
@@ -131,80 +161,99 @@ export function HomeFoundations({ foundations }: HomeFoundationsProps) {
             )}
           </div>
 
-          <div
-            onMouseEnter={() => setPaused(true)}
-            onMouseLeave={() => setPaused(false)}
-            onFocus={() => setPaused(true)}
-            onBlur={() => setPaused(false)}
-          >
-            <div className="relative mb-3">
-              <h3 className="px-16 text-center font-serif text-lg leading-tight text-ink md:text-xl">
-                {foundations?.videosLabel ?? "Hear From Coaches Who Attended"}
-              </h3>
-              <div className="absolute top-1/2 right-0 flex -translate-y-1/2 items-center gap-1.5">
-                <button
-                  type="button"
-                  aria-label="Previous testimonial"
-                  onClick={() => setPos((current) => current - 1)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink transition-colors duration-300 ease-out hover:bg-cream"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Next testimonial"
-                  onClick={() => setPos((current) => current + 1)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink transition-colors duration-300 ease-out hover:bg-cream"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            <div ref={frameRef} className="relative h-[13.25rem] overflow-hidden">
-              <div
-                className="absolute left-0 top-0 flex items-center"
-                style={{
-                  gap: GAP,
-                  transform: `translateX(${offset}px)`,
-                  transition: animate ? "transform 560ms cubic-bezier(0.16, 1, 0.3, 1)" : "none",
-                }}
-              >
-                {slides.map((item, i) => {
-                  const isCenter = i === pos;
-                  const distance = Math.abs(i - pos);
-                  return (
+          {count > 0 ? (
+            <div
+              onMouseEnter={() => setPaused(true)}
+              onMouseLeave={() => setPaused(false)}
+              onFocus={() => setPaused(true)}
+              onBlur={() => setPaused(false)}
+            >
+              <div className="relative mb-3">
+                <h3 className="px-16 text-center font-serif text-lg leading-tight text-ink md:text-xl">
+                  {foundations?.videosLabel ?? "Hear From Coaches Who Attended"}
+                </h3>
+                {count > 1 ? (
+                  <div className="absolute top-1/2 right-0 flex -translate-y-1/2 items-center gap-1.5">
                     <button
-                      key={`${item.src}-${i}`}
                       type="button"
-                      aria-label={isCenter ? "Current testimonial" : "Show testimonial"}
-                      aria-current={isCenter ? "true" : undefined}
-                      tabIndex={distance > 1 ? -1 : 0}
-                      onClick={() => {
-                        if (i !== pos) setPos(i);
-                      }}
-                      className="shrink-0 overflow-hidden rounded-[1.05rem] bg-ink shadow-[0_10px_24px_rgba(23,21,18,0.12)]"
-                      style={{
-                        width: SLIDE,
-                        transform: `scale(${isCenter ? 1 : 0.78})`,
-                        opacity: distance > 1 ? 0 : isCenter ? 1 : 0.72,
-                        zIndex: isCenter ? 2 : 1,
-                        transition: animate
-                          ? "transform 560ms cubic-bezier(0.16, 1, 0.3, 1), opacity 560ms ease"
-                          : "none",
-                      }}
+                      aria-label="Previous video"
+                      onClick={() => setPos((current) => current - 1)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink transition-colors duration-300 ease-out hover:bg-cream"
                     >
-                      <img
-                        src={item.src}
-                        alt={isCenter ? item.alt : ""}
-                        className="aspect-[9/16] w-full object-cover object-top"
-                      />
+                      <ChevronLeft className="h-4 w-4" />
                     </button>
-                  );
-                })}
+                    <button
+                      type="button"
+                      aria-label="Next video"
+                      onClick={() => setPos((current) => current + 1)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-ink transition-colors duration-300 ease-out hover:bg-cream"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div ref={frameRef} className="relative h-[13.25rem] overflow-hidden">
+                <div
+                  className="absolute left-0 top-0 flex items-center"
+                  style={{
+                    gap: GAP,
+                    transform: `translateX(${offset}px)`,
+                    transition: animate ? "transform 560ms cubic-bezier(0.16, 1, 0.3, 1)" : "none",
+                  }}
+                >
+                  {slides.map((item, i) => {
+                    const isCenter = i === pos;
+                    const distance = Math.abs(i - pos);
+                    return (
+                      <div
+                        key={`${item.embedUrl}-${i}`}
+                        className="foundations-video-slide relative aspect-[9/16] shrink-0 overflow-hidden rounded-[1.05rem] bg-ink shadow-[0_10px_24px_rgba(23,21,18,0.12)]"
+                        style={{
+                          width: SLIDE,
+                          transform: `scale(${isCenter ? 1 : 0.78})`,
+                          opacity: distance > 1 ? 0 : isCenter ? 1 : 0.72,
+                          zIndex: isCenter ? 2 : 1,
+                          transition: animate
+                            ? "transform 560ms cubic-bezier(0.16, 1, 0.3, 1), opacity 560ms ease"
+                            : "none",
+                        }}
+                      >
+                        {isCenter ? (
+                          <iframe
+                            key={item.embedUrl}
+                            src={item.embedUrl}
+                            title={item.label}
+                            className="absolute inset-0 h-full w-full border-0"
+                            loading="lazy"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                            allowFullScreen
+                            referrerPolicy="strict-origin-when-cross-origin"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={`Show ${item.label}`}
+                            tabIndex={distance > 1 ? -1 : 0}
+                            onClick={() => setPos(i)}
+                            className="absolute inset-0 block h-full w-full"
+                          >
+                            <VideoPoster video={item} active={false} />
+                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-ink/20">
+                              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-cream/90 text-ink shadow">
+                                <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                              </span>
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
     </SectionCard>

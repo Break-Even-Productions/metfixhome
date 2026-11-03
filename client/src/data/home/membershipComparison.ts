@@ -2,7 +2,7 @@ import type { AudienceHref } from "@/data/home/audience";
 
 /** Cell value for the home Membership comparison table. */
 export type MembershipComparisonCell =
-  | { kind: "check" }
+  | { kind: "check"; note?: string }
   | { kind: "cross" }
   | { kind: "text"; value: string }
   | { kind: "number"; value: number; suffix?: string };
@@ -18,13 +18,21 @@ export type MembershipComparisonRow = {
 export type MembershipComparisonContent = {
   featuresLabel: string;
   proLabel: string;
+  /** Kept for Sanity; not rendered in the comparison header. */
   proSublabel?: string;
   freeLabel: string;
   affiliateLabel: string;
+  /** Kept for Sanity; not rendered in the comparison header. */
   affiliateSublabel?: string;
+  proCtaLabel: string;
+  affiliateCtaLabel: string;
+  affiliateCtaHref: string;
   /** Rows shown for every audience. */
   rows: MembershipComparisonRow[];
-  /** Appended only for Gym Owners / Clinicians / Organizations. */
+  /**
+   * Affiliate-only rows (e.g. Daily Fix Embed). Inserted after "The Daily Fix"
+   * when the Affiliate column is shown.
+   */
   affiliateExtraRows: MembershipComparisonRow[];
 };
 
@@ -39,13 +47,9 @@ export function audienceShowsAffiliateColumn(audience: AudienceHref | string | u
 }
 
 const check = { kind: "check" as const };
+const checkNote = (note: string): MembershipComparisonCell => ({ kind: "check", note });
 const cross = { kind: "cross" as const };
 const text = (value: string): MembershipComparisonCell => ({ kind: "text", value });
-const num = (value: number, suffix?: string): MembershipComparisonCell => ({
-  kind: "number",
-  value,
-  suffix,
-});
 
 /** Code fallback when Sanity has no membershipComparison (or partial data). */
 export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
@@ -55,9 +59,12 @@ export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
   freeLabel: "Free",
   affiliateLabel: "Affiliate",
   affiliateSublabel: "$170/mo",
+  proCtaLabel: "Join MetFix Pro",
+  affiliateCtaLabel: "Become an Affiliate",
+  affiliateCtaHref: "/become-an-affiliate",
   rows: [
     {
-      feature: "Public Articles, Podcast & Directory Search",
+      feature: "Public Articles and Resources",
       pro: check,
       free: check,
       affiliate: check,
@@ -65,61 +72,31 @@ export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
     {
       feature: "The Daily Fix (workouts, recipes & coaching notes)",
       pro: check,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "Online Courses (including MetFix Essentials)",
-      pro: check,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "Courses toward certificates / month",
-      pro: num(4, "/mo"),
-      free: cross,
-      affiliate: text("All included"),
-    },
-    {
-      feature: "Course completion certificates via cumulative LTV",
-      pro: check,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "Article & Daily Fix community discussions",
-      pro: check,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "Foundations Coach qualification path",
-      pro: check,
       free: check,
+      affiliate: check,
+    },
+    {
+      feature: "Free Online Courses",
+      pro: text("1/mo"),
+      free: cross,
+      affiliate: text("Unlimited"),
+    },
+    {
+      feature: "Exclusive Resource Library",
+      pro: checkNote("Access to most resources"),
+      free: cross,
+      affiliate: check,
+    },
+    {
+      feature: "Exclusive Deals and Discounts",
+      pro: check,
+      free: cross,
       affiliate: check,
     },
   ],
   affiliateExtraRows: [
     {
-      feature: "All MetFix courses at no added cost",
-      pro: cross,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "Revenue share on client course purchases",
-      pro: cross,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "MetFix brand license & gym finder listing",
-      pro: cross,
-      free: cross,
-      affiliate: check,
-    },
-    {
-      feature: "Affiliate resource library & client tools",
+      feature: "The Daily Fix Embed",
       pro: cross,
       free: cross,
       affiliate: check,
@@ -127,11 +104,26 @@ export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
   ],
 };
 
+function insertIndexForAffiliateExtras(rows: MembershipComparisonRow[]): number {
+  const dailyFixIdx = rows.findIndex(
+    (r) => /the daily fix/i.test(r.feature) && !/embed/i.test(r.feature),
+  );
+  if (dailyFixIdx >= 0) return dailyFixIdx + 1;
+  return Math.min(2, rows.length);
+}
+
 export function resolveMembershipComparisonRows(
   comparison: MembershipComparisonContent,
   audience: AudienceHref | string | undefined,
 ): MembershipComparisonRow[] {
   const showAffiliate = audienceShowsAffiliateColumn(audience);
   if (!showAffiliate) return comparison.rows;
-  return [...comparison.rows, ...comparison.affiliateExtraRows];
+  if (comparison.affiliateExtraRows.length === 0) return comparison.rows;
+
+  const insertAt = insertIndexForAffiliateExtras(comparison.rows);
+  return [
+    ...comparison.rows.slice(0, insertAt),
+    ...comparison.affiliateExtraRows,
+    ...comparison.rows.slice(insertAt),
+  ];
 }

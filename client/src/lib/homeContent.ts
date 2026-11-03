@@ -4,6 +4,7 @@ import {
   FALLBACK_HOME_COURSES,
   FALLBACK_TESTIMONIALS,
 } from "@/data/fallbackHome";
+import { experts as FALLBACK_EXPERTS, type Expert } from "@/data/home/experts";
 import {
   FALLBACK_MEMBERSHIP_COMPARISON,
   type MembershipComparisonCell,
@@ -22,6 +23,8 @@ import type {
 import { isSanityConfigured, sanityClient } from "@/lib/sanity";
 import { sanityImageUrl } from "@/lib/sanityImage";
 import { assetUrl } from "@/const";
+
+export type { Expert };
 
 function asCta(value: Partial<CtaLink> | undefined, fallback: CtaLink): CtaLink {
   if (!value?.label || !value?.href) return fallback;
@@ -44,7 +47,15 @@ function asComparisonCell(
   fallback: MembershipComparisonCell,
 ): MembershipComparisonCell {
   const kind = value?.kind;
-  if (kind === "check") return { kind: "check" };
+  if (kind === "check") {
+    const note =
+      typeof value.note === "string" && value.note.trim()
+        ? value.note.trim()
+        : fallback.kind === "check"
+          ? fallback.note
+          : undefined;
+    return note ? { kind: "check", note } : { kind: "check" };
+  }
   if (kind === "cross") return { kind: "cross" };
   if (kind === "number" && typeof value.number === "number" && Number.isFinite(value.number)) {
     return {
@@ -101,6 +112,9 @@ function asMembershipComparison(doc: any): MembershipComparisonContent {
     freeLabel: doc.freeLabel || f.freeLabel,
     affiliateLabel: doc.affiliateLabel || f.affiliateLabel,
     affiliateSublabel: doc.affiliateSublabel || f.affiliateSublabel,
+    proCtaLabel: doc.proCtaLabel || f.proCtaLabel,
+    affiliateCtaLabel: doc.affiliateCtaLabel || f.affiliateCtaLabel,
+    affiliateCtaHref: doc.affiliateCtaHref || f.affiliateCtaHref,
     rows: rows.length ? rows : f.rows,
     affiliateExtraRows: affiliateExtraRows.length ? affiliateExtraRows : f.affiliateExtraRows,
   };
@@ -175,17 +189,20 @@ const HOME_QUERY = `*[_type == "homePage"][0]{
     freeLabel,
     affiliateLabel,
     affiliateSublabel,
+    proCtaLabel,
+    affiliateCtaLabel,
+    affiliateCtaHref,
     rows[]{
       feature,
-      pro{kind, text, number, suffix},
-      free{kind, text, number, suffix},
-      affiliate{kind, text, number, suffix}
+      pro{kind, text, number, suffix, note},
+      free{kind, text, number, suffix, note},
+      affiliate{kind, text, number, suffix, note}
     },
     affiliateExtraRows[]{
       feature,
-      pro{kind, text, number, suffix},
-      free{kind, text, number, suffix},
-      affiliate{kind, text, number, suffix}
+      pro{kind, text, number, suffix, note},
+      free{kind, text, number, suffix, note},
+      affiliate{kind, text, number, suffix, note}
     }
   },
   affiliation{
@@ -292,16 +309,35 @@ const HOME_COURSES_QUERY = `*[_type == "course" && showOnHome == true] | order(h
   ctaType,
   landingPageUrl,
   homePreviewLabel,
-  homePreviewText
+  homePreviewText,
+  image
 }`;
+
+const FALLBACK_HOME_COURSE_BY_ID = new Map(
+  FALLBACK_HOME_COURSES.map((course) => [course.id, course]),
+);
 
 const TESTIMONIALS_QUERY = `*[_type == "testimonial"] | order(sortOrder asc) {
   _id, quote, name, role, gym, photo
 }`;
 
+const EXPERTS_QUERY = `*[_type == "expert"] | order(sortOrder asc) {
+  _id, name, role, bio, initials, hue, photo
+}`;
+
 const FAQS_QUERY = `*[_type == "faqItem"] | order(sortOrder asc) {
   _id, question, answer
 }`;
+
+function initialsFromName(name: string): string {
+  const parts = name
+    .replace(/^(Dr\.|Mr\.|Ms\.|Mrs\.)\s+/i, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0] ?? ""}${parts[parts.length - 1]![0] ?? ""}`.toUpperCase();
+}
 
 function mapHome(doc: any): HomePageContent {
   const f = FALLBACK_HOME;
@@ -466,17 +502,24 @@ export async function fetchHomeCourses(): Promise<HomeCourseCard[]> {
     const docs = await sanityClient.fetch<any[]>(HOME_COURSES_QUERY);
     if (!docs?.length) return FALLBACK_HOME_COURSES;
     return docs.map((doc) => {
+      const id = doc.slug || doc._id;
+      const fallback = FALLBACK_HOME_COURSE_BY_ID.get(id);
       const comingSoon = Boolean(doc.comingSoon);
       const ctaType = doc.ctaType as string | undefined;
       return {
-        id: doc.slug || doc._id,
-        label: doc.homePreviewLabel || (comingSoon ? "Coming Soon" : "Specialty"),
-        name: doc.title || "Untitled",
-        desc: doc.homePreviewText || "",
-        href: doc.landingPageUrl || "#",
-        tag: doc.tag || (comingSoon ? "Coming Soon" : "Available"),
-        live: ctaType === "start",
+        id,
+        label:
+          doc.homePreviewLabel ||
+          fallback?.label ||
+          (comingSoon ? "Coming Soon" : "Specialty"),
+        name: doc.title || fallback?.name || "Untitled",
+        desc: doc.homePreviewText || fallback?.desc || "",
+        href: doc.landingPageUrl || fallback?.href || "#",
+        tag: doc.tag || fallback?.tag || (comingSoon ? "Coming Soon" : "Available"),
+        // comingSoon wins over a premature "start" CTA in CMS drafts
+        live: ctaType === "start" && !comingSoon,
         notify: ctaType === "notify",
+        image: sanityImageUrl(doc.image, 960) || fallback?.image,
       };
     });
   } catch (err) {
@@ -501,6 +544,35 @@ export async function fetchTestimonials(): Promise<HomeTestimonial[]> {
   } catch (err) {
     console.error("Failed to fetch testimonials from Sanity", err);
     return FALLBACK_TESTIMONIALS;
+  }
+}
+
+export async function fetchExperts(): Promise<Expert[]> {
+  if (!sanityClient || !isSanityConfigured) return [...FALLBACK_EXPERTS];
+  try {
+    const docs = await sanityClient.fetch<any[]>(EXPERTS_QUERY);
+    if (!docs?.length) return [...FALLBACK_EXPERTS];
+    return docs
+      .filter((doc) => doc?.name && doc?.role && doc?.bio)
+      .map((doc) => {
+        const name = String(doc.name);
+        const hue =
+          typeof doc.hue === "number" && Number.isFinite(doc.hue) ? doc.hue : 22;
+        return {
+          id: doc._id || name,
+          name,
+          role: String(doc.role),
+          bio: String(doc.bio),
+          initials:
+            (typeof doc.initials === "string" && doc.initials.trim()) ||
+            initialsFromName(name),
+          hue,
+          photoUrl: sanityImageUrl(doc.photo, 400),
+        };
+      });
+  } catch (err) {
+    console.error("Failed to fetch experts from Sanity", err);
+    return [...FALLBACK_EXPERTS];
   }
 }
 

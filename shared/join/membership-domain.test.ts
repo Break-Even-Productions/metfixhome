@@ -99,6 +99,20 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
   });
 
   it("resolveJoinStepTransition skips auth and conditional bidirectionally", () => {
+    // intent → name; affiliate backs to intent
+    expect(
+      resolveJoinStepTransition("intent", 1, { isSignedIn: false, roles: [] }),
+    ).toBe("name");
+    expect(
+      resolveJoinStepTransition("name", -1, { isSignedIn: false, roles: [] }),
+    ).toBe("intent");
+    expect(
+      resolveJoinStepTransition("affiliate", -1, { isSignedIn: false, roles: [] }),
+    ).toBe("intent");
+    expect(
+      resolveJoinStepTransition("affiliate", 1, { isSignedIn: false, roles: [] }),
+    ).toBeNull();
+
     // signed out, individual
     expect(
       resolveJoinStepTransition("name", 1, { isSignedIn: false, roles: ["individual"] }),
@@ -159,9 +173,13 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
 
   it("clampJoinDeepLink (B4) + facilityFlags (B3)", () => {
     expect(parseJoinStepParam("auth")).toBe("auth");
+    expect(parseJoinStepParam("affiliate")).toBe("affiliate");
+    expect(parseJoinStepParam("intent")).toBe("intent");
     expect(parseJoinStepParam("nope")).toBeNull();
+    expect(clampJoinDeepLink(null, { isSignedIn: false, roles: [] })).toBe("intent");
+    expect(clampJoinDeepLink("affiliate", { isSignedIn: false, roles: [] })).toBe("affiliate");
     expect(clampJoinDeepLink("auth", { isSignedIn: true, roles: [] })).toBe("roles");
-    expect(clampJoinDeepLink("path", { isSignedIn: false, roles: [] })).toBe("name");
+    expect(clampJoinDeepLink("path", { isSignedIn: false, roles: [] })).toBe("intent");
     expect(clampJoinDeepLink("conditional", { isSignedIn: true, roles: ["individual"] })).toBe(
       "roles",
     );

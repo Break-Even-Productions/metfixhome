@@ -7,7 +7,20 @@ type HomeExpertsProps = {
   experts: readonly Expert[];
 };
 
-function Avatar({ initials, hue, alt }: { initials: string; hue: number; alt: string }) {
+function Avatar({
+  initials,
+  hue,
+  alt,
+  photoUrl,
+}: {
+  initials: string;
+  hue: number;
+  alt: string;
+  photoUrl?: string;
+}) {
+  if (photoUrl) {
+    return <img src={photoUrl} alt={alt} className="h-full w-full object-cover" loading="lazy" />;
+  }
   return (
     <div
       className="flex h-full w-full items-center justify-center text-2xl font-semibold text-cream"
@@ -45,7 +58,12 @@ function ExpertCard({
         }`}
       >
         <div className="aspect-square overflow-hidden rounded-[0.85rem] shadow-[0_12px_40px_rgba(0,0,0,0.35)] ring-1 ring-cream/10 transition-transform duration-500 ease-out group-hover:scale-105">
-          <Avatar initials={expert.initials} hue={expert.hue} alt={expert.name} />
+          <Avatar
+            initials={expert.initials}
+            hue={expert.hue}
+            alt={expert.name}
+            photoUrl={expert.photoUrl}
+          />
         </div>
         <p className="mt-3 px-1 font-serif text-[1.05rem] leading-snug text-cream">{expert.name}</p>
         {expert.role ? <p className="mt-1 px-1 text-xs text-cream/55">{expert.role}</p> : null}
@@ -130,7 +148,7 @@ export function HomeExperts({ experts }: HomeExpertsProps) {
               {[0, 1, 2].map((copyIndex) =>
                 experts.map((expert) => (
                   <ExpertCard
-                    key={`${copyIndex}-${expert.name}`}
+                    key={`${copyIndex}-${expert.id}`}
                     expert={expert}
                     labelled={copyIndex === 1}
                     selected={selectedName === expert.name}

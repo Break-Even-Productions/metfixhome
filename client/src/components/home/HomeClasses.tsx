@@ -2,6 +2,7 @@ import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { Clock } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
+import { assetUrl } from "@/const";
 import { COURSE_FILTERS, type CourseFilter } from "@/data/home/audience";
 import type { HomeCourseCard } from "@/lib/homeTypes";
 import { easeOutExpo, fadeUp, stagger } from "./motion";
@@ -13,9 +14,18 @@ type HomeClassesProps = {
   courses: HomeCourseCard[];
 };
 
+function resolveCourseImage(src: string | undefined): string | null {
+  if (!src) return null;
+  if (/^(https?:)?\/\//i.test(src) || src.startsWith("data:")) return src;
+  return assetUrl(src);
+}
+
 function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => void }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const image = !imageFailed ? resolveCourseImage(course.image) : null;
+
   const openCourse = () => {
-    if (!course.href) return;
+    if (!course.href || course.href === "#") return;
     if (course.href.startsWith("http")) {
       window.open(course.href, "_blank", "noopener,noreferrer");
     } else {
@@ -47,8 +57,23 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
       }}
     >
       <div className="relative overflow-hidden rounded-[1.35rem] bg-ink-2 transition-[transform,translate,box-shadow] duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
+        {image ? (
+          <img
+            src={image}
+            alt=""
+            decoding="async"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+            className="course-photo pointer-events-none absolute inset-x-0 top-0 aspect-video w-full object-cover transition-transform duration-700 ease-out will-change-transform"
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 aspect-video bg-[radial-gradient(ellipse_at_top_left,color-mix(in_srgb,var(--color-accent)_38%,transparent),rgba(44,41,37,0.15)_70%)]"
+          />
+        )}
         <div className="relative z-10">
-          <div className="relative aspect-video bg-ink-3">
+          <div className="relative aspect-video">
             <p className="absolute bottom-3 left-3 w-fit bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
               {course.label}
             </p>

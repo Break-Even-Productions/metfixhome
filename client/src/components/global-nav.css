@@ -66,6 +66,60 @@
 }
 .global-nav .scrollbar-hide::-webkit-scrollbar { display: none; }
 
+/* Soft mist edges when audience tabs overflow horizontally */
+.global-nav .audience-scroll-mist {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2.75rem;
+  z-index: 20;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.global-nav .audience-scroll-mist::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+.global-nav .audience-scroll-mist--left {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    var(--color-ink) 0%,
+    color-mix(in srgb, var(--color-ink) 72%, transparent) 42%,
+    transparent 100%
+  );
+}
+.global-nav .audience-scroll-mist--left::before {
+  mask-image: linear-gradient(to right, #000 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0%, transparent 100%);
+}
+.global-nav .audience-scroll-mist--right {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    var(--color-ink) 0%,
+    color-mix(in srgb, var(--color-ink) 72%, transparent) 42%,
+    transparent 100%
+  );
+}
+.global-nav .audience-scroll-mist--right::before {
+  mask-image: linear-gradient(to left, #000 0%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to left, #000 0%, transparent 100%);
+}
+.global-nav .audience-scroll[data-fade-left="true"] .audience-scroll-mist--left,
+.global-nav .audience-scroll[data-fade-right="true"] .audience-scroll-mist--right {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .global-nav .audience-scroll-mist {
+    transition: none;
+  }
+}
+
 .global-nav[data-theme="coach"] .audience-bar,
 .global-nav[data-theme="gym"] .audience-bar {
   --color-ink: #0067b2;
@@ -95,6 +149,41 @@
 .global-nav[data-theme="responder"] .audience-bar :is(.audience-tab-active, .audience-tab-indicator) {
   --color-ink: #171512;
   --color-cream: #f3eee4;
+}
+
+/* Accent tokens — keep Join + link underline in sync with .home-root theme CTAs */
+.global-nav[data-theme="individual"],
+.global-nav[data-theme="athlete"],
+.global-nav[data-theme="organization"] {
+  --color-accent: #c4a46c;
+  --color-accent-2: #b08d52;
+  --gn-accent: #c4a46c;
+  --gn-accent-2: #b08d52;
+}
+.global-nav[data-theme="coach"],
+.global-nav[data-theme="gym"] {
+  --color-accent: #0067b2;
+  --color-accent-2: #00508a;
+  --gn-accent: #0067b2;
+  --gn-accent-2: #00508a;
+}
+.global-nav[data-theme="responder"] {
+  --color-accent: #091f0e;
+  --color-accent-2: #12301a;
+  --gn-accent: #091f0e;
+  --gn-accent-2: #12301a;
+}
+.global-nav[data-theme="clinician"] {
+  --color-accent: #183a34;
+  --color-accent-2: #21483f;
+  --gn-accent: #183a34;
+  --gn-accent-2: #21483f;
+}
+.global-nav[data-theme="coach"] .global-nav__join,
+.global-nav[data-theme="gym"] .global-nav__join,
+.global-nav[data-theme="clinician"] .global-nav__join,
+.global-nav[data-theme="responder"] .global-nav__join {
+  color: #fff;
 }
 
 .global-nav__skip {
@@ -193,8 +282,10 @@
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+  margin-left: auto;
 }
 @media (min-width: 1024px) {
+  /* Links already take margin-left: auto; sit actions just after them. */
   .global-nav__actions { margin-left: 2rem; gap: 0.75rem; }
 }
 
@@ -217,7 +308,7 @@
   display: none;
   white-space: nowrap;
   border-radius: 9999px;
-  background: var(--gn-accent);
+  background: var(--color-accent);
   color: var(--gn-ink);
   font-size: 13px;
   font-weight: 600;
@@ -227,8 +318,9 @@
   text-decoration: none;
   min-height: 44px;
   align-items: center;
+  transition: background-color 0.3s ease;
 }
-.global-nav__join:hover { background: var(--gn-accent-2); }
+.global-nav__join:hover { background: var(--color-accent-2); }
 @media (min-width: 768px) {
   .global-nav__join { display: inline-flex; padding-inline: 1.25rem; }
 }

@@ -769,7 +769,12 @@ describe("AU19", () => {
     const scriptSrc = dirs.find((d) => d.startsWith("script-src ")) ?? "";
     const scriptTokens = new Set(scriptSrc.replace(/^script-src\s+/, "").split(/\s+/));
     expect(scriptTokens).toEqual(
-      new Set(["'self'", "https://www.google.com/recaptcha/", "https://www.gstatic.com/recaptcha/"]),
+      new Set([
+        "'self'",
+        "https://www.google.com/recaptcha/",
+        "https://www.gstatic.com/recaptcha/",
+        "https://t.whop.tw",
+      ]),
     );
     expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval|\*|data:/);
     const frameSrc = dirs.find((d) => d.startsWith("frame-src ")) ?? "";
@@ -778,6 +783,7 @@ describe("AU19", () => {
     const connectSrc = dirs.find((d) => d.startsWith("connect-src ")) ?? "";
     expect(connectSrc).toContain("'self'");
     expect(connectSrc).toContain("https://www.google.com/recaptcha/");
+    expect(connectSrc).toContain("https://t.whop.tw");
     expect(dirs.some((d) => d === "frame-ancestors 'none'")).toBe(true);
 
     const headersFile = join(REPO, "client/public/_headers");

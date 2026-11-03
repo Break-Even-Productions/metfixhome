@@ -32,7 +32,7 @@ export function UpgradePrompt({
       <div className="upgrade-prompt" data-testid="upgrade-prompt">
         <h2>{title}</h2>
         <p>{body}</p>
-        <a className="library-btn library-btn-gold" href={basePath("/account/billing")}>
+        <a className="btn-primary" href={basePath("/account/billing")}>
           Manage membership
         </a>
       </div>
@@ -46,13 +46,13 @@ export function UpgradePrompt({
       {join ? (
         <button
           type="button"
-          className="library-btn library-btn-gold"
+          className="btn-primary"
           onClick={() => join.openJoinFlow()}
         >
           Start my free month
         </button>
       ) : (
-        <a className="library-btn library-btn-gold" href={basePath("/join")}>
+        <a className="btn-primary" href={basePath("/join")}>
           Start my free month
         </a>
       )}

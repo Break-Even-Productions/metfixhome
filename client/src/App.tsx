@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -42,6 +42,20 @@ function BsiRefCapture() {
     if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
     captureBsiRef(window.location.search, sessionStorage);
   }, []);
+  return null;
+}
+
+/** Client-route pageviews — head snippet already tracks the first load. */
+function WhopSpaPageviews() {
+  const [location] = useLocation();
+  const isFirst = useRef(true);
+  useEffect(() => {
+    if (isFirst.current) {
+      isFirst.current = false;
+      return;
+    }
+    window.whop?.track("page");
+  }, [location]);
   return null;
 }
 
@@ -143,6 +157,7 @@ function AppShell() {
   return (
     <>
       <BsiRefCapture />
+      <WhopSpaPageviews />
       {hideGlobalNav ? null : <GlobalNav />}
       <AppRoutes />
     </>

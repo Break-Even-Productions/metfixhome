@@ -172,7 +172,14 @@ export function isFoundationsCoachGranted(input: FoundationsCoachGrantInput): bo
   return input.courseCompleted === true && input.certificateClaimed === true;
 }
 
-export type JoinStep = "name" | "auth" | "roles" | "conditional" | "path";
+export type JoinStep =
+  | "intent"
+  | "name"
+  | "auth"
+  | "roles"
+  | "conditional"
+  | "path"
+  | "affiliate";
 
 export type JoinStepTransitionContext = {
   isSignedIn: boolean;
@@ -182,6 +189,7 @@ export type JoinStepTransitionContext = {
 /**
  * Pure step navigation (CQ Trap 3 fix): skip auth when signed in both ways;
  * skip conditional both ways when neither gym_owner nor clinician.
+ * Affiliate is reached via direct go("affiliate"), not advanceFrom.
  */
 export function resolveJoinStepTransition(
   step: JoinStep,
@@ -190,12 +198,15 @@ export function resolveJoinStepTransition(
 ): JoinStep | null {
   const needsConditional = needsConditionalStep(ctx.roles);
   if (direction === 1) {
+    if (step === "intent") return "name";
     if (step === "name") return ctx.isSignedIn ? "roles" : "auth";
     if (step === "auth") return "roles";
     if (step === "roles") return needsConditional ? "conditional" : "path";
     if (step === "conditional") return "path";
     return null;
   }
+  if (step === "name") return "intent";
+  if (step === "affiliate") return "intent";
   if (step === "auth") return "name";
   if (step === "roles") return ctx.isSignedIn ? "name" : "auth";
   if (step === "conditional") return "roles";
@@ -203,7 +214,15 @@ export function resolveJoinStepTransition(
   return null;
 }
 
-const JOIN_STEPS: readonly JoinStep[] = ["name", "auth", "roles", "conditional", "path"];
+const JOIN_STEPS: readonly JoinStep[] = [
+  "intent",
+  "name",
+  "auth",
+  "roles",
+  "conditional",
+  "path",
+  "affiliate",
+];
 
 export function parseJoinStepParam(raw: string | null | undefined): JoinStep | null {
   if (!raw) return null;
@@ -212,22 +231,25 @@ export function parseJoinStepParam(raw: string | null | undefined): JoinStep | n
 
 /**
  * Clamp deep-link `?step=` to a reachable step (CQ B4 / WJ3 / WJ8).
+ * - missing/invalid → intent
  * - signed-in + auth → roles
- * - path with no roles → name (signed out) or roles (signed in)
+ * - path with no roles → intent (signed out) or roles (signed in)
  * - conditional without gym/clinician roles → roles
  */
 export function clampJoinDeepLink(
   requested: JoinStep | null | undefined,
   ctx: JoinStepTransitionContext,
 ): JoinStep {
-  if (!requested || requested === "name") return "name";
+  if (!requested || requested === "intent") return "intent";
+  if (requested === "name") return "name";
+  if (requested === "affiliate") return "affiliate";
   if (requested === "auth") return ctx.isSignedIn ? "roles" : "auth";
   if (requested === "roles") return "roles";
   if (requested === "conditional") {
     return needsConditionalStep(ctx.roles) ? "conditional" : "roles";
   }
   // path
-  if (ctx.roles.length === 0) return ctx.isSignedIn ? "roles" : "name";
+  if (ctx.roles.length === 0) return ctx.isSignedIn ? "roles" : "intent";
   if (needsConditionalStep(ctx.roles)) return "conditional";
   return "path";
 }

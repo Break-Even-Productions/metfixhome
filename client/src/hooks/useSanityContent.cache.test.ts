@@ -10,6 +10,7 @@ const fetchHomePage = vi.fn(async () => ({ hero: { eyebrow: "H" } }));
 const fetchHomeCourses = vi.fn(async () => []);
 const fetchTestimonials = vi.fn(async () => []);
 const fetchFaqs = vi.fn(async () => []);
+const fetchExperts = vi.fn(async () => []);
 const fetchSiteSettings = vi.fn(async () => ({
   copyrightText: "© MetFix",
   navLinks: [],
@@ -20,6 +21,7 @@ vi.mock("@/lib/homeContent", () => ({
   fetchHomeCourses: () => fetchHomeCourses(),
   fetchTestimonials: () => fetchTestimonials(),
   fetchFaqs: () => fetchFaqs(),
+  fetchExperts: () => fetchExperts(),
 }));
 
 vi.mock("@/lib/content", async () => {
@@ -45,6 +47,7 @@ beforeEach(() => {
   fetchHomeCourses.mockClear();
   fetchTestimonials.mockClear();
   fetchFaqs.mockClear();
+  fetchExperts.mockClear();
   fetchSiteSettings.mockClear();
 });
 
@@ -61,6 +64,7 @@ describe("B3 Sanity fetch once", () => {
     expect(fetchHomeCourses).toHaveBeenCalledTimes(1);
     expect(fetchTestimonials).toHaveBeenCalledTimes(1);
     expect(fetchFaqs).toHaveBeenCalledTimes(1);
+    expect(fetchExperts).toHaveBeenCalledTimes(1);
 
     first.unmount();
     const second = renderHook(() => useHomeContent());
@@ -69,6 +73,7 @@ describe("B3 Sanity fetch once", () => {
     expect(fetchHomeCourses).toHaveBeenCalledTimes(1);
     expect(fetchTestimonials).toHaveBeenCalledTimes(1);
     expect(fetchFaqs).toHaveBeenCalledTimes(1);
+    expect(fetchExperts).toHaveBeenCalledTimes(1);
   });
 
   it("useSiteSettings fetches once; remount does not refetch", async () => {

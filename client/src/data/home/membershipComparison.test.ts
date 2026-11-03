@@ -16,12 +16,13 @@ describe("membershipComparison", () => {
     expect(audienceShowsAffiliateColumn("#for-organizations")).toBe(true);
   });
 
-  it("appends affiliate extra rows only for affiliate audiences", () => {
+  it("inserts affiliate extra rows after The Daily Fix", () => {
     const base = resolveMembershipComparisonRows(
       FALLBACK_MEMBERSHIP_COMPARISON,
       "#for-individuals",
     );
     expect(base).toEqual(FALLBACK_MEMBERSHIP_COMPARISON.rows);
+    expect(base.some((r) => /Daily Fix Embed/i.test(r.feature))).toBe(false);
 
     const affiliate = resolveMembershipComparisonRows(
       FALLBACK_MEMBERSHIP_COMPARISON,
@@ -31,13 +32,28 @@ describe("membershipComparison", () => {
       FALLBACK_MEMBERSHIP_COMPARISON.rows.length +
         FALLBACK_MEMBERSHIP_COMPARISON.affiliateExtraRows.length,
     );
-    expect(affiliate.at(-1)?.feature).toMatch(/Affiliate resource library/i);
+    const embedIdx = affiliate.findIndex((r) => /Daily Fix Embed/i.test(r.feature));
+    const dailyFixIdx = affiliate.findIndex(
+      (r) => /The Daily Fix/i.test(r.feature) && !/Embed/i.test(r.feature),
+    );
+    expect(embedIdx).toBe(dailyFixIdx + 1);
   });
 
-  it("supports number cells in fallback (courses / month)", () => {
+  it("supports text cells for Free Online Courses", () => {
     const row = FALLBACK_MEMBERSHIP_COMPARISON.rows.find((r) =>
-      /courses toward certificates/i.test(r.feature),
+      /Free Online Courses/i.test(r.feature),
     );
-    expect(row?.pro).toEqual({ kind: "number", value: 4, suffix: "/mo" });
+    expect(row?.pro).toEqual({ kind: "text", value: "1/mo" });
+    expect(row?.free).toEqual({ kind: "cross" });
+    expect(row?.affiliate).toEqual({ kind: "text", value: "Unlimited" });
+  });
+
+  it("marks Exclusive Resource Library Pro check with hover note", () => {
+    const row = FALLBACK_MEMBERSHIP_COMPARISON.rows.find((r) =>
+      /Exclusive Resource Library/i.test(r.feature),
+    );
+    expect(row?.pro).toEqual({ kind: "check", note: "Access to most resources" });
+    expect(row?.affiliate).toEqual({ kind: "check" });
+    expect(row?.free).toEqual({ kind: "cross" });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Home hero liquid glass — same WebGL path as Daily Fix (HeroGlass / liquidGlass).
  */
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   initLiquidGlass,
   type LiquidGlassHandle,
@@ -25,8 +25,11 @@ export function useHomeHeroGlass(
   rootRef: RefObject<HTMLElement | null>,
   barRef: RefObject<HTMLElement | null>,
   markRef: RefObject<HTMLElement | null>,
+  /** Audience hero photo — nested img swaps aren't observed by LiquidGlass. */
+  photoSrc: string,
 ) {
   const [ready, setReady] = useState(false);
+  const instanceRef = useRef<LiquidGlassHandle | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -35,7 +38,6 @@ export function useHomeHeroGlass(
     if (!root || !bar || !mark || typeof WebGLRenderingContext === "undefined") return;
 
     let cancelled = false;
-    let instance: LiquidGlassHandle | null = null;
     void initLiquidGlass({
       root,
       glassElements: [bar, mark],
@@ -46,7 +48,7 @@ export function useHomeHeroGlass(
           next.destroy();
           return;
         }
-        instance = next;
+        instanceRef.current = next;
         next.markChanged();
         setReady(true);
       })
@@ -54,9 +56,31 @@ export function useHomeHeroGlass(
 
     return () => {
       cancelled = true;
-      instance?.destroy();
+      instanceRef.current?.destroy();
+      instanceRef.current = null;
     };
   }, [rootRef, barRef, markRef]);
+
+  // LiquidGlass only observes direct childList on root. The hero <img> lives
+  // inside a wrapper, so audience photo swaps never dirty the shader on their
+  // own — re-sample after each new image is ready to draw.
+  useEffect(() => {
+    if (!ready) return;
+    const root = rootRef.current;
+    const instance = instanceRef.current;
+    if (!root || !instance) return;
+
+    const img = root.querySelector("img");
+    if (!img) return;
+
+    const refresh = () => instance.markChanged(img);
+    if (img.complete && img.naturalWidth > 0) {
+      refresh();
+      return;
+    }
+    img.addEventListener("load", refresh);
+    return () => img.removeEventListener("load", refresh);
+  }, [photoSrc, ready, rootRef]);
 
   return ready;
 }

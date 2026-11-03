@@ -55,6 +55,13 @@ function mockFetch(handlers: Record<string, (init?: RequestInit) => Response | P
   });
 }
 
+/** Choice-first entry: Individual membership → name screen. */
+async function chooseIndividual() {
+  await screen.findByText(/How do you want to join/i);
+  fireEvent.click(screen.getByRole("button", { name: /Individual membership/i }));
+  await screen.findByText(/What’s your name/i);
+}
+
 describe("P-WJ resolveJoinStepTransition (CQ Trap 3)", () => {
   it("covers signed-in × conditional matrix both directions", () => {
     const cases: Array<{
@@ -128,13 +135,43 @@ describe("JoinFlow P-WJ-1..8", () => {
     });
     vi.stubGlobal("fetch", fetchImpl);
     render(<JoinFlow open onClose={() => {}} />);
-    await screen.findByText(/What’s your name/i);
+    await chooseIndividual();
     const first = screen.getByLabelText(/First name/i);
     const last = screen.getByLabelText(/Last name/i);
     fireEvent.change(first, { target: { value: "Pat" } });
     fireEvent.change(last, { target: { value: "Lee" } });
     fireEvent.submit(first.closest("form")!);
     await screen.findByText(/How would you like to continue/i);
+  });
+
+  it("intent: Individual → name; Affiliate → Fillout; Sign in → email login; no free-trial blurb", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () => Response.json({ signed_in: false }),
+      }),
+    );
+    const { unmount } = render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByText(/How do you want to join/i);
+    expect(screen.getByRole("button", { name: /Individual membership — \$30\/mo/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Affiliate membership — \$170\/mo/i })).toBeTruthy();
+    expect(screen.queryByText(/Explore MetFix free for your first month/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Affiliate membership/i }));
+    expect(await screen.findByTestId("affiliate-fillout-embed")).toBeTruthy();
+    expect(screen.getByTestId("affiliate-fillout-embed").getAttribute("data-fillout-id")).toBe(
+      "xxsjDS5H96us",
+    );
+    fireEvent.click(screen.getByLabelText(/Back/i));
+    await screen.findByText(/How do you want to join/i);
+    fireEvent.click(screen.getByRole("button", { name: /^Sign in$/i }));
+    await screen.findByLabelText(/^Email$/i);
+    expect(screen.getByLabelText(/^Password$/i)).toBeTruthy();
+    unmount();
+
+    render(<JoinFlow open onClose={() => {}} />);
+    await chooseIndividual();
+    expect(screen.getByText(/Already have an account/i)).toBeTruthy();
+    expect(screen.queryByText(/Explore MetFix free for your first month/i)).toBeNull();
   });
 
   it("WJ1: empty / >80 name shows error+aria-describedby; Enter submits; /me prefills", async () => {
@@ -154,13 +191,14 @@ describe("JoinFlow P-WJ-1..8", () => {
     );
 
     const { unmount } = render(<JoinFlow open onClose={() => {}} />);
+    await chooseIndividual();
     await screen.findByDisplayValue("Alex");
     expect(screen.getByDisplayValue("Rivera")).toBeTruthy();
     unmount();
 
     vi.spyOn(session, "loadMe").mockResolvedValue({ status: "signed_out" });
     render(<JoinFlow open onClose={() => {}} />);
-    await screen.findByText(/What’s your name/i);
+    await chooseIndividual();
     const first = screen.getByLabelText(/First name/i);
     fireEvent.submit(first.closest("form")!);
     await waitFor(() => {
@@ -238,7 +276,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     });
     try {
       render(<JoinFlow open onClose={() => {}} />);
-      await screen.findByText(/What’s your name/i);
+      await chooseIndividual();
       fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
       fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
       fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
@@ -264,7 +302,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     });
     vi.stubGlobal("fetch", fetchImpl);
     render(<JoinFlow open onClose={() => {}} />);
-    await screen.findByText(/What’s your name/i);
+    await chooseIndividual();
     fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
     fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
@@ -433,7 +471,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     });
     vi.stubGlobal("fetch", fetchImpl);
     render(<JoinFlow open onClose={() => {}} />);
-    await screen.findByText(/What’s your name/i);
+    await chooseIndividual();
     fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
     fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
@@ -562,7 +600,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     ).toBe("roles");
     expect(
       clampJoinDeepLink("path", { isSignedIn: false, roles: [] }),
-    ).toBe("name");
+    ).toBe("intent");
 
     vi.spyOn(session, "loadMe").mockResolvedValue({
       status: "signed_in",
@@ -641,7 +679,7 @@ describe("WJ15 /join + useJoinFlow modal Esc focus", () => {
     const { default: JoinPage } = await import("@/pages/join/JoinPage");
     render(<JoinPage />);
     expect(await screen.findByRole("dialog", { name: /Join MetFix/i })).toBeTruthy();
-    expect(screen.getByText(/What’s your name/i )).toBeTruthy();
+    expect(screen.getByText(/How do you want to join/i)).toBeTruthy();
   });
 
   it("/join?x=1 still routes to JoinPage (wouter pathname; no dead /join? startsWith)", async () => {
@@ -706,7 +744,7 @@ describe("NB2 CSRF session-tied + email→onboarding→checkout", () => {
     });
 
     render(<JoinFlow open onClose={() => {}} />);
-    await screen.findByText(/What’s your name/i);
+    await chooseIndividual();
     fireEvent.change(screen.getByLabelText(/First name/i), { target: { value: "Pat" } });
     fireEvent.change(screen.getByLabelText(/Last name/i), { target: { value: "Lee" } });
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));

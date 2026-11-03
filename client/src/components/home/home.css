@@ -162,15 +162,15 @@
 
 .home-root .join-card {
   isolation: isolate;
-  width: 100%;
-  max-width: 22rem;
 }
+
 .home-root .join-card-aura,
 .home-root .join-card-sheen {
   pointer-events: none;
   position: absolute;
   border-radius: inherit;
 }
+
 .home-root .join-card-aura {
   z-index: -1;
   inset: -12px;
@@ -178,16 +178,22 @@
   filter: blur(11px);
   opacity: 0.72;
 }
+
 .home-root .join-card-sheen {
   z-index: 2;
   inset: 0;
   padding: 1.5px;
   overflow: hidden;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
   mask-composite: exclude;
 }
+
 .home-root .join-card-aura::before,
 .home-root .join-card-sheen::before {
   content: "";
@@ -205,12 +211,17 @@
     var(--color-accent) 346deg,
     transparent 360deg
   );
-  animation: home-join-card-orbit 8.5s linear infinite;
+  animation: join-card-orbit 8.5s linear infinite;
 }
-@keyframes home-join-card-orbit { to { transform: rotate(1turn); } }
+
+@keyframes join-card-orbit {
+  to {
+    transform: rotate(1turn);
+  }
+}
 
 .home-root .course-rail { padding-top: 0.75rem; padding-bottom: 1.75rem; }
-.home-root .course-photo { filter: blur(8px) brightness(0.74); }
+.home-root .course-photo { filter: blur(2px) brightness(0.9); }
 .home-root .card-body {
   background: color-mix(in srgb, var(--color-accent) 92%, white);
   color: var(--color-ink);
@@ -257,16 +268,43 @@
   --color-accent: #0067b2;
   --color-accent-2: #00508a;
   --color-accent-3: #3d8ec4;
+  --color-accent-text: #3d8ec4;
+  --color-gold: #0067b2;
+  --color-gold-2: #00508a;
+  --color-gold-3: #3d8ec4;
+  --color-on-accent: #fff;
 }
 .home-root[data-theme="responder"] {
   --color-accent: #091f0e;
   --color-accent-2: #12301a;
   --color-accent-3: #76b284;
+  --color-accent-text: #76b284;
+  --color-gold: #091f0e;
+  --color-gold-2: #12301a;
+  --color-gold-3: #76b284;
+  --color-on-accent: #fff;
 }
 .home-root[data-theme="clinician"] {
   --color-accent: #183a34;
   --color-accent-2: #21483f;
   --color-accent-3: #74aa9f;
+  --color-accent-text: #74aa9f;
+  --color-gold: #183a34;
+  --color-gold-2: #21483f;
+  --color-gold-3: #74aa9f;
+  --color-on-accent: #fff;
+}
+/* Dark accent fills need light label text (ink on blue/green fails contrast).
+   Beat .kept-section .kept-cta { color: ink } and text-ink on gold/accent CTAs. */
+.home-root[data-theme="coach"] :is(.bg-accent, .bg-accent-2, .bg-gold, .bg-gold-2),
+.home-root[data-theme="gym"] :is(.bg-accent, .bg-accent-2, .bg-gold, .bg-gold-2),
+.home-root[data-theme="clinician"] :is(.bg-accent, .bg-accent-2, .bg-gold, .bg-gold-2),
+.home-root[data-theme="responder"] :is(.bg-accent, .bg-accent-2, .bg-gold, .bg-gold-2),
+.home-root[data-theme="coach"] .kept-section .kept-cta,
+.home-root[data-theme="gym"] .kept-section .kept-cta,
+.home-root[data-theme="clinician"] .kept-section .kept-cta,
+.home-root[data-theme="responder"] .kept-section .kept-cta {
+  color: var(--color-on-accent, #fff);
 }
 /* Audience strip theme overrides live in global-nav.css (strip is outside .home-root). */
 .home-root[data-theme="clinician"] .surface-ink {
@@ -404,9 +442,10 @@
 }
 .home-root .footer-glass {
   border-radius: 2.5rem;
-  background: transparent;
-  overflow: visible;
-  isolation: isolate;
+  overflow: hidden;
+  background: color-mix(in srgb, #171512 48%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
 }
 
 /* Kept target sections — beta tokens only (T-E-28). */
@@ -449,7 +488,7 @@
   gap: 0.5rem;
   border-radius: 9999px;
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-on-accent, var(--color-ink));
   font-size: 0.875rem;
   font-weight: 600;
   padding: 0.75rem 1.5rem;
@@ -459,10 +498,14 @@
 .home-root .kept-section .kept-cta:hover { background: var(--color-accent-2); }
 .home-root .kept-section .kept-grid {
   display: grid;
-  gap: 1.5rem;
+  gap: 2rem;
 }
 @media (min-width: 768px) {
-  .home-root .kept-section .kept-grid { grid-template-columns: 1fr 1fr; align-items: start; }
+  .home-root .kept-section .kept-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 2.5rem 3rem;
+  }
 }
 .home-root .kept-section .kept-list {
   list-style: none;
@@ -519,13 +562,17 @@
   margin-inline: auto;
 }
 
+.home-root .foundations-video-slide iframe {
+  border: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-root .story-marquee { mask-image: none; }
   .home-root .story-columns,
   .home-root .story-sponsors,
   .home-root .join-card-aura::before,
   .home-root .join-card-sheen::before {
-    animation: none;
+    animation: none !important;
     transform: none;
   }
   .home-root .story-set[aria-hidden="true"],

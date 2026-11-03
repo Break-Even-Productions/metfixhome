@@ -78,7 +78,7 @@ vi.mock("@/hooks/useSanityContent", () => ({
         headline: { text: "Join" },
         body: "Body",
         supportingText: "Support",
-        monthlyPrice: "$167",
+        monthlyPrice: "$170",
         priceNote: "/ month",
         benefits: ["A"],
         primaryCta: { label: "Primary", href: "/become-an-affiliate" },
@@ -163,6 +163,16 @@ vi.mock("@/hooks/useSanityContent", () => ({
     ],
     testimonials: [],
     faqs: [],
+    experts: [
+      {
+        id: "e1",
+        name: "Test Expert",
+        role: "Metabolic Health",
+        initials: "TE",
+        hue: 22,
+        bio: "Bio",
+      },
+    ],
     loading: false,
   }),
   useSiteSettings: () => ({

@@ -1,5 +1,6 @@
 import { affiliatePage } from "./affiliatePage";
 import { course } from "./course";
+import { expert } from "./expert";
 import { faqItem } from "./faqItem";
 import { homePage } from "./homePage";
 import {
@@ -18,6 +19,7 @@ export const schemaTypes = [
   homePage,
   affiliatePage,
   course,
+  expert,
   testimonial,
   faqItem,
   // objects
