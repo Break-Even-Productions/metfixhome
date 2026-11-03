@@ -24,6 +24,7 @@ import {
 import { DEFAULT_NAV_LINKS, type NavLink } from "@/lib/contentTypes";
 import { expectedSearchHrefFromApp } from "@/style-parity/searchHref";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
+import { loadMe, peekMe, type MeState } from "@/lib/session";
 import { Menu, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -107,6 +108,7 @@ export default function GlobalNav() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [audience, setAudience] = useState<AudienceHref>(() => readAudience());
+  const [me, setMe] = useState<MeState | null>(() => peekMe());
   const [location, setLocation] = useLocation();
   const { settings } = useSiteSettings();
   const navLinks = navLinksFromSettings(settings.navLinks);
@@ -116,8 +118,20 @@ export default function GlobalNav() {
   const searchBtnRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLElement>(null);
   const onHome = location === "/" || location === "";
+  const signedIn = me?.status === "signed_in";
 
   useBodyScrollLock(mobileOpen);
+
+  // Remount after /login or route change — pick up session cache / cookie.
+  useEffect(() => {
+    let active = true;
+    void loadMe().then((next) => {
+      if (active) setMe(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [location]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -235,6 +249,7 @@ export default function GlobalNav() {
     typeof window !== "undefined"
       ? loginHrefForLocation(window.location.pathname, window.location.search)
       : getMetfixLoginUrl("/");
+  const accountHref = "/account";
 
   return (
     <header
@@ -246,7 +261,12 @@ export default function GlobalNav() {
       </a>
 
       {onHome ? (
-        <AudienceTabs audience={audience} onAudienceChange={onAudienceChange} loginHref={loginHref} />
+        <AudienceTabs
+          audience={audience}
+          onAudienceChange={onAudienceChange}
+          loginHref={loginHref}
+          accountHref={signedIn ? accountHref : undefined}
+        />
       ) : null}
 
       <div className={`global-nav__primary${scrolled || mobileOpen ? " is-solid" : ""}`}>
@@ -276,9 +296,15 @@ export default function GlobalNav() {
               <Search size={18} aria-hidden="true" />
             </button>
             {!onHome ? (
-              <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
-                Sign in
-              </Link>
+              signedIn ? (
+                <Link href={accountHref} className="global-nav__login" data-nav-auth="account">
+                  Account
+                </Link>
+              ) : (
+                <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
+                  Sign in
+                </Link>
+              )
             ) : null}
             <button type="button" className="global-nav__join" onClick={openJoin}>
               Join Today — 1 Month Free
@@ -313,12 +339,13 @@ export default function GlobalNav() {
               )}
               <div className="global-nav__mobile-actions">
                 <Link
-                  href={loginHref}
+                  href={signedIn ? accountHref : loginHref}
                   className="global-nav__join"
                   style={{ display: "inline-flex" }}
+                  data-nav-auth={signedIn ? "account" : "login"}
                   onClick={() => setMobileOpen(false)}
                 >
-                  Sign in
+                  {signedIn ? "Account" : "Sign in"}
                 </Link>
                 <button type="button" className="global-nav__join" onClick={openJoin}>
                   Join Today — 1 Month Free

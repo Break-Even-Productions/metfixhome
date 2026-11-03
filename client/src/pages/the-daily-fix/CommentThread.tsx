@@ -48,6 +48,8 @@ type CommentThreadProps = {
    * Default true for standalone mounts/tests.
    */
   showHeader?: boolean;
+  /** After JoinModal sign-in — parent should re-read `/me` into props. */
+  onSignedIn?: () => void;
 };
 
 function commentUrl(id: number, dateIso: string): string {
@@ -101,6 +103,7 @@ export function CommentThread({
   moderator = false,
   onCommentsChanged,
   showHeader = true,
+  onSignedIn,
 }: CommentThreadProps) {
   const isPostTarget = target?.kind === "post";
   const postId = isPostTarget ? target.postId : null;
@@ -838,7 +841,7 @@ export function CommentThread({
             open={joinOpen}
             onClose={() => setJoinOpen(false)}
             onSignedIn={() => {
-              /* parent reloads /me via shared cache */
+              onSignedIn?.();
             }}
           />
         </>

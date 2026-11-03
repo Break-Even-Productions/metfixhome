@@ -169,7 +169,13 @@ export default function Login() {
         setError("Sign-in is unavailable right now.");
         return;
       }
-      await refreshMeAfterAuthChange();
+      const me = await refreshMeAfterAuthChange();
+      if (me.status !== "signed_in") {
+        setError(
+          "Sign-in succeeded but this browser did not keep the session cookie. Check that cookies are allowed for metfix.org, then try again.",
+        );
+        return;
+      }
       setLocation(basePath(nextPath));
     } catch {
       setError("Sign-in is unavailable right now.");

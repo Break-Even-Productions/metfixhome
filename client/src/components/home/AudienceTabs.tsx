@@ -12,9 +12,16 @@ type AudienceTabsProps = {
   onAudienceChange: (href: AudienceHref) => void;
   /** Sign-in href for the strip (design: right of Shop). */
   loginHref?: string;
+  /** When set, strip shows Account instead of Sign in. */
+  accountHref?: string;
 };
 
-export function AudienceTabs({ audience, onAudienceChange, loginHref }: AudienceTabsProps) {
+export function AudienceTabs({
+  audience,
+  onAudienceChange,
+  loginHref,
+  accountHref,
+}: AudienceTabsProps) {
   const reduceMotion = useReducedMotion();
   const audienceNavRef = useRef<HTMLElement>(null);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -167,7 +174,15 @@ export function AudienceTabs({ audience, onAudienceChange, loginHref }: Audience
           <ShoppingBag className="h-3.5 w-3.5" aria-hidden="true" strokeWidth={2.2} />
           Shop
         </a>
-        {loginHref ? (
+        {accountHref ? (
+          <Link
+            href={accountHref}
+            className="inline-flex items-center rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold leading-none text-ink transition-colors duration-300 ease-out hover:bg-cream md:px-5 md:text-[13px]"
+            data-nav-auth="account"
+          >
+            Account
+          </Link>
+        ) : loginHref ? (
           <Link
             href={loginHref}
             className="inline-flex items-center rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold leading-none text-ink transition-colors duration-300 ease-out hover:bg-cream md:px-5 md:text-[13px]"

@@ -26,6 +26,7 @@ type CommunityPanelProps = {
   moderator?: boolean;
   signedIn: boolean;
   onCommentsChanged?: (next: CommentsLoadState) => void;
+  onSignedIn?: () => void;
 };
 
 function hasLeaderboardEntries(state: LeaderboardLoadState): boolean {
@@ -44,6 +45,7 @@ export function CommunityPanel({
   moderator = false,
   signedIn,
   onCommentsChanged,
+  onSignedIn,
 }: CommunityPanelProps) {
   const [view, setView] = useState<CommunityView>("comments");
   const [leaderboardAvailable, setLeaderboardAvailable] = useState(false);
@@ -121,6 +123,7 @@ export function CommunityPanel({
           viewerDisplayName={viewerDisplayName}
           moderator={moderator}
           onCommentsChanged={onCommentsChanged}
+          onSignedIn={onSignedIn}
           showHeader={false}
         />
       )}

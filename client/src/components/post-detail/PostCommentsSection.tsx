@@ -23,17 +23,19 @@ export function PostCommentsSection({ postId, locked }: PostCommentsSectionProps
   const [viewerDisplayName, setViewerDisplayName] = useState<string | null>(null);
   const [moderator, setModerator] = useState(false);
 
+  const applyMe = (me: Awaited<ReturnType<typeof loadMe>>) => {
+    if (me.status === "signed_in" && me.public_name) {
+      setViewerDisplayName(me.public_name);
+      setModerator(me.moderator === true);
+    } else {
+      setViewerDisplayName(null);
+      setModerator(false);
+    }
+  };
+
   useEffect(() => {
     if (locked) return;
-    void loadMe().then((me) => {
-      if (me.status === "signed_in" && me.public_name) {
-        setViewerDisplayName(me.public_name);
-        setModerator(me.moderator === true);
-      } else {
-        setViewerDisplayName(null);
-        setModerator(false);
-      }
-    });
+    void loadMe().then(applyMe);
   }, [locked]);
 
   useEffect(() => {
@@ -66,6 +68,9 @@ export function PostCommentsSection({ postId, locked }: PostCommentsSectionProps
           viewerDisplayName={viewerDisplayName}
           moderator={moderator}
           onCommentsChanged={setLoad}
+          onSignedIn={() => {
+            void loadMe({ force: true }).then(applyMe);
+          }}
           showHeader={false}
         />
       )}
