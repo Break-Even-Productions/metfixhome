@@ -26,6 +26,9 @@
   background: color-mix(in srgb, #171512 42%, transparent);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
+  /* backdrop-filter ignores ancestor overflow+radius clips; radius must live on this node */
+  border-radius: inherit;
+  overflow: hidden;
 }
 
 .scrollbar-hide {

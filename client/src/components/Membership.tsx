@@ -155,7 +155,7 @@ export function Membership({
               y,
             }}
           />
-          <div className="membership-glass absolute inset-0 z-10 flex flex-col justify-center">
+          <div className="membership-glass absolute inset-0 z-10 flex flex-col justify-center rounded-[1.75rem] md:rounded-[2.5rem]">
             <div className="relative z-[2] px-5 py-8 md:px-8 md:py-10 lg:px-10 lg:py-12">
               <h2 className="max-w-md font-serif text-4xl leading-[1.12] text-[var(--join-cream)] md:text-[3.1rem]">
                 {MEMBERSHIP_HERO.headline}

@@ -5,10 +5,8 @@ interface WhopPixel {
   setScope: (...accountIds: string[]) => void;
 }
 
-declare global {
-  interface Window {
-    whop?: WhopPixel;
-  }
+interface Window {
+  whop?: WhopPixel;
 }
 
 interface ImportMetaEnv {
