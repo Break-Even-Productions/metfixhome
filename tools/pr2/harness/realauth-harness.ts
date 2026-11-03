@@ -52,8 +52,10 @@ export const CID = "cid_QA_SENT_CLIENT";
 export const SECRET_CANARY = "secret_QA_CANARY";
 export const TOK = "recaptcha_tok_QA_SENT";
 export const BSI_ORIGIN = "https://brokenscience.org";
-export const OAUTH_TOKEN_URL = `${BSI_ORIGIN}/oauth/token`;
-export const BSI_ME_URL = `${BSI_ORIGIN}/wp-json/bsi/v1/me`;
+/** Production REST host the worker fetches. Public permalinks stay on BSI_ORIGIN. */
+export const BSI_API_ORIGIN = "https://api.brokenscience.org";
+export const OAUTH_TOKEN_URL = `${BSI_API_ORIGIN}/oauth/token`;
+export const BSI_ME_URL = `${BSI_API_ORIGIN}/wp-json/bsi/v1/me`;
 
 export type RecordedFetch = {
   url: string;

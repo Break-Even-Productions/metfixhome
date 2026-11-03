@@ -173,7 +173,10 @@ describe("WJ21 POST /api/account/onboarding", () => {
     expect(await res.json()).toEqual({ error: "unauthenticated" });
     privateNoStore(res);
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
+      g.fetchMock.mock.calls.filter((c) => {
+        const url = String(c[0]);
+        return url.includes("/me/profile") || url.includes("/me/community-choices");
+      }).length,
     ).toBe(0);
   });
 
@@ -199,7 +202,10 @@ describe("WJ21 POST /api/account/onboarding", () => {
       expect(write.calls.length).toBe(before);
     }
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
+      g.fetchMock.mock.calls.filter((c) => {
+        const url = String(c[0]);
+        return url.includes("/me/profile") || url.includes("/me/community-choices");
+      }).length,
     ).toBe(0);
   });
 
@@ -220,24 +226,34 @@ describe("WJ21 POST /api/account/onboarding", () => {
     ).toBe(0);
   });
 
-  it("ok → exactly 1 Bearer-only upstream POST", async () => {
+  it("ok → profile PATCH then community-choices PUT on the API origin", async () => {
     const g = setupGate();
     attachJoinLimiters(g);
     const s = await seedSession(g);
     g.fetchMock.mockClear();
     g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/wp-json/bsi/v1/me/onboarding")) {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/wp-json/bsi/v1/me/profile") && method === "PATCH") {
+        expect(url.startsWith("https://api.brokenscience.org/")).toBe(true);
         const hdrs = new Headers(init?.headers);
         const keys = [...hdrs.keys()].map((k) => k.toLowerCase()).sort();
         expect(keys).toEqual(["accept", "authorization", "content-type", "user-agent"]);
         expect(hdrs.get("Authorization")).toBe(`Bearer ${ACCESS1}`);
         expect(hdrs.get("X-API-Key")).toBeNull();
-        expect(JSON.parse(String(init?.body))).toMatchObject({
+        expect(JSON.parse(String(init?.body))).toEqual({
           first_name: "Pat",
-          roles: ["individual"],
+          last_name: "Lee",
         });
-        return Response.json({ ok: true }, { status: 200 });
+        return Response.json({ first_name: "Pat", last_name: "Lee" }, { status: 200 });
+      }
+      if (url.includes("/wp-json/bsi/v1/me/community-choices") && method === "PUT") {
+        expect(url.startsWith("https://api.brokenscience.org/")).toBe(true);
+        const hdrs = new Headers(init?.headers);
+        expect(hdrs.get("X-API-Key")).toBeNull();
+        expect(hdrs.get("Authorization")).toBe(`Bearer ${ACCESS1}`);
+        expect(JSON.parse(String(init?.body))).toEqual({ roles: ["individual"] });
+        return Response.json({ roles: ["individual"] }, { status: 200 });
       }
       if (url.includes("/wp-json/bsi/v1/me")) {
         return Response.json({ id: 42, display_name: "Jane" });
@@ -250,10 +266,92 @@ describe("WJ21 POST /api/account/onboarding", () => {
       body: JSON.stringify(ONBOARD_OK),
     });
     expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
     privateNoStore(res);
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/profile")).length,
     ).toBe(1);
+    expect(
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/community-choices")).length,
+    ).toBe(1);
+    expect(
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
+    ).toBe(0);
+  });
+
+  it("clamps names to 60 and omits null facility flags; sends real booleans", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    const first = "A".repeat(70);
+    const last = "B".repeat(61);
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/me/profile") && method === "PATCH") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          first_name: "A".repeat(60),
+          last_name: "B".repeat(60),
+        });
+        return Response.json({ ok: true }, { status: 200 });
+      }
+      if (url.includes("/me/community-choices") && method === "PUT") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          roles: ["gym_owner", "clinician"],
+          has_physical_gym: false,
+          has_physical_clinic: true,
+        });
+        return Response.json({ ok: true }, { status: 200 });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const res = await callOnboarding(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify({
+        first_name: first,
+        last_name: last,
+        roles: ["gym_owner", "clinician"],
+        has_physical_gym: false,
+        has_physical_clinic: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("profile success + community-choices failure is not success", async () => {
+    const g = setupGate();
+    attachJoinLimiters(g);
+    const s = await seedSession(g);
+    let choices = 0;
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/me/profile") && method === "PATCH") {
+        return Response.json({ first_name: "Pat" }, { status: 200 });
+      }
+      if (url.includes("/me/community-choices") && method === "PUT") {
+        choices += 1;
+        return Response.json({ code: "bsi_invalid_param" }, { status: 422 });
+      }
+      if (url.includes("/wp-json/bsi/v1/me")) {
+        return Response.json({ id: 42, display_name: "Jane" });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    const res = await callOnboarding(g, {
+      method: "POST",
+      headers: H_OK(s),
+      body: JSON.stringify(ONBOARD_OK),
+    });
+    expect(choices).toBe(1);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "upstream_error" });
+    privateNoStore(res);
   });
 
   it("rate limit → 429 Retry-After 60, 0 BSI", async () => {
@@ -273,7 +371,10 @@ describe("WJ21 POST /api/account/onboarding", () => {
     // R2-N3 / #21 accountRateLimitKey: acct:<userId> (no IP suffix).
     expect(write.calls[0]).toMatch(/^acct:[^:]+$/);
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/onboarding")).length,
+      g.fetchMock.mock.calls.filter((c) => {
+        const url = String(c[0]);
+        return url.includes("/me/profile") || url.includes("/me/community-choices");
+      }).length,
     ).toBe(0);
   });
 
@@ -281,10 +382,14 @@ describe("WJ21 POST /api/account/onboarding", () => {
     const g = setupGate();
     attachJoinLimiters(g);
     const s = await seedSession(g);
-    g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/me/onboarding")) {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/me/profile") && method === "PATCH") {
         return new Response("secret upstream stack", { status: 503 });
+      }
+      if (url.includes("/me/community-choices")) {
+        return Response.json({ ok: true }, { status: 200 });
       }
       if (url.includes("/wp-json/bsi/v1/me")) {
         return Response.json({ id: 42, display_name: "Jane" });
@@ -320,7 +425,7 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
     expect(await res.json()).toEqual({ error: "unauthenticated" });
     privateNoStore(res);
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("checkout-session")).length,
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/subscriptions/checkout")).length,
     ).toBe(0);
     expect(
       g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/wp-json/bsi/")).length,
@@ -361,7 +466,7 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
       privateNoStore(res);
     }
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("checkout-session")).length,
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/subscriptions/checkout")).length,
     ).toBe(0);
   });
 
@@ -402,11 +507,12 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
     g.fetchMock.mockClear();
     g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/me/whop/checkout-session")) {
+      if (url.includes("/me/subscriptions/checkout")) {
+        expect(url.startsWith("https://api.brokenscience.org/")).toBe(true);
         const hdrs = new Headers(init?.headers);
         expect(hdrs.get("X-API-Key")).toBeNull();
         expect(hdrs.get("Authorization")).toMatch(/^Bearer /);
-        expect(JSON.parse(String(init?.body))).toEqual({ plan: "pro" });
+        expect(JSON.parse(String(init?.body))).toEqual({ plan_key: "metfix_pro" });
         return Response.json({
           checkout_url: "https://whop.com/c/bep-pro",
           expires_at: "2026-11-01T00:00:00Z",
@@ -443,9 +549,10 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
       "javascript:alert(1)",
     ];
     for (const checkout_url of evil) {
-      g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.includes("/me/whop/checkout-session")) {
+        if (url.includes("/me/subscriptions/checkout")) {
+          expect(JSON.parse(String(init?.body))).toEqual({ plan_key: "organization_owner" });
           return Response.json({ checkout_url });
         }
         if (url.includes("/wp-json/bsi/v1/me")) {
@@ -478,7 +585,7 @@ describe("WJ22 / WT-J3 POST /api/billing/whop/checkout-session", () => {
     expect(res.headers.get("Retry-After")).toBe("60");
     privateNoStore(res);
     expect(
-      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("checkout-session")).length,
+      g.fetchMock.mock.calls.filter((c) => String(c[0]).includes("/me/subscriptions/checkout")).length,
     ).toBe(0);
   });
 });
@@ -492,7 +599,7 @@ describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
     let refreshHits = 0;
     g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/me/whop/checkout-session")) {
+      if (url.includes("/me/subscriptions/checkout")) {
         checkoutHits += 1;
         if (checkoutHits === 1) return new Response("{}", { status: 401 });
         return Response.json({ checkout_url: "https://whop.com/c/ok" });
@@ -530,7 +637,7 @@ describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
     let refreshHits = 0;
     g.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/me/whop/checkout-session")) {
+      if (url.includes("/me/subscriptions/checkout")) {
         checkoutHits += 1;
         return new Response("{}", { status: 401 });
       }
@@ -566,7 +673,7 @@ describe("WJ-X2 upstream 401 refresh / 5xx no retry", () => {
     let checkoutHits = 0;
     g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/me/whop/checkout-session")) {
+      if (url.includes("/me/subscriptions/checkout")) {
         checkoutHits += 1;
         return new Response("boom", { status: 500 });
       }
@@ -603,7 +710,7 @@ describe("WJ-X3 console never logs tokens/Bearer", () => {
       async () => {
         g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
           const url = String(input);
-          if (url.includes("/me/whop/checkout-session")) {
+          if (url.includes("/me/subscriptions/checkout")) {
             return Response.json({ checkout_url: "https://whop.com/c/x" });
           }
           if (url.includes("/wp-json/bsi/v1/me")) {
@@ -649,7 +756,7 @@ describe("WJ-X3 console never logs tokens/Bearer", () => {
         attachJoinLimiters(g, { checkoutMax: 100 });
         g.fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
           const url = String(input);
-          if (url.includes("/me/whop/checkout-session")) {
+          if (url.includes("/me/subscriptions/checkout")) {
             return new Response("boom", { status: 500 });
           }
           if (url.includes("/wp-json/bsi/v1/me")) {

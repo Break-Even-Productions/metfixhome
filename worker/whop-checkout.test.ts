@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import { handleWhopCheckoutSession } from "./whop-checkout";
 import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
 import {
-  BSI_ORIGIN,
   createHarness,
   csrfSid,
   setupAuthHooks,
@@ -81,7 +80,6 @@ async function callCheckout(
   const req = new Request("https://metfix.org/api/billing/whop/checkout-session", init);
   return handleWhopCheckoutSession(req, h.env as Env, {
     fetchImpl,
-    bsiBaseUrl: BSI_ORIGIN,
   });
 }
 
@@ -110,7 +108,7 @@ describe("Whop subscription checkout-session", () => {
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_plan" });
-    expect(recorded.filter((r) => r.url.includes("/whop/checkout-session"))).toHaveLength(0);
+    expect(recorded.filter((r) => r.url.includes("/me/subscriptions/checkout"))).toHaveLength(0);
   });
 
   it("bad return_path → 400, 0 upstream", async () => {
@@ -137,7 +135,7 @@ describe("Whop subscription checkout-session", () => {
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_return_path" });
-    expect(recorded.filter((r) => r.url.includes("/whop/checkout-session"))).toHaveLength(0);
+    expect(recorded.filter((r) => r.url.includes("/me/subscriptions/checkout"))).toHaveLength(0);
   });
 
   it("pro happy path defaults return_path to /checkout/complete and allowlists whop URL", async () => {
@@ -145,9 +143,10 @@ describe("Whop subscription checkout-session", () => {
     h.env.WHOP_CHECKOUT_LIMITER = countingLimiter(100);
     const { csrf, cookie } = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock((rec) => {
-      if (rec.path.includes("/me/whop/checkout-session") && rec.method === "POST") {
+      if (rec.path.includes("/me/subscriptions/checkout") && rec.method === "POST") {
+        expect(rec.url.startsWith("https://api.brokenscience.org/")).toBe(true);
         expect(JSON.parse(rec.bodyText)).toEqual({
-          plan: "pro",
+          plan_key: "metfix_pro",
           return_path: "/checkout/complete",
         });
         expect(rec.headers.authorization).toMatch(/^Bearer /);
@@ -181,7 +180,7 @@ describe("Whop subscription checkout-session", () => {
       plan: "pro",
       expires_at: "2026-12-01T00:00:00.000Z",
     });
-    expect(recorded.filter((r) => r.url.includes("/whop/checkout-session"))).toHaveLength(1);
+    expect(recorded.filter((r) => r.url.includes("/me/subscriptions/checkout"))).toHaveLength(1);
   });
 
   it("org plan works; evil checkout_url → 502", async () => {
@@ -189,8 +188,11 @@ describe("Whop subscription checkout-session", () => {
     h.env.WHOP_CHECKOUT_LIMITER = countingLimiter(100);
     const { csrf, cookie } = await withSession(h);
     const { fetchImpl } = makeFetchMock((rec) => {
-      if (rec.path.includes("/me/whop/checkout-session")) {
-        expect(JSON.parse(rec.bodyText).plan).toBe("org");
+      if (rec.path.includes("/me/subscriptions/checkout")) {
+        expect(JSON.parse(rec.bodyText)).toEqual({
+          plan_key: "organization_owner",
+          return_path: "/checkout/complete?from=billing",
+        });
         return Response.json({ checkout_url: "https://evil.example/phish" });
       }
       return Response.json({ error: "mock_miss" }, { status: 404 });

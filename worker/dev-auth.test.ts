@@ -11,6 +11,8 @@ import {
 import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
 import {
   assertBsiHost,
+  BSI_API_ORIGIN,
+  BSI_DAILY_FIX_URL,
   BSI_ORIGIN,
   BSI_STAGING_ORIGIN,
   parsePreviewBsiOrigin,
@@ -354,7 +356,9 @@ describe("local auth helpers", () => {
     expect(
       parseLocalBsiOrigin({ LOCAL_AUTH: "1", BSI_ORIGIN: "http://127.0.0.1:8080" }),
     ).toBe("http://127.0.0.1:8080");
-    expect(resolveBsiOrigin(emptyEnv)).toBe("https://brokenscience.org");
+    expect(resolveBsiOrigin(emptyEnv)).toBe(BSI_API_ORIGIN);
+    expect(resolveDailyFixBase(emptyEnv)).toBe(BSI_DAILY_FIX_URL);
+    expect(BSI_ORIGIN).toBe("https://brokenscience.org");
     expect(
       resolveBsiOrigin({
         ...emptyEnv,
@@ -371,14 +375,14 @@ describe("local auth helpers", () => {
     ).toBe("http://127.0.0.1:8080/wp-json/metfix/v1/daily-fix");
   });
 
-  it("production env with BSI_ORIGIN set still resolves brokenscience.org", () => {
+  it("production env with BSI_ORIGIN set still resolves the API origin", () => {
     // Production has no STAGING_AUTH_HOSTS — even an exact staging override is ignored.
     const prodWithLeak = {
       ...emptyEnv,
       BSI_ORIGIN: BSI_STAGING_ORIGIN,
     };
-    expect(resolveBsiOrigin(prodWithLeak)).toBe(BSI_ORIGIN);
-    expect(resolveBsiOrigin(prodWithLeak, { request: req("metfix.org") })).toBe(BSI_ORIGIN);
+    expect(resolveBsiOrigin(prodWithLeak)).toBe(BSI_API_ORIGIN);
+    expect(resolveBsiOrigin(prodWithLeak, { request: req("metfix.org") })).toBe(BSI_API_ORIGIN);
     expect(parsePreviewBsiOrigin(prodWithLeak, { request: req("metfix.org") })).toBeNull();
     expect(scopeEnvBsiOrigin(prodWithLeak, req("metfix.org")).BSI_ORIGIN).toBeUndefined();
   });
@@ -396,7 +400,7 @@ describe("local auth helpers", () => {
     ];
     for (const bad of cases) {
       const env = { ...emptyEnv, ...stagingEnv, BSI_ORIGIN: bad };
-      expect(resolveBsiOrigin(env, { request: previewReq })).toBe(BSI_ORIGIN);
+      expect(resolveBsiOrigin(env, { request: previewReq })).toBe(BSI_API_ORIGIN);
       expect(parsePreviewBsiOrigin(env, { request: previewReq })).toBeNull();
       expect(scopeEnvBsiOrigin(env, previewReq).BSI_ORIGIN).toBeUndefined();
     }
@@ -421,7 +425,7 @@ describe("local auth helpers", () => {
     expect(scoped.BSI_ORIGIN).toBe(BSI_STAGING_ORIGIN);
     expect(resolveBsiOrigin(scoped)).toBe(BSI_STAGING_ORIGIN);
     // Non-allowlisted Host never gets staging even when both preview vars are set.
-    expect(resolveBsiOrigin(previewEnv, { request: req("metfix.org") })).toBe(BSI_ORIGIN);
+    expect(resolveBsiOrigin(previewEnv, { request: req("metfix.org") })).toBe(BSI_API_ORIGIN);
     expect(scopeEnvBsiOrigin(previewEnv, req("metfix.org")).BSI_ORIGIN).toBeUndefined();
   });
 });

@@ -28,7 +28,7 @@ describe("pool-workers sitemap waiter time-box (T21)", () => {
     async () => {
       // Upstream hangs past the budget. Waiters Promise.race remaining budget → 503.
       fetchMock
-        .get("https://brokenscience.org")
+        .get("https://api.brokenscience.org")
         .intercept({ path: /\/wp-json\/metfix\/v1\/daily-fix/, method: "GET" })
         .reply(200, JSON.stringify({ items: [{ date: "2026-10-04" }], meta: { total: 1 } }), {
           headers: { "Content-Type": "application/json" },

@@ -458,7 +458,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(body).toContain('id="df-initial"');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]![0])).toBe(
-      "https://brokenscience.org/wp-json/metfix/v1/daily-fix?date=2026-10-04",
+      "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix?date=2026-10-04",
     );
   });
 
@@ -632,7 +632,7 @@ describe("Worker HTML / API / sitemap", () => {
       const url = new URL(String(c[0]));
       const headers = c[1]?.headers as Record<string, string>;
       if (headers && headers["X-API-Key"]) {
-        expect(url.hostname).toBe("brokenscience.org");
+        expect(url.hostname).toBe("api.brokenscience.org");
       }
     }
     expect(() => assertBsiHost("https://evil.example/x")).toThrow();
@@ -1118,7 +1118,7 @@ describe("Worker HTML / API / sitemap", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [upstream, init] = fetchMock.mock.calls[0];
     expect(String(upstream)).toBe(
-      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2026-10-04&type=all",
+      "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2026-10-04&type=all",
     );
     expect((init?.headers as Record<string, string>)["X-API-Key"]).toBe("test-secret-key");
     expect(cache.puts.length).toBe(1);

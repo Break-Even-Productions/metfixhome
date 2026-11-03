@@ -2,12 +2,13 @@
  * Whop subscription checkout mint (WJ22 subset — subscriptions only, no courses).
  * Upstream path via shared/account/bsi-paths (AU26.8 — no wp-json literals here).
  */
-import { accountWhopCheckoutSessionPath } from "../shared/account/bsi-paths";
+import { accountSubscriptionsCheckoutPath } from "../shared/account/bsi-paths";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import {
   DEFAULT_WHOP_CHECKOUT_RETURN_PATH,
   isWhopCheckoutPlan,
+  tierForWhopPlan,
   type WhopCheckoutPlan,
 } from "../shared/account/whop-plans";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
@@ -142,7 +143,7 @@ async function bsiPostCheckoutSession(
   opts?: { baseUrl?: string },
 ): Promise<BsiHttpResult> {
   const origin = resolveBsiOrigin(env, opts);
-  const url = `${origin}${accountWhopCheckoutSessionPath()}`;
+  const url = `${origin}${accountSubscriptionsCheckoutPath()}`;
   try {
     assertBsiHost(url, env);
   } catch {
@@ -227,7 +228,10 @@ export async function handleWhopCheckoutSession(
     return_path = sanitized;
   }
 
-  const upstreamBody: Record<string, unknown> = { plan, return_path };
+  const upstreamBody: Record<string, unknown> = {
+    plan_key: tierForWhopPlan(plan),
+    return_path,
+  };
 
   const ran = await runUserBsiCall(session, env, fetchImpl, opts, (access) =>
     bsiPostCheckoutSession(access, upstreamBody, env, fetchImpl, opts),

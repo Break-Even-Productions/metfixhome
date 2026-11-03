@@ -56,7 +56,7 @@ describe("PR2 gates CW — comment write/like", () => {
     });
     expect(res?.status).toBe(200);
     expect(upstreamUrl).toBe(
-      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments/101",
+      "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/comments/101",
     );
     expect(JSON.parse(upstreamBody)).toStrictEqual({ content: "edit" });
 
@@ -83,7 +83,7 @@ describe("PR2 gates CW — comment write/like", () => {
       body = init?.body != null ? String(init.body) : undefined;
       auth = new Headers(init?.headers).get("Authorization") ?? "";
       expect(String(url)).toBe(
-        "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments/101",
+        "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/comments/101",
       );
       return Response.json({ deleted: true }, { status: 200 });
     });

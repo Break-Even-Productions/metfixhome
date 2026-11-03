@@ -8,7 +8,7 @@ export type LocalAuthEnv = {
   LOCAL_AUTH?: string;
   /**
    * Optional upstream origin when LOCAL_AUTH is on (e.g. http://127.0.0.1:8080).
-   * When unset, production https://brokenscience.org is used (preference: local → prod BSI).
+   * When unset, production https://api.brokenscience.org is used (preference: local → API host).
    */
   BSI_ORIGIN?: string;
 };

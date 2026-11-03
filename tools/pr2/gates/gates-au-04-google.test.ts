@@ -258,7 +258,7 @@ describe("AU11", () => {
       return form.grant_type === "authorization_code";
     });
     expect(codeTok).toBeTruthy();
-    expect(codeTok!.url).toBe("https://brokenscience.org/oauth/token");
+    expect(codeTok!.url).toBe("https://api.brokenscience.org/oauth/token");
     const body = Object.fromEntries(new URLSearchParams(codeTok!.bodyText));
     expect(Object.keys(body).sort()).toStrictEqual(
       ["client_id", "client_secret", "code", "grant_type", "redirect_uri"].sort(),

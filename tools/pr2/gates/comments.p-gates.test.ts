@@ -386,7 +386,7 @@ describe("PR2 gates P — comment POST", () => {
         });
       }
       expect(String(url)).toBe(
-        "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments",
+        "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/comments",
       );
       expect(init?.method).toBe("POST");
       return Response.json(okComment({ id: 1, content: "h", timestamp: "t" }), { status: 201 });

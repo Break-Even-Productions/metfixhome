@@ -58,7 +58,7 @@ let siteTitle = "";
 
 function interceptDay(status = 200, body: unknown = DAY) {
   fetchMock
-    .get("https://brokenscience.org")
+    .get("https://api.brokenscience.org")
     .intercept({ path: /\/wp-json\/metfix\/v1\/daily-fix/, method: "GET" })
     .reply(status, typeof body === "string" ? body : JSON.stringify(body), {
       headers: { "Content-Type": "application/json" },

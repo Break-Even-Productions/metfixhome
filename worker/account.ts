@@ -28,6 +28,7 @@ import {
   extractSubscriptionTierItems,
   normalizeCanonicalTier,
   resolveAccountCanonicalTier,
+  type CanonicalSubscriptionTier,
   type LegacySubscriptionSource,
 } from "../shared/account/tiers";
 import { isWhopCheckoutUrl, sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
@@ -414,20 +415,107 @@ function normalizeLegacySource(raw: unknown): LegacySubscriptionSource {
   return null;
 }
 
+function containsProviderIdToken(value: string): boolean {
+  return STRIPE_LIKE_ID_RE.test(value) || /(?:cus|sub|mem|seti|pi)_/.test(value);
+}
+
 function normalizeCard(raw: unknown): { brand: string; last4: string } | null {
   const obj = asRecord(raw);
   if (!obj) return null;
   const brand = typeof obj.brand === "string" ? obj.brand : null;
   const last4 = typeof obj.last4 === "string" ? obj.last4 : null;
   if (!brand || !last4) return null;
+  if (containsProviderIdToken(brand) || containsProviderIdToken(last4)) return null;
   return { brand, last4 };
 }
 
 function opaqueSubRef(raw: unknown): string | null {
   if (typeof raw !== "string" || raw.length === 0 || raw.length > 128) return null;
-  if (STRIPE_LIKE_ID_RE.test(raw)) return null;
-  if (/cus_|sub_|mem_|seti_|pi_/.test(raw)) return null;
+  if (containsProviderIdToken(raw)) return null;
   return raw;
+}
+
+function productSlug(raw: unknown): string {
+  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
+}
+
+/** Stable opaque ref when BSI omits `sub_ref`. Never includes provider id prefixes. */
+function syntheticSubRef(provider: "whop" | "stripe", product: unknown): string | null {
+  const slug = productSlug(product);
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug)) return null;
+  const ref = `ent:${provider}:${slug}`;
+  if (ref.length > 128 || containsProviderIdToken(ref)) return null;
+  return ref;
+}
+
+function canonicalTierFromRaw(raw: unknown): CanonicalSubscriptionTier | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const key = raw.trim().toLowerCase();
+  if (
+    key === "free" ||
+    key === "member" ||
+    key === "metfix_pro" ||
+    key === "organization_owner" ||
+    key === "medical_society"
+  ) {
+    return normalizeCanonicalTier(raw);
+  }
+  return null;
+}
+
+function tierFromProduct(product: string): CanonicalSubscriptionTier | null {
+  if (product === "pro") return "metfix_pro";
+  if (product === "metfix") return "organization_owner";
+  return null;
+}
+
+/**
+ * Use an explicit canonical tier when BSI sent one.
+ * Otherwise derive pro → metfix_pro and metfix → organization_owner.
+ * medical/med stay without a tier so they are not labeled Pro.
+ */
+function resolveItemTier(obj: Record<string, unknown>): CanonicalSubscriptionTier | null {
+  const fromTier = canonicalTierFromRaw(obj.tier);
+  if (fromTier) return fromTier;
+  const product = productSlug(obj.product);
+  if (product === "medical" || product === "med") return null;
+  return tierFromProduct(product);
+}
+
+function unixSecondsToIso(seconds: number): string | null {
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds > 1e12) return null;
+  const ms = Math.trunc(seconds) * 1000;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function formatPeriodEnd(raw: unknown): string | null {
+  if (typeof raw === "number") return unixSecondsToIso(raw);
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  if (/^\d+$/.test(trimmed)) return unixSecondsToIso(Number(trimmed));
+  return trimmed;
+}
+
+/** Drop provider-id strings so one Stripe customer id cannot 502 the list. */
+function stripProviderIdValues(value: unknown): unknown {
+  if (typeof value === "string") {
+    return containsProviderIdToken(value) ? undefined : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripProviderIdValues).filter((entry) => entry !== undefined);
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const next = stripProviderIdValues(entry);
+      if (next !== undefined) out[key] = next;
+    }
+    return out;
+  }
+  return value;
 }
 
 /** Walk DTO values for raw Stripe-like provider ids (T6). */
@@ -443,19 +531,23 @@ function containsProviderIdValues(value: unknown): boolean {
 function shapeSubscriptionItem(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
-  const sub_ref = opaqueSubRef(obj.sub_ref);
-  if (!sub_ref) return null;
   const provider = obj.provider === "whop" || obj.provider === "stripe" ? obj.provider : null;
   if (!provider) return null;
-  const tier = normalizeCanonicalTier(obj.tier);
+  const tier = resolveItemTier(obj);
+  if (!tier) return null;
+  const sub_ref = opaqueSubRef(obj.sub_ref) ?? syntheticSubRef(provider, obj.product);
+  if (!sub_ref) return null;
   const card = normalizeCard(obj.card ?? obj.payment_method);
+  const status =
+    typeof obj.status === "string" && !containsProviderIdToken(obj.status) ? obj.status : "unknown";
+  const paidThrough = strOrNull(obj.paid_through);
   const item: Record<string, unknown> = {
     sub_ref,
     provider,
     tier,
-    status: typeof obj.status === "string" ? obj.status : "unknown",
-    current_period_end: strOrNull(obj.current_period_end),
-    paid_through: strOrNull(obj.paid_through),
+    status,
+    current_period_end: formatPeriodEnd(obj.current_period_end),
+    paid_through: paidThrough && !containsProviderIdToken(paidThrough) ? paidThrough : null,
     cancel_at_period_end: boolOrFalse(obj.cancel_at_period_end),
     card,
   };
@@ -1027,10 +1119,14 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       const shaped = shapeSubscriptions(mapped.json);
       if (!shaped) return accountJson({ error: "unavailable" }, 502);
-      if (containsProviderIdValues(shaped)) {
+      const cleaned = stripProviderIdValues(shaped);
+      if (!cleaned || typeof cleaned !== "object") {
         return accountJson({ error: "unavailable" }, 502);
       }
-      return accountJson(shaped, 200);
+      if (containsProviderIdValues(cleaned)) {
+        return accountJson({ error: "unavailable" }, 502);
+      }
+      return accountJson(cleaned, 200);
     }
     case "DP3": {
       const parsed = await readJsonBody(request);

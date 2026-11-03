@@ -8,11 +8,13 @@ import { postsDetailBaseFromOrigin } from "../shared/library/constants";
 import { isStagingAuthHost, normalizeHost, stagingAuthHostsSet } from "./auth/host";
 import { parseLocalBsiOrigin, type LocalAuthEnv } from "./dev-auth";
 
-export const BSI_DAILY_FIX_URL = "https://brokenscience.org/wp-json/metfix/v1/daily-fix";
 export const BSI_ORIGIN = "https://brokenscience.org";
 export const BSI_HOST = "brokenscience.org";
 /** Mobile API host (App readiness `bsi_app_api_base_url`); mint bridge_url here. */
 export const BSI_API_HOST = "api.brokenscience.org";
+/** Production REST origin. Public permalinks stay on `BSI_ORIGIN`. */
+export const BSI_API_ORIGIN = "https://api.brokenscience.org";
+export const BSI_DAILY_FIX_URL = `${BSI_API_ORIGIN}/wp-json/metfix/v1/daily-fix`;
 /** Spec 1.6.12 §0w.2 — staging BSI base (same paths as prod). */
 export const BSI_STAGING_ORIGIN = "https://brokenstaging.wpengine.com";
 export const BSI_STAGING_HOST = "brokenstaging.wpengine.com";
@@ -192,7 +194,7 @@ export function scopeEnvBsiOrigin(env: Env, request: Request): Env {
   return rest;
 }
 
-/** Resolved BSI site origin (production, opts.baseUrl, LOCAL_AUTH, or preview staging). */
+/** Resolved BSI REST origin (API host, opts.baseUrl, LOCAL_AUTH, or preview staging). */
 export function resolveBsiOrigin(env: Env, opts?: ResolveBsiOriginOpts): string {
   if (opts?.baseUrl) {
     try {
@@ -205,23 +207,24 @@ export function resolveBsiOrigin(env: Env, opts?: ResolveBsiOriginOpts): string 
   if (local) return local;
 
   // Preview path never requires LOCAL_AUTH. Exact origin only; any other value rejected.
+  // Staging wins only while that preview path is active.
   if (env.BSI_ORIGIN === BSI_STAGING_ORIGIN) {
     if (opts?.request) {
-      return parsePreviewBsiOrigin(env, opts) ?? BSI_ORIGIN;
+      return parsePreviewBsiOrigin(env, opts) ?? BSI_API_ORIGIN;
     }
     // No Request in opts (most upstream call sites): honor only when
     // STAGING_AUTH_HOSTS is configured. handleRequest calls scopeEnvBsiOrigin
     // so a non-allowlisted Host never leaves BSI_ORIGIN set on env.
     if (stagingAuthHostsSet(env).size > 0) return BSI_STAGING_ORIGIN;
   }
-  return BSI_ORIGIN;
+  return BSI_API_ORIGIN;
 }
 
 /** Daily Fix REST base path under the resolved BSI origin. */
 export function resolveDailyFixBase(env: Env, opts?: ResolveBsiOriginOpts): string {
   if (opts?.baseUrl) return opts.baseUrl;
   const origin = resolveBsiOrigin(env, opts);
-  if (origin === BSI_ORIGIN) return BSI_DAILY_FIX_URL;
+  if (origin === BSI_API_ORIGIN) return BSI_DAILY_FIX_URL;
   return `${origin}/wp-json/metfix/v1/daily-fix`;
 }
 
@@ -414,8 +417,9 @@ function bsiPostCommentsBearerHeaders(
   return headers;
 }
 
-/** Shared POST helper for `/wp-json/bsi/v1/me…` write paths (N6) — one Bearer builder. */
-async function bsiPostMe(
+/** Shared JSON write for `/wp-json/bsi/v1/me…` (N6) — Bearer only, resolved API origin. */
+async function bsiWriteMe(
+  method: "POST" | "PUT" | "PATCH",
   mePath: string,
   accessToken: string,
   body: unknown,
@@ -431,7 +435,7 @@ async function bsiPostMe(
   return bsiFetch(
     url,
     {
-      method: "POST",
+      method,
       // UserBearerHeaders forbids X-API-Key at the type level; RequestInit wants Record.
       headers: { ...headers } as unknown as Record<string, string>,
       body: JSON.stringify(body),
@@ -442,26 +446,37 @@ async function bsiPostMe(
   );
 }
 
-/** POST {origin}/wp-json/bsi/v1/me/onboarding — Bearer only (WJ21). */
-export async function bsiPostMeOnboarding(
+/** PATCH {origin}/wp-json/bsi/v1/me/profile — Bearer only. */
+export async function bsiPatchMeProfile(
   accessToken: string,
   body: unknown,
   env: Env,
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string; timeoutMs?: number },
 ): Promise<BsiHttpResult> {
-  return bsiPostMe("/onboarding", accessToken, body, env, fetchImpl, opts);
+  return bsiWriteMe("PATCH", "/profile", accessToken, body, env, fetchImpl, opts);
 }
 
-/** POST {origin}/wp-json/bsi/v1/me/whop/checkout-session — Bearer only (WJ22). */
-export async function bsiPostWhopCheckoutSession(
+/** PUT {origin}/wp-json/bsi/v1/me/community-choices — Bearer only. */
+export async function bsiPutMeCommunityChoices(
   accessToken: string,
   body: unknown,
   env: Env,
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string; timeoutMs?: number },
 ): Promise<BsiHttpResult> {
-  return bsiPostMe("/whop/checkout-session", accessToken, body, env, fetchImpl, opts);
+  return bsiWriteMe("PUT", "/community-choices", accessToken, body, env, fetchImpl, opts);
+}
+
+/** POST {origin}/wp-json/bsi/v1/me/subscriptions/checkout — Bearer only. */
+export async function bsiPostSubscriptionsCheckout(
+  accessToken: string,
+  body: unknown,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: { baseUrl?: string; timeoutMs?: number },
+): Promise<BsiHttpResult> {
+  return bsiWriteMe("POST", "/subscriptions/checkout", accessToken, body, env, fetchImpl, opts);
 }
 
 async function oauthTokenFetch(

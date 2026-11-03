@@ -859,7 +859,7 @@ describe("sitemap timeout + stale-ok (rev 1.1.1 QA list)", () => {
     for (const c of fetchMock.mock.calls) {
       const url = new URL(String(c[0]));
       const headers = c[1]?.headers as Record<string, string>;
-      if (headers?.["X-API-Key"]) expect(url.hostname).toBe("brokenscience.org");
+      if (headers?.["X-API-Key"]) expect(url.hostname).toBe("api.brokenscience.org");
     }
     expect(await res.text()).not.toContain("test-secret-key");
     await flush(ctx);

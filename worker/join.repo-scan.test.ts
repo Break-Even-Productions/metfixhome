@@ -91,7 +91,10 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
   });
 
   it("zero foreign plan_* / prod_* Whop identifiers", () => {
-    const hits = scanHits(withDist, /\b(?:plan|prod)_[A-Za-z0-9]+/g);
+    // `plan_key` is the BSI checkout field, not a Whop plan_… id.
+    const hits = scanHits(withDist, /\b(?:plan|prod)_[A-Za-z0-9]+/g).filter(
+      (h) => h.match !== "plan_key",
+    );
     expect(hits).toEqual([]);
   });
 

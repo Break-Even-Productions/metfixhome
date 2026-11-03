@@ -338,6 +338,128 @@ describe("worker/account routes", () => {
     expect(body.items[1]!.is_duplicate_stripe).toBe(true);
   });
 
+  it("shapes today's BSI items: product tier, synthetic ref, unix period end, no provider ids", async () => {
+    const sess = await withSession(h);
+    const proEnd = 1_796_083_200;
+    const metfixEnd = 1_793_491_200;
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/subscriptions")) {
+          return Response.json({
+            items: [
+              {
+                product: "pro",
+                provider: "whop",
+                status: "active",
+                paid_through: "2026-12-01T00:00:00Z",
+                current_period_end: proEnd,
+                plan_key: "operator_monthly",
+                payment_method: { brand: "visa", last4: "4242", customer: "cus_shouldnot502" },
+                external_sub_id: "mem_shouldnot502",
+              },
+              {
+                product: "metfix",
+                provider: "stripe",
+                status: "active",
+                paid_through: "2026-11-01T00:00:00Z",
+                current_period_end: metfixEnd,
+                plan_key: null,
+                payment_method: { brand: "mastercard", last4: "1111" },
+                stripe_customer_id: "cus_abc123",
+              },
+              {
+                sub_ref: "cus_leak",
+                product: "pro",
+                provider: "stripe",
+                status: "active",
+                paid_through: "2026-10-01T00:00:00Z",
+                current_period_end: "2026-10-01T00:00:00Z",
+              },
+              {
+                product: "medical",
+                provider: "stripe",
+                status: "active",
+                paid_through: "2026-11-01T00:00:00Z",
+                current_period_end: metfixEnd,
+                payment_method: { brand: "visa", last4: "2222" },
+              },
+              {
+                product: "med",
+                provider: "whop",
+                status: "active",
+                tier: "legacy",
+              },
+              {
+                product: "pro",
+                provider: "paypal",
+                status: "active",
+              },
+            ],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = (await handleAccountRoutes(
+      new Request("https://metfix.org/api/account/subscriptions", {
+        headers: { Cookie: sess.cookie, Host: "metfix.org" },
+      }),
+      h.env,
+      { fetchImpl },
+    )) as Response;
+    expect(res.status).toBe(200);
+    expect(recorded[0]!.url.startsWith("https://api.brokenscience.org/wp-json/bsi/v1/me/subscriptions")).toBe(
+      true,
+    );
+    const text = await res.text();
+    expect(text).not.toMatch(/cus_|mem_|seti_|pi_/);
+    const body = JSON.parse(text) as {
+      items: Array<{
+        sub_ref: string;
+        provider: string;
+        tier: string;
+        current_period_end: string | null;
+        paid_through: string | null;
+        card: { brand: string; last4: string } | null;
+      }>;
+    };
+    expect(body.items).toEqual([
+      {
+        sub_ref: "ent:whop:pro",
+        provider: "whop",
+        tier: "metfix_pro",
+        status: "active",
+        current_period_end: new Date(proEnd * 1000).toISOString(),
+        paid_through: "2026-12-01T00:00:00Z",
+        cancel_at_period_end: false,
+        card: { brand: "visa", last4: "4242" },
+      },
+      {
+        sub_ref: "ent:stripe:metfix",
+        provider: "stripe",
+        tier: "organization_owner",
+        status: "active",
+        current_period_end: new Date(metfixEnd * 1000).toISOString(),
+        paid_through: "2026-11-01T00:00:00Z",
+        cancel_at_period_end: false,
+        card: { brand: "mastercard", last4: "1111" },
+      },
+      {
+        sub_ref: "ent:stripe:pro",
+        provider: "stripe",
+        tier: "metfix_pro",
+        status: "active",
+        current_period_end: "2026-10-01T00:00:00Z",
+        paid_through: "2026-10-01T00:00:00Z",
+        cancel_at_period_end: false,
+        card: null,
+      },
+    ]);
+    for (const item of body.items) {
+      expect(item.sub_ref).not.toMatch(/^(?:cus|sub|mem|seti|pi)_/);
+    }
+  });
+
   it("DP-T-3 portal-link allowlist; evil URL → 502", async () => {
     const sess = await withSession(h);
     for (const [upstreamUrl, expectStatus] of [

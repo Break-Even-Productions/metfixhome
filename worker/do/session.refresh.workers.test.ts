@@ -48,7 +48,7 @@ describe("SessionDO real workerd refresh serialisation", () => {
 
     let tokenCalls = 0;
     fetchMock
-      .get("https://brokenscience.org")
+      .get("https://api.brokenscience.org")
       .intercept({ path: "/oauth/token", method: "POST" })
       .reply(() => {
         tokenCalls += 1;
@@ -67,7 +67,7 @@ describe("SessionDO real workerd refresh serialisation", () => {
       .times(1);
 
     fetchMock
-      .get("https://brokenscience.org")
+      .get("https://api.brokenscience.org")
       .intercept({ path: "/wp-json/bsi/v1/me", method: "GET" })
       .reply(() => ({
         statusCode: 200,

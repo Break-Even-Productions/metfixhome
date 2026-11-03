@@ -8,17 +8,24 @@ import {
   type RoleId,
   type WhopCheckoutPlan,
 } from "../shared/join/membership-domain";
-import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
+import { tierForWhopPlan } from "../shared/account/whop-plans";
+import { sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey } from "./auth/account-rate-limit";
 import { isAuthHost } from "./auth/host";
 import { requireSidCsrf, readJsonBody as readJsonBodyShared } from "./auth/sid-guards";
-import type { Env, FetchImpl, RateLimitBinding } from "./upstream";
-import { bsiPostMeOnboarding, bsiPostWhopCheckoutSession } from "./upstream";
+import type { BsiHttpResult, Env, FetchImpl, RateLimitBinding } from "./upstream";
+import {
+  bsiPatchMeProfile,
+  bsiPostSubscriptionsCheckout,
+  bsiPutMeCommunityChoices,
+} from "./upstream";
 
 const MAX_BODY_BYTES = 8_192;
 const NAME_MAX = 80;
+/** BSI `bsi_me_sanitize_name_field` rejects names longer than 60. */
+const UPSTREAM_NAME_MAX = 60;
 
 export type JoinLimitEnv = Env & {
   WHOP_CHECKOUT_LIMITER?: RateLimitBinding;
@@ -100,6 +107,21 @@ function trimName(raw: unknown): string | null {
   const t = raw.trim();
   if (t.length < 1 || t.length > NAME_MAX) return null;
   return t;
+}
+
+function clampUpstreamName(name: string): string {
+  return [...name].slice(0, UPSTREAM_NAME_MAX).join("");
+}
+
+function communityChoicesBody(payload: OnboardingPayload): Record<string, unknown> {
+  const body: Record<string, unknown> = { roles: payload.roles };
+  if (typeof payload.has_physical_gym === "boolean") {
+    body.has_physical_gym = payload.has_physical_gym;
+  }
+  if (typeof payload.has_physical_clinic === "boolean") {
+    body.has_physical_clinic = payload.has_physical_clinic;
+  }
+  return body;
 }
 
 export type OnboardingPayload = {
@@ -225,9 +247,35 @@ export async function handleAccountOnboarding(
   const payload = validateOnboardingBody(bodyRead.json);
   if (!payload) return jsonPrivateNoStore({ error: "invalid_request" }, 400);
 
-  const ran = await runUserBsiCall(session, env, fetchImpl, opts, (access) =>
-    bsiPostMeOnboarding(access, payload, env, fetchImpl, opts),
-  );
+  const ran = await runUserBsiCall(session, env, fetchImpl, opts, async (access) => {
+    const profile = await bsiPatchMeProfile(
+      access,
+      {
+        first_name: clampUpstreamName(payload.first_name),
+        last_name: clampUpstreamName(payload.last_name),
+      },
+      env,
+      fetchImpl,
+      opts,
+    );
+    if (profile.kind !== "ok") return profile;
+    const choices = await bsiPutMeCommunityChoices(
+      access,
+      communityChoicesBody(payload),
+      env,
+      fetchImpl,
+      opts,
+    );
+    if (choices.kind !== "ok") return choices;
+    const ok: BsiHttpResult = {
+      kind: "ok",
+      status: 200,
+      json: { ok: true },
+      bodyText: "",
+      retryAfter: null,
+    };
+    return ok;
+  });
   if (ran instanceof Response) {
     if (ran.status === 401) return unauthenticated();
     return upstreamError(ran.status);
@@ -235,10 +283,7 @@ export async function handleAccountOnboarding(
 
   const { result } = ran;
   if (result.kind === "ok") {
-    return jsonPrivateNoStore(
-      typeof result.json === "object" && result.json !== null ? result.json : { ok: true },
-      200,
-    );
+    return jsonPrivateNoStore({ ok: true }, 200);
   }
   if (result.kind === "http" && result.status === 401) return unauthenticated();
   return jsonPrivateNoStore({ error: "upstream_error" }, 502);
@@ -291,11 +336,11 @@ export async function handleWhopCheckoutSession(
     return_path = sanitized;
   }
 
-  const upstreamBody: Record<string, unknown> = { plan };
+  const upstreamBody: Record<string, unknown> = { plan_key: tierForWhopPlan(plan) };
   if (return_path) upstreamBody.return_path = return_path;
 
   const ran = await runUserBsiCall(session, env, fetchImpl, opts, (access) =>
-    bsiPostWhopCheckoutSession(access, upstreamBody, env, fetchImpl, opts),
+    bsiPostSubscriptionsCheckout(access, upstreamBody, env, fetchImpl, opts),
   );
   if (ran instanceof Response) {
     if (ran.status === 401) return unauthenticated();

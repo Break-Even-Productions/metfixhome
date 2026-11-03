@@ -260,7 +260,7 @@ describe("PR2 leaderboard gates L / LB", () => {
     const [url] = lbCalls(g)[0]!;
     const u = new URL(String(url));
     expect(u.origin + u.pathname).toBe(
-      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/workouts/55/leaderboard",
+      "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/workouts/55/leaderboard",
     );
   });
 

@@ -22,9 +22,9 @@ export function accountConvertToWhopPath(): string {
   return `${BSI}/me/subscriptions/convert-to-whop`;
 }
 
-/** WJ22: mint Whop subscription checkout (Break Even Productions). */
-export function accountWhopCheckoutSessionPath(): string {
-  return `${BSI}/me/whop/checkout-session`;
+/** Mint Whop subscription checkout. Browser still sends plan aliases; BSI takes plan_key. */
+export function accountSubscriptionsCheckoutPath(): string {
+  return `${BSI}/me/subscriptions/checkout`;
 }
 
 export function accountCancelDuplicatePath(subRef: string): string {

@@ -50,8 +50,8 @@ describe("AU8", () => {
       (f) => f.url.includes("/oauth/revoke") && !f.url.includes("/proxy/"),
     );
     expect(revokes.length).toBe(2);
-    expect(revokes[0]!.url).toBe("https://brokenscience.org/oauth/revoke");
-    expect(revokes[1]!.url).toBe("https://brokenscience.org/oauth/revoke");
+    expect(revokes[0]!.url).toBe("https://api.brokenscience.org/oauth/revoke");
+    expect(revokes[1]!.url).toBe("https://api.brokenscience.org/oauth/revoke");
     const b0 = Object.fromEntries(new URLSearchParams(revokes[0]!.bodyText));
     const b1 = Object.fromEntries(new URLSearchParams(revokes[1]!.bodyText));
     expect(b0).toStrictEqual({ token: REFRESH1, token_type_hint: "refresh_token" });

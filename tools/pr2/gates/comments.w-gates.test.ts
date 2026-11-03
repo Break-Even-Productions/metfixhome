@@ -190,7 +190,7 @@ describe("PR2 W gates — comments read", () => {
       "/api/daily-fix/comments?foo=1&key=x&api_key=y&user_id=5&_method=POST&type=all&date=2025-02-10",
     );
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2025-02-10&type=all",
+      "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2025-02-10&type=all",
     );
   });
 
@@ -200,7 +200,7 @@ describe("PR2 W gates — comments read", () => {
     );
     await call("/api/daily-fix/comments?date=2025-02-10&type=belly");
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      "https://brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2025-02-10&type=belly",
+      "https://api.brokenscience.org/wp-json/metfix/v1/daily-fix/comments?date=2025-02-10&type=belly",
     );
   });
 
