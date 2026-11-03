@@ -3,6 +3,8 @@ import {
   loadFavorites,
   setFavorite,
   type FavoriteItem,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 
@@ -24,7 +26,7 @@ export default function AccountFavorites() {
         setItems(Array.isArray(data.items) ? data.items : []);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load favorites.");
       }
     })();

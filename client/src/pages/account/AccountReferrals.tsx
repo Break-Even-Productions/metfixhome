@@ -7,6 +7,8 @@ import {
   referralCodeAction,
   type CourseGiftsPayload,
   type ReferralsPayload,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 
@@ -84,7 +86,7 @@ export default function AccountReferrals(_props: Props) {
         setGifts(g);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load referrals.");
       }
     })();

@@ -8,6 +8,8 @@ import {
   type AccountOverview as OverviewDto,
   type AccountSubscriptions,
   type LtvCertificates,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 import { MetricStrip } from "./MetricStrip";
@@ -37,7 +39,7 @@ export default function AccountOverview() {
         setLtv(lt);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load overview.");
       }
     })();

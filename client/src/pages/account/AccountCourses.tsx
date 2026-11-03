@@ -20,6 +20,8 @@ import {
   openWhopCheckout,
   type CourseItem,
   type LtvCertificates,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 import { LtvVisualizer } from "./LtvVisualizer";
@@ -156,7 +158,7 @@ export default function AccountCourses() {
         setCourses(cs.items);
       } catch (err) {
         if (cancelled || !mountedRef.current) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load courses.");
       }
     })();

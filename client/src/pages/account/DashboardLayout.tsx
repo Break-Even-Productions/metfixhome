@@ -11,6 +11,8 @@ import {
   loadSubscriptions,
   type AccountOverview,
   type AccountSubscriptions,
+
+  isAbortError,
 } from "@/lib/account";
 import "./account.css";
 
@@ -92,7 +94,7 @@ export default function DashboardLayout({ title, description, children }: Props)
         setSubs(su);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load account.");
       }
     })();

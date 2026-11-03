@@ -5,6 +5,8 @@ import {
   updateProfileAttributes,
   uploadProfilePicture,
   type AccountProfile as ProfileDto,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 
@@ -42,7 +44,7 @@ export default function AccountProfile() {
         setCommunityOptIn(p.community_opt_in === true);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load profile.");
       }
     })();

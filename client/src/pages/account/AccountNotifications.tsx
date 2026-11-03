@@ -3,6 +3,8 @@ import {
   loadNotifications,
   updateNotifications,
   type NotificationsPayload,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 
@@ -25,7 +27,7 @@ export default function AccountNotifications() {
         setNewsletter(n.newsletter === true);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load notifications.");
       }
     })();

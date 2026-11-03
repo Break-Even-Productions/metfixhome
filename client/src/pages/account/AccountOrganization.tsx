@@ -8,6 +8,8 @@ import {
   portalLink,
   type AccountOverview,
   type AccountSubscriptions,
+
+  isAbortError,
 } from "@/lib/account";
 import { tierDisplayLabel } from "@shared/account/tiers";
 import DashboardLayout from "./DashboardLayout";
@@ -32,7 +34,7 @@ export default function AccountOrganization() {
         setSubs(su);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load organization.");
       }
     })();

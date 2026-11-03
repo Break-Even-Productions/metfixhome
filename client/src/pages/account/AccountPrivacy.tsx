@@ -6,6 +6,8 @@ import {
   requestPasswordReset,
   updatePrivacy,
   type PrivacyPayload,
+
+  isAbortError,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 
@@ -32,7 +34,7 @@ export default function AccountPrivacy() {
         setProfilePublic(p.profile_public === true);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load privacy settings.");
       }
     })();

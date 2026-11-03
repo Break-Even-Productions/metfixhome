@@ -301,6 +301,19 @@ function invalidateKeys(keys: CacheKey[]): void {
   }
 }
 
+/**
+ * True for AbortError from fetch, DOMException, or our withCallerAbort wrapper.
+ * Do not require `instanceof DOMException` — remount races often surface a plain Error.
+ */
+export function isAbortError(err: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" &&
+      err instanceof DOMException &&
+      err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
+}
+
 async function accountGet<T>(
   path: string,
   cacheKey: CacheKey,
@@ -313,13 +326,16 @@ async function accountGet<T>(
     return withCallerAbort(inflight.get(cacheKey) as Promise<T>, options?.signal);
   }
 
+  // Do NOT attach the caller's AbortSignal to the shared fetch. Unmount/remount
+  // (account layout + tab effects) would abort the single-flight request for every
+  // waiter and leave the remounted UI on "Unable to load…". Caller cancellation is
+  // handled only via withCallerAbort below; the network request runs to completion
+  // and populates the module cache for the next mount.
   const shared = (async () => {
     const res = await globalThis.fetch(path, {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
-      // S-R3-3: forward AbortSignal so unmount aborts in-flight CL1 refresh.
-      signal: options?.signal,
     });
     if (res.status === 401) {
       redirectToLogin();

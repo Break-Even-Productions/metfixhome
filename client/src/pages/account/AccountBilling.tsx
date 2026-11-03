@@ -18,6 +18,8 @@ import {
   type LtvCertificates,
   type PaymentsPage,
   type SubscriptionItem,
+
+  isAbortError,
 } from "@/lib/account";
 import { WHOP_SUBSCRIPTION_PLAN_COPY, type WhopCheckoutPlan } from "@shared/account/whop-plans";
 import DashboardLayout from "./DashboardLayout";
@@ -49,7 +51,7 @@ export default function AccountBilling() {
         setLtv(lt);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load billing.");
       }
     })();
@@ -70,7 +72,7 @@ export default function AccountBilling() {
         setPayments(p);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (isAbortError(err)) return;
         setError("Unable to load payments.");
       }
     })();
