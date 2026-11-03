@@ -213,7 +213,7 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
                 <Mail className="h-4 w-4" strokeWidth={1.8} />
                 Continue with Email
               </button>
-              <p className="mt-3 text-[11px] leading-relaxed text-muted-2">
+              <p className="mt-3 text-[11px] leading-relaxed text-muted">
                 By joining, you agree to our Terms of Service and Privacy Policy.
               </p>
             </div>

@@ -1,7 +1,7 @@
 /**
  * Newsletter signup modal (mia-metfix design).
  * Posts EMAIL + FNAME to the existing Mailchimp embed audience.
- * Interests / location are collected for UX + localStorage; tags need API access later.
+ * Interests / location are collected for UX + browser storage; tags need API access later.
  */
 import { NEWSLETTER_FORM_ACTION } from "@/components/siteFooterNav";
 import { easeOutExpo } from "@/components/home/motion";

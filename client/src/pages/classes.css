@@ -428,10 +428,10 @@
 
 @media (max-width: 480px) {
   .classes-page .course-card-header {
-    flex-direction: column !important;
+    flex-direction: column;
   }
   .classes-page .course-card-header > div:last-child {
-    align-items: flex-start !important;
+    align-items: flex-start;
   }
 }
 

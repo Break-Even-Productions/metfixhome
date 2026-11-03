@@ -1645,16 +1645,16 @@ a.df-article {
   border-top: 0;
 }
 
-.df-signin-to-comment {
+/* a.df-btn.df-signin beats `a.df-btn { color: inherit }` without !important. */
+a.df-btn.df-signin-to-comment {
   margin-top: 0.35rem;
-  /* Beat `a.df-btn { color: inherit }` so text stays dark on gold. */
-  color: var(--df-ink) !important;
+  color: var(--df-ink);
   background: var(--df-accent);
   text-decoration: none;
 }
 
-.df-signin-to-comment:hover {
-  color: var(--df-ink) !important;
+a.df-btn.df-signin-to-comment:hover {
+  color: var(--df-ink);
   background: var(--df-accent-2);
 }
 

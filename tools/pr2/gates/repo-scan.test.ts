@@ -1260,6 +1260,8 @@ describe("AU22.1", () => {
       "client/src/App.tsx\0captureBsiRef(window.location.search, sessionStorage);",
       'client/src/lib/referralAttribution.ts\0if (typeof sessionStorage === "undefined") return null;',
       "client/src/lib/referralAttribution.ts\0return readBsiRef(sessionStorage);",
+      // Newsletter signup confirmation payload (non-auth UX preference only).
+      "client/src/components/NewsletterModal.tsx\0localStorage.setItem(NEWSLETTER_STORAGE_KEY, JSON.stringify(signup));",
     ]);
     const clientSrc = path.join(REPO_ROOT, "client/src");
     if (!existsSync(clientSrc)) {
