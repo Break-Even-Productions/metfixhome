@@ -69,6 +69,18 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: process.env.DAILY_FIX_API_PROXY || "http://localhost:8787",
           changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on("proxyReq", (proxyReq, req) => {
+              const host = req.headers.host;
+              if (typeof host === "string" && host.length > 0) {
+                proxyReq.setHeader("X-Forwarded-Host", host);
+              }
+              const encrypted = Boolean(
+                req.socket && "encrypted" in req.socket && req.socket.encrypted,
+              );
+              proxyReq.setHeader("X-Forwarded-Proto", encrypted ? "https" : "http");
+            });
+          },
         },
       },
       fs: {

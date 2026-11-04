@@ -8,7 +8,12 @@ import {
   parseStagingAuthHosts,
   stagingAuthHostsSet,
 } from "./auth/host";
-import { isLocalAuthEnabled, parseLocalBsiOrigin } from "./dev-auth";
+import {
+  googleRedirectUri,
+  isLocalAuthEnabled,
+  parseLocalBsiOrigin,
+  PROD_GOOGLE_REDIRECT_URI,
+} from "./dev-auth";
 import {
   assertBsiHost,
   BSI_API_ORIGIN,
@@ -305,6 +310,65 @@ describe("local auth helpers", () => {
     expect(warn.mock.calls[0]?.[0]).toContain("STAGING_AUTH_HOSTS rejected entries");
     expect(parseStagingAuthHosts({ STAGING_AUTH_HOSTS: raw })).toHaveLength(1);
     warn.mockRestore();
+  });
+
+  it("google redirect stays on metfix.org unless LOCAL_AUTH and a local browser origin", () => {
+    const prod = new Request("https://metfix.org/api/auth/google/start");
+    const spoofed = new Request("https://metfix.org/api/auth/google/start", {
+      headers: {
+        "X-Forwarded-Host": "localhost:3000",
+        "X-Forwarded-Proto": "http",
+      },
+    });
+    expect(googleRedirectUri(prod, {})).toBe(PROD_GOOGLE_REDIRECT_URI);
+    expect(googleRedirectUri(spoofed, { LOCAL_AUTH: "0" })).toBe(PROD_GOOGLE_REDIRECT_URI);
+
+    const proxied = new Request("http://localhost:8787/api/auth/google/start", {
+      headers: {
+        "X-Forwarded-Host": "localhost:3000",
+        "X-Forwarded-Proto": "http",
+      },
+    });
+    expect(googleRedirectUri(proxied, { LOCAL_AUTH: "1" })).toBe(
+      "http://localhost:3000/api/auth/google/callback",
+    );
+    expect(
+      googleRedirectUri(
+        new Request("http://127.0.0.1:8787/api/auth/google/start", {
+          headers: {
+            "X-Forwarded-Host": "127.0.0.1:3000, evil.example",
+            "X-Forwarded-Proto": "http, https",
+          },
+        }),
+        { LOCAL_AUTH: "true" },
+      ),
+    ).toBe("http://127.0.0.1:3000/api/auth/google/callback");
+
+    const direct = new Request("http://localhost:8787/api/auth/google/start");
+    expect(googleRedirectUri(direct, { LOCAL_AUTH: "1" })).toBe(
+      "http://localhost:8787/api/auth/google/callback",
+    );
+
+    const evilForwarded = new Request("http://localhost:8787/api/auth/google/start", {
+      headers: {
+        "X-Forwarded-Host": "evil.example",
+        "X-Forwarded-Proto": "https",
+      },
+    });
+    expect(googleRedirectUri(evilForwarded, { LOCAL_AUTH: "1" })).toBe(
+      "http://localhost:8787/api/auth/google/callback",
+    );
+    expect(
+      googleRedirectUri(
+        new Request("https://metfix.org/api/auth/google/start", {
+          headers: {
+            "X-Forwarded-Host": "user:pass@localhost:3000",
+            "X-Forwarded-Proto": "http",
+          },
+        }),
+        { LOCAL_AUTH: "1" },
+      ),
+    ).toBe(PROD_GOOGLE_REDIRECT_URI);
   });
 
   it("LOCAL_AUTH on: localhost and 127.0.0.1 allowed; other hosts still rejected", () => {

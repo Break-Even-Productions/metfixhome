@@ -4,6 +4,7 @@
 DAILY_FIX_API_KEY=
 BSI_POSTS_API_KEY=
 BSI_OAUTH_CLIENT_ID=
+# 32-byte AES-GCM key, standard or url-safe base64. Example: openssl rand -base64 32
 SESSION_ENC_KEY=
 CSRF_SECRET=
 # Public reCAPTCHA v3 site key (Worker plain var — not a secret). Same value as
@@ -28,7 +29,10 @@ RECAPTCHA_SECRET=
 LOCAL_AUTH=
 # BSI_ORIGIN=http://127.0.0.1:8080
 
-# Google (optional; still needs Host metfix.org or LOCAL_AUTH + secrets)
+# Google (optional). With LOCAL_AUTH=1 the Google redirect is the browser
+# origin (http://localhost:3000/api/auth/google/callback through Vite). Add
+# that exact URI on the Google web client. The BSI callback stays
+# https://metfix.org/api/auth/callback.
 # GOOGLE_AUTH_ENABLED=1
 # GOOGLE_WEB_CLIENT_ID=
 # GOOGLE_WEB_CLIENT_SECRET=

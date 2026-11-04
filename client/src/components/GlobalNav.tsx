@@ -23,6 +23,7 @@ import {
 } from "@/data/home/audience";
 import { DEFAULT_NAV_LINKS, type NavLink } from "@/lib/contentTypes";
 import { expectedSearchHrefFromApp } from "@/style-parity/searchHref";
+import { loadMe } from "@/lib/session";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
 import { Menu, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -116,6 +117,18 @@ export default function GlobalNav() {
   const searchBtnRef = useRef<HTMLButtonElement>(null);
   const mobilePanelRef = useRef<HTMLElement>(null);
   const onHome = location === "/" || location === "";
+  const [accountName, setAccountName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadMe().then((me) => {
+      if (cancelled) return;
+      setAccountName(me.status === "signed_in" ? me.public_name : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [location]);
 
   useBodyScrollLock(mobileOpen);
 
@@ -246,7 +259,12 @@ export default function GlobalNav() {
       </a>
 
       {onHome ? (
-        <AudienceTabs audience={audience} onAudienceChange={onAudienceChange} loginHref={loginHref} />
+        <AudienceTabs
+          audience={audience}
+          onAudienceChange={onAudienceChange}
+          loginHref={loginHref}
+          accountName={accountName}
+        />
       ) : null}
 
       <div className={`global-nav__primary${scrolled || mobileOpen ? " is-solid" : ""}`}>
@@ -276,9 +294,15 @@ export default function GlobalNav() {
               <Search size={18} aria-hidden="true" />
             </button>
             {!onHome ? (
-              <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
-                Sign in
-              </Link>
+              accountName ? (
+                <Link href="/account" className="global-nav__login" data-nav-auth="account">
+                  {accountName}
+                </Link>
+              ) : (
+                <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
+                  Sign in
+                </Link>
+              )
             ) : null}
             <button type="button" className="global-nav__join" onClick={openJoin}>
               Join Today — 1 Month Free
@@ -313,12 +337,13 @@ export default function GlobalNav() {
               )}
               <div className="global-nav__mobile-actions">
                 <Link
-                  href={loginHref}
+                  href={accountName ? "/account" : loginHref}
                   className="global-nav__join"
                   style={{ display: "inline-flex" }}
+                  data-nav-auth={accountName ? "account" : "login"}
                   onClick={() => setMobileOpen(false)}
                 >
-                  Sign in
+                  {accountName ?? "Sign in"}
                 </Link>
                 <button type="button" className="global-nav__join" onClick={openJoin}>
                   Join Today — 1 Month Free

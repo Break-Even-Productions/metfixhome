@@ -3,6 +3,7 @@
  * Routes return 404 when the gate is off.
  */
 
+import { googleRedirectUri } from "../dev-auth";
 import type { Env, FetchImpl } from "../upstream";
 import { checkGoogleLimit } from "./auth-rate-limit";
 import {
@@ -344,7 +345,7 @@ export async function handleGoogleStart(request: Request, env: Env): Promise<Res
 
   const g = new URL(GOOGLE_AUTH);
   g.searchParams.set("client_id", env.GOOGLE_WEB_CLIENT_ID!);
-  g.searchParams.set("redirect_uri", "https://metfix.org/api/auth/google/callback");
+  g.searchParams.set("redirect_uri", googleRedirectUri(request, env));
   g.searchParams.set("response_type", "code");
   g.searchParams.set("scope", "openid email profile");
   g.searchParams.set("state", state);
@@ -406,7 +407,7 @@ export async function handleGoogleCallback(
         code,
         client_id: env.GOOGLE_WEB_CLIENT_ID!,
         client_secret: env.GOOGLE_WEB_CLIENT_SECRET!,
-        redirect_uri: "https://metfix.org/api/auth/google/callback",
+        redirect_uri: googleRedirectUri(request, env),
         grant_type: "authorization_code",
         code_verifier: rec.verifier,
       }),

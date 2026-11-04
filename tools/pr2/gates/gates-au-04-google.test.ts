@@ -396,6 +396,32 @@ describe("AU11", () => {
   });
 });
 
+describe("local Google redirect", () => {
+  it("LOCAL_AUTH uses the forwarded browser origin for authorize and token exchange", async () => {
+    const h = createHarness({ googleEnabled: true });
+    h.env.LOCAL_AUTH = "1";
+    const headers = {
+      "X-Forwarded-Host": "localhost:3000",
+      "X-Forwarded-Proto": "http",
+    };
+    const start = await h.call("/api/auth/google/start", { headers }, "localhost:8787");
+    expect(start.status).toBe(302);
+    const loc = new URL(start.headers.get("Location")!);
+    const redirectUri = "http://localhost:3000/api/auth/google/callback";
+    expect(loc.searchParams.get("redirect_uri")).toBe(redirectUri);
+    const state = loc.searchParams.get("state");
+    expect(state).toBeTruthy();
+    const pre = (start.headers.get("Set-Cookie") ?? "").match(/__Host-mfx_pre=([^;]+)/);
+    const cookie = pre ? `__Host-mfx_pre=${pre[1]}` : "";
+    await h.call(`/api/auth/google/callback?code=${CODE}&state=${state}`, {
+      headers: { ...headers, Cookie: cookie },
+    }, "localhost:8787");
+    const tok = h.fetches.find((f) => f.url.includes("oauth2.googleapis.com/token"));
+    expect(tok).toBeTruthy();
+    expect(new URLSearchParams(tok!.bodyText).get("redirect_uri")).toBe(redirectUri);
+  });
+});
+
 describe("AU12", () => {
   type RejectMode = "claims" | "wrong-key" | "alg-none" | "alg-hs256" | "unknown-kid";
 
