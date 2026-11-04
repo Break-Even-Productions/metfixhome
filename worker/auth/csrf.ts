@@ -69,6 +69,12 @@ export function isAllowedAuthOrigin(origin: string | null, env: Env): boolean {
   }
 }
 
+/**
+ * Signed-in → HMAC(sid), and do not mint a pre cookie.
+ * Signed-out → HMAC(pre), minting __Host-mfx_pre when absent.
+ * Matches requireCsrf / requireSidCsrf so a post-login retry of this GET
+ * can satisfy POST /api/account/onboarding.
+ */
 export async function handleCsrf(request: Request, env: Env): Promise<Response> {
   if (!isAuthHost(request, env)) return authJson(BODY_NOT_FOUND, 404);
   const method = request.method.toUpperCase();
@@ -77,6 +83,12 @@ export async function handleCsrf(request: Request, env: Env): Promise<Response> 
 
   if (!env.CSRF_SECRET) {
     return authJson({ error: "unavailable" }, 503, { "Retry-After": "300" });
+  }
+
+  const sid = getSid(request);
+  if (sid) {
+    const csrf = await csrfForSid(env.CSRF_SECRET, sid);
+    return authJson({ csrf }, 200);
   }
 
   const cookies: string[] = [];
