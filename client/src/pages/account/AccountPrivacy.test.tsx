@@ -81,8 +81,10 @@ describe("AccountPrivacy (P-DB-13)", () => {
         <AccountPrivacy />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByLabelText("directory_visible")).toBeTruthy());
-    fireEvent.click(screen.getByLabelText("directory_visible"));
+    await waitFor(() => expect(screen.getByLabelText("Show in directory")).toBeTruthy());
+    expect(screen.getByText("Public profile")).toBeTruthy();
+    expect(screen.queryByText("directory_visible")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Show in directory"));
     fireEvent.click(screen.getByRole("button", { name: /Save privacy/i }));
     await waitFor(() => expect(screen.getByText(/Privacy settings saved/i)).toBeTruthy());
 

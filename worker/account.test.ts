@@ -312,6 +312,31 @@ describe("worker/account routes", () => {
     expect(recorded[0]!.url).toContain("/wp-json/bsi/v1/me/account");
   });
 
+  it("overview roles keep Admin and MetFix Admin only", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/account")) {
+          return Response.json({
+            ...OVERVIEW_FIXTURE,
+            roles: ["subscriber", "administrator", "MetFix Admin", "individual"],
+            wp_roles: ["editor"],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { roles: string[] };
+    expect(body.roles).toEqual(["administrator", "metfix_admin"]);
+  });
+
   it("DP-T-2 subscriptions strip stripe_id/cus_/sub_", async () => {
     const sess = await withSession(h);
     const { fetchImpl } = makeFetchMock([

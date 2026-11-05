@@ -5,7 +5,8 @@ import type { LtvCertificates, MembershipStatusLabel } from "@/lib/account";
 
 type Props = {
   status: MembershipStatusLabel;
-  nextPayment: string;
+  /** Omit the next-payment block when the account has no scheduled payment. */
+  nextPayment: string | null;
   tier: CanonicalSubscriptionTier;
   legacySource?: LegacySubscriptionSource;
   ltv: LtvCertificates | null;
@@ -23,10 +24,12 @@ export function MetricStrip({ status, nextPayment, tier, legacySource, ltv }: Pr
         <div className="account-metric-card__label">Status</div>
         <div className="account-metric-card__value account-metric">{status}</div>
       </div>
-      <div className="account-metric-card">
-        <div className="account-metric-card__label">Next Payment</div>
-        <div className="account-metric-card__value account-metric">{nextPayment}</div>
-      </div>
+      {nextPayment ? (
+        <div className="account-metric-card">
+          <div className="account-metric-card__label">Next Payment</div>
+          <div className="account-metric-card__value account-metric">{nextPayment}</div>
+        </div>
+      ) : null}
       <div className="account-metric-card">
         <div className="account-metric-card__label">Membership Tier</div>
         <div className="account-metric-card__value account-metric">

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   loadProfile,
   updateProfile,
@@ -7,6 +7,7 @@ import {
   type AccountProfile as ProfileDto,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
+import { editableProfileAttributes } from "./profileAttributes";
 
 const EMAIL_RE = /@/;
 
@@ -19,8 +20,7 @@ export default function AccountProfile() {
   const [location, setLocation] = useState("");
   const [credentials, setCredentials] = useState("");
   const [communityOptIn, setCommunityOptIn] = useState(false);
-  const [attrId, setAttrId] = useState("1");
-  const [attrValue, setAttrValue] = useState("");
+  const [attrValues, setAttrValues] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -40,6 +40,8 @@ export default function AccountProfile() {
         setLocation(String(p.location ?? ""));
         setCredentials(String(p.credentials ?? ""));
         setCommunityOptIn(p.community_opt_in === true);
+        const fields = editableProfileAttributes(p);
+        setAttrValues(Object.fromEntries(fields.map((field) => [field.attr_id, field.value])));
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -76,22 +78,37 @@ export default function AccountProfile() {
     }
   }
 
+  const attributeFields = useMemo(
+    () => (profile ? editableProfileAttributes(profile) : []),
+    [profile],
+  );
+
   async function onAttr(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (EMAIL_RE.test(attrValue) || /email/i.test(attrValue)) {
-      setError("Email-like attributes are not allowed.");
-      return;
+    setSaved(false);
+    for (const field of attributeFields) {
+      const value = attrValues[field.attr_id] ?? "";
+      if (EMAIL_RE.test(value) || /email/i.test(value)) {
+        setError("Email-like attributes are not allowed.");
+        return;
+      }
     }
-    const id = Number(attrId);
-    if (!Number.isInteger(id) || id < 1) {
-      setError("Invalid attribute.");
+    const changed = attributeFields.filter(
+      (field) => (attrValues[field.attr_id] ?? "") !== field.value,
+    );
+    if (changed.length === 0) {
+      setSaved(true);
       return;
     }
     setBusy(true);
     try {
-      await updateProfileAttributes([{ attr_id: id, value: attrValue }]);
-      setAttrValue("");
+      await updateProfileAttributes(
+        changed.map((field) => ({
+          attr_id: field.attr_id,
+          value: attrValues[field.attr_id] ?? "",
+        })),
+      );
       setSaved(true);
     } catch {
       setError("Attribute update failed.");
@@ -133,11 +150,11 @@ export default function AccountProfile() {
         <h2>Profile picture</h2>
         {profile?.avatar_url ? (
           <img
+            className="account-avatar"
             src={String(profile.avatar_url)}
             alt=""
             width={80}
             height={80}
-            style={{ borderRadius: "999px", objectFit: "cover" }}
           />
         ) : null}
         <input
@@ -191,19 +208,26 @@ export default function AccountProfile() {
 
       <section className="account-card">
         <h2>Attributes</h2>
-        <form className="account-form" onSubmit={onAttr}>
-          <label>
-            Attribute ID
-            <input value={attrId} onChange={(e) => setAttrId(e.target.value)} />
-          </label>
-          <label>
-            Value
-            <input value={attrValue} onChange={(e) => setAttrValue(e.target.value)} />
-          </label>
-          <button type="submit" className="account-btn" disabled={busy}>
-            Save attribute
-          </button>
-        </form>
+        {attributeFields.length === 0 ? (
+          <p className="account-muted">No editable profile fields on this account.</p>
+        ) : (
+          <form className="account-form" onSubmit={onAttr}>
+            {attributeFields.map((field) => (
+              <label key={field.attr_id}>
+                {field.label}
+                <input
+                  value={attrValues[field.attr_id] ?? ""}
+                  onChange={(e) =>
+                    setAttrValues((current) => ({ ...current, [field.attr_id]: e.target.value }))
+                  }
+                />
+              </label>
+            ))}
+            <button type="submit" className="account-btn" disabled={busy}>
+              Save attribute
+            </button>
+          </form>
+        )}
       </section>
     </DashboardLayout>
   );

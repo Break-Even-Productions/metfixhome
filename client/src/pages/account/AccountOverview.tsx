@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   deriveMembershipStatus,
   formatNextPayment,
+  hasScheduledNextPayment,
   loadLtvCertificates,
   loadOverview,
   loadSubscriptions,
@@ -9,11 +10,25 @@ import {
   type AccountSubscriptions,
   type LtvCertificates,
 } from "@/lib/account";
+import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 import DashboardLayout from "./DashboardLayout";
 import { MetricStrip } from "./MetricStrip";
 import { ConversionBanner } from "./ConversionBanner";
 import { LtvVisualizer } from "./LtvVisualizer";
 import { FoundationsCoachCard } from "./FoundationsCoachCard";
+import { AppTools } from "./AppTools";
+
+function greetingFor(now: Date): string {
+  const hour = now.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function firstName(displayName: string): string {
+  const part = displayName.trim().split(/\s+/).filter(Boolean)[0];
+  return part || "there";
+}
 
 export default function AccountOverview() {
   const [overview, setOverview] = useState<OverviewDto | null>(null);
@@ -48,19 +63,34 @@ export default function AccountOverview() {
   }, []);
 
   const status = useMemo(() => deriveMembershipStatus(subs), [subs]);
-  const nextPayment = useMemo(() => formatNextPayment(subs, status), [subs, status]);
+  const nextPayment = useMemo(() => {
+    if (!hasScheduledNextPayment(subs, status)) return null;
+    return formatNextPayment(subs, status);
+  }, [subs, status]);
   const legacySource =
     subs?.items.find((i) => i.legacy_source === "medical_society_stripe")?.legacy_source ??
     subs?.items.find((i) => i.legacy_source)?.legacy_source ??
     null;
-  const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
+  const tier: CanonicalSubscriptionTier =
+    subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
   const coach = ltv?.foundations_coach ?? overview?.foundations_coach;
+  const displayName = overview?.display_name ?? "there";
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <DashboardLayout
       title="Overview"
       description="Your membership status, certificate LTV budget, and Foundations Coach qualification."
     >
+      <p className="account-kicker">{today}</p>
+      <p className="account-greeting">
+        {greetingFor(new Date())}, {firstName(displayName)}.
+      </p>
       {error ? <p className="account-error">{error}</p> : null}
       <MetricStrip
         status={status}
@@ -69,6 +99,7 @@ export default function AccountOverview() {
         legacySource={legacySource}
         ltv={ltv}
       />
+      <AppTools tier={tier} />
       <ConversionBanner conversion={subs?.conversion} />
       {ltv ? <LtvVisualizer ltv={ltv} /> : null}
       {coach ? <FoundationsCoachCard coach={coach} /> : null}

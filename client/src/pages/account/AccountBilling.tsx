@@ -6,6 +6,7 @@ import {
   convertToWhop,
   deriveMembershipStatus,
   formatNextPayment,
+  hasScheduledNextPayment,
   loadLtvCertificates,
   loadOverview,
   loadPayments,
@@ -81,7 +82,10 @@ export default function AccountBilling() {
   }, [page]);
 
   const status = useMemo(() => deriveMembershipStatus(subs), [subs]);
-  const nextPayment = useMemo(() => formatNextPayment(subs, status), [subs, status]);
+  const nextPayment = useMemo(() => {
+    if (!hasScheduledNextPayment(subs, status)) return null;
+    return formatNextPayment(subs, status);
+  }, [subs, status]);
   const legacySource =
     subs?.items.find((i) => i.legacy_source === "medical_society_stripe")?.legacy_source ?? null;
   const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";

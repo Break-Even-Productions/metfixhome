@@ -12,6 +12,7 @@ import {
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
+import { staffRoleLabels } from "./roleLabels";
 import "./account.css";
 
 export const ACCOUNT_NAV = [
@@ -112,6 +113,7 @@ export default function DashboardLayout({ title, description, children }: Props)
     }
     if (overview.badges.affiliate) out.push("Affiliate");
     if (overview.badges.medical) out.push("Medical Society");
+    out.push(...staffRoleLabels(overview.roles));
     return out;
   }, [overview]);
 
@@ -125,6 +127,7 @@ export default function DashboardLayout({ title, description, children }: Props)
     <div className="account-shell">
       <div className="account-layout">
         <aside className="account-sidebar" aria-label="Account navigation">
+          <p className="account-wordmark">MetFix</p>
           <div className="account-identity">
             <div className="account-avatar" aria-hidden="true">
               {overview?.avatar_url ? (
@@ -133,19 +136,22 @@ export default function DashboardLayout({ title, description, children }: Props)
                 initials(displayName)
               )}
             </div>
-            <h1 className="account-identity-name">{displayName}</h1>
-            <div className="account-pills">
+            <p className="account-identity-name">{displayName}</p>
+            <ul className="account-pills" aria-label="Roles">
               {pills.map((p) => (
-                <span
-                  key={p}
-                  className={
-                    p === "Foundations Coach" ? "account-pill account-pill--accent" : "account-pill"
-                  }
-                >
-                  {p}
-                </span>
+                <li key={p}>
+                  <span
+                    className={
+                      p === "Foundations Coach" || p === "Admin" || p === "MetFix Admin"
+                        ? "account-pill account-pill--accent"
+                        : "account-pill"
+                    }
+                  >
+                    {p}
+                  </span>
+                </li>
               ))}
-            </div>
+            </ul>
             <div className="account-status-badge" role="status">
               {status}
             </div>

@@ -75,8 +75,11 @@ describe("AccountNotifications (P-DB-12)", () => {
         <AccountNotifications />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByLabelText("newsletter")).toBeTruthy());
-    fireEvent.click(screen.getByLabelText("newsletter"));
+    await waitFor(() => expect(screen.getByLabelText("Newsletter")).toBeTruthy());
+    expect(screen.getByText("Email digest")).toBeTruthy();
+    expect(screen.getByText("Product updates")).toBeTruthy();
+    expect(screen.queryByText("email_digest")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Newsletter"));
     fireEvent.click(screen.getByRole("button", { name: /Save preferences/i }));
     await waitFor(() => {
       const fetchImpl = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;

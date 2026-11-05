@@ -114,7 +114,10 @@ describe("AccountProfile (P-DB-9)", () => {
         <AccountProfile />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByText(/Attributes/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText("Address")).toBeTruthy());
+    expect(screen.getByLabelText("Video")).toBeTruthy();
+    expect(screen.queryByText(/Attribute ID/i)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/\battr_id\b/);
     const inputs = screen.getAllByRole("textbox");
     const valueInput = inputs[inputs.length - 1]!;
     fireEvent.change(valueInput, { target: { value: "x@y.co" } });

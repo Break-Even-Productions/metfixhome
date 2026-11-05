@@ -113,24 +113,22 @@ export default function AccountPrivacy() {
 
       <section className="account-card">
         <h2>Privacy</h2>
-        <div className="account-toggle-row">
+        <label className="account-toggle-row">
           <span>Show in directory</span>
           <input
             type="checkbox"
             checked={directoryVisible}
             onChange={(e) => setDirectoryVisible(e.target.checked)}
-            aria-label="directory_visible"
           />
-        </div>
-        <div className="account-toggle-row">
+        </label>
+        <label className="account-toggle-row">
           <span>Public profile</span>
           <input
             type="checkbox"
             checked={profilePublic}
             onChange={(e) => setProfilePublic(e.target.checked)}
-            aria-label="profile_public"
           />
-        </div>
+        </label>
         <button
           type="button"
           className="account-btn"
