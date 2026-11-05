@@ -209,11 +209,7 @@ export default function AccountBilling() {
 
       {tier === "free" || tier === "member" ? (
         <section className="account-card">
-          <h2>Start a Whop membership</h2>
-          <p className="account-muted">
-            Subscription checkouts mint in Break Even Productions Whop only and return to{" "}
-            <span className="account-mono">/checkout/complete</span>.
-          </p>
+          <h2>Join MetFix Pro</h2>
           <div className="account-course-card__actions">
             <button
               type="button"
