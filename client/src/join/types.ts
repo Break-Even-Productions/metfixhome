@@ -24,18 +24,6 @@ export type JoinProfile = {
   completed: boolean;
 };
 
-export type RecommendCourse = {
-  id: string;
-  title: string;
-  category: string;
-  description: string;
-  hours: string;
-  image: string;
-  tone: string;
-  badge?: string;
-  roles: RoleId[];
-};
-
 export type RecommendArticle = {
   id: string;
   title: string;

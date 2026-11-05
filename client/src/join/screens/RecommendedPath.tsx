@@ -1,5 +1,5 @@
-import { Check } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowRight, Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   ORG_AFFILIATE_NOTE,
   ORG_CARD_HEADER,
@@ -7,10 +7,20 @@ import {
   showOrganizationOwnerCard,
 } from "@shared/join";
 import { basePath } from "@/const";
+import { useCourses } from "@/hooks/useSanityContent";
+import { loadOverview, loadSubscriptions } from "@/lib/account";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import { fetchCsrf, postWhopCheckout } from "../api";
-import type { JoinProfile, WhopPlan } from "../types";
-import { GoldButton } from "../ui";
+import { shouldSkipProRecommendation } from "../membership-access";
+import {
+  courseLandingHref,
+  recommendedStartCourses,
+  type RecommendedStartCourse,
+} from "../data";
+import type { JoinProfile } from "../types";
+
+/** After Whop, land back in Join on the post-purchase path. */
+const JOIN_AFTER_CHECKOUT = "/join?purchased=1";
 
 /** Live destinations already routed in App.tsx. Order is the recommended sequence. */
 const NEXT_STEPS = [
@@ -34,32 +44,22 @@ const NEXT_STEPS = [
   },
 ] as const;
 
-const itemClass = "w-[17.5rem] shrink-0 snap-start sm:w-[20rem]";
+const PRO_BENEFITS = [
+  "1 Free Online Course per month",
+  "The Daily Fix workouts & recipes",
+  "Exclusive resources",
+  "AI Tools",
+  "App access",
+] as const;
 
-function PhoneMock() {
-  return (
-    <div
-      data-testid="phone-mock"
-      className="relative mx-auto h-[22rem] w-[11.5rem] rounded-[2.2rem] border-[6px] border-[var(--join-ink)] bg-[var(--join-ink)] shadow-[0_24px_50px_rgba(0,0,0,0.28)]"
-    >
-      <div className="absolute left-1/2 top-2 h-4 w-16 -translate-x-1/2 rounded-full bg-[var(--join-ink-3)]" />
-      <div className="absolute inset-[8px] overflow-hidden rounded-[1.7rem] bg-[var(--join-cream)]">
-        <div className="bg-[var(--join-ink)] px-3 pb-3 pt-7 text-[var(--join-cream)]">
-          <p className="font-serif text-lg">MetFix</p>
-          <p className="mt-1 text-[10px] text-[var(--join-cream)]/60">
-            Your next lesson
-          </p>
-        </div>
-        <div className="space-y-2 p-3">
-          <div className="h-16 rounded-2xl bg-[var(--join-accent)]/50" />
-          <div className="h-10 rounded-2xl bg-[var(--join-cream-2)]" />
-          <div className="h-10 rounded-2xl bg-[var(--join-cream-2)]" />
-          <div className="h-10 rounded-2xl bg-[var(--join-cream-2)]" />
-        </div>
-      </div>
-    </div>
-  );
-}
+const AFFILIATE_BENEFITS = [
+  "Full MetFix Membership included ($30/month MetFix Pro is included)",
+  "Unlimited online courses",
+  "Exclusive resources",
+  "AI Tools",
+  "Location listing and affiliate resources",
+  "App access for use with clients",
+] as const;
 
 function PlanCard({
   title,
@@ -70,21 +70,29 @@ function PlanCard({
   note,
   busy,
   href,
+  featured = false,
 }: {
   title: string;
   price: string;
-  items: string[];
+  items: readonly string[];
   cta: string;
   onCta?: () => void;
   note?: string;
   busy?: boolean;
   href?: string;
+  featured?: boolean;
 }) {
+  const actionClass = featured
+    ? "mt-6 inline-flex w-full items-center justify-center rounded-full bg-[var(--join-accent)] px-6 py-3 text-center text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)] sm:w-auto"
+    : "mt-6 block w-full rounded-full bg-[var(--join-accent)] py-3 text-center text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]";
   const action =
     href != null ? (
       <a
         href={href}
-        className="mt-6 block w-full rounded-full bg-[var(--join-accent)] py-3 text-center text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]"
+        {...(href.startsWith("http")
+          ? { target: "_blank", rel: "noopener noreferrer" }
+          : {})}
+        className={`${actionClass} disabled:opacity-70`}
       >
         {cta}
       </a>
@@ -93,14 +101,18 @@ function PlanCard({
         type="button"
         onClick={onCta}
         disabled={busy}
-        className="mt-6 w-full rounded-full bg-[var(--join-accent)] py-3 text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)] disabled:opacity-70"
+        className={`${actionClass} disabled:opacity-70`}
       >
         {busy ? "Starting checkout…" : cta}
       </button>
     ) : null;
-  return (
-    <article className="flex h-full flex-col rounded-[1.6rem] border border-[var(--join-line-light)] bg-[var(--join-ink-2)] p-6 md:p-7">
-      <h3 className="font-serif text-2xl text-[var(--join-cream)]">{title}</h3>
+  const heading = (
+    <>
+      <h3
+        className={`font-serif text-[var(--join-cream)] ${featured ? "text-3xl" : "text-2xl"}`}
+      >
+        {title}
+      </h3>
       <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[var(--join-accent-3)]">
         {price}
       </p>
@@ -109,48 +121,163 @@ function PlanCard({
           {note}
         </p>
       ) : null}
-      <ul className="mt-5 flex-1 space-y-2">
-        {items.map((item) => (
-          <li
-            key={item}
-            className="flex items-start gap-2 text-sm text-[var(--join-cream)]/80"
-          >
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--join-accent-3)]" />
-            {item}
+    </>
+  );
+  const benefits = (
+    <ul className={`space-y-2 ${featured ? "mt-6 md:mt-1" : "mt-5 flex-1"}`}>
+      {items.map((item) => (
+        <li
+          key={item}
+          className="flex items-start gap-2 text-sm text-[var(--join-cream)]/80"
+        >
+          <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--join-accent-3)]" />
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <article
+      className={`flex h-full w-full flex-col rounded-[1.6rem] border border-[var(--join-line-light)] bg-[var(--join-ink-2)] p-6 md:p-7 ${
+        featured ? "md:p-8" : ""
+      }`}
+    >
+      {featured ? (
+        <div className="md:grid md:grid-cols-[minmax(16rem,0.9fr)_minmax(0,1.1fr)] md:items-start md:gap-10">
+          <div>
+            {heading}
+            {action}
+          </div>
+          {benefits}
+        </div>
+      ) : (
+        <>
+          {heading}
+          {benefits}
+          {action}
+        </>
+      )}
+    </article>
+  );
+}
+
+function CourseCard({ course, href }: RecommendedStartCourse) {
+  const stat = course.stats[0];
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex h-full flex-col rounded-[1.4rem] border border-[var(--join-ink)]/25 bg-white p-5 shadow-[0_10px_24px_rgba(23,21,18,0.07)] transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-[var(--join-accent-2)] hover:shadow-[0_16px_32px_rgba(23,21,18,0.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--join-accent-2)] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--join-accent-2)]">
+        {course.audience || course.tag}
+      </p>
+      <h3 className="mt-2 font-serif text-2xl text-[var(--join-ink)]">{course.title}</h3>
+      <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-[var(--join-ink)]/80">
+        {course.details}
+      </p>
+      <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--join-ink)]">
+        {course.price || stat?.value || "View course"}
+        <ArrowRight
+          className="h-4 w-4 transition-transform duration-300 ease-out group-hover:translate-x-1 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
+      </span>
+    </a>
+  );
+}
+
+function NextSteps() {
+  return (
+    <section className="mt-8" aria-label="Recommended next steps" data-testid="next-steps">
+      <ol className="space-y-3">
+        {NEXT_STEPS.map((step, index) => (
+          <li key={step.href}>
+            <a
+              href={basePath(step.href)}
+              className={
+                step.primary ? "join-next-step join-next-step--primary" : "join-next-step"
+              }
+            >
+              <span className="join-next-step__index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="join-next-step__label">{step.label}</span>
+                <span className="join-next-step__detail">{step.detail}</span>
+              </span>
+              <ArrowRight className="join-next-step__arrow h-4 w-4" aria-hidden="true" />
+            </a>
           </li>
         ))}
-      </ul>
-      {action}
-    </article>
+      </ol>
+    </section>
   );
 }
 
 export function RecommendedPath({
   profile,
+  purchased,
   onOpenAffiliate,
 }: {
   profile: JoinProfile;
+  purchased: boolean;
   onOpenAffiliate: () => void;
 }) {
   const isCoach = profile.roles.includes("coach");
   const isGym = profile.roles.includes("gym_owner");
   const isClinician = profile.roles.includes("clinician");
-  const isResponder = profile.roles.includes("first_responder");
   const showCoach = isCoach || isGym;
   const showOrg = showOrganizationOwnerCard(
     profile.roles,
     profile.hasPhysicalGym,
     profile.hasPhysicalClinic,
   );
+  const { courses: catalog } = useCourses();
+  const courses = recommendedStartCourses(catalog, profile.roles);
+  const essentialsHref =
+    catalog
+      .filter((course) => /essentials/i.test(course.title))
+      .map((course) => courseLandingHref(course))
+      .find((href): href is string => href != null) ?? basePath("/courses");
 
-  const [checkoutBusy, setCheckoutBusy] = useState<WhopPlan | null>(null);
+  const [phase, setPhase] = useState<"loading" | "plans" | "path">(
+    purchased ? "path" : "loading",
+  );
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const inflight = useRef(false);
 
-  const startCheckout = async (plan: WhopPlan) => {
+  useEffect(() => {
+    if (purchased) {
+      setPhase("path");
+      return;
+    }
+    let cancelled = false;
+    setPhase("loading");
+    Promise.allSettled([
+      loadSubscriptions({ force: true }),
+      loadOverview({ force: true }),
+    ]).then(([subsResult, overviewResult]) => {
+      if (cancelled) return;
+      const subs = subsResult.status === "fulfilled" ? subsResult.value : null;
+      const overview = overviewResult.status === "fulfilled" ? overviewResult.value : null;
+      if (!subs && !overview) {
+        setPhase("plans");
+        return;
+      }
+      setPhase(shouldSkipProRecommendation(subs, overview) ? "path" : "plans");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [purchased]);
+
+  const startCheckout = async () => {
     if (inflight.current) return;
     inflight.current = true;
-    setCheckoutBusy(plan);
+    setCheckoutBusy(true);
     setCheckoutError(null);
     try {
       const csrf = await fetchCsrf();
@@ -158,7 +285,7 @@ export function RecommendedPath({
         setCheckoutError("Could not start a secure session.");
         return;
       }
-      const result = await postWhopCheckout(plan, csrf, "/checkout/complete");
+      const result = await postWhopCheckout("pro", csrf, JOIN_AFTER_CHECKOUT);
       if (!result.ok) {
         setCheckoutError("Checkout is temporarily unavailable.");
         return;
@@ -176,210 +303,144 @@ export function RecommendedPath({
       setCheckoutError("Checkout is temporarily unavailable.");
     } finally {
       inflight.current = false;
-      setCheckoutBusy(null);
+      setCheckoutBusy(false);
     }
   };
 
-  let appNote = "";
-  if (isCoach) {
-    appNote =
-      "MetFix Coaches can also use the app with their clients after earning their Foundations Coach credential.";
+  if (phase === "loading") {
+    return (
+      <p className="text-sm text-[var(--join-muted)]" data-testid="path-loading">
+        Checking your membership…
+      </p>
+    );
   }
-  if (isGym) {
-    appNote = appNote
-      ? `${appNote} MetFix Affiliate locations can use the app as part of their client experience.`
-      : "MetFix Affiliate locations can use the app as part of their client experience.";
+
+  if (phase === "path") {
+    return (
+      <div className="pb-8" data-testid="path-step">
+        <p className="font-serif text-lg text-[var(--join-accent-2)]">
+          Welcome, {profile.firstName}.
+        </p>
+        <h1 className="mt-2 font-serif text-4xl leading-[1.1] text-[var(--join-ink)] md:text-5xl">
+          Your recommended path
+        </h1>
+        <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[var(--join-ink)]/80">
+          Your membership is active. Here’s where to go next.
+        </p>
+        <NextSteps />
+      </div>
+    );
   }
 
   return (
-    <div className="pb-8">
+    <div className="pb-8" data-testid="plans-step">
       <p className="font-serif text-lg text-[var(--join-accent-2)]">
         Welcome, {profile.firstName}.
       </p>
       <h1 className="mt-2 font-serif text-4xl leading-[1.1] text-[var(--join-ink)] md:text-5xl">
-        Your recommended path
+        Recommended for you
       </h1>
       <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[var(--join-muted)]">
-        Based on what you told us, here’s where we recommend starting.
+        Based on what you told us, start with a membership and these courses.
+        Next steps open after you purchase a membership.
       </p>
 
-      <div className="mt-8 rounded-[1.5rem] border border-[var(--join-accent)]/40 bg-[var(--join-accent)]/20 px-5 py-4 md:px-6">
-        <p className="font-serif text-xl text-[var(--join-ink)]">
-          Your first month is on us.
-        </p>
-        <p className="mt-1 text-sm leading-relaxed text-[var(--join-ink)]/75">
-          Explore MetFix classes, resources, and tools free for 30 days.
-        </p>
-      </div>
-
-      <section className="mt-12" aria-label="Recommended next steps">
-        <h2 className="font-serif text-3xl text-[var(--join-ink)]">
-          Recommended next steps
-        </h2>
-        <ol className="mt-6 space-y-3">
-          {NEXT_STEPS.map((step) => (
-            <li key={step.href}>
-              <a
-                href={basePath(step.href)}
-                className={
-                  step.primary
-                    ? "block rounded-[1.4rem] bg-[var(--join-accent)] px-5 py-4 text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]"
-                    : "block rounded-[1.4rem] border border-[var(--join-line)] bg-[var(--join-paper)] px-5 py-4 text-[var(--join-ink)] transition-colors duration-300 ease-out hover:border-[var(--join-accent)]"
-                }
-              >
-                <span className="block text-sm font-semibold">
-                  {step.label}
-                </span>
-                <span className="mt-1 block text-sm text-[var(--join-muted)]">
-                  {step.detail}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="mt-14 overflow-hidden rounded-[1.8rem] bg-[var(--join-paper)] px-6 py-10 md:px-10">
-        <div className="grid items-center gap-8 md:grid-cols-[1fr_auto]">
-          <div>
-            <h2 className="font-serif text-3xl text-[var(--join-ink)]">
-              Take MetFix with you
-            </h2>
-            <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--join-muted)]">
-              Learn, track your progress, and access MetFix wherever you are.
-            </p>
-            {appNote ? (
-              <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--join-ink)]/80">
-                {appNote}
-              </p>
-            ) : null}
-          </div>
-          <PhoneMock />
-        </div>
-      </section>
-
-      <section className="mt-14 overflow-hidden rounded-[1.8rem] bg-[var(--join-ink)] px-5 py-10 text-[var(--join-cream)] md:px-8 md:py-12">
+      <section className="mt-10 overflow-hidden rounded-[1.8rem] bg-[var(--join-ink)] px-5 py-10 text-[var(--join-cream)] md:px-8 md:py-12">
         <h2 className="font-serif text-3xl">Your membership</h2>
-        <p className="mt-3 max-w-xl text-sm leading-relaxed text-[var(--join-cream)]/65">
-          {isResponder
-            ? "Start with first-responder classes and resources. Your membership unlocks the full library after a free month."
-            : "Your first month is free. Foundations Coach is a qualification path — not a paid subscription tier."}
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-[var(--join-cream)]/75">
+          MetFix Membership includes a free first month, then $30/month.
+          Affiliate membership is $170/month and opens after your application is
+          approved.
         </p>
         {checkoutError ? (
           <p className="mt-4 text-sm text-red-300" role="alert">
             {checkoutError}
           </p>
         ) : null}
-        <div
-          className="-mx-5 mt-8 flex snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overscroll-x-contain px-5 pb-2 scrollbar-hide md:-mx-8 md:px-8"
-          tabIndex={0}
-          aria-label="Membership options"
-        >
-          {/* WJ11: MetFix Pro always shown (Trap 4 fix) */}
-          <div className={`${itemClass} flex`} data-testid="pro-plan-card">
-            <PlanCard
-              title="MetFix Membership"
-              price={PRO_CARD_HEADER.replace(/ · /g, "\n")}
-              items={[
-                "Full access to online courses (including MetFix Essentials)",
-                "The Daily Fix workouts & recipes",
-                "Full video and article library",
-                "Cumulative LTV Certificate Claiming — every monthly payment builds your certificate budget, or buy any course directly at its listed price",
-                "App access",
-              ]}
-              cta="Start my free month"
-              busy={checkoutBusy === "pro"}
-              onCta={() => void startCheckout("pro")}
-            />
-          </div>
-
-          {showCoach ? (
-            <div className={`${itemClass} flex`} data-testid="coach-plan-card">
-              <PlanCard
-                title="Become a Foundations Coach"
-                price="Two qualification paths · Valid 3 years"
-                note="Foundations Coach is never granted by a four-figure LTV spend threshold and is not a paid subscription tier. Both paths carry a 3-year credential expiration (expires_at)."
-                items={[
-                  "Path A — In-Person Seminar (valid 3 years): Attend an in-person MetFix Seminar (checked in on-site).",
-                  "Path B — Online MetFix Essentials + Certificate Claimed (valid 3 years): Complete MetFix Essentials AND claim the certificate via cumulative LTV budget or direct purchase.",
-                ]}
-                cta="Start MetFix Essentials"
-                href={basePath("/courses")}
-              />
-            </div>
-          ) : null}
-
-          {showCoach ? (
-            <div
-              className={`${itemClass} flex`}
-              data-testid="seminars-cta-card"
-            >
-              <PlanCard
-                title="In-person seminars"
-                price="Valid for 3 years from check-in"
-                items={[
-                  "Register for an upcoming MetFix Seminar",
-                  "Check in on-site to start your 3-year Foundations Coach credential",
-                ]}
-                cta="View Upcoming Seminars"
-                href={basePath("/affiliate-seminars")}
-              />
-            </div>
-          ) : null}
-
-          {showOrg ? (
-            <div className={`${itemClass} flex`} data-testid="org-plan-card">
-              <PlanCard
-                title="Become a MetFix Affiliate"
-                price={ORG_CARD_HEADER.replace(/ · /g, "\n")}
-                note={`${ORG_AFFILIATE_NOTE} Covers Gym Affiliates and Doctor / Clinical Practice locations.`}
-                items={[
-                  "Full MetFix Pro access included ($30/month MetFix Pro is included)",
-                  "Organization Owner tier for Gym Affiliate & Doctor Practice",
-                  "Location listing and affiliate resources",
-                  "App access for use with clients",
-                ]}
-                cta="Start my Affiliate membership"
-                busy={checkoutBusy === "org"}
-                onCta={() => void startCheckout("org")}
-              />
-            </div>
-          ) : null}
-
-          {isClinician ? (
-            <div
-              className={`${itemClass} flex`}
-              data-testid="medical-society-info"
-            >
-              <PlanCard
-                title="MetFix Medical Society"
-                price="Directory listing & clinical peer network"
-                note="Medical Society is not a separate paid subscription tier. Clinicians with a physical clinic use Organization Owner ($170/month); others use MetFix Pro ($30/month)."
-                items={[
-                  "Clinical directory listing",
-                  "Peer network and clinician resources",
-                ]}
-                cta="Browse resources"
-                href={basePath("/library")}
-              />
-            </div>
-          ) : null}
+        <div className="mt-8" data-testid="pro-plan-card">
+          <PlanCard
+            featured
+            title="MetFix Membership"
+            price={PRO_CARD_HEADER.replace(/ · /g, "\n")}
+            items={PRO_BENEFITS}
+            cta="Start my free month"
+            busy={checkoutBusy}
+            onCta={() => void startCheckout()}
+          />
         </div>
+
+        {showCoach || showOrg || isClinician ? (
+          <div
+            className="mt-4 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            aria-label="Additional options"
+          >
+            {showCoach ? (
+              <div className="flex" data-testid="coach-plan-card">
+                <PlanCard
+                  title="Become a Foundations Coach"
+                  price="Qualification · Valid 3 years"
+                  note="Foundations Coach is a qualification, not a paid subscription. The credential is valid for 3 years."
+                  items={[
+                    "Complete MetFix Essentials",
+                    "Claim the Foundations Coach certificate (valid 3 years)",
+                  ]}
+                  cta="Start MetFix Essentials"
+                  href={essentialsHref}
+                />
+              </div>
+            ) : null}
+
+            {showOrg ? (
+              <div className="flex" data-testid="org-plan-card">
+                <PlanCard
+                  title="Become a MetFix Affiliate"
+                  price={ORG_CARD_HEADER.replace(/ · /g, "\n")}
+                  note={`${ORG_AFFILIATE_NOTE} Covers Gym Affiliates and Doctor / Clinical Practice locations.`}
+                  items={AFFILIATE_BENEFITS}
+                  cta="Start my Affiliate membership"
+                  onCta={onOpenAffiliate}
+                />
+              </div>
+            ) : null}
+
+            {isClinician ? (
+              <div className="flex" data-testid="medical-society-info">
+                <PlanCard
+                  title="MetFix Medical Society"
+                  price="Directory listing & clinical peer network"
+                  note="Medical Society is not a separate paid subscription tier. Clinicians with a physical clinic use Organization Owner ($170/month); others use MetFix Pro ($30/month)."
+                  items={[
+                    "Clinical directory listing",
+                    "Peer network and clinician resources",
+                  ]}
+                  cta="Browse resources"
+                  href={basePath("/library")}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
-      <p className="mt-8 text-center text-sm text-[var(--join-muted)]">
-        You can explore the rest of MetFix anytime. Your first month stays free.
-      </p>
-      <div className="mx-auto mt-4 max-w-xs space-y-3">
-        <GoldButton
-          onClick={() =>
-            document
-              .getElementById("join-scroll")
-              ?.scrollTo({ top: 0, behavior: "smooth" })
-          }
-        >
-          Back to your path
-        </GoldButton>
+      {courses.length > 0 ? (
+        <section className="mt-12" aria-label="Recommended courses" data-testid="recommended-courses">
+          <h2 className="font-serif text-3xl text-[var(--join-ink)]">
+            Courses to start with
+          </h2>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-[var(--join-ink)]/80">
+            {showOrg
+              ? "MetFix Membership includes 1 free online course per month. Affiliate membership includes unlimited online courses."
+              : "MetFix Membership includes 1 free online course per month. These match what you told us."}
+          </p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {courses.map((item) => (
+              <CourseCard key={item.course.id} course={item.course} href={item.href} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="mx-auto mt-10 max-w-xs">
         <button
           type="button"
           onClick={onOpenAffiliate}

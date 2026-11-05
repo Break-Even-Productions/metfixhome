@@ -37,7 +37,7 @@ export const WHOP_SUBSCRIPTION_PLAN_COPY: Record<
   },
   org: {
     title: "Organization Owner",
-    price: "First month free · Then $170/month",
+    price: "$170/month · Approval required",
     cta: "Start Organization Owner",
   },
 };

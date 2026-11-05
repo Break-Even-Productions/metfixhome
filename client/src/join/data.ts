@@ -1,5 +1,6 @@
 import { needsConditionalStep, type RoleId } from "@shared/join";
-import type { JoinProfile, RecommendArticle, RecommendCourse } from "./types";
+import type { Course } from "@/lib/contentTypes";
+import type { JoinProfile, RecommendArticle } from "./types";
 
 export const emptyProfile: JoinProfile = {
   firstName: "",
@@ -11,113 +12,6 @@ export const emptyProfile: JoinProfile = {
   hasPhysicalClinic: null,
   completed: false,
 };
-
-const img = {
-  foundations:
-    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=70",
-  everyday:
-    "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=900&q=70",
-  essentials:
-    "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=900&q=70",
-  gym: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=900&q=70",
-  responder:
-    "https://images.unsplash.com/photo-1475776408506-9a5371e7a068?auto=format&fit=crop&w=900&q=70",
-  sleep:
-    "https://images.unsplash.com/photo-1515895309288-54173f3c3256?auto=format&fit=crop&w=900&q=70",
-  clinician:
-    "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=900&q=70",
-  practice:
-    "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=70",
-};
-
-export const catalogCourses: RecommendCourse[] = [
-  {
-    id: "foundations",
-    title: "Metabolic Health Foundations",
-    category: "Core",
-    description:
-      "Understand the fundamentals of metabolism, insulin, nutrition, movement, and lifestyle.",
-    hours: "24 hrs",
-    image: img.foundations,
-    tone: "linear-gradient(160deg, #5c4638 0%, #1f1a16 100%)",
-    roles: ["individual", "coach"],
-  },
-  {
-    id: "everyday",
-    title: "Everyday Metabolic Health",
-    category: "Lifestyle",
-    description: "Practical ways to apply metabolic health principles in everyday life.",
-    hours: "8 hrs",
-    image: img.everyday,
-    tone: "linear-gradient(160deg, #4a3b2c 0%, #151310 100%)",
-    roles: ["individual"],
-  },
-  {
-    id: "essentials",
-    title: "MetFix Essentials",
-    category: "Professional",
-    description:
-      "The foundational professional course required to earn the Foundations Coach credential.",
-    hours: "18 hrs",
-    image: img.essentials,
-    tone: "linear-gradient(160deg, #3d4a3a 0%, #161814 100%)",
-    badge: "Path to Foundations Coach",
-    roles: ["coach", "gym_owner"],
-  },
-  {
-    id: "gym-building",
-    title: "Building Metabolic Health Into Your Gym",
-    category: "Affiliate",
-    description:
-      "Practical strategies for integrating MetFix principles into your facility and client experience.",
-    hours: "10 hrs",
-    image: img.gym,
-    tone: "linear-gradient(160deg, #4a3a2c 0%, #1a1612 100%)",
-    badge: "For Affiliate locations",
-    roles: ["gym_owner"],
-  },
-  {
-    id: "fr-metabolic",
-    title: "Metabolic Health for First Responders",
-    category: "First Responders",
-    description:
-      "Metabolic health fundamentals designed around shift work and the demands of first responder careers.",
-    hours: "12 hrs",
-    image: img.responder,
-    tone: "linear-gradient(160deg, #3d4a3a 0%, #161814 100%)",
-    roles: ["first_responder"],
-  },
-  {
-    id: "sleep",
-    title: "Sleep, Stress & Recovery",
-    category: "Recovery",
-    description: "Strategies for improving recovery when schedules and stress are difficult to control.",
-    hours: "6 hrs",
-    image: img.sleep,
-    tone: "linear-gradient(160deg, #2c3340 0%, #12141a 100%)",
-    roles: ["first_responder"],
-  },
-  {
-    id: "clinician-foundations",
-    title: "Metabolic Health Foundations for Clinicians",
-    category: "Clinical",
-    description: "An evidence-focused introduction to core MetFix concepts for healthcare professionals.",
-    hours: "16 hrs",
-    image: img.clinician,
-    tone: "linear-gradient(160deg, #6b5a48 0%, #2a241e 100%)",
-    roles: ["clinician"],
-  },
-  {
-    id: "clinical-practice",
-    title: "Applying Metabolic Health in Clinical Practice",
-    category: "Clinical",
-    description: "Practical tools and frameworks for patient care.",
-    hours: "12 hrs",
-    image: img.practice,
-    tone: "linear-gradient(160deg, #5a4630 0%, #1a1612 100%)",
-    roles: ["clinician"],
-  },
-];
 
 export const catalogArticles: RecommendArticle[] = [
   {
@@ -300,13 +194,110 @@ function pickByRole<T extends { id: string; roles: RoleId[] }>(
   return out;
 }
 
-export function recommendedCourses(selected: RoleId[]) {
+const START_COURSE_KEYS = [
+  "free-class",
+  "fit-for-duty",
+  "prepared-patient",
+  "medical-nutrition",
+  "essentials-advanced",
+] as const;
+
+type StartCourseKey = (typeof START_COURSE_KEYS)[number];
+
+/** Real catalog ids, in the order we suggest them for each onboarding role. */
+const START_BY_ROLE: Record<RoleId, readonly StartCourseKey[]> = {
+  individual: ["free-class", "prepared-patient"],
+  coach: ["free-class", "essentials-advanced"],
+  gym_owner: ["essentials-advanced", "free-class"],
+  first_responder: ["fit-for-duty", "free-class"],
+  clinician: ["medical-nutrition", "free-class"],
+};
+
+function matchesStartCourse(course: Course, key: StartCourseKey): boolean {
+  if (course.id === key) return true;
+  const title = course.title.toLowerCase();
+  switch (key) {
+    case "free-class":
+      return title.includes("what is metfix");
+    case "fit-for-duty":
+      return title.includes("fit for duty");
+    case "prepared-patient":
+      return title.includes("prepared patient");
+    case "medical-nutrition":
+      return title.includes("medical nutrition");
+    case "essentials-advanced":
+      return title.includes("essentials");
+    default: {
+      const unreachable: never = key;
+      return unreachable;
+    }
+  }
+}
+
+/** http(s) landing page only. Courses without one are not offered as links. */
+export function courseLandingHref(course: Course): string | null {
+  const raw = course.landingPageUrl?.trim();
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.username || url.password) return null;
+  return url.toString();
+}
+
+export type RecommendedStartCourse = {
+  course: Course;
+  href: string;
+};
+
+/** Role-matched courses from the live catalog that have a real landing page. */
+export function recommendedStartCourses(
+  catalog: readonly Course[],
+  selected: readonly RoleId[],
+): RecommendedStartCourse[] {
   const limit = selected.length > 1 ? 4 : 2;
-  return pickByRole(catalogCourses, selected, limit);
+  const active = rolePriority.filter((role) => selected.includes(role));
+  const queues = active.map((role) => {
+    const picks: RecommendedStartCourse[] = [];
+    for (const key of START_BY_ROLE[role]) {
+      const course = catalog.find((item) => matchesStartCourse(item, key));
+      if (!course) continue;
+      const href = courseLandingHref(course);
+      if (!href) continue;
+      picks.push({ course, href });
+    }
+    return picks;
+  });
+  const seen = new Set<string>();
+  const out: RecommendedStartCourse[] = [];
+  let progressed = true;
+  while (out.length < limit && progressed) {
+    progressed = false;
+    for (const queue of queues) {
+      const item = queue.find((entry) => !seen.has(entry.course.id));
+      if (!item) continue;
+      seen.add(item.course.id);
+      out.push(item);
+      progressed = true;
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
 }
 
 export function recommendedArticles(selected: RoleId[]) {
   return pickByRole(catalogArticles, selected, 3);
+}
+
+/** Whop (or our own return URL) signals that membership checkout succeeded. */
+export function isJoinCheckoutSuccess(params: URLSearchParams): boolean {
+  if (params.get("purchased") === "1") return true;
+  const status = (params.get("status") ?? params.get("payment") ?? "").toLowerCase();
+  return status === "succeeded" || status === "success" || status === "paid";
 }
 
 export { needsConditionalStep as needsConditional };

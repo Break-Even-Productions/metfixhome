@@ -9,7 +9,7 @@ import {
 } from "@shared/join";
 import { loadMe } from "@/lib/session";
 import { fetchCsrf, postOnboarding } from "./api";
-import { emptyProfile } from "./data";
+import { emptyProfile, isJoinCheckoutSuccess } from "./data";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ConditionalScreen } from "./screens/ConditionalScreen";
 import { AffiliateApplicationScreen } from "./screens/AffiliateApplicationScreen";
@@ -59,6 +59,7 @@ export function JoinFlow({
   const [sessionReady, setSessionReady] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [purchased, setPurchased] = useState(false);
 
   const savingRef = useRef(false);
   const lastSavedFp = useRef<string | null>(null);
@@ -74,6 +75,8 @@ export function JoinFlow({
       setIsSignedIn(signedIn);
       const params = new URLSearchParams(window.location.search);
       const resumeStep = parseJoinStepParam(params.get("step"));
+      const checkoutPurchased = isJoinCheckoutSuccess(params);
+      setPurchased(checkoutPurchased);
 
       let nextRoles: RoleId[] = [];
       setProfile((prev) => {
@@ -88,13 +91,17 @@ export function JoinFlow({
         return next;
       });
 
-      const requested = initialStep ?? resumeStep;
-      setStep(
-        clampJoinDeepLink(requested, {
-          isSignedIn: signedIn,
-          roles: nextRoles,
-        }),
-      );
+      if (signedIn && checkoutPurchased) {
+        setStep("path");
+      } else {
+        const requested = initialStep ?? resumeStep;
+        setStep(
+          clampJoinDeepLink(requested, {
+            isSignedIn: signedIn,
+            roles: nextRoles,
+          }),
+        );
+      }
       setAuthView("choose");
       setDirection(1);
       setSessionReady(true);
@@ -317,6 +324,7 @@ export function JoinFlow({
             {isSignedIn && step === "path" ? (
               <RecommendedPath
                 profile={profile}
+                purchased={purchased}
                 onOpenAffiliate={() => go("affiliate", 1)}
               />
             ) : null}

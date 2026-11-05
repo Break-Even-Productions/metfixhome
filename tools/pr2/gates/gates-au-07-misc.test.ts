@@ -774,6 +774,7 @@ describe("AU19", () => {
         "https://www.google.com/recaptcha/",
         "https://www.gstatic.com/recaptcha/",
         "https://t.whop.tw",
+        "https://connect.facebook.net",
       ]),
     );
     expect(scriptSrc).not.toMatch(/unsafe-inline|unsafe-eval|\*|data:/);
@@ -784,6 +785,8 @@ describe("AU19", () => {
     expect(connectSrc).toContain("'self'");
     expect(connectSrc).toContain("https://www.google.com/recaptcha/");
     expect(connectSrc).toContain("https://t.whop.tw");
+    expect(connectSrc).toContain("https://connect.facebook.net");
+    expect(connectSrc).toContain("https://www.facebook.com");
     expect(dirs.some((d) => d === "frame-ancestors 'none'")).toBe(true);
 
     const headersFile = join(REPO, "client/public/_headers");

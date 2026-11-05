@@ -23,12 +23,15 @@ import {
 } from "@shared/join";
 import { JoinFlow } from "./JoinFlow";
 import { JoinFlowProvider, useJoinFlow } from "@/contexts/JoinFlowContext";
+import { clearAccountCache } from "@/lib/account";
 import * as session from "@/lib/session";
 
 const APP_TSX = readFileSync(join(process.cwd(), "client/src/App.tsx"), "utf8");
 
 afterEach(async () => {
   cleanup();
+  clearAccountCache();
+  window.history.pushState({}, "", "/");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   delete (window as unknown as { grecaptcha?: unknown }).grecaptcha;
@@ -429,7 +432,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     await screen.findByText(/Which of these best describes you/i);
     fireEvent.click(screen.getByText("Learning for myself"));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
-    await screen.findByText(/Your recommended path/i);
+    await screen.findByText(/Recommended for you/i);
     expect(screen.queryByText(/physical gym location/i)).toBeNull();
     // exactly one onboarding POST
     await waitFor(() => {
@@ -472,30 +475,54 @@ describe("JoinFlow P-WJ-1..8", () => {
       /\$30\/month/,
     );
     expect(screen.getByTestId("pro-plan-card").textContent).toMatch(
-      /Cumulative LTV/,
+      /1 Free Online Course per month/,
+    );
+    expect(screen.getByTestId("pro-plan-card").textContent).toMatch(
+      /Exclusive resources/,
+    );
+    expect(screen.getByTestId("pro-plan-card").textContent).toMatch(/AI Tools/);
+    expect(screen.getByTestId("pro-plan-card").textContent).not.toMatch(
+      /Cumulative LTV|Full access to online courses/i,
     );
     expect(screen.getByTestId("coach-plan-card").textContent).toMatch(
       /valid 3 years/i,
     );
     expect(screen.getByTestId("coach-plan-card").textContent).not.toMatch(
-      /one-time credential/i,
-    );
-    expect(screen.getByTestId("coach-plan-card").textContent).toMatch(
-      /four-figure LTV/i,
+      /one-time credential|four-figure LTV|Cumulative LTV/i,
     );
     expect(screen.getByTestId("org-plan-card").textContent).toMatch(
       /\$170\/month/,
     );
+    expect(screen.getByTestId("org-plan-card").textContent).not.toMatch(
+      /First month free/i,
+    );
     expect(screen.getByTestId("org-plan-card").textContent).toMatch(
       /\$30\/month/,
     );
-    expect(screen.getByTestId("phone-mock")).toBeTruthy();
-    const dashboard = screen.getByRole("link", { name: /Go to Dashboard/i });
-    const courses = screen.getByRole("link", { name: /Course list/i });
-    const resources = screen.getByRole("link", { name: /^Resources/i });
-    expect(dashboard.getAttribute("href")).toBe("/account");
-    expect(courses.getAttribute("href")).toBe("/courses");
-    expect(resources.getAttribute("href")).toBe("/library");
+    expect(screen.getByTestId("org-plan-card").textContent).toMatch(
+      /Exclusive resources/,
+    );
+    expect(screen.getByTestId("org-plan-card").textContent).toMatch(/AI Tools/);
+    expect(screen.queryByTestId("seminars-cta-card")).toBeNull();
+    expect(screen.queryByText(/In-person seminars/i)).toBeNull();
+    expect(screen.queryByTestId("phone-mock")).toBeNull();
+    expect(screen.queryByText(/Take MetFix with you/i)).toBeNull();
+    expect(
+      screen.queryByText(/Your first month stays free/i),
+    ).toBeNull();
+    expect(screen.queryByRole("link", { name: /Go to Dashboard/i })).toBeNull();
+    expect(screen.getByTestId("recommended-courses")).toBeTruthy();
+    const whatIs = screen.getByRole("link", { name: /What Is MetFix\?/i });
+    expect(whatIs.getAttribute("href")).toBe("https://whatis.metfix.org/");
+    expect(whatIs.getAttribute("target")).toBe("_blank");
+    const essentials = screen.getByRole("link", { name: /MetFix Essentials Advanced/i });
+    expect(essentials.getAttribute("href")).toBe(
+      "https://brokenscience.org/courses/metfix-foundation-seminar-course/",
+    );
+    expect(
+      screen.getByRole("link", { name: /MetFix Medical Nutrition/i }).getAttribute("href"),
+    ).toBe("http://medicalmetfix.com/");
+    expect(screen.queryByText(/Metabolic Health Foundations/i)).toBeNull();
     expect(screen.queryByText(/Start course/i)).toBeNull();
     expect(
       screen.queryByRole("link", { name: /explore=medical-society/i }),
@@ -518,9 +545,153 @@ describe("JoinFlow P-WJ-1..8", () => {
       expect(checkout).toBeTruthy();
       expect(JSON.parse(String(checkout?.[1]?.body))).toMatchObject({
         plan: "pro",
-        return_path: "/checkout/complete",
+        return_path: "/join?purchased=1",
       });
     });
+  });
+
+  it("affiliate CTA opens the application and does not start org checkout", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    const fetchImpl = mockFetch({
+      "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+      "/api/account/onboarding": () => Response.json({ ok: true }),
+      "/api/billing/whop/checkout-session": () =>
+        Response.json({ checkout_url: "https://whop.com/c/x" }),
+      "/api/auth/me": () =>
+        Response.json({ signed_in: true, public_name: "Pat Lee" }),
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(<JoinFlow open onClose={() => {}} initialStep="roles" />);
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Gym owner"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/physical gym location/i);
+    fireEvent.click(screen.getByRole("button", { name: /^Yes$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByTestId("org-plan-card");
+    fireEvent.click(
+      screen.getByRole("button", { name: /Start my Affiliate membership/i }),
+    );
+    expect(await screen.findByTestId("affiliate-fillout-embed")).toBeTruthy();
+    expect(
+      fetchImpl.mock.calls.some((c) =>
+        String(c[0]).includes("/api/billing/whop/checkout-session"),
+      ),
+    ).toBe(false);
+  });
+
+  it("shows the recommended path after a successful membership purchase", async () => {
+    window.history.pushState({}, "", "/join?purchased=1");
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/me": () =>
+          Response.json({ signed_in: true, public_name: "Pat Lee" }),
+      }),
+    );
+    render(<JoinFlow open onClose={() => {}} />);
+    await screen.findByText(/Your recommended path/i);
+    const dashboard = screen.getByRole("link", { name: /Go to Dashboard/i });
+    const courses = screen.getByRole("link", { name: /Course list/i });
+    const resources = screen.getByRole("link", { name: /^Resources/i });
+    expect(dashboard.getAttribute("href")).toBe("/account");
+    expect(courses.getAttribute("href")).toBe("/courses");
+    expect(resources.getAttribute("href")).toBe("/library");
+    expect(dashboard.className).toMatch(/join-next-step--primary/);
+    expect(courses.className).toMatch(/join-next-step/);
+    expect(screen.queryByTestId("pro-plan-card")).toBeNull();
+    expect(screen.queryByTestId("phone-mock")).toBeNull();
+    expect(screen.queryByText(/Take MetFix with you/i)).toBeNull();
+  });
+
+  it("does not recommend MetFix Pro to an active affiliate on the free tier", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+        "/api/account/onboarding": () => Response.json({ ok: true }),
+        "/api/account/subscriptions": () =>
+          Response.json({
+            canonical_tier: "free",
+            items: [
+              {
+                sub_ref: "aff",
+                provider: "stripe",
+                tier: "organization_owner",
+                legacy_source: "affiliate_stripe",
+                status: "active",
+                current_period_end: null,
+                paid_through: null,
+                cancel_at_period_end: false,
+                card: null,
+              },
+            ],
+          }),
+        "/api/account/overview": () =>
+          Response.json({
+            canonical_tier: "free",
+            badges: { medical: false, affiliate: true, subscription: false, foundations_coach: false },
+            display_name: "Pat Lee",
+            foundations_coach: {
+              active: false,
+              granted_at: null,
+              expires_at: null,
+              seminar_checked_in: false,
+              metfix_essentials_completed: false,
+              metfix_essentials_certificate_claimed: false,
+              paths: [],
+            },
+          }),
+        "/api/auth/me": () =>
+          Response.json({ signed_in: true, public_name: "Pat Lee" }),
+      }),
+    );
+    render(<JoinFlow open onClose={() => {}} initialStep="roles" />);
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Learning for myself"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/Your recommended path/i);
+    expect(screen.queryByTestId("pro-plan-card")).toBeNull();
+  });
+
+  it("shows the recommended path when the account already has a membership", async () => {
+    vi.spyOn(session, "loadMe").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat Lee",
+      moderator: false,
+    });
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/api/auth/csrf": () => Response.json({ csrf: "tok" }),
+        "/api/account/onboarding": () => Response.json({ ok: true }),
+        "/api/account/subscriptions": () =>
+          Response.json({ canonical_tier: "metfix_pro", items: [] }),
+        "/api/auth/me": () =>
+          Response.json({ signed_in: true, public_name: "Pat Lee" }),
+      }),
+    );
+    render(<JoinFlow open onClose={() => {}} initialStep="roles" />);
+    await screen.findByText(/Which of these best describes you/i);
+    fireEvent.click(screen.getByText("Learning for myself"));
+    fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await screen.findByText(/Your recommended path/i);
+    expect(screen.getByRole("link", { name: /Go to Dashboard/i })).toBeTruthy();
+    expect(screen.queryByTestId("pro-plan-card")).toBeNull();
   });
 
   it("WJ4 / WT-J5: zero localStorage/sessionStorage writes during flow", async () => {
@@ -543,7 +714,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     await screen.findByText(/Which of these best describes you/i);
     fireEvent.click(screen.getByText("Learning for myself"));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
-    await screen.findByText(/Your recommended path/i);
+    await screen.findByText(/Recommended for you/i);
     expect(setItem).not.toHaveBeenCalled();
   });
 
@@ -692,7 +863,7 @@ describe("JoinFlow P-WJ-1..8", () => {
     fireEvent.click(screen.getByText("Gym owner")); // deselect
     fireEvent.click(screen.getByText("Learning for myself"));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
-    await screen.findByText(/Your recommended path/i);
+    await screen.findByText(/Recommended for you/i);
     expect(screen.queryByTestId("org-plan-card")).toBeNull();
     await waitFor(() => {
       const post = fetchImpl.mock.calls.find((c) =>
@@ -906,7 +1077,7 @@ describe("NB2 CSRF session-tied + email→onboarding→checkout", () => {
 
     fireEvent.click(screen.getByText("Learning for myself"));
     fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
-    await screen.findByText(/Your recommended path/i);
+    await screen.findByText(/Recommended for you/i);
     fireEvent.click(
       screen.getByRole("button", { name: /Start my free month/i }),
     );

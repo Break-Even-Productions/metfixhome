@@ -1,9 +1,12 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Dumbbell, Library, Mail, UtensilsCrossed } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { METFIX_MAP_URL } from "@/const";
 import type { AudienceHref, LandingCopy } from "@/data/home/audience";
+import { shouldSkipProRecommendation } from "@/join/membership-access";
+import { loadOverview, loadSubscriptions } from "@/lib/account";
+import { loadMe } from "@/lib/session";
 import { AppleIcon, GoogleIcon } from "./AuthProviderIcons";
 import { AsteriskFallback, useHomeHeroGlass } from "./HomeHeroGlass";
 import { easeOutExpo } from "./motion";
@@ -24,6 +27,71 @@ const heroPhotos: Record<AudienceHref, string> = {
   "#for-clinicians": "/hero/for-clinicians.jpg",
   "#for-organizations": "/hero/for-organizations.jpg",
 };
+
+const primaryLinkClass =
+  "mt-3 block w-full rounded-full bg-accent py-2.5 text-center text-sm font-semibold text-ink shadow-[0_8px_24px_color-mix(in_srgb,var(--color-accent-2)_35%,transparent)] transition-[background-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:bg-accent-2 hover:shadow-[0_14px_32px_color-mix(in_srgb,var(--color-accent-2)_48%,transparent)] active:translate-y-0";
+
+const whiteButtonClass =
+  "flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0";
+
+type HeroDestination = {
+  href: string;
+  label: string;
+};
+
+function HeroDestinationLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className: string;
+  children: string;
+}) {
+  if (href.startsWith("#")) {
+    return (
+      <a href={href} className={className}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+function SignedInHeroCard({ hasMembership }: { hasMembership: boolean }) {
+  const primary: HeroDestination = hasMembership
+    ? { href: "/account", label: "View Dashboard" }
+    : { href: "#membership-section", label: "Join MetFix Pro" };
+  const secondary: HeroDestination[] = hasMembership
+    ? [
+        { href: "/library", label: "Explore Resource Library" },
+        { href: "/classes", label: "Take Classes" },
+      ]
+    : [
+        { href: "/account", label: "View Dashboard" },
+        { href: "/library", label: "Explore Resource Library" },
+        { href: "/classes", label: "Take Classes" },
+      ];
+  return (
+    <>
+      <h2 className="font-serif text-[1.45rem] leading-tight text-ink md:text-[1.55rem]">Welcome back</h2>
+      <HeroDestinationLink href={primary.href} className={primaryLinkClass}>
+        {primary.label}
+      </HeroDestinationLink>
+      <nav className="mt-2 flex flex-col gap-2" aria-label="Your MetFix">
+        {secondary.map((item) => (
+          <HeroDestinationLink key={item.href} href={item.href} className={whiteButtonClass}>
+            {item.label}
+          </HeroDestinationLink>
+        ))}
+      </nav>
+    </>
+  );
+}
 
 const overlayLinks = [
   {
@@ -56,6 +124,37 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
   const barRef = useRef<HTMLElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const glassReady = useHomeHeroGlass(heroRef, barRef, markRef, photoSrc);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [hasMembership, setHasMembership] = useState(false);
+  const [membershipKnown, setMembershipKnown] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadMe().then(async (me) => {
+      if (cancelled) return;
+      if (me.status !== "signed_in") {
+        setSignedIn(false);
+        setHasMembership(false);
+        setMembershipKnown(true);
+        return;
+      }
+      setSignedIn(true);
+      const [subsResult, overviewResult] = await Promise.allSettled([
+        loadSubscriptions({ force: true }),
+        loadOverview({ force: true }),
+      ]);
+      if (cancelled) return;
+      const subs = subsResult.status === "fulfilled" ? subsResult.value : null;
+      const overview = overviewResult.status === "fulfilled" ? overviewResult.value : null;
+      setHasMembership(shouldSkipProRecommendation(subs, overview));
+      setMembershipKnown(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const accountReady = signedIn === false || (signedIn === true && membershipKnown);
 
   return (
     <SectionCard className="hero-viewport">
@@ -179,43 +278,41 @@ export function HomeHero({ onJoin, copy, audience }: HomeHeroProps) {
             <span className="join-card-aura" aria-hidden="true" />
             <span className="join-card-sheen" aria-hidden="true" />
             <div className="relative z-[1] rounded-[1.35rem] border border-line bg-white px-5 py-4 shadow-[0_18px_40px_rgba(23,21,18,0.08)] md:px-5 md:py-5">
-              <h2 className="font-serif text-[1.45rem] leading-tight text-ink md:text-[1.55rem]">
-                Join Today — 1 Month Free
-              </h2>
-              <button
-                type="button"
-                onClick={onJoin}
-                className="mt-3 w-full rounded-full bg-accent py-2.5 text-sm font-semibold text-ink shadow-[0_8px_24px_color-mix(in_srgb,var(--color-accent-2)_35%,transparent)] transition-[background-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:bg-accent-2 hover:shadow-[0_14px_32px_color-mix(in_srgb,var(--color-accent-2)_48%,transparent)] active:translate-y-0"
-              >
-                Get Started
-              </button>
-              <button
-                type="button"
-                onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0"
-              >
-                <GoogleIcon />
-                Continue with Google
-              </button>
-              <button
-                type="button"
-                onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0"
-              >
-                <AppleIcon />
-                Continue with Apple
-              </button>
-              <button
-                type="button"
-                onClick={onJoin}
-                className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-line bg-white py-2.5 text-sm font-medium text-ink shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] active:translate-y-0"
-              >
-                <Mail className="h-4 w-4" strokeWidth={1.8} />
-                Continue with Email
-              </button>
-              <p className="mt-3 text-[11px] leading-relaxed text-muted">
-                By joining, you agree to our Terms of Service and Privacy Policy.
-              </p>
+              {accountReady && signedIn ? (
+                <SignedInHeroCard hasMembership={hasMembership} />
+              ) : accountReady ? (
+                <>
+                  <h2 className="font-serif text-[1.45rem] leading-tight text-ink md:text-[1.55rem]">
+                    Join Today — 1 Month Free
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={onJoin}
+                    className="mt-3 w-full rounded-full bg-accent py-2.5 text-sm font-semibold text-ink shadow-[0_8px_24px_color-mix(in_srgb,var(--color-accent-2)_35%,transparent)] transition-[background-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:bg-accent-2 hover:shadow-[0_14px_32px_color-mix(in_srgb,var(--color-accent-2)_48%,transparent)] active:translate-y-0"
+                  >
+                    Get Started
+                  </button>
+                  <button type="button" onClick={onJoin} className={`mt-2 ${whiteButtonClass}`}>
+                    <GoogleIcon />
+                    Continue with Google
+                  </button>
+                  <button type="button" onClick={onJoin} className={`mt-2 ${whiteButtonClass}`}>
+                    <AppleIcon />
+                    Continue with Apple
+                  </button>
+                  <button type="button" onClick={onJoin} className={`mt-2 ${whiteButtonClass}`}>
+                    <Mail className="h-4 w-4" strokeWidth={1.8} />
+                    Continue with Email
+                  </button>
+                  <p className="mt-3 text-[11px] leading-relaxed text-muted">
+                    By joining, you agree to our Terms of Service and Privacy Policy.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted" aria-busy="true">
+                  Loading your account…
+                </p>
+              )}
             </div>
           </motion.div>
         </motion.div>

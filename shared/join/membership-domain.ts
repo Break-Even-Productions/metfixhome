@@ -127,7 +127,7 @@ export const MEMBERSHIP_HERO = {
 } as const;
 
 export const PRO_CARD_HEADER = "First month free · Then $30/month · Cancel anytime";
-export const ORG_CARD_HEADER = "First month free · Then $170/month";
+export const ORG_CARD_HEADER = "$170/month · Approval required";
 export const ORG_AFFILIATE_NOTE =
   "Affiliate membership includes full MetFix Membership access and course library, so you do not also pay $30/month.";
 
