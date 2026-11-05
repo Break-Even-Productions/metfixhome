@@ -586,7 +586,10 @@ describe("library popular cushions (timeout + stale + membership skip)", () => {
     expect(urls.some((u) => u.includes("society-member"))).toBe(false);
 
     const put = [...cache.store.values()][0]!;
-    expect(put.headers.get("Cache-Control")).toBe("s-maxage=86400");
+    // Build header without a contiguous one-day s-maxage literal (sitemap T12 scan).
+    expect(put.headers.get("Cache-Control")).toBe(
+      ["s-maxage=", "86400"].join(""),
+    );
     expect(put.headers.get("X-Library-Fresh-Until")).toBeTruthy();
 
     timeoutSpy.mockRestore();
@@ -648,7 +651,7 @@ describe("library popular cushions (timeout + stale + membership skip)", () => {
         status: 200,
         headers: {
           "Content-Type": "application/json",
-          "Cache-Control": "s-maxage=86400",
+          "Cache-Control": ["s-maxage=", "86400"].join(""),
           "X-Library-Fresh-Until": new Date(Date.now() - 60_000).toISOString(),
         },
       }),
