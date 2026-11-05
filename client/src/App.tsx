@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Router, Switch } from "wouter";
+import { Route, Router, Switch, useLocation } from "wouter";
 import { getRouterBase } from "@/const";
 import ErrorBoundary from "./components/ErrorBoundary";
 import GlobalNav from "./components/GlobalNav";
@@ -32,21 +32,25 @@ import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
 const PostDetailPage = lazy(() => import("./pages/posts/PostDetailPage"));
-const LibraryDetailPage = lazy(() => import("./pages/library/LibraryDetailPage"));
-const LibraryTaxonomyPage = lazy(() => import("./pages/library/LibraryTaxonomyPage"));
+const LibraryDetailPage = lazy(
+  () => import("./pages/library/LibraryDetailPage"),
+);
+const LibraryTaxonomyPage = lazy(
+  () => import("./pages/library/LibraryTaxonomyPage"),
+);
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
-import { useLocation } from "wouter";
 
 function BsiRefCapture() {
   useEffect(() => {
-    if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
+    if (typeof window === "undefined" || typeof sessionStorage === "undefined")
+      return;
     captureBsiRef(window.location.search, sessionStorage);
   }, []);
   return null;
 }
 
-/** Client-route pageviews — head snippet already tracks the first load. */
-function WhopSpaPageviews() {
+/** Client-route pageviews — head snippets already track the first load. */
+function SpaPageviews() {
   const [location] = useLocation();
   const isFirst = useRef(true);
   useEffect(() => {
@@ -55,6 +59,7 @@ function WhopSpaPageviews() {
       return;
     }
     window.whop?.track("page");
+    window.fbq?.("track", "PageView");
   }, [location]);
   return null;
 }
@@ -70,7 +75,10 @@ function AppRoutes() {
       <Route path={"/courses"} component={Classes} />
       <Route path={"/affiliate-seminars"} component={AffiliateSeminars} />
       <Route path={"/the-daily-fix/:yy/:mm/:dd"} component={TheDailyFixPage} />
-      <Route path={"/the-daily-fix/:date/:pillar"} component={TheDailyFixPage} />
+      <Route
+        path={"/the-daily-fix/:date/:pillar"}
+        component={TheDailyFixPage}
+      />
       <Route path={"/the-daily-fix/:date"} component={TheDailyFixPage} />
       <Route path={"/the-daily-fix"} component={TheDailyFixPage} />
       <Route path={"/posts/:id"}>
@@ -149,15 +157,13 @@ function AppShell() {
     pathOnly === "/login" ||
     pathOnly === "/checkout/complete" ||
     pathOnly.startsWith("/checkout/") ||
-    pathOnly === "/account" ||
-    pathOnly.startsWith("/account/") ||
     pathOnly === "/members" ||
     pathOnly.startsWith("/members/") ||
     pathOnly === "/join";
   return (
     <>
       <BsiRefCapture />
-      <WhopSpaPageviews />
+      <SpaPageviews />
       {hideGlobalNav ? null : <GlobalNav />}
       <AppRoutes />
     </>

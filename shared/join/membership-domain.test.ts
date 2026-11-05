@@ -98,55 +98,48 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(needsConditionalStep(["clinician"])).toBe(true);
   });
 
-  it("resolveJoinStepTransition skips auth and conditional bidirectionally", () => {
-    // intent → name; affiliate backs to intent
-    expect(
-      resolveJoinStepTransition("intent", 1, { isSignedIn: false, roles: [] }),
-    ).toBe("name");
-    expect(
-      resolveJoinStepTransition("name", -1, { isSignedIn: false, roles: [] }),
-    ).toBe("intent");
+  it("resolveJoinStepTransition keeps onboarding behind auth", () => {
+    expect(resolveJoinStepTransition("auth", 1, { isSignedIn: false, roles: [] })).toBeNull();
+    expect(resolveJoinStepTransition("name", 1, { isSignedIn: false, roles: [] })).toBe("auth");
+    expect(resolveJoinStepTransition("intent", 1, { isSignedIn: false, roles: [] })).toBe("auth");
     expect(
       resolveJoinStepTransition("affiliate", -1, { isSignedIn: false, roles: [] }),
-    ).toBe("intent");
-    expect(
-      resolveJoinStepTransition("affiliate", 1, { isSignedIn: false, roles: [] }),
-    ).toBeNull();
-
-    // signed out, individual
-    expect(
-      resolveJoinStepTransition("name", 1, { isSignedIn: false, roles: ["individual"] }),
     ).toBe("auth");
     expect(
-      resolveJoinStepTransition("roles", 1, { isSignedIn: false, roles: ["individual"] }),
-    ).toBe("path");
+      resolveJoinStepTransition("roles", 1, { isSignedIn: false, roles: ["clinician"] }),
+    ).toBe("auth");
     expect(
       resolveJoinStepTransition("path", -1, { isSignedIn: false, roles: ["individual"] }),
-    ).toBe("roles");
-    expect(
-      resolveJoinStepTransition("roles", -1, { isSignedIn: false, roles: ["individual"] }),
     ).toBe("auth");
 
-    // signed in, individual — skip auth both ways
+    expect(
+      resolveJoinStepTransition("auth", 1, { isSignedIn: true, roles: ["individual"] }),
+    ).toBe("name");
     expect(
       resolveJoinStepTransition("name", 1, { isSignedIn: true, roles: ["individual"] }),
     ).toBe("roles");
     expect(
+      resolveJoinStepTransition("roles", 1, { isSignedIn: true, roles: ["individual"] }),
+    ).toBe("path");
+    expect(
+      resolveJoinStepTransition("path", -1, { isSignedIn: true, roles: ["individual"] }),
+    ).toBe("roles");
+    expect(
       resolveJoinStepTransition("roles", -1, { isSignedIn: true, roles: ["individual"] }),
     ).toBe("name");
+    expect(
+      resolveJoinStepTransition("name", -1, { isSignedIn: true, roles: ["individual"] }),
+    ).toBeNull();
 
-    // signed in, gym_owner — conditional included
     expect(
       resolveJoinStepTransition("roles", 1, { isSignedIn: true, roles: ["gym_owner"] }),
     ).toBe("conditional");
     expect(
       resolveJoinStepTransition("path", -1, { isSignedIn: true, roles: ["gym_owner"] }),
     ).toBe("conditional");
-
-    // signed out, clinician
-    expect(
-      resolveJoinStepTransition("roles", 1, { isSignedIn: false, roles: ["clinician"] }),
-    ).toBe("conditional");
+    expect(resolveJoinStepTransition("affiliate", -1, { isSignedIn: true, roles: [] })).toBe(
+      "path",
+    );
   });
 
   it("sanitizeReturnPath rejects open redirects", () => {
@@ -176,10 +169,12 @@ describe("membership-domain (WJ-TIER-1 / WJ-CERT-1 / WJ-COACH-*)", () => {
     expect(parseJoinStepParam("affiliate")).toBe("affiliate");
     expect(parseJoinStepParam("intent")).toBe("intent");
     expect(parseJoinStepParam("nope")).toBeNull();
-    expect(clampJoinDeepLink(null, { isSignedIn: false, roles: [] })).toBe("intent");
-    expect(clampJoinDeepLink("affiliate", { isSignedIn: false, roles: [] })).toBe("affiliate");
-    expect(clampJoinDeepLink("auth", { isSignedIn: true, roles: [] })).toBe("roles");
-    expect(clampJoinDeepLink("path", { isSignedIn: false, roles: [] })).toBe("intent");
+    expect(clampJoinDeepLink(null, { isSignedIn: false, roles: [] })).toBe("auth");
+    expect(clampJoinDeepLink("name", { isSignedIn: false, roles: [] })).toBe("auth");
+    expect(clampJoinDeepLink("affiliate", { isSignedIn: false, roles: [] })).toBe("auth");
+    expect(clampJoinDeepLink("path", { isSignedIn: false, roles: [] })).toBe("auth");
+    expect(clampJoinDeepLink("auth", { isSignedIn: true, roles: [] })).toBe("name");
+    expect(clampJoinDeepLink("affiliate", { isSignedIn: true, roles: [] })).toBe("affiliate");
     expect(clampJoinDeepLink("conditional", { isSignedIn: true, roles: ["individual"] })).toBe(
       "roles",
     );

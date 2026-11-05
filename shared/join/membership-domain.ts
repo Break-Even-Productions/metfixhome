@@ -127,7 +127,7 @@ export const MEMBERSHIP_HERO = {
 } as const;
 
 export const PRO_CARD_HEADER = "First month free · Then $30/month · Cancel anytime";
-export const ORG_CARD_HEADER = "First month free · Then $170/month";
+export const ORG_CARD_HEADER = "$170/month · Approval required";
 export const ORG_AFFILIATE_NOTE =
   "Affiliate membership includes full MetFix Membership access and course library, so you do not also pay $30/month.";
 
@@ -187,8 +187,9 @@ export type JoinStepTransitionContext = {
 };
 
 /**
- * Pure step navigation (CQ Trap 3 fix): skip auth when signed in both ways;
- * skip conditional both ways when neither gym_owner nor clinician.
+ * Pure step navigation.
+ * Signup / sign-in is the gate: name, roles, and plan stay unreachable until
+ * `isSignedIn`. Conditional is skipped both ways when the roles do not need it.
  * Affiliate is reached via direct go("affiliate"), not advanceFrom.
  */
 export function resolveJoinStepTransition(
@@ -196,21 +197,23 @@ export function resolveJoinStepTransition(
   direction: 1 | -1,
   ctx: JoinStepTransitionContext,
 ): JoinStep | null {
+  if (!ctx.isSignedIn) {
+    return step === "auth" ? null : "auth";
+  }
+
   const needsConditional = needsConditionalStep(ctx.roles);
   if (direction === 1) {
-    if (step === "intent") return "name";
-    if (step === "name") return ctx.isSignedIn ? "roles" : "auth";
-    if (step === "auth") return "roles";
+    if (step === "auth" || step === "intent" || step === "affiliate") return "name";
+    if (step === "name") return "roles";
     if (step === "roles") return needsConditional ? "conditional" : "path";
     if (step === "conditional") return "path";
     return null;
   }
-  if (step === "name") return "intent";
-  if (step === "affiliate") return "intent";
-  if (step === "auth") return "name";
-  if (step === "roles") return ctx.isSignedIn ? "name" : "auth";
+  if (step === "roles") return "name";
   if (step === "conditional") return "roles";
   if (step === "path") return needsConditional ? "conditional" : "roles";
+  if (step === "affiliate") return "path";
+  if (step === "intent") return "name";
   return null;
 }
 
@@ -230,26 +233,25 @@ export function parseJoinStepParam(raw: string | null | undefined): JoinStep | n
 }
 
 /**
- * Clamp deep-link `?step=` to a reachable step (CQ B4 / WJ3 / WJ8).
- * - missing/invalid → intent
- * - signed-in + auth → roles
- * - path with no roles → intent (signed out) or roles (signed in)
- * - conditional without gym/clinician roles → roles
+ * Clamp deep-link `?step=` to a reachable step.
+ * Signed out always lands on auth — name, roles, plan, and affiliate wait
+ * until an account exists. Signed in skips auth and starts at name, unless
+ * a later step was requested. Path with no roles falls back to roles.
+ * Conditional without gym/clinician roles falls back to roles.
  */
 export function clampJoinDeepLink(
   requested: JoinStep | null | undefined,
   ctx: JoinStepTransitionContext,
 ): JoinStep {
-  if (!requested || requested === "intent") return "intent";
-  if (requested === "name") return "name";
-  if (requested === "affiliate") return "affiliate";
-  if (requested === "auth") return ctx.isSignedIn ? "roles" : "auth";
-  if (requested === "roles") return "roles";
+  if (!ctx.isSignedIn) return "auth";
+  if (!requested || requested === "auth" || requested === "intent") return "name";
+  if (requested === "name" || requested === "affiliate" || requested === "roles") {
+    return requested;
+  }
   if (requested === "conditional") {
     return needsConditionalStep(ctx.roles) ? "conditional" : "roles";
   }
-  // path
-  if (ctx.roles.length === 0) return ctx.isSignedIn ? "roles" : "intent";
+  if (ctx.roles.length === 0) return "roles";
   if (needsConditionalStep(ctx.roles)) return "conditional";
   return "path";
 }

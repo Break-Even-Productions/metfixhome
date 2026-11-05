@@ -20,6 +20,7 @@ import {
   type SubscriptionItem,
 } from "@/lib/account";
 import { WHOP_SUBSCRIPTION_PLAN_COPY, type WhopCheckoutPlan } from "@shared/account/whop-plans";
+import { basePath } from "@/const";
 import DashboardLayout from "./DashboardLayout";
 import { MetricStrip } from "./MetricStrip";
 import { ConversionBanner } from "./ConversionBanner";
@@ -210,17 +211,17 @@ export default function AccountBilling() {
             <span className="account-mono">/checkout/complete</span>.
           </p>
           <div className="account-course-card__actions">
-            {(["pro", "org"] as const).map((plan) => (
-              <button
-                key={plan}
-                type="button"
-                className="account-btn"
-                disabled={busy === `checkout:${plan}`}
-                onClick={() => void onStartCheckout(plan)}
-              >
-                {WHOP_SUBSCRIPTION_PLAN_COPY[plan].cta}
-              </button>
-            ))}
+            <button
+              type="button"
+              className="account-btn"
+              disabled={busy === "checkout:pro"}
+              onClick={() => void onStartCheckout("pro")}
+            >
+              {WHOP_SUBSCRIPTION_PLAN_COPY.pro.cta}
+            </button>
+            <a className="account-btn" href={basePath("/become-an-affiliate")}>
+              Apply for Affiliate membership
+            </a>
           </div>
           <p className="account-muted" style={{ marginTop: "0.75rem" }}>
             {WHOP_SUBSCRIPTION_PLAN_COPY.pro.price}. Organization Owner:{" "}

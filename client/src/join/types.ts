@@ -11,7 +11,6 @@ export type JoinStep =
   | "path"
   | "affiliate";
 export type AuthView = "choose" | "email-signin" | "email-signup";
-export type PathView = "plan" | "article" | "course";
 export type WhopPlan = "pro" | "org";
 
 export type JoinProfile = {
@@ -23,18 +22,6 @@ export type JoinProfile = {
   hasPhysicalGym: boolean | null;
   hasPhysicalClinic: boolean | null;
   completed: boolean;
-};
-
-export type RecommendCourse = {
-  id: string;
-  title: string;
-  category: string;
-  description: string;
-  hours: string;
-  image: string;
-  tone: string;
-  badge?: string;
-  roles: RoleId[];
 };
 
 export type RecommendArticle = {

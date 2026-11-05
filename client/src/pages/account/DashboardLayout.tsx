@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { basePath, getMetfixLoginUrl } from "@/const";
+import { SiteFooter } from "@/components/SiteFooter";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { loadMe } from "@/lib/session";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
@@ -18,10 +19,24 @@ export const ACCOUNT_NAV = [
   { href: "/account", label: "Overview", always: true },
   { href: "/account/billing", label: "Billing & Subscriptions", always: true },
   { href: "/account/profile", label: "Profile", always: true },
-  { href: "/account/courses", label: "My Courses & Certificates", always: true },
+  {
+    href: "/account/courses",
+    label: "My Courses & Certificates",
+    always: true,
+  },
   { href: "/account/favorites", label: "Saved / Favorites", always: true },
-  { href: "/account/organization", label: "Organization", always: false, org: true },
-  { href: "/account/referrals", label: "Referrals & Gifts", always: false, referrals: true },
+  {
+    href: "/account/organization",
+    label: "Organization",
+    always: false,
+    org: true,
+  },
+  {
+    href: "/account/referrals",
+    label: "Referrals & Gifts",
+    always: false,
+    referrals: true,
+  },
   { href: "/account/notifications", label: "Notifications", always: true },
   { href: "/account/privacy", label: "Privacy & Security", always: true },
 ] as const;
@@ -56,7 +71,11 @@ type Props = {
   children: ReactNode;
 };
 
-export default function DashboardLayout({ title, description, children }: Props) {
+export default function DashboardLayout({
+  title,
+  description,
+  children,
+}: Props) {
   const [location] = useLocation();
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [subs, setSubs] = useState<AccountSubscriptions | null>(null);
@@ -64,7 +83,8 @@ export default function DashboardLayout({ title, description, children }: Props)
 
   usePageMeta({
     title: `${title} — MetFix Account`,
-    description: description ?? "Manage your MetFix membership, billing, and courses.",
+    description:
+      description ?? "Manage your MetFix membership, billing, and courses.",
   });
 
   useEffect(() => {
@@ -77,8 +97,9 @@ export default function DashboardLayout({ title, description, children }: Props)
           clearAccountCache();
           window.location.assign(
             getMetfixLoginUrl(
-              sanitizeReturnPath(`${window.location.pathname}${window.location.search}`) ??
-                "/account",
+              sanitizeReturnPath(
+                `${window.location.pathname}${window.location.search}`,
+              ) ?? "/account",
             ),
           );
           return;
@@ -122,80 +143,91 @@ export default function DashboardLayout({ title, description, children }: Props)
   );
 
   return (
-    <div className="account-shell">
-      <div className="account-layout">
-        <aside className="account-sidebar" aria-label="Account navigation">
-          <div className="account-identity">
-            <div className="account-avatar" aria-hidden="true">
-              {overview?.avatar_url ? (
-                <img src={overview.avatar_url} alt="" />
-              ) : (
-                initials(displayName)
-              )}
+    <>
+      <div className="account-shell">
+        <div className="account-layout">
+          <aside className="account-sidebar" aria-label="Account navigation">
+            <div className="account-identity">
+              <div className="account-avatar" aria-hidden="true">
+                {overview?.avatar_url ? (
+                  <img src={overview.avatar_url} alt="" />
+                ) : (
+                  initials(displayName)
+                )}
+              </div>
+              <h1 className="account-identity-name">{displayName}</h1>
+              <div className="account-pills">
+                {pills.map((p) => (
+                  <span
+                    key={p}
+                    className={
+                      p === "Foundations Coach"
+                        ? "account-pill account-pill--accent"
+                        : "account-pill"
+                    }
+                  >
+                    {p}
+                  </span>
+                ))}
+              </div>
+              <div className="account-status-badge" role="status">
+                {status}
+              </div>
             </div>
-            <h1 className="account-identity-name">{displayName}</h1>
-            <div className="account-pills">
-              {pills.map((p) => (
-                <span
-                  key={p}
-                  className={
-                    p === "Foundations Coach" ? "account-pill account-pill--accent" : "account-pill"
-                  }
-                >
-                  {p}
-                </span>
-              ))}
-            </div>
-            <div className="account-status-badge" role="status">
-              {status}
-            </div>
+            <nav className="account-nav">
+              {navItems.map((item) => {
+                const current =
+                  item.href === "/account"
+                    ? location === "/account" || location === "/account/"
+                    : location === item.href ||
+                      location.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={basePath(item.href)}
+                    aria-current={current ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </aside>
+
+          <div>
+            <nav className="account-mobile-nav" aria-label="Account tabs">
+              {navItems.map((item) => {
+                const current =
+                  item.href === "/account"
+                    ? location === "/account" || location === "/account/"
+                    : location === item.href ||
+                      location.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={basePath(item.href)}
+                    aria-current={current ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <main id="main" className="account-main">
+              <h1 className="account-page-title">{title}</h1>
+              {description ? (
+                <p className="account-page-lede">{description}</p>
+              ) : null}
+              {error ? <p className="account-error">{error}</p> : null}
+              {children}
+            </main>
           </div>
-          <nav className="account-nav">
-            {navItems.map((item) => {
-              const current =
-                item.href === "/account"
-                  ? location === "/account" || location === "/account/"
-                  : location === item.href || location.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={basePath(item.href)}
-                  aria-current={current ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
-
-        <div>
-          <nav className="account-mobile-nav" aria-label="Account tabs">
-            {navItems.map((item) => {
-              const current =
-                item.href === "/account"
-                  ? location === "/account" || location === "/account/"
-                  : location === item.href || location.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={basePath(item.href)}
-                  aria-current={current ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          <main className="account-main">
-            <h1 className="account-page-title">{title}</h1>
-            {description ? <p className="account-page-lede">{description}</p> : null}
-            {error ? <p className="account-error">{error}</p> : null}
-            {children}
-          </main>
         </div>
       </div>
-    </div>
+      <div className="home-root">
+        <SiteFooter />
+      </div>
+    </>
   );
 }

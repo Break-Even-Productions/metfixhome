@@ -9,23 +9,14 @@ import {
 } from "@shared/join";
 import { loadMe } from "@/lib/session";
 import { fetchCsrf, postOnboarding } from "./api";
-import { emptyProfile } from "./data";
+import { emptyProfile, isJoinCheckoutSuccess } from "./data";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ConditionalScreen } from "./screens/ConditionalScreen";
-import { ArticlePage, CoursePage } from "./screens/ContentPages";
 import { AffiliateApplicationScreen } from "./screens/AffiliateApplicationScreen";
-import { IntentScreen } from "./screens/IntentScreen";
 import { NameScreen, validateNamePart } from "./screens/NameScreen";
 import { RecommendedPath } from "./screens/RecommendedPath";
 import { RolesScreen } from "./screens/RolesScreen";
-import type {
-  AuthView,
-  JoinProfile,
-  JoinStep,
-  PathView,
-  RecommendArticle,
-  RecommendCourse,
-} from "./types";
+import type { AuthView, JoinProfile, JoinStep } from "./types";
 import { JoinShell } from "./ui";
 import "./join.css";
 
@@ -60,24 +51,22 @@ export function JoinFlow({
   initialStep,
   returnFocusTo = null,
 }: JoinFlowProps) {
-  const [step, setStep] = useState<JoinStep>(initialStep ?? "intent");
+  const [step, setStep] = useState<JoinStep>("auth");
   const [authView, setAuthView] = useState<AuthView>("choose");
-  const [pathView, setPathView] = useState<PathView>("plan");
-  const [article, setArticle] = useState<RecommendArticle | null>(null);
-  const [course, setCourse] = useState<RecommendCourse | null>(null);
   const [profile, setProfile] = useState<JoinProfile>(emptyProfile);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [isSignedIn, setIsSignedIn] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  /** When Sign in is used as a shortcut, Back returns here instead of auth choose. */
-  const [authReturnStep, setAuthReturnStep] = useState<JoinStep | null>(null);
+  const [purchased, setPurchased] = useState(false);
 
   const savingRef = useRef(false);
   const lastSavedFp = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setSessionReady(false);
     let cancelled = false;
     (async () => {
       const me = await loadMe();
@@ -86,6 +75,8 @@ export function JoinFlow({
       setIsSignedIn(signedIn);
       const params = new URLSearchParams(window.location.search);
       const resumeStep = parseJoinStepParam(params.get("step"));
+      const checkoutPurchased = isJoinCheckoutSuccess(params);
+      setPurchased(checkoutPurchased);
 
       let nextRoles: RoleId[] = [];
       setProfile((prev) => {
@@ -93,23 +84,27 @@ export function JoinFlow({
         if (signedIn && me.status === "signed_in") {
           const parts = me.public_name.split(/\s+/).filter(Boolean);
           if (!next.firstName && parts[0]) next.firstName = parts[0];
-          if (!next.lastName && parts.length > 1) next.lastName = parts.slice(1).join(" ");
+          if (!next.lastName && parts.length > 1)
+            next.lastName = parts.slice(1).join(" ");
         }
         nextRoles = next.roles;
         return next;
       });
 
-      const requested = initialStep ?? resumeStep;
-      setStep(
-        clampJoinDeepLink(requested, {
-          isSignedIn: signedIn,
-          roles: nextRoles,
-        }),
-      );
+      if (signedIn && checkoutPurchased) {
+        setStep("path");
+      } else {
+        const requested = initialStep ?? resumeStep;
+        setStep(
+          clampJoinDeepLink(requested, {
+            isSignedIn: signedIn,
+            roles: nextRoles,
+          }),
+        );
+      }
       setAuthView("choose");
-      setAuthReturnStep(null);
-      setPathView("plan");
       setDirection(1);
+      setSessionReady(true);
     })();
     return () => {
       cancelled = true;
@@ -123,12 +118,6 @@ export function JoinFlow({
   const go = (next: JoinStep, dir: 1 | -1 = 1) => {
     setDirection(dir);
     setStep(next);
-  };
-
-  const goToSignIn = (from: JoinStep) => {
-    setAuthReturnStep(from);
-    setAuthView("email-signin");
-    go("auth", 1);
   };
 
   const advanceFrom = async (from: JoinStep) => {
@@ -186,11 +175,11 @@ export function JoinFlow({
 
   const progress = useMemo(() => {
     const map: Record<JoinStep, number> = {
-      intent: 0.1,
-      name: 0.25,
-      auth: 0.4,
-      roles: 0.65,
-      conditional: 0.8,
+      auth: 0.15,
+      intent: 0.15,
+      name: 0.4,
+      roles: 0.7,
+      conditional: 0.85,
       path: 1,
       affiliate: 1,
     };
@@ -198,19 +187,6 @@ export function JoinFlow({
   }, [step]);
 
   const back = () => {
-    if (step === "path" && pathView !== "plan") {
-      setPathView("plan");
-      setArticle(null);
-      setCourse(null);
-      return;
-    }
-    if (step === "auth" && authReturnStep) {
-      const ret = authReturnStep;
-      setAuthReturnStep(null);
-      setAuthView("choose");
-      go(ret, -1);
-      return;
-    }
     if (step === "auth" && authView !== "choose") {
       setAuthView("choose");
       return;
@@ -226,14 +202,17 @@ export function JoinFlow({
 
   const showProgress = step !== "path" && step !== "affiliate";
   const hideBack =
-    step === "intent" || (step === "path" && pathView === "plan");
+    !sessionReady ||
+    step === "name" ||
+    step === "path" ||
+    (step === "auth" && authView === "choose");
 
   return (
     <JoinShell
       onClose={onClose}
       onBack={hideBack ? undefined : back}
       progress={showProgress ? progress : undefined}
-      wide={(step === "path" && pathView === "plan") || step === "affiliate"}
+      wide={step === "path" || step === "affiliate"}
       returnFocusTo={returnFocusTo}
     >
       {onboardingError ? (
@@ -241,114 +220,117 @@ export function JoinFlow({
           {onboardingError}
         </p>
       ) : null}
-      <AnimatePresence mode="wait" custom={direction}>
-        <motion.div
-          key={
-            step === "path"
-              ? `${pathView}-${article?.id ?? course?.id ?? "plan"}`
-              : `${step}-${authView}`
-          }
-          custom={direction}
-          initial={{ opacity: 0, x: direction * 32 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: direction * -24 }}
-          transition={{ duration: 0.4, ease: easeOutExpo }}
-        >
-          {step === "intent" ? (
-            <IntentScreen
-              onIndividual={() => go("name", 1)}
-              onAffiliate={() => go("affiliate", 1)}
-              onSignIn={() => goToSignIn("intent")}
-            />
-          ) : null}
-          {step === "name" ? (
-            <NameScreen
-              firstName={profile.firstName}
-              lastName={profile.lastName}
-              onChange={(field, value) => update({ [field]: value })}
-              onContinue={() => {
-                if (validateNamePart(profile.firstName) || validateNamePart(profile.lastName)) {
-                  return;
-                }
-                void advanceFrom("name");
-              }}
-              onSignIn={() => goToSignIn("name")}
-            />
-          ) : null}
-          {step === "affiliate" ? <AffiliateApplicationScreen /> : null}
-          {step === "auth" ? (
-            <AuthScreen
-              firstName={profile.firstName}
-              email={profile.email}
-              view={authView}
-              onView={setAuthView}
-              onEmail={(value) => update({ email: value })}
-              onAuthenticated={(provider, email) => {
-                setIsSignedIn(true);
-                setAuthReturnStep(null);
-                update({
-                  authProvider: provider,
-                  email: email ?? profile.email,
-                });
-                setAuthView("choose");
-                go("roles", 1);
-              }}
-            />
-          ) : null}
-          {step === "roles" ? (
-            <RolesScreen
-              selected={profile.roles}
-              saving={saving}
-              onToggle={(id: RoleId) => {
-                setProfile((prev) => {
-                  const roles = prev.roles.includes(id)
-                    ? prev.roles.filter((role) => role !== id)
-                    : [...prev.roles, id];
-                  return {
-                    ...prev,
-                    roles,
-                    hasPhysicalGym: roles.includes("gym_owner") ? prev.hasPhysicalGym : null,
-                    hasPhysicalClinic: roles.includes("clinician")
-                      ? prev.hasPhysicalClinic
-                      : null,
-                  };
-                });
-              }}
-              onContinue={() => void advanceFrom("roles")}
-            />
-          ) : null}
-          {step === "conditional" ? (
-            <ConditionalScreen
-              roles={profile.roles}
-              hasPhysicalGym={profile.hasPhysicalGym}
-              hasPhysicalClinic={profile.hasPhysicalClinic}
-              saving={saving}
-              onGym={(value) => update({ hasPhysicalGym: value })}
-              onClinic={(value) => update({ hasPhysicalClinic: value })}
-              onContinue={() => void advanceFrom("conditional")}
-            />
-          ) : null}
-          {step === "path" && pathView === "plan" ? (
-            <RecommendedPath
-              profile={profile}
-              onStartCourse={(item) => {
-                setCourse(item);
-                setPathView("course");
-              }}
-              onOpenArticle={(item) => {
-                setArticle(item);
-                setPathView("article");
-              }}
-            />
-          ) : null}
-          {step === "path" && pathView === "article" && article ? (
-            <ArticlePage article={article} onBack={() => setPathView("plan")} />
-          ) : null}
-          {step === "path" && pathView === "course" && course ? (
-            <CoursePage course={course} onBack={() => setPathView("plan")} />
-          ) : null}
-        </motion.div>
-      </AnimatePresence>
+      {!sessionReady ? (
+        <p className="text-sm text-[var(--join-muted)]">Loading…</p>
+      ) : (
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={`${step}-${authView}`}
+            custom={direction}
+            initial={{ opacity: 0, x: direction * 32 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: direction * -24 }}
+            transition={{ duration: 0.4, ease: easeOutExpo }}
+          >
+            {step === "auth" && !isSignedIn ? (
+              <AuthScreen
+                firstName={profile.firstName}
+                email={profile.email}
+                view={authView}
+                onView={setAuthView}
+                onEmail={(value) => update({ email: value })}
+                onAuthenticated={(provider, email) => {
+                  setIsSignedIn(true);
+                  setAuthView("choose");
+                  void (async () => {
+                    const me = await loadMe();
+                    setProfile((prev) => {
+                      const next = {
+                        ...prev,
+                        authProvider: provider,
+                        email: email ?? prev.email,
+                      };
+                      if (me.status === "signed_in") {
+                        const parts = me.public_name
+                          .split(/\s+/)
+                          .filter(Boolean);
+                        if (!next.firstName && parts[0])
+                          next.firstName = parts[0];
+                        if (!next.lastName && parts.length > 1) {
+                          next.lastName = parts.slice(1).join(" ");
+                        }
+                      }
+                      return next;
+                    });
+                    go("name", 1);
+                  })();
+                }}
+              />
+            ) : null}
+            {isSignedIn && step === "name" ? (
+              <NameScreen
+                firstName={profile.firstName}
+                lastName={profile.lastName}
+                onChange={(field, value) => update({ [field]: value })}
+                onContinue={() => {
+                  if (
+                    validateNamePart(profile.firstName) ||
+                    validateNamePart(profile.lastName)
+                  ) {
+                    return;
+                  }
+                  void advanceFrom("name");
+                }}
+              />
+            ) : null}
+            {isSignedIn && step === "affiliate" ? (
+              <AffiliateApplicationScreen />
+            ) : null}
+            {isSignedIn && step === "roles" ? (
+              <RolesScreen
+                selected={profile.roles}
+                saving={saving}
+                onToggle={(id: RoleId) => {
+                  setProfile((prev) => {
+                    const roles = prev.roles.includes(id)
+                      ? prev.roles.filter((role) => role !== id)
+                      : [...prev.roles, id];
+                    return {
+                      ...prev,
+                      roles,
+                      hasPhysicalGym: roles.includes("gym_owner")
+                        ? prev.hasPhysicalGym
+                        : null,
+                      hasPhysicalClinic: roles.includes("clinician")
+                        ? prev.hasPhysicalClinic
+                        : null,
+                    };
+                  });
+                }}
+                onContinue={() => void advanceFrom("roles")}
+              />
+            ) : null}
+            {isSignedIn && step === "conditional" ? (
+              <ConditionalScreen
+                roles={profile.roles}
+                hasPhysicalGym={profile.hasPhysicalGym}
+                hasPhysicalClinic={profile.hasPhysicalClinic}
+                saving={saving}
+                onGym={(value) => update({ hasPhysicalGym: value })}
+                onClinic={(value) => update({ hasPhysicalClinic: value })}
+                onContinue={() => void advanceFrom("conditional")}
+              />
+            ) : null}
+            {isSignedIn && step === "path" ? (
+              <RecommendedPath
+                profile={profile}
+                purchased={purchased}
+                onOpenAffiliate={() => go("affiliate", 1)}
+              />
+            ) : null}
+          </motion.div>
+        </AnimatePresence>
+      )}
     </JoinShell>
   );
 }

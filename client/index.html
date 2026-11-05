@@ -80,8 +80,22 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <!-- Whop Pixel (BEP company via whop-pixel.js) — same-origin file; AU19.3 forbids inline scripts. -->
     <script src="%BASE_URL%whop-pixel.js"></script>
+    <!-- Meta Pixel — same-origin file; AU19.3 forbids inline scripts. -->
+    <script src="%BASE_URL%meta-pixel.js"></script>
+    <!-- Google tag (gtag.js) — config is a same-origin file; AU19.3 forbids inline scripts. -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-HYZCNVTZ0E"></script>
+    <script src="%BASE_URL%gtag.js"></script>
   </head>
   <body>
+    <noscript>
+      <img
+        height="1"
+        width="1"
+        style="display:none"
+        alt=""
+        src="https://www.facebook.com/tr?id=383665434667081&ev=PageView&noscript=1"
+      />
+    </noscript>
     <div id="root"></div>
     <!-- Blocking: sets window.__MFX_RECAPTCHA_SITE_KEY__ from Worker var RECAPTCHA_SITE_KEY before the module runs. -->
     <script src="/api/recaptcha-site-key.js"></script>

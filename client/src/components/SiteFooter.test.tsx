@@ -17,7 +17,10 @@ import { SiteFooter } from "./SiteFooter";
 
 vi.mock("@/hooks/useSiteContent", () => ({
   useSiteSettings: () => ({
-    settings: { copyrightText: `© ${new Date().getFullYear()} MetFix`, navLinks: [] },
+    settings: {
+      copyrightText: `© ${new Date().getFullYear()} MetFix`,
+      navLinks: [],
+    },
     loading: false,
   }),
 }));
@@ -32,7 +35,9 @@ describe("T-E-30 showNewsletter", () => {
     const { container, rerender } = render(<SiteFooter />);
     expect(container.querySelector("#newsletter")).toBeNull();
     rerender(<SiteFooter showNewsletter />);
-    expect(container.querySelector(`form[action="${NEWSLETTER_FORM_ACTION}"]`)).toBeTruthy();
+    expect(
+      container.querySelector(`form[action="${NEWSLETTER_FORM_ACTION}"]`),
+    ).toBeTruthy();
     expect(screen.getByLabelText("Explore")).toBeTruthy();
   });
 });
@@ -43,7 +48,9 @@ describe("T-E-31 / T-E-47 FOOTER_LINK_ALLOWLIST", () => {
   });
 
   it("exports FOOTER_LINK_ALLOWLIST with legal + mailchimp from siteFooterLinks.ts", () => {
-    expect(FOOTER_LINK_ALLOWLIST).toContain("https://brokenscience.org/privacy-policy/");
+    expect(FOOTER_LINK_ALLOWLIST).toContain(
+      "https://brokenscience.org/privacy-policy/",
+    );
     expect(FOOTER_LINK_ALLOWLIST).toContain(
       "https://brokenscience.org/terms-and-conditions/",
     );
@@ -61,8 +68,13 @@ describe("T-E-31 / T-E-47 FOOTER_LINK_ALLOWLIST", () => {
     ];
     for (const link of all) {
       expect(link.href.startsWith("#"), link.href).toBe(false);
-      expect(link.href === "/#top" || link.href === "#top", link.href).toBe(false);
-      expect(link.href.startsWith("/") || link.href.startsWith("https://"), link.href).toBe(true);
+      expect(link.href === "/#top" || link.href === "#top", link.href).toBe(
+        false,
+      );
+      expect(
+        link.href.startsWith("/") || link.href.startsWith("https://"),
+        link.href,
+      ).toBe(true);
       expect(isAllowedFooterHref(link.href), link.href).toBe(true);
       expect(link.href.toLowerCase()).not.toMatch(/scholarship/);
     }
@@ -71,7 +83,9 @@ describe("T-E-31 / T-E-47 FOOTER_LINK_ALLOWLIST", () => {
 
   it("external legal links have rel=noopener noreferrer", () => {
     const { container } = render(<SiteFooter />);
-    const legal = [...container.querySelectorAll('a[href*="brokenscience.org"]')];
+    const legal = [
+      ...container.querySelectorAll('a[href*="brokenscience.org"]'),
+    ];
     expect(legal.length).toBeGreaterThanOrEqual(2);
     for (const a of legal) {
       expect(a.getAttribute("rel")).toMatch(/noopener/);
@@ -89,14 +103,18 @@ describe("T-E-32 / SI-E17 no year harness markup", () => {
   });
 
   it("repo-scan: VISUAL_HOOK_PATTERN = 0 in non-test client/src", async () => {
-    const { VISUAL_HOOK_PATTERN } = await import("../../../tests/visual/hookPattern");
+    const { VISUAL_HOOK_PATTERN } =
+      await import("../../../tests/visual/hookPattern");
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
         const p = join(dir, name);
         const st = statSync(p);
         if (st.isDirectory()) walk(p);
-        else if (/\.(tsx?|jsx?|css)$/.test(name) && !/\.(test|spec)\./.test(name)) {
+        else if (
+          /\.(tsx?|jsx?|css)$/.test(name) &&
+          !/\.(test|spec)\./.test(name)
+        ) {
           const text = readFileSync(p, "utf8");
           if (VISUAL_HOOK_PATTERN.test(text)) hits.push(p);
         }
@@ -126,17 +144,27 @@ describe("T-E-57 allowlist home", () => {
     expect(linksSrc).toMatch(/export const FOOTER_LINK_ALLOWLIST/);
     expect(footerSrc).not.toMatch(/export const FOOTER_LINK_ALLOWLIST/);
     expect(footerSrc).not.toMatch(/export const NEWSLETTER_FORM_ACTION/);
-    expect(footerSrc).toMatch(/export function SiteFooter|export default SiteFooter/);
+    expect(footerSrc).toMatch(
+      /export function SiteFooter|export default SiteFooter/,
+    );
   });
 });
 
 describe("T-E-33 / E-T-FOOT5 SiteFooter importers", () => {
-  it("only Home.tsx (non-test) imports SiteFooter", () => {
-    const importRe = /import\s+[^;]*SiteFooter[^;]*from\s+['\"][^'\"]*SiteFooter['\"]/;
-    const home = readFileSync(join(process.cwd(), "client/src/pages/Home.tsx"), "utf8");
+  it("Home and the account dashboard import SiteFooter; App and posts layout do not", () => {
+    const importRe =
+      /import\s+[^;]*SiteFooter[^;]*from\s+['\"][^'\"]*SiteFooter['\"]/;
+    const home = readFileSync(
+      join(process.cwd(), "client/src/pages/Home.tsx"),
+      "utf8",
+    );
     expect(home).toMatch(importRe);
+    const dashboard = readFileSync(
+      join(process.cwd(), "client/src/pages/account/DashboardLayout.tsx"),
+      "utf8",
+    );
+    expect(dashboard).toMatch(importRe);
     for (const rel of [
-      "client/src/pages/account/DashboardLayout.tsx",
       "client/src/pages/posts/PostsLayout.tsx",
       "client/src/App.tsx",
     ]) {
