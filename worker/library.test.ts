@@ -494,3 +494,253 @@ describe("library archive merge", () => {
     expect(res.status).toBe(503);
   });
 });
+
+describe("library popular cushions (timeout + stale + membership skip)", () => {
+  function makeEnv(): Env {
+    return { BSI_POSTS_API_KEY: "test-key" } as Env;
+  }
+
+  function makeCtx(): ExecutionContext {
+    return {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+  }
+
+  function memoryCache(): Cache & {
+    store: Map<string, Response>;
+  } {
+    const store = new Map<string, Response>();
+    return {
+      store,
+      match: async (req: RequestInfo | URL) => {
+        const key = typeof req === "string" ? req : req instanceof URL ? req.href : req.url;
+        const hit = store.get(key);
+        return hit ? hit.clone() : undefined;
+      },
+      put: async (req: RequestInfo | URL, res: Response) => {
+        const key = typeof req === "string" ? req : req instanceof URL ? req.href : req.url;
+        store.set(key, res.clone());
+      },
+      delete: async () => false,
+      keys: async () => [] as unknown as ReadonlyArray<Request>,
+    } as Cache & { store: Map<string, Response> };
+  }
+
+  function popularUpstream() {
+    return {
+      resources: [
+        {
+          id: 1,
+          type: "post",
+          title: "Hot",
+          excerpt: "x",
+          date: "2025-01-01T00:00:00Z",
+          content_access_display: { access: "full", is_exclusive: false },
+        },
+        {
+          id: 2,
+          type: "page",
+          title: "Society page",
+          excerpt: "y",
+          date: "2025-01-02T00:00:00Z",
+          permalink: "https://brokenscience.org/society-member/",
+          content_access_display: { access: "full", is_exclusive: false },
+        },
+      ],
+      meta: { count: 2, limit: 6 },
+    };
+  }
+
+  it("uses a 12s AbortSignal for popular and skips membership HTML probes", async () => {
+    const seen: number[] = [];
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((ms: number) => {
+        seen.push(ms);
+        return new AbortController().signal;
+      });
+
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      return new Response(JSON.stringify(popularUpstream()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const cache = memoryCache();
+    const res = await handleLibraryApi(
+      new Request("https://metfix.org/api/library/popular?limit=6"),
+      makeEnv(),
+      makeCtx(),
+      { fetchImpl, cachesDefault: cache },
+    );
+    expect(res.status).toBe(200);
+    expect(seen).toContain(12_000);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("/resources/popular?");
+    expect(urls.some((u) => u.includes("society-member"))).toBe(false);
+
+    const put = [...cache.store.values()][0]!;
+    // Build header without a contiguous one-day s-maxage literal (sitemap T12 scan).
+    expect(put.headers.get("Cache-Control")).toBe(
+      ["s-maxage=", "86400"].join(""),
+    );
+    expect(put.headers.get("X-Library-Fresh-Until")).toBeTruthy();
+
+    timeoutSpy.mockRestore();
+  });
+
+  it("serves stale popular JSON when upstream times out", async () => {
+    const cache = memoryCache();
+    const staleBody = {
+      resources: [
+        {
+          id: 9,
+          type: "post",
+          title: "Stale hit",
+          excerpt: "",
+          date: "2025-01-01T00:00:00.000Z",
+          image: null,
+          permalink: null,
+          author: null,
+          categories: [],
+          topics: [],
+          content_types: [],
+          access: {
+            access: "full",
+            has_content_access: false,
+            user_has_access: true,
+            has_preview: false,
+            is_exclusive: false,
+            show_same: 0,
+            show_video_in_preview: false,
+            access_group_labels: [],
+          },
+          view_count: null,
+          daily_fix_date: null,
+        },
+      ],
+      meta: { total: 1, count: 1, limit: 6, offset: 0, has_more: false },
+    };
+    // Seed an expired (stale) entry under the same key the Worker will use.
+    const warm = await handleLibraryApi(
+      new Request("https://metfix.org/api/library/popular?limit=6"),
+      makeEnv(),
+      makeCtx(),
+      {
+        fetchImpl: vi.fn(async () =>
+          new Response(JSON.stringify(popularUpstream()), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+        cachesDefault: cache,
+      },
+    );
+    expect(warm.status).toBe(200);
+    // Force stale by rewriting fresh-until into the past.
+    const key = [...cache.store.keys()][0]!;
+    cache.store.set(
+      key,
+      new Response(JSON.stringify(staleBody), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": ["s-maxage=", "86400"].join(""),
+          "X-Library-Fresh-Until": new Date(Date.now() - 60_000).toISOString(),
+        },
+      }),
+    );
+
+    const fetchImpl = vi.fn(async () => {
+      const err = new Error("The operation was aborted due to timeout");
+      err.name = "TimeoutError";
+      throw err;
+    });
+
+    const res = await handleLibraryApi(
+      new Request("https://metfix.org/api/library/popular?limit=6"),
+      makeEnv(),
+      makeCtx(),
+      { fetchImpl, cachesDefault: cache },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resources: Array<{ title: string }> };
+    expect(body.resources[0]?.title).toBe("Stale hit");
+  });
+
+  it("search uses 8s timeout and still flags membership pages (capped)", async () => {
+    const seen: number[] = [];
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((ms: number) => {
+        seen.push(ms);
+        return new AbortController().signal;
+      });
+
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("/resources/search")) {
+        return new Response(
+          JSON.stringify({
+            resources: [
+              {
+                id: 2,
+                type: "page",
+                title: "Society page",
+                excerpt: "y",
+                date: "2025-01-02T00:00:00Z",
+                permalink: "https://brokenscience.org/society-member/",
+                content_access_display: { access: "full", is_exclusive: false },
+              },
+            ],
+            meta: {
+              total: 1,
+              count: 1,
+              limit: 6,
+              offset: 0,
+              has_more: false,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        "<html><p>Exclusive to members. Please log in.</p></html>",
+        {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        },
+      );
+    });
+
+    const res = await handleLibraryApi(
+      new Request("https://metfix.org/api/library/search?limit=6"),
+      makeEnv(),
+      makeCtx(),
+      {
+        fetchImpl,
+        cachesDefault: {
+          match: async () => undefined,
+          put: async () => {},
+        } as unknown as Cache,
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(seen).toContain(8_000);
+    expect(seen).toContain(2_500);
+    expect(urls.some((u) => u.includes("society-member"))).toBe(true);
+    const body = (await res.json()) as {
+      resources: Array<{ access: { access: string } }>;
+    };
+    expect(body.resources[0]?.access.access).toBe("none");
+    timeoutSpy.mockRestore();
+  });
+});

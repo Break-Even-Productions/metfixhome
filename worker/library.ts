@@ -67,11 +67,28 @@ export type LibraryDeps = {
 
 type CachePutMode = "waitUntil" | "await";
 
-const SEARCH_S_MAXAGE_ANON = 120;
-const SEARCH_S_MAXAGE_USER = 60;
-const FILTERS_S_MAXAGE = 600;
-const DETAIL_S_MAXAGE_ANON = 300;
-const DETAIL_S_MAXAGE_USER = 60;
+/** Fresh window (client-facing revalidate cadence). Store retention is longer for stale-ok. */
+const SEARCH_FRESH_ANON = 300;
+const SEARCH_FRESH_USER = 60;
+const SEARCH_STORE = 3_600;
+const POPULAR_FRESH_ANON = 900;
+const POPULAR_FRESH_USER = 120;
+const POPULAR_STORE = 86_400;
+const FILTERS_FRESH = 600;
+const FILTERS_STORE = 86_400;
+const DETAIL_FRESH_ANON = 300;
+const DETAIL_FRESH_USER = 60;
+const DETAIL_STORE = 3_600;
+
+/** Per-route BSI abort budgets (membership HTML probes stay on the short default). */
+const BSI_TIMEOUT_DEFAULT_MS = 4_000;
+const BSI_TIMEOUT_POPULAR_MS = 12_000;
+const BSI_TIMEOUT_SEARCH_MS = 8_000;
+const BSI_TIMEOUT_FILTERS_MS = 6_000;
+const BSI_TIMEOUT_DETAIL_MS = 5_000;
+const BSI_TIMEOUT_MEMBERSHIP_MS = 2_500;
+
+const LIBRARY_FRESH_UNTIL = "X-Library-Fresh-Until";
 
 function readApiKey(env: Env): string | null {
   const key = env.BSI_POSTS_API_KEY;
@@ -355,6 +372,7 @@ async function fetchBsi(
   accessToken: string | null,
   fetchImpl: FetchImpl,
   env?: Env,
+  timeoutMs: number = BSI_TIMEOUT_DEFAULT_MS,
 ): Promise<UpstreamResult> {
   try {
     assertBsiHost(url, env);
@@ -367,7 +385,7 @@ async function fetchBsi(
       method: "GET",
       headers: bsiHeaders(apiKey, accessToken),
       redirect: "manual",
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (response.status >= 300 && response.status < 400) {
       console.info("library:redirect", response.status);
@@ -393,27 +411,84 @@ async function fetchBsi(
   }
 }
 
+/** Fresh only when header parses to a finite instant strictly later than now. */
+function isLibraryCacheFresh(cached: Response, now = new Date()): boolean {
+  const until = cached.headers.get(LIBRARY_FRESH_UNTIL);
+  if (!until) return false;
+  const ts = Date.parse(until);
+  if (!Number.isFinite(ts)) return false;
+  return now.getTime() < ts;
+}
+
 async function storeMapped(
   cache: Cache,
   keyReq: Request,
   jsonText: string,
-  sMaxAge: number,
+  freshSeconds: number,
+  storeSeconds: number,
   mode: CachePutMode,
   ctx: ExecutionContext,
   privateCache: boolean,
 ): Promise<void> {
+  const freshUntil = new Date(
+    Date.now() + Math.max(1, freshSeconds) * 1000,
+  ).toISOString();
   const store = new Response(jsonText, {
     status: 200,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": privateCache
-        ? `private, s-maxage=${sMaxAge}`
-        : `s-maxage=${sMaxAge}`,
+        ? `private, s-maxage=${storeSeconds}`
+        : `s-maxage=${storeSeconds}`,
+      [LIBRARY_FRESH_UNTIL]: freshUntil,
     },
   });
   const put = cache.put(keyReq, store);
   if (mode === "await") await put;
   else ctx.waitUntil(put);
+}
+
+type CachedSearch =
+  | { kind: "fresh"; body: LibrarySearchBody; jsonText: string }
+  | { kind: "stale"; body: LibrarySearchBody; jsonText: string }
+  | { kind: "miss" };
+
+async function matchSearchCache(
+  cache: Cache,
+  keyReq: Request,
+): Promise<CachedSearch> {
+  const cached = await cache.match(keyReq);
+  if (!cached) return { kind: "miss" };
+  try {
+    const text = await cached.clone().text();
+    const json: unknown = JSON.parse(text);
+    if (!isLibrarySearchBody(json)) return { kind: "miss" };
+    if (isLibraryCacheFresh(cached)) {
+      return { kind: "fresh", body: json, jsonText: text };
+    }
+    return { kind: "stale", body: json, jsonText: text };
+  } catch {
+    return { kind: "miss" };
+  }
+}
+
+function serveStaleSearch(
+  stale: { body: LibrarySearchBody; jsonText: string },
+  privateCache: boolean,
+  reason: string,
+): {
+  kind: "ok";
+  body: LibrarySearchBody;
+  jsonText: string;
+  private: boolean;
+} {
+  console.info("library:stale", reason);
+  return {
+    kind: "ok",
+    body: stale.body,
+    jsonText: stale.jsonText,
+    private: privateCache,
+  };
 }
 
 /** Allowlisted search query → upstream URL search string. */
@@ -543,11 +618,20 @@ async function flagMembershipGatedPages(
   const pages = body.resources.filter(
     (r) => r.type === "page" && r.access.access === "full" && r.permalink,
   );
+  // Cap probes so a rail full of pages cannot multiply the BSI budget.
+  const capped = pages.slice(0, 4);
   await Promise.all(
-    pages.map(async (resource) => {
+    capped.map(async (resource) => {
       const permalink = resource.permalink;
       if (!permalink) return;
-      const upstream = await fetchBsi(permalink, apiKey, null, fetchImpl, env);
+      const upstream = await fetchBsi(
+        permalink,
+        apiKey,
+        null,
+        fetchImpl,
+        env,
+        BSI_TIMEOUT_MEMBERSHIP_MS,
+      );
       if (upstream.kind !== "http" || upstream.status !== 200) return;
       if (!htmlShowsMembershipGate(upstream.text)) return;
       resource.access = {
@@ -584,35 +668,32 @@ async function getSearch(
   const salt = userSalt(acting);
   const privateCache = salt != null;
   const keyReq = librarySearchCacheKey(queryString, salt);
-  const cached = await cache.match(keyReq);
-  if (cached) {
-    try {
-      const text = await cached.clone().text();
-      const json: unknown = JSON.parse(text);
-      if (isLibrarySearchBody(json)) {
-        return {
-          kind: "ok",
-          body: json,
-          jsonText: text,
-          private: privateCache,
-        };
-      }
-    } catch {
-      /* refetch */
-    }
+  const hit = await matchSearchCache(cache, keyReq);
+  if (hit.kind === "fresh") {
+    return {
+      kind: "ok",
+      body: hit.body,
+      jsonText: hit.jsonText,
+      private: privateCache,
+    };
   }
+  const stale = hit.kind === "stale" ? hit : null;
 
   const url = `${resourcesBase(env, opts)}/search?${queryString}`;
 
   const call = (access: string | null) =>
-    fetchBsi(url, key, access, fetchImpl, env);
+    fetchBsi(url, key, access, fetchImpl, env, BSI_TIMEOUT_SEARCH_MS);
 
   let upstream: UpstreamResult;
   if (acting) {
     const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
       call(access),
     );
-    if (ran instanceof Response) return { kind: "unavailable" };
+    if (ran instanceof Response) {
+      return stale
+        ? serveStaleSearch(stale, privateCache, "search_acting")
+        : { kind: "unavailable" };
+    }
     upstream = ran.result;
   } else {
     upstream = await call(null);
@@ -624,11 +705,15 @@ async function getSearch(
     upstream.kind === "size" ||
     upstream.kind === "redirect"
   ) {
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, `search_${upstream.kind}`)
+      : { kind: "unavailable" };
   }
   if (upstream.status !== 200) {
     console.info("library:search_upstream", upstream.status);
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, "search_status")
+      : { kind: "unavailable" };
   }
 
   let json: unknown;
@@ -636,13 +721,17 @@ async function getSearch(
     json = JSON.parse(upstream.text);
   } catch {
     console.info("library:bad_json");
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, "search_json")
+      : { kind: "unavailable" };
   }
 
   const mapped = mapSearchResponse(json);
   if (!mapped) {
     console.info("library:unmappable");
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, "search_map")
+      : { kind: "unavailable" };
   }
 
   if (!acting) {
@@ -650,8 +739,17 @@ async function getSearch(
   }
 
   const jsonText = JSON.stringify(mapped);
-  const sMax = privateCache ? SEARCH_S_MAXAGE_USER : SEARCH_S_MAXAGE_ANON;
-  await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
+  const fresh = privateCache ? SEARCH_FRESH_USER : SEARCH_FRESH_ANON;
+  await storeMapped(
+    cache,
+    keyReq,
+    jsonText,
+    fresh,
+    SEARCH_STORE,
+    putMode,
+    ctx,
+    privateCache,
+  );
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -678,35 +776,32 @@ async function getPopular(
   const salt = userSalt(acting);
   const privateCache = salt != null;
   const keyReq = libraryPopularCacheKey(queryString, salt);
-  const cached = await cache.match(keyReq);
-  if (cached) {
-    try {
-      const text = await cached.clone().text();
-      const json: unknown = JSON.parse(text);
-      if (isLibrarySearchBody(json)) {
-        return {
-          kind: "ok",
-          body: json,
-          jsonText: text,
-          private: privateCache,
-        };
-      }
-    } catch {
-      /* refetch */
-    }
+  const hit = await matchSearchCache(cache, keyReq);
+  if (hit.kind === "fresh") {
+    return {
+      kind: "ok",
+      body: hit.body,
+      jsonText: hit.jsonText,
+      private: privateCache,
+    };
   }
+  const stale = hit.kind === "stale" ? hit : null;
 
   const url = `${resourcesBase(env, opts)}/popular?${queryString}`;
 
   const call = (access: string | null) =>
-    fetchBsi(url, key, access, fetchImpl, env);
+    fetchBsi(url, key, access, fetchImpl, env, BSI_TIMEOUT_POPULAR_MS);
 
   let upstream: UpstreamResult;
   if (acting) {
     const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
       call(access),
     );
-    if (ran instanceof Response) return { kind: "unavailable" };
+    if (ran instanceof Response) {
+      return stale
+        ? serveStaleSearch(stale, privateCache, "popular_acting")
+        : { kind: "unavailable" };
+    }
     upstream = ran.result;
   } else {
     upstream = await call(null);
@@ -718,11 +813,15 @@ async function getPopular(
     upstream.kind === "size" ||
     upstream.kind === "redirect"
   ) {
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, `popular_${upstream.kind}`)
+      : { kind: "unavailable" };
   }
   if (upstream.status !== 200) {
     console.info("library:popular_upstream", upstream.status);
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, "popular_status")
+      : { kind: "unavailable" };
   }
 
   let json: unknown;
@@ -730,7 +829,9 @@ async function getPopular(
     json = JSON.parse(upstream.text);
   } catch {
     console.info("library:bad_json");
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, "popular_json")
+      : { kind: "unavailable" };
   }
 
   const qs = new URLSearchParams(queryString);
@@ -740,16 +841,25 @@ async function getPopular(
   });
   if (!mapped) {
     console.info("library:unmappable");
-    return { kind: "unavailable" };
+    return stale
+      ? serveStaleSearch(stale, privateCache, "popular_map")
+      : { kind: "unavailable" };
   }
 
-  if (!acting) {
-    await flagMembershipGatedPages(mapped, key, fetchImpl, env);
-  }
-
+  // Hub popular rail: skip membership HTML probes — they amplify latency after
+  // an already-expensive ranking call. Search still flags gated pages.
   const jsonText = JSON.stringify(mapped);
-  const sMax = privateCache ? SEARCH_S_MAXAGE_USER : SEARCH_S_MAXAGE_ANON;
-  await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
+  const fresh = privateCache ? POPULAR_FRESH_USER : POPULAR_FRESH_ANON;
+  await storeMapped(
+    cache,
+    keyReq,
+    jsonText,
+    fresh,
+    POPULAR_STORE,
+    putMode,
+    ctx,
+    privateCache,
+  );
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -772,18 +882,22 @@ async function getFilters(
   const salt = userSalt(acting);
   const privateCache = salt != null;
   const keyReq = libraryFiltersCacheKey(salt);
+  let stale: { body: LibraryFiltersBody; jsonText: string } | null = null;
   const cached = await cache.match(keyReq);
   if (cached) {
     try {
       const text = await cached.clone().text();
       const json: unknown = JSON.parse(text);
       if (isLibraryFiltersBody(json)) {
-        return {
-          kind: "ok",
-          body: json,
-          jsonText: text,
-          private: privateCache,
-        };
+        if (isLibraryCacheFresh(cached)) {
+          return {
+            kind: "ok",
+            body: json,
+            jsonText: text,
+            private: privateCache,
+          };
+        }
+        stale = { body: json, jsonText: text };
       }
     } catch {
       /* refetch */
@@ -799,18 +913,38 @@ async function getFilters(
 
   const access = acting?.access ?? null;
   const results = await Promise.all(
-    paths.map((u) => fetchBsi(u, key, access, fetchImpl, env)),
+    paths.map((u) =>
+      fetchBsi(u, key, access, fetchImpl, env, BSI_TIMEOUT_FILTERS_MS),
+    ),
   );
 
   const parsed: unknown[] = [];
   for (const upstream of results) {
     if (upstream.kind !== "http" || upstream.status !== 200) {
       console.info("library:filters_upstream");
+      if (stale) {
+        console.info("library:stale", "filters_upstream");
+        return {
+          kind: "ok",
+          body: stale.body,
+          jsonText: stale.jsonText,
+          private: privateCache,
+        };
+      }
       return { kind: "unavailable" };
     }
     try {
       parsed.push(JSON.parse(upstream.text));
     } catch {
+      if (stale) {
+        console.info("library:stale", "filters_json");
+        return {
+          kind: "ok",
+          body: stale.body,
+          jsonText: stale.jsonText,
+          private: privateCache,
+        };
+      }
       return { kind: "unavailable" };
     }
   }
@@ -825,7 +959,8 @@ async function getFilters(
     cache,
     keyReq,
     jsonText,
-    FILTERS_S_MAXAGE,
+    FILTERS_FRESH,
+    FILTERS_STORE,
     putMode,
     ctx,
     privateCache,
@@ -896,23 +1031,37 @@ async function getDetail(
   const salt = userSalt(acting);
   const privateCache = salt != null;
   const keyReq = libraryDetailCacheKey(type, id, salt);
+  let stale: {
+    kind: "ok" | "locked";
+    body: LibraryDetailBody;
+    jsonText: string;
+  } | null = null;
   const cached = await cache.match(keyReq);
   if (cached) {
     try {
       const text = await cached.clone().text();
       const json: unknown = JSON.parse(text);
       if (isLibraryDetailBody(json)) {
-        return {
-          kind: json.resource.locked ? "locked" : "ok",
+        const entry = {
+          kind: (json.resource.locked ? "locked" : "ok") as "ok" | "locked",
           body: json,
           jsonText: text,
-          private: privateCache,
         };
+        if (isLibraryCacheFresh(cached)) {
+          return { ...entry, private: privateCache };
+        }
+        stale = entry;
       }
     } catch {
       /* refetch */
     }
   }
+
+  const serveDetailStale = (reason: string) => {
+    if (!stale) return { kind: "unavailable" as const };
+    console.info("library:stale", reason);
+    return { ...stale, private: privateCache };
+  };
 
   let url: string;
   if (type === "exclusive_resource") {
@@ -932,14 +1081,14 @@ async function getDetail(
   }
 
   const call = (access: string | null) =>
-    fetchBsi(url, key, access, fetchImpl, env);
+    fetchBsi(url, key, access, fetchImpl, env, BSI_TIMEOUT_DETAIL_MS);
 
   let upstream: UpstreamResult;
   if (acting) {
     const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
       call(access),
     );
-    if (ran instanceof Response) return { kind: "unavailable" };
+    if (ran instanceof Response) return serveDetailStale("detail_acting");
     upstream = ran.result;
   } else {
     upstream = await call(null);
@@ -951,7 +1100,7 @@ async function getDetail(
     upstream.kind === "size" ||
     upstream.kind === "redirect"
   ) {
-    return { kind: "unavailable" };
+    return serveDetailStale(`detail_${upstream.kind}`);
   }
 
   if (upstream.status === 404) {
@@ -963,12 +1112,13 @@ async function getDetail(
     });
     const body: LibraryDetailBody = { resource: shell };
     const jsonText = JSON.stringify(body);
-    const sMax = privateCache ? DETAIL_S_MAXAGE_USER : DETAIL_S_MAXAGE_ANON;
+    const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
     await storeMapped(
       cache,
       keyReq,
       jsonText,
-      sMax,
+      fresh,
+      DETAIL_STORE,
       putMode,
       ctx,
       privateCache,
@@ -978,14 +1128,14 @@ async function getDetail(
 
   if (upstream.status !== 200) {
     console.info("library:detail_upstream", upstream.status);
-    return { kind: "unavailable" };
+    return serveDetailStale("detail_status");
   }
 
   let json: unknown;
   try {
     json = JSON.parse(upstream.text);
   } catch {
-    return { kind: "unavailable" };
+    return serveDetailStale("detail_json");
   }
 
   const mapped = mapDetailBody(json, type);
@@ -998,12 +1148,13 @@ async function getDetail(
       );
       if (alt) {
         const jsonText = JSON.stringify(alt);
-        const sMax = privateCache ? DETAIL_S_MAXAGE_USER : DETAIL_S_MAXAGE_ANON;
+        const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
         await storeMapped(
           cache,
           keyReq,
           jsonText,
-          sMax,
+          fresh,
+          DETAIL_STORE,
           putMode,
           ctx,
           privateCache,
@@ -1016,12 +1167,21 @@ async function getDetail(
         };
       }
     }
-    return { kind: "unavailable" };
+    return serveDetailStale("detail_map");
   }
 
   const jsonText = JSON.stringify(mapped);
-  const sMax = privateCache ? DETAIL_S_MAXAGE_USER : DETAIL_S_MAXAGE_ANON;
-  await storeMapped(cache, keyReq, jsonText, sMax, putMode, ctx, privateCache);
+  const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
+  await storeMapped(
+    cache,
+    keyReq,
+    jsonText,
+    fresh,
+    DETAIL_STORE,
+    putMode,
+    ctx,
+    privateCache,
+  );
   return {
     kind: mapped.resource.locked ? "locked" : "ok",
     body: mapped,
