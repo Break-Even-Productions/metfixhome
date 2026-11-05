@@ -21,7 +21,7 @@ import { Link } from "wouter";
 import CopyrightText from "@/components/CopyrightText";
 import { CmsLink } from "@/components/CmsLink";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { useAffiliatePage } from "@/hooks/useSanityContent";
+import { useAffiliatePage } from "@/hooks/useSiteContent";
 import type { AffiliateBenefitIcon } from "@/data/fallbackAffiliate";
 import { HighlightedHeadlineText } from "@/lib/highlightedText";
 import "./become-an-affiliate.css";

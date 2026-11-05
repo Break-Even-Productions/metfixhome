@@ -1,6 +1,6 @@
 /**
- * @vitest-environment node
- * SN-T2 — SITE_SETTINGS_QUERY + fetchSiteSettings memoisation.
+ * Site settings and the course catalog are local. Search topic tabs come from
+ * the library API (`resolveSearchTabs`), not from a CMS query.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -9,72 +9,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
-const { sanityFetch } = vi.hoisted(() => ({
-  sanityFetch: vi.fn(),
-}));
-
-vi.mock("@/lib/sanity", () => ({
-  isSanityConfigured: true,
-  sanityClient: {
-    fetch: (...args: unknown[]) => sanityFetch(...args),
-  },
-}));
-
-describe("SN-T2 SITE_SETTINGS_QUERY + memoisation", () => {
+describe("local site settings", () => {
   beforeEach(() => {
     vi.resetModules();
-    sanityFetch.mockReset();
-    sanityFetch.mockResolvedValue({
-      copyrightText: "© test",
-      navLinks: [{ label: "Library", href: "/library", openInNewTab: false }],
-      searchTopics: [
-        { topic_id: 13, label: "Women's Health & Hormones" },
-        { topic_id: 99, label: "Professional Library" },
-      ],
-    });
   });
 
-  it("SITE_SETTINGS_QUERY contains searchTopics[]{topic_id,label}", async () => {
-    const { SITE_SETTINGS_QUERY } = await import("@/lib/content");
-    expect(SITE_SETTINGS_QUERY.replace(/\s+/g, " ")).toMatch(
-      /searchTopics\[\]\{\s*topic_id,\s*label\s*\}/,
-    );
-    expect(SITE_SETTINGS_QUERY).not.toMatch(/typeSlug|bsiTermId/);
-  });
-
-  it("GROQ searchTopics projection appears once in content.ts", () => {
+  it("content.ts does not query a CMS", () => {
     const contentSrc = readFileSync(join(ROOT, "client/src/lib/content.ts"), "utf8");
-    const groqHits = contentSrc.match(
-      /searchTopics\[\]\{\s*topic_id,\s*label\s*\}/g,
-    );
-    expect(groqHits).toHaveLength(1);
+    expect(contentSrc).not.toMatch(/_type ==|@sanity|sanityClient|apicdn\.sanity\.io/);
   });
 
-  it("two fetchSiteSettings share one sanityClient.fetch", async () => {
+  it("fetchSiteSettings is the local nav and copyright, with no topic overrides", async () => {
     const { fetchSiteSettings } = await import("@/lib/content");
+    const { DEFAULT_COPYRIGHT_TEXT, DEFAULT_NAV_LINKS } = await import("@/lib/contentTypes");
     const a = await fetchSiteSettings();
     const b = await fetchSiteSettings();
-    expect(sanityFetch).toHaveBeenCalledTimes(1);
-    expect(a.searchTopics).toEqual([
-      { topic_id: 13, label: "Women's Health & Hormones" },
-      { topic_id: 99, label: "Professional Library" },
-    ]);
+    expect(a.copyrightText).toBe(DEFAULT_COPYRIGHT_TEXT);
+    expect([...a.navLinks]).toEqual([...DEFAULT_NAV_LINKS]);
+    expect(a.searchTopics).toEqual([]);
     expect(b).toBe(a);
   });
 
-  it("N6: Sanity failure does not memoize forever — next call retries", async () => {
-    sanityFetch
-      .mockRejectedValueOnce(new Error("cdn down"))
-      .mockResolvedValueOnce({
-        copyrightText: "© recovered",
-        navLinks: [],
-        searchTopics: [{ topic_id: 11, label: "A" }],
-      });
-    const { fetchSiteSettings } = await import("@/lib/content");
-    const first = await fetchSiteSettings();
-    expect(first.searchTopics).toEqual([]);
-    const second = await fetchSiteSettings();
-    expect(sanityFetch).toHaveBeenCalledTimes(2);
-    expect(second.searchTopics).toEqual([{ topic_id: 11, label: "A" }]);
+  it("fetchCourses returns the local catalog", async () => {
+    const { fetchCourses } = await import("@/lib/content");
+    const { FALLBACK_COURSES } = await import("@/data/fallbackCourses");
+    await expect(fetchCourses()).resolves.toBe(FALLBACK_COURSES);
   });
 });

@@ -6,8 +6,6 @@ import { SectionPad } from "./SectionCard";
 type HomeTestimonialsProps = {
   copy: LandingCopy;
   audience: AudienceHref;
-  /** Sanity testimonials reserved; audience stories win when present (GAP-4). */
-  sanityTestimonials?: unknown;
 };
 
 const partners = [
@@ -98,12 +96,7 @@ function Column({
   );
 }
 
-export function HomeTestimonials({
-  copy,
-  audience,
-  sanityTestimonials: _sanity,
-}: HomeTestimonialsProps) {
-  void _sanity;
+export function HomeTestimonials({ copy, audience }: HomeTestimonialsProps) {
   const base = columnsFor(audience);
   const marqueeRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);

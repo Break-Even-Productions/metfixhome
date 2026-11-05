@@ -14,7 +14,7 @@ import "@/components/home/home.css";
 import { NavSearchModal } from "@/components/NavSearchModal";
 import { useJoinFlowOptional } from "@/contexts/JoinFlowContext";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
-import { useSiteSettings } from "@/hooks/useSanityContent";
+import { useSiteSettings } from "@/hooks/useSiteContent";
 import {
   audienceFromHash,
   audienceTheme,
@@ -91,7 +91,7 @@ function readAudience(): AudienceHref {
   return audienceFromHash(window.location.hash) ?? DEFAULT_AUDIENCE;
 }
 
-/** §3a nav list — Sanity links filtered; dropped beta items removed. */
+/** §3a nav list — dropped beta items removed. */
 export function navLinksFromSettings(links: readonly NavLink[] | undefined): NavLink[] {
   const source = links && links.length > 0 ? links : DEFAULT_NAV_LINKS;
   return [...source].filter(

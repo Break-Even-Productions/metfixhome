@@ -49,7 +49,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-vi.mock("@/hooks/useSanityContent", () => ({
+vi.mock("@/hooks/useSiteContent", () => ({
   useHomeContent: () => ({
     home: {
       foundations: {

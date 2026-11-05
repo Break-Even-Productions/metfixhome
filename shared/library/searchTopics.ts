@@ -1,6 +1,6 @@
 import type { LibraryFilterTerm } from "./types";
 
-/** One Sanity `searchTopics` row (Studio + CDN). E2/E3: topic_id only. */
+/** Optional ordered topic override. The site passes none; tabs come from the library API. */
 export type SearchTopicRow = {
   topic_id?: number;
   label?: string;
@@ -17,18 +17,18 @@ function positiveInt(n: unknown): n is number {
 }
 
 /**
- * Ethan E2: Sanity rows first (Sanity order), then API topics (API order),
- * deduped by topic_id (first wins — Sanity label overrides API name).
- * Both empty/fail → []. No hardcoded defaults.
+ * Optional override rows first (given order), then API topics (API order),
+ * deduped by topic_id (first wins — an override label replaces the API name).
+ * The site passes an empty override list. Both empty → []. No hardcoded defaults.
  */
 export function resolveSearchTabs(
-  sanityRows: SearchTopicRow[] | null | undefined,
+  overrideRows: SearchTopicRow[] | null | undefined,
   apiTopics: LibraryFilterTerm[] | null | undefined,
 ): SearchTab[] {
   const out: SearchTab[] = [];
   const seen = new Set<number>();
 
-  for (const row of sanityRows ?? []) {
+  for (const row of overrideRows ?? []) {
     if (!row || !positiveInt(row.topic_id)) continue;
     if (seen.has(row.topic_id)) continue;
     seen.add(row.topic_id);

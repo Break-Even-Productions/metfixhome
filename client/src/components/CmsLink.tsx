@@ -10,7 +10,7 @@ export function isSafeCmsHref(href: string): boolean {
   return !/^(?:javascript|data)\s*:/i.test(trimmed);
 }
 
-/** Renders an internal wouter Link or external <a> from Sanity CTA data. */
+/** Renders an internal wouter Link or external <a> from a CTA. */
 export function CmsLink({
   cta,
   className,

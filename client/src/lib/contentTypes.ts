@@ -41,7 +41,7 @@ export type NavLink = {
   openInNewTab: boolean;
 };
 
-/** Sanity `searchTopics` row (E2: topic_id required; label optional). */
+/** Optional search-tab override. The site leaves this empty and uses library API topics. */
 export type SearchTopicSetting = {
   topic_id: number;
   label?: string;
@@ -56,7 +56,7 @@ export type SiteSettings = {
 export const DEFAULT_COPYRIGHT_TEXT =
   "© 2026 MetFix. The Metabolic Fix. All rights reserved.";
 
-/** Fallback top-nav links when Sanity is unavailable or empty (§3a route map). */
+/** Top-nav links (§3a route map). */
 export const DEFAULT_NAV_LINKS = [
   { label: "Library", href: "/library", openInNewTab: false },
   { label: "Courses", href: "/courses", openInNewTab: false },

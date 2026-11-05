@@ -39,7 +39,7 @@ vi.mock("@/lib/affiliateContent", () => ({
 
 async function loadHooks() {
   vi.resetModules();
-  return import("./useSanityContent");
+  return import("./useSiteContent");
 }
 
 beforeEach(() => {
@@ -55,7 +55,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("B3 Sanity fetch once", () => {
+describe("B3 local content loads once", () => {
   it("useHomeContent fetches each query once; remount does not refetch", async () => {
     const { useHomeContent } = await loadHooks();
     const first = renderHook(() => useHomeContent());

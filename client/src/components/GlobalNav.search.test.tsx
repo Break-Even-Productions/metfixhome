@@ -8,7 +8,7 @@ import { SEARCH_HREF } from "@/const";
 
 const setLocation = vi.fn();
 
-vi.mock("@/hooks/useSanityContent", () => ({
+vi.mock("@/hooks/useSiteContent", () => ({
   useSiteSettings: () => ({
     settings: { copyrightText: "© MetFix", navLinks: [] },
     loading: false,

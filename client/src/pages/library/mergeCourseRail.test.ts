@@ -113,7 +113,7 @@ describe("mergeCourseRail", () => {
           id: "custom",
           title: "Sanity name",
           bsiPostId: 42,
-          image: "https://cdn.sanity.io/photo.jpg",
+          image: "https://cdn.example/photo.jpg",
         }),
       ],
       [
@@ -127,7 +127,7 @@ describe("mergeCourseRail", () => {
     );
     expect(cards).toHaveLength(1);
     expect(cards[0]?.title).toBe("Sanity name");
-    expect(cards[0]?.image).toBe("https://cdn.sanity.io/photo.jpg");
+    expect(cards[0]?.image).toBe("https://cdn.example/photo.jpg");
     expect(cards[0]?.excerpt).toBe("From API");
   });
 

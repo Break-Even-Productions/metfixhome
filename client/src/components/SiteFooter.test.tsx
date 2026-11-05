@@ -15,7 +15,7 @@ import {
 } from "./siteFooterNav";
 import { SiteFooter } from "./SiteFooter";
 
-vi.mock("@/hooks/useSanityContent", () => ({
+vi.mock("@/hooks/useSiteContent", () => ({
   useSiteSettings: () => ({
     settings: { copyrightText: `© ${new Date().getFullYear()} MetFix`, navLinks: [] },
     loading: false,

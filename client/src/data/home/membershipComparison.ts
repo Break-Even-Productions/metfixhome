@@ -18,11 +18,11 @@ export type MembershipComparisonRow = {
 export type MembershipComparisonContent = {
   featuresLabel: string;
   proLabel: string;
-  /** Kept for Sanity; not rendered in the comparison header. */
+  /** Not rendered in the comparison header. */
   proSublabel?: string;
   freeLabel: string;
   affiliateLabel: string;
-  /** Kept for Sanity; not rendered in the comparison header. */
+  /** Not rendered in the comparison header. */
   affiliateSublabel?: string;
   proCtaLabel: string;
   affiliateCtaLabel: string;
@@ -51,7 +51,7 @@ const checkNote = (note: string): MembershipComparisonCell => ({ kind: "check", 
 const cross = { kind: "cross" as const };
 const text = (value: string): MembershipComparisonCell => ({ kind: "text", value });
 
-/** Code fallback when Sanity has no membershipComparison (or partial data). */
+/** Local membership comparison table. */
 export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
   featuresLabel: "Membership Features",
   proLabel: "MetFix Pro",

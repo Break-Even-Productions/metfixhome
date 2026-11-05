@@ -185,7 +185,7 @@ describe("T-E-48 / TIMER1 timers", () => {
 describe("T-E-38 / CACHE1 allSettled", () => {
   it("home content loader uses Promise.allSettled (0 Promise.all()", () => {
     const src = readFileSync(
-      fileURLToPath(new URL("../../hooks/useSanityContent.ts", import.meta.url)),
+      fileURLToPath(new URL("../../hooks/useSiteContent.ts", import.meta.url)),
       "utf8",
     );
     expect(src).toMatch(/Promise\.allSettled\s*\(/);

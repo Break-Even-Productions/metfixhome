@@ -70,9 +70,6 @@ jobs:
 
       - name: Build static site
         run: npm run build:cf
-        env:
-          VITE_SANITY_PROJECT_ID: etg9lezr
-          VITE_SANITY_DATASET: production
 
       - name: WJ-WHOP-1 / WT-J1 repo+dist scan (after build:cf)
         run: MFX_REQUIRE_DIST=1 npx vitest run join.repo-scan
@@ -188,9 +185,6 @@ jobs:
 
       - name: Build static site (HTMLRewriter pool needs dist)
         run: npm run build:cf
-        env:
-          VITE_SANITY_PROJECT_ID: etg9lezr
-          VITE_SANITY_DATASET: production
 
       - name: Pool-workers tests (HTMLRewriter + SessionDO AU7.6)
         run: before=$(git status --porcelain --ignored --untracked-files=all); npm run test:workers; after=$(git status --porcelain --ignored --untracked-files=all); if [ "$before" != "$after" ]; then echo "V12(b) porcelain changed"; diff -u <(printf '%s\n' "$before") <(printf '%s\n' "$after") || true; exit 1; fi
@@ -213,9 +207,6 @@ jobs:
 
       - name: Build static site
         run: npm run build:cf
-        env:
-          VITE_SANITY_PROJECT_ID: etg9lezr
-          VITE_SANITY_DATASET: production
 
       - name: Assert Playwright + axe pins (T-F-60)
         run: |

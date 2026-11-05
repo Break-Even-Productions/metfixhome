@@ -2,23 +2,18 @@ import { LazyMotion, AnimatePresence, domAnimation, m } from "framer-motion";
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Faq } from "@/data/home/faqs";
-import type { HomeFaq as SanityFaq } from "@/lib/homeTypes";
 import { easeOutExpo } from "./motion";
 import { Reveal } from "./Reveal";
 import { SectionCard, SectionPad } from "./SectionCard";
 
 type HomeFaqProps = {
   faqs: readonly Faq[];
-  sanityFaqs?: SanityFaq[];
 };
 
-export function HomeFaq({ faqs, sanityFaqs }: HomeFaqProps) {
+export function HomeFaq({ faqs }: HomeFaqProps) {
   const [open, setOpen] = useState<number | null>(0);
 
-  const items: Faq[] = useMemo(() => {
-    if (faqs.length > 0) return [...faqs];
-    return (sanityFaqs ?? []).map((f) => ({ q: f.question, a: f.answer }));
-  }, [faqs, sanityFaqs]);
+  const items: Faq[] = useMemo(() => [...faqs], [faqs]);
 
   const jsonLd = useMemo(() => {
     return {
@@ -47,6 +42,9 @@ export function HomeFaq({ faqs, sanityFaqs }: HomeFaqProps) {
             </a>
           </Reveal>
 
+          {items.length === 0 ? (
+            <p className="mt-10 text-sm text-cream/65">No questions are published yet.</p>
+          ) : (
           <div className="mt-10 divide-y divide-line-light border-t border-line-light">
             {items.map((item, i) => {
               const isOpen = open === i;
@@ -93,6 +91,7 @@ export function HomeFaq({ faqs, sanityFaqs }: HomeFaqProps) {
               );
             })}
           </div>
+          )}
         </SectionPad>
         <script
           type="application/ld+json"

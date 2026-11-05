@@ -15,17 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
 import type { LibraryResource } from "@shared/library";
 
-const { sanityFetch } = vi.hoisted(() => ({
-  sanityFetch: vi.fn(),
-}));
-
-vi.mock("@/lib/sanity", () => ({
-  isSanityConfigured: true,
-  sanityClient: {
-    fetch: (...args: unknown[]) => sanityFetch(...args),
-  },
-}));
-
 class NeverIntersecting {
   observe() {}
   disconnect() {}
@@ -76,17 +65,6 @@ describe("librarySearchHandoff SS16 / TC-T9", () => {
 
   async function loadModules() {
     vi.resetModules();
-    sanityFetch.mockReset();
-    sanityFetch.mockImplementation(async (query: string) => {
-      if (typeof query === "string" && query.includes("siteSettings")) {
-        return {
-          copyrightText: "©",
-          navLinks: [],
-          searchTopics: [],
-        };
-      }
-      return [];
-    });
     LibraryPage = (await import("./LibraryPage")).default;
     SearchPage = (await import("../search/SearchPage")).default;
   }

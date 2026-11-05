@@ -2,14 +2,14 @@
  * Classes.tsx — MetFix Courses Page
  * F1 style parity — cream / ink / gold (Playfair + Plus Jakarta)
  * Layout: sticky course nav → expandable detail cards
- * Course content is editable in Sanity (with local fallbacks).
+ * Course content comes from the local catalog.
  */
 import { useEffect, useRef, useState } from "react";
 import { assetUrl } from "@/const";
 import CopyrightText from "@/components/CopyrightText";
 import { UpgradePrompt } from "@/components/UpgradePrompt";
 import type { Course } from "@/lib/contentTypes";
-import { useCourses } from "@/hooks/useSanityContent";
+import { useCourses } from "@/hooks/useSiteContent";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { ArrowRight, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Link } from "wouter";

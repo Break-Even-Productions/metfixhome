@@ -23,7 +23,7 @@ import {
   FALLBACK_TESTIMONIALS,
 } from "@/data/fallbackHome";
 
-/** Module-level memoised caches (B3) — one network fetch per query per page load. */
+/** Module-level memo (B3) — local content is read once per page load. */
 let siteSettingsPromise: Promise<SiteSettings> | null = null;
 let homeContentPromise: Promise<{
   home: HomePageContent;

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { useSiteSettings } from "@/hooks/useSanityContent";
+import { useSiteSettings } from "@/hooks/useSiteContent";
 
 type CopyrightTextProps = {
   /** Visual density for different footer layouts */
@@ -9,7 +9,7 @@ type CopyrightTextProps = {
 };
 
 /**
- * Renders Sanity-managed copyright text.
+ * Renders the site copyright line.
  * Long paragraphs wrap cleanly and stay readable in footer layouts.
  */
 export default function CopyrightText({

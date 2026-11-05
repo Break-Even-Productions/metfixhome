@@ -1,6 +1,6 @@
 import type { Course } from "@/lib/contentTypes";
 
-/** Local fallbacks used when Sanity is not configured or returns no courses. */
+/** Local course catalog used by /classes and the library Courses rail. */
 export const FALLBACK_COURSES: Course[] = [
   {
     id: "free-class",

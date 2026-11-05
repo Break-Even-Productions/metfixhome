@@ -16,13 +16,6 @@ import { Route, Router, Switch } from "wouter";
 import type { LibraryResource } from "@shared/library";
 import SearchPage from "./SearchPage";
 
-const { sanityFetch } = vi.hoisted(() => ({ sanityFetch: vi.fn() }));
-
-vi.mock("@/lib/sanity", () => ({
-  isSanityConfigured: true,
-  sanityClient: { fetch: (...args: unknown[]) => sanityFetch(...args) },
-}));
-
 /** Avoid cross-test pollution of the module-level filters promise. */
 vi.mock("@/pages/library/filtersCache", () => ({
   getLibraryFilters: (signal?: AbortSignal) =>
@@ -116,14 +109,6 @@ function searchUrls(): string[] {
 }
 
 function defaultMocks() {
-  sanityFetch.mockResolvedValue({
-    copyrightText: "© test",
-    navLinks: [],
-    searchTopics: [
-      { topic_id: 13, label: "Women's Health & Hormones" },
-      { topic_id: 99, label: "Professional Library" },
-    ],
-  });
   fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/library/filters")) {
@@ -150,7 +135,6 @@ function defaultMocks() {
 describe("/library/search mount", () => {
   beforeEach(() => {
     fetchMock.mockReset();
-    sanityFetch.mockReset();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     vi.stubGlobal("IntersectionObserver", NeverIntersecting);
     window.history.replaceState(null, "", "/library/search");
@@ -180,7 +164,7 @@ describe("/library/search mount", () => {
     expect(input.getAttribute("aria-label")).toBeTruthy();
   });
 
-  it("SS5 pills + SS7 Sanity-first tabs", async () => {
+  it("SS5 pills + SS7 API topic tabs", async () => {
     render(<Mounted />);
     await screen.findByRole("heading", { level: 1 });
     const pills = screen.getByRole("group", { name: "Content types" });
@@ -195,10 +179,9 @@ describe("/library/search mount", () => {
       const tabs = screen.getByRole("tablist");
       expect([...tabs.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual([
         "All",
-        "Women's Health & Hormones",
-        "Professional Library",
         "Metabolic Health",
         "Coaches",
+        "Women's Health",
       ]);
     });
   });
@@ -350,8 +333,7 @@ describe("/library/search mount", () => {
     expect(container.innerHTML.includes("GATED-VID-91")).toBe(false);
   });
 
-  it("SN-T4 both sources fail → only All", async () => {
-    sanityFetch.mockRejectedValue(new Error("down"));
+  it("SN-T4 filters fail → only All", async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/api/library/filters")) {
@@ -424,14 +406,12 @@ describe("/library/search mount", () => {
     ).toBe("true");
   });
 
-  it("SS17(c) re-click selected tab → 0 new searches; CQ-T1 tab adds 1 search 0 Sanity", async () => {
+  it("SS17(c) re-click selected tab → 0 new searches; selecting a tab adds 1 search", async () => {
     render(<Mounted />);
     await screen.findByRole("tab", { name: "Metabolic Health" });
-    const sanityBefore = sanityFetch.mock.calls.length;
     const before = searchUrls().length;
     fireEvent.click(screen.getByRole("tab", { name: "Metabolic Health" }));
     await waitFor(() => expect(searchUrls().length).toBe(before + 1));
-    expect(sanityFetch.mock.calls.length).toBe(sanityBefore);
     const mid = searchUrls().length;
     fireEvent.click(screen.getByRole("tab", { name: "Metabolic Health" }));
     await act(async () => {

@@ -227,8 +227,8 @@ export default function LibraryPage() {
   const [locked, setLocked] = useState<LibraryResource | null>(null);
   const [categories, setCategories] = useState<LibraryFilterTerm[]>([]);
   const [filtersReady, setFiltersReady] = useState(false);
-  const [sanityCourses, setSanityCourses] = useState<Course[]>([]);
-  const [sanityCoursesReady, setSanityCoursesReady] = useState(false);
+  const [catalogCourses, setCatalogCourses] = useState<Course[]>([]);
+  const [catalogCoursesReady, setCatalogCoursesReady] = useState(false);
   const [refresh, setRefresh] = useState(0);
 
   const archiveMode = Boolean(
@@ -250,13 +250,13 @@ export default function LibraryPage() {
       });
     void fetchCourses()
       .then((courses) => {
-        if (!c.signal.aborted) setSanityCourses(courses);
+        if (!c.signal.aborted) setCatalogCourses(courses);
       })
       .catch(() => {
         /* optional */
       })
       .finally(() => {
-        if (!c.signal.aborted) setSanityCoursesReady(true);
+        if (!c.signal.aborted) setCatalogCoursesReady(true);
       });
     return () => c.abort();
   }, []);
@@ -413,11 +413,11 @@ export default function LibraryPage() {
     return "Filtered results";
   }, [submittedQuery, activeType, activeCategory, activeSection]);
 
-  /** Sanity and BSI courses merge field-by-field; empty Sanity values take the BSI value. */
+  /** Local catalog and BSI courses merge field-by-field; empty catalog values take the BSI value. */
   const courseCards = useMemo(() => {
     const bsiCourses = coursesRail.status === "data" ? coursesRail.items : [];
-    return mergeCourseRail(sanityCourses, bsiCourses).slice(0, 12);
-  }, [coursesRail, sanityCourses]);
+    return mergeCourseRail(catalogCourses, bsiCourses).slice(0, 12);
+  }, [coursesRail, catalogCourses]);
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -646,12 +646,12 @@ export default function LibraryPage() {
                 </a>
               </div>
               {courseCards.length === 0 &&
-              (coursesRail.status === "loading" || !sanityCoursesReady) ? (
+              (coursesRail.status === "loading" || !catalogCoursesReady) ? (
                 <LibraryRailSkeleton label="Loading courses" />
               ) : courseCards.length === 0 ? (
                 <div className="library-stub">
                   <strong>Courses</strong>
-                  BSI LearnPress and Sanity classes will appear here.
+                  No courses are listed yet.
                 </div>
               ) : (
                 <div className="library-rail">

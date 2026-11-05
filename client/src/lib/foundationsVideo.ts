@@ -90,7 +90,7 @@ function fromVimeo(url: URL): FoundationsVideo | null {
   return vimeoEmbed(videoId, privacyHash);
 }
 
-/** Accept watch, share, Shorts, or embed URLs from Sanity. */
+/** Accept watch, share, Shorts, or embed URLs. */
 export function parseFoundationsVideoUrl(raw: string): FoundationsVideo | null {
   if (!raw?.trim()) return null;
   const url = parseHttps(raw);

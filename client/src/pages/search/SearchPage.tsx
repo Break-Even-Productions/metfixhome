@@ -11,7 +11,6 @@ import {
 } from "@shared/library";
 import { BackToTop } from "@/components/BackToTop";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { useSiteSettings } from "@/hooks/useSanityContent";
 import { JoinModal } from "@/pages/library/JoinModal";
 import { ResourceCard } from "@/pages/library/ResourceCard";
 import { getLibraryFilters } from "@/pages/library/filtersCache";
@@ -46,7 +45,6 @@ export default function SearchPage() {
     ogUrl: "https://metfix.org/library/search",
   });
 
-  const { settings } = useSiteSettings();
   const [, setLocation] = useLocation();
   // N2/N4: URL state from wouter (subscribes to push/replace); no second mount read.
   const search = useSearch();
@@ -65,14 +63,14 @@ export default function SearchPage() {
     void getLibraryFilters(c.signal)
       .then((f) => {
         if (c.signal.aborted) return;
-        setTabs(resolveSearchTabs(settings.searchTopics, f.topics));
+        setTabs(resolveSearchTabs([], f.topics));
       })
       .catch(() => {
         if (c.signal.aborted) return;
-        setTabs(resolveSearchTabs(settings.searchTopics, []));
+        setTabs([]);
       });
     return () => c.abort();
-  }, [settings.searchTopics]);
+  }, []);
 
   const commitState = useCallback(
     (next: SearchUrlState) => {

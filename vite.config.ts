@@ -2,7 +2,6 @@ import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 import { asteriskGlass } from "./vite/asterisk-glass";
 
@@ -13,16 +12,8 @@ const plugins = [
   jsxLocPlugin(),
 ];
 
-export default defineConfig(({ mode }) => {
-  // R4b: refuse a client Sanity read token on serve and build. Always on.
+export default defineConfig(() => {
   const envDir = path.resolve(import.meta.dirname);
-  const env = { ...loadEnv(mode, envDir, ""), ...process.env };
-  const sanityReadToken = String(env.VITE_SANITY_API_READ_TOKEN ?? "").trim();
-  if (sanityReadToken) {
-    throw new Error(
-      "VITE_SANITY_API_READ_TOKEN must not be set; the browser client reads Sanity over the public CDN without a token.",
-    );
-  }
 
   return {
     base: "/",

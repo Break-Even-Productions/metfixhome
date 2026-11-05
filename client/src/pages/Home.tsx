@@ -27,7 +27,7 @@ import { expertsFor } from "@/data/home/experts";
 import { faqsFor } from "@/data/home/faqs";
 import { HOME_CANONICAL, metaForAudience } from "@/data/home/meta";
 import { basePath, HOME_SCROLL_KEY, scrollToHomeSection } from "@/const";
-import { useHomeContent } from "@/hooks/useSanityContent";
+import { useHomeContent } from "@/hooks/useSiteContent";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -45,7 +45,7 @@ function resolveScrollTarget(raw: string): string | null {
 
 export default function Home() {
   const [audience, setAudience] = useState<AudienceHref>(() => readAudience());
-  const { home, homeCourses, faqs: sanityFaqs, experts } = useHomeContent();
+  const { home, homeCourses, experts } = useHomeContent();
   const joinFlow = useJoinFlowOptional();
   const copy = useMemo(() => landingCopyFor(audience), [audience]);
   const meta = useMemo(() => metaForAudience(audience), [audience]);
@@ -124,7 +124,7 @@ export default function Home() {
         <HomeResources title={copy.resourcesTitle} resourceLibrary={home.resourceLibrary} />
         <HomeTestimonials copy={copy} audience={audience} />
         <HomeTargetKept home={home} />
-        <HomeFaq faqs={faqList} sanityFaqs={sanityFaqs} />
+        <HomeFaq faqs={faqList} />
       </main>
       {/* P-E-15c' / LR-E7: footer is sibling of main, not a descendant */}
       <SiteFooter

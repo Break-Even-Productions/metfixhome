@@ -2,7 +2,7 @@ import type { LibraryResource } from "@shared/library";
 import { isLockedCard } from "@shared/library";
 import type { Course } from "@/lib/contentTypes";
 
-/** One Courses-rail card. Display strings are filled from Sanity, then BSI. */
+/** One Courses-rail card. Display strings are filled from the local catalog, then BSI. */
 export type CourseRailCard = {
   key: string;
   title: string;
@@ -28,8 +28,8 @@ function normTitle(value: string): string {
 }
 
 /** Exact title, or the shorter title is the start of the longer one ("Fit for Duty"). */
-export function courseTitlesAlign(sanityTitle: string, apiTitle: string): boolean {
-  const left = normTitle(sanityTitle);
+export function courseTitlesAlign(catalogTitle: string, apiTitle: string): boolean {
+  const left = normTitle(catalogTitle);
   const right = normTitle(apiTitle);
   if (!left || !right) return false;
   if (left === right) return true;
@@ -82,17 +82,17 @@ function toCard(course: Course | null, resource: LibraryResource | null): Course
 }
 
 /**
- * One card per course. Sanity order first, then BSI courses that did not match.
+ * One card per course. Catalog order first, then BSI courses that did not match.
  * Matching uses bsiPostId, then title, then a distinctive slug inside the permalink.
- * Each display field uses the first non-empty value (Sanity, then BSI).
+ * Each display field uses the first non-empty value (catalog, then BSI).
  */
 export function mergeCourseRail(
-  sanityCourses: Course[],
+  catalogCourses: Course[],
   bsiCourses: LibraryResource[],
 ): CourseRailCard[] {
   const used = new Set<number>();
   const cards: CourseRailCard[] = [];
-  for (const course of sanityCourses) {
+  for (const course of catalogCourses) {
     const resource = matchResource(course, bsiCourses, used);
     if (resource) used.add(resource.id);
     cards.push(toCard(course, resource ?? null));
