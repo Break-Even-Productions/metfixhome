@@ -7,7 +7,7 @@ import {
   showOrganizationOwnerCard,
 } from "@shared/join";
 import { basePath } from "@/const";
-import { useCourses } from "@/hooks/useSanityContent";
+import { useCourses } from "@/hooks/useSiteContent";
 import { loadOverview, loadSubscriptions } from "@/lib/account";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import { fetchCsrf, postWhopCheckout } from "../api";
