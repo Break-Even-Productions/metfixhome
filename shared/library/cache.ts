@@ -1,8 +1,8 @@
 /** Cache API keys — anonymous public; gated responses must be user-salted. */
-/** v3: course purchase locks + member-gated page flags on listing payloads. */
+/** v4: longer store retention + X-Library-Fresh-Until for stale-on-timeout. */
 
 const ANON = "anon";
-const VER = "v3";
+const VER = "v4";
 
 export function librarySearchCacheKey(
   queryString: string,

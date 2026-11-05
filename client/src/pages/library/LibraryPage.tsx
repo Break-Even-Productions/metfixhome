@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from "react";
 import { useLocation } from "wouter";
 import {
   BRAND_CATEGORY_SLUGS,
@@ -43,6 +51,15 @@ type SectionSlug = "featured" | "free" | "gated" | "archives";
 const FEATURED_LIMIT = 6;
 const ARCHIVE_RAIL_LIMIT = 9;
 
+/** Keep a prior good rail instead of blanking to error on transient failures. */
+function softFailRail(setState: Dispatch<SetStateAction<RailState>>): void {
+  setState((prev) =>
+    prev.status === "data" && prev.items.length > 0
+      ? prev
+      : { status: "error" },
+  );
+}
+
 /** Pass `null` to skip the network call (keeps loading until params are ready). */
 function useRail(params: SearchParams | null, refreshKey: number): RailState {
   const [state, setState] = useState<RailState>({ status: "loading" });
@@ -53,7 +70,11 @@ function useRail(params: SearchParams | null, refreshKey: number): RailState {
       return;
     }
     const controller = new AbortController();
-    setState({ status: "loading" });
+    setState((prev) =>
+      prev.status === "data" && prev.items.length > 0
+        ? prev
+        : { status: "loading" },
+    );
     void (async () => {
       try {
         const body = await fetchLibrarySearch(params, controller.signal);
@@ -61,7 +82,7 @@ function useRail(params: SearchParams | null, refreshKey: number): RailState {
         setState({ status: "data", items: body.resources });
       } catch {
         if (controller.signal.aborted) return;
-        setState({ status: "error" });
+        softFailRail(setState);
       }
     })();
     return () => controller.abort();
@@ -79,7 +100,11 @@ function useArchiveRail(limit: number | null, refreshKey: number): RailState {
       return;
     }
     const controller = new AbortController();
-    setState({ status: "loading" });
+    setState((prev) =>
+      prev.status === "data" && prev.items.length > 0
+        ? prev
+        : { status: "loading" },
+    );
     void (async () => {
       try {
         const body = await fetchLibraryArchive(
@@ -90,7 +115,7 @@ function useArchiveRail(limit: number | null, refreshKey: number): RailState {
         setState({ status: "data", items: body.resources });
       } catch {
         if (controller.signal.aborted) return;
-        setState({ status: "error" });
+        softFailRail(setState);
       }
     })();
     return () => controller.abort();
@@ -107,15 +132,30 @@ function usePopular(limit: number | null, refreshKey: number): RailState {
       return;
     }
     const controller = new AbortController();
-    setState({ status: "loading" });
+    setState((prev) =>
+      prev.status === "data" && prev.items.length > 0
+        ? prev
+        : { status: "loading" },
+    );
     void (async () => {
+      const load = () => fetchLibraryPopular({ limit }, controller.signal);
       try {
-        const body = await fetchLibraryPopular({ limit }, controller.signal);
+        const body = await load();
         if (controller.signal.aborted) return;
         setState({ status: "data", items: body.resources });
       } catch {
         if (controller.signal.aborted) return;
-        setState({ status: "error" });
+        // One cheap retry for popular — cold BSI often clears on the second try.
+        try {
+          await new Promise((r) => setTimeout(r, 400));
+          if (controller.signal.aborted) return;
+          const body = await load();
+          if (controller.signal.aborted) return;
+          setState({ status: "data", items: body.resources });
+        } catch {
+          if (controller.signal.aborted) return;
+          softFailRail(setState);
+        }
       }
     })();
     return () => controller.abort();
