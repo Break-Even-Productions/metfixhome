@@ -80,6 +80,17 @@ describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
     }
   });
 
+  it("primary bar matches the mia-metfix labels", () => {
+    expect(GLOBAL_NAV_ITEMS.map((item) => item.label)).toEqual([
+      "Library",
+      "Courses",
+      "Programs",
+      "Daily Fix",
+      "Find a Gym",
+      "About",
+    ]);
+  });
+
   it("drops Find a Doctor and other beta-only items", () => {
     const labels = GLOBAL_NAV_ITEMS.map((i) => i.label.toLowerCase());
     expect(labels).not.toContain("find a doctor");

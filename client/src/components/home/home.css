@@ -221,7 +221,7 @@
 }
 
 .home-root .course-rail { padding-top: 0.75rem; padding-bottom: 1.75rem; }
-.home-root .course-photo { filter: blur(2px) brightness(0.9); }
+.home-root .course-photo { filter: brightness(0.9); }
 .home-root .card-body {
   background: color-mix(in srgb, var(--color-accent) 92%, white);
   color: var(--color-ink);
