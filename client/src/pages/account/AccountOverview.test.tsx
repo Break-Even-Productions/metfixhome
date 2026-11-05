@@ -214,6 +214,90 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(css).not.toMatch(/emilydesigns/i);
   });
 
+  it("shows next payment and usable tools for MetFix Pro", async () => {
+    render(
+      <Router>
+        <AccountOverview />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("Next Payment")).toBeTruthy());
+    const dailyFix = screen.getByRole("link", { name: /Daily Fix/i });
+    expect(dailyFix.getAttribute("href")).toBe("/the-daily-fix");
+    expect(screen.getAllByText("No web page yet").length).toBeGreaterThan(0);
+    expect(screen.queryByText("MetFix Admin")).toBeNull();
+    expect(document.querySelector('[data-tool="spark"]')?.getAttribute("data-state")).toBe(
+      "available",
+    );
+  });
+
+  it("hides next payment and locks tools when the account has no payments", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/account/overview")) {
+          return jsonResponse({
+            ...OVERVIEW_FIXTURE,
+            canonical_tier: "free",
+            badges: { ...OVERVIEW_FIXTURE.badges, affiliate: false, foundations_coach: false },
+            foundations_coach: {
+              active: false,
+              grant_reason: null,
+              granted_at: null,
+              expires_at: null,
+              seminar_checked_in: false,
+              metfix_essentials_completed: false,
+              metfix_essentials_certificate_claimed: false,
+            },
+          });
+        }
+        if (url.includes("/api/account/subscriptions")) {
+          return jsonResponse({ canonical_tier: "free", items: [] });
+        }
+        if (url.includes("/api/account/ltv-certificates") || url.includes("/api/account/spend")) {
+          return jsonResponse({ ...LTV300_AC, canonical_tier: "free" });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+    render(
+      <Router>
+        <AccountOverview />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("Meal plans")).toBeTruthy());
+    expect(screen.queryByText("Next Payment")).toBeNull();
+    expect(screen.queryByRole("link", { name: /Daily Fix/i })).toBeNull();
+    expect(document.querySelectorAll('[data-state="locked"]').length).toBe(7);
+  });
+
+  it("shows Admin and MetFix Admin when the account has those roles", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/account/overview")) {
+          return jsonResponse({
+            ...OVERVIEW_FIXTURE,
+            roles: ["administrator", "metfix_admin"],
+          });
+        }
+        if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_ACTIVE);
+        if (url.includes("/api/account/ltv-certificates") || url.includes("/api/account/spend")) {
+          return jsonResponse(LTV300_AC);
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+    render(
+      <Router>
+        <AccountOverview />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("MetFix Admin")).toBeTruthy());
+    expect(screen.getByText("Admin")).toBeTruthy();
+  });
+
   it("nav lists account routes including organization (DP-T-UI2)", async () => {
     const { ACCOUNT_NAV } = await import("./DashboardLayout");
     expect(ACCOUNT_NAV.map((n) => n.href)).toEqual([

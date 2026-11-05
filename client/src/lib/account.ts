@@ -35,6 +35,8 @@ export type AccountOverview = {
   tabs: unknown[];
   links: Record<string, unknown>;
   avatar_url?: string | null;
+  /** WordPress role slugs. Dashboard shows Admin and MetFix Admin only. */
+  roles?: string[];
 };
 
 export type SubscriptionItem = {
@@ -770,11 +772,31 @@ export function deriveMembershipStatus(
   return "Active";
 }
 
+/** True when a non-duplicate subscription has a real next charge or cancel date. */
+export function hasScheduledNextPayment(
+  subs: AccountSubscriptions | null | undefined,
+  status: MembershipStatusLabel,
+): boolean {
+  if (!subs || status === "Free" || !Array.isArray(subs.items) || subs.items.length === 0) {
+    return false;
+  }
+  const primary = subs.items.find((i) => !i.is_duplicate_stripe) ?? subs.items[0];
+  if (!primary) return false;
+  const iso =
+    status === "Canceling at Period End"
+      ? primary.current_period_end ?? primary.paid_through
+      : primary.paid_through ?? primary.current_period_end;
+  if (!iso) return false;
+  return Number.isFinite(new Date(iso).getTime());
+}
+
 export function formatNextPayment(
   subs: AccountSubscriptions | null | undefined,
   status: MembershipStatusLabel,
 ): string {
-  if (status === "Free") return "Free Tier";
+  if (!hasScheduledNextPayment(subs, status)) {
+    return status === "Free" ? "Free Tier" : "—";
+  }
   const primary =
     subs?.items.find((i) => !i.is_duplicate_stripe) ?? subs?.items[0];
   if (!primary) return "Free Tier";

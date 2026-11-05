@@ -5,6 +5,7 @@ import {
   type NotificationsPayload,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
+import { humanSettingLabel } from "./settingLabels";
 
 export default function AccountNotifications() {
   const [data, setData] = useState<NotificationsPayload | null>(null);
@@ -52,6 +53,10 @@ export default function AccountNotifications() {
   }
 
   const keys = Object.keys(prefs).length > 0 ? Object.keys(prefs) : ["email_digest", "product_updates"];
+  const rows = keys.flatMap((key) => {
+    const label = humanSettingLabel(key);
+    return label ? [{ key, label }] : [];
+  });
 
   return (
     <DashboardLayout
@@ -61,26 +66,24 @@ export default function AccountNotifications() {
       {error ? <p className="account-error">{error}</p> : null}
       <section className="account-card">
         <h2>Preferences</h2>
-        {keys.map((key) => (
-          <div className="account-toggle-row" key={key}>
-            <span>{key.replace(/_/g, " ")}</span>
+        {rows.map((row) => (
+          <label className="account-toggle-row" key={row.key}>
+            <span>{row.label}</span>
             <input
               type="checkbox"
-              checked={prefs[key] === true}
-              onChange={(e) => setPrefs((p) => ({ ...p, [key]: e.target.checked }))}
-              aria-label={key}
+              checked={prefs[row.key] === true}
+              onChange={(e) => setPrefs((p) => ({ ...p, [row.key]: e.target.checked }))}
             />
-          </div>
+          </label>
         ))}
-        <div className="account-toggle-row">
+        <label className="account-toggle-row">
           <span>Newsletter</span>
           <input
             type="checkbox"
             checked={newsletter}
             onChange={(e) => setNewsletter(e.target.checked)}
-            aria-label="newsletter"
           />
-        </div>
+        </label>
         <button
           type="button"
           className="account-btn"

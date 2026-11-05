@@ -578,6 +578,47 @@ function shapeConversion(raw: unknown): Record<string, unknown> | undefined {
   return out;
 }
 
+const STAFF_ROLE_SLUGS = ["administrator", "metfix_admin"] as const;
+
+function normalizeStaffRoleSlug(raw: unknown): (typeof STAFF_ROLE_SLUGS)[number] | null {
+  if (typeof raw !== "string") return null;
+  const slug = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  if (slug === "administrator" || slug === "admin" || slug === "site_admin") {
+    return "administrator";
+  }
+  if (slug === "metfix_admin" || slug === "metfixadmin") return "metfix_admin";
+  return null;
+}
+
+/** Admin and MetFix Admin only. Other role slugs are dropped. */
+function shapeStaffRoles(obj: Record<string, unknown>): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: unknown) => {
+    const slug = normalizeStaffRoleSlug(raw);
+    if (!slug || seen.has(slug)) return;
+    seen.add(slug);
+    found.push(slug);
+  };
+  const lists: unknown[] = [obj.roles, obj.wp_roles, obj.user_roles];
+  const user = asRecord(obj.user);
+  if (user) lists.push(user.roles);
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (typeof item === "string") {
+        push(item);
+        continue;
+      }
+      const rec = asRecord(item);
+      if (rec) push(rec.slug ?? rec.role ?? rec.name);
+    }
+  }
+  if (obj.is_administrator === true || obj.administrator === true) push("administrator");
+  if (obj.is_metfix_admin === true || obj.metfix_admin === true) push("metfix_admin");
+  return STAFF_ROLE_SLUGS.filter((slug) => found.includes(slug));
+}
+
 function shapeOverview(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
@@ -604,6 +645,7 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
     foundations_coach: coach,
     tabs: Array.isArray(obj.tabs) ? obj.tabs : [],
     links: asRecord(obj.links) ?? {},
+    roles: shapeStaffRoles(obj),
   };
 }
 
