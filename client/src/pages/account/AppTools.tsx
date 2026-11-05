@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { basePath } from "@/const";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
-import { METFIX_APP_TOOLS, metfixToolsUnlocked } from "./appTools";
+import { METFIX_APP_TOOLS, metfixToolsUnlocked } from "./metfixAppTools";
 
 type Props = {
   tier: CanonicalSubscriptionTier;
