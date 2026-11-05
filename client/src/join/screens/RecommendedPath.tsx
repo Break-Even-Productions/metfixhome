@@ -6,13 +6,33 @@ import {
   PRO_CARD_HEADER,
   showOrganizationOwnerCard,
 } from "@shared/join";
+import { basePath } from "@/const";
+import { sanitizeClientBillingUrl } from "@/lib/billing-url";
 import { fetchCsrf, postWhopCheckout } from "../api";
-import { recommendedArticles, recommendedCourses } from "../data";
-import type { JoinProfile, RecommendArticle, RecommendCourse, WhopPlan } from "../types";
+import type { JoinProfile, WhopPlan } from "../types";
 import { GoldButton } from "../ui";
 
-const railClass =
-  "-mx-5 mt-6 flex snap-x snap-mandatory gap-4 overflow-x-auto overscroll-x-contain px-5 pb-3 scrollbar-hide md:-mx-8 md:px-8";
+/** Live destinations already routed in App.tsx. Order is the recommended sequence. */
+const NEXT_STEPS = [
+  {
+    href: "/account",
+    label: "Go to Dashboard",
+    detail: "Open your account overview, billing, and courses.",
+    primary: true,
+  },
+  {
+    href: "/courses",
+    label: "Course list",
+    detail: "Browse the MetFix course catalog, including MetFix Essentials.",
+    primary: false,
+  },
+  {
+    href: "/library",
+    label: "Resources",
+    detail: "Read articles, podcasts, and the rest of the library.",
+    primary: false,
+  },
+] as const;
 
 const itemClass = "w-[17.5rem] shrink-0 snap-start sm:w-[20rem]";
 
@@ -26,7 +46,9 @@ function PhoneMock() {
       <div className="absolute inset-[8px] overflow-hidden rounded-[1.7rem] bg-[var(--join-cream)]">
         <div className="bg-[var(--join-ink)] px-3 pb-3 pt-7 text-[var(--join-cream)]">
           <p className="font-serif text-lg">MetFix</p>
-          <p className="mt-1 text-[10px] text-[var(--join-cream)]/60">Your next lesson</p>
+          <p className="mt-1 text-[10px] text-[var(--join-cream)]/60">
+            Your next lesson
+          </p>
         </div>
         <div className="space-y-2 p-3">
           <div className="h-16 rounded-2xl bg-[var(--join-accent)]/50" />
@@ -58,6 +80,24 @@ function PlanCard({
   busy?: boolean;
   href?: string;
 }) {
+  const action =
+    href != null ? (
+      <a
+        href={href}
+        className="mt-6 block w-full rounded-full bg-[var(--join-accent)] py-3 text-center text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]"
+      >
+        {cta}
+      </a>
+    ) : onCta ? (
+      <button
+        type="button"
+        onClick={onCta}
+        disabled={busy}
+        className="mt-6 w-full rounded-full bg-[var(--join-accent)] py-3 text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)] disabled:opacity-70"
+      >
+        {busy ? "Starting checkout…" : cta}
+      </button>
+    ) : null;
   return (
     <article className="flex h-full flex-col rounded-[1.6rem] border border-[var(--join-line-light)] bg-[var(--join-ink-2)] p-6 md:p-7">
       <h3 className="font-serif text-2xl text-[var(--join-cream)]">{title}</h3>
@@ -65,48 +105,33 @@ function PlanCard({
         {price}
       </p>
       {note ? (
-        <p className="mt-3 text-sm leading-relaxed text-[var(--join-cream)]/65">{note}</p>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--join-cream)]/65">
+          {note}
+        </p>
       ) : null}
       <ul className="mt-5 flex-1 space-y-2">
         {items.map((item) => (
-          <li key={item} className="flex items-start gap-2 text-sm text-[var(--join-cream)]/80">
+          <li
+            key={item}
+            className="flex items-start gap-2 text-sm text-[var(--join-cream)]/80"
+          >
             <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--join-accent-3)]" />
             {item}
           </li>
         ))}
       </ul>
-      {href ? (
-        <a
-          href={href}
-          className="mt-6 block w-full rounded-full bg-[var(--join-accent)] py-3 text-center text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]"
-        >
-          {cta}
-        </a>
-      ) : (
-        <button
-          type="button"
-          onClick={onCta}
-          disabled={busy}
-          className="mt-6 w-full rounded-full bg-[var(--join-accent)] py-3 text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)] disabled:opacity-70"
-        >
-          {busy ? "Starting checkout…" : cta}
-        </button>
-      )}
+      {action}
     </article>
   );
 }
 
 export function RecommendedPath({
   profile,
-  onStartCourse,
-  onOpenArticle,
+  onOpenAffiliate,
 }: {
   profile: JoinProfile;
-  onStartCourse: (course: RecommendCourse) => void;
-  onOpenArticle: (article: RecommendArticle) => void;
+  onOpenAffiliate: () => void;
 }) {
-  const courses = recommendedCourses(profile.roles);
-  const articles = recommendedArticles(profile.roles);
   const isCoach = profile.roles.includes("coach");
   const isGym = profile.roles.includes("gym_owner");
   const isClinician = profile.roles.includes("clinician");
@@ -133,12 +158,20 @@ export function RecommendedPath({
         setCheckoutError("Could not start a secure session.");
         return;
       }
-      const result = await postWhopCheckout(plan, csrf, "/join?step=path");
+      const result = await postWhopCheckout(plan, csrf, "/checkout/complete");
       if (!result.ok) {
         setCheckoutError("Checkout is temporarily unavailable.");
         return;
       }
-      window.location.assign(result.checkout_url);
+      const checkoutUrl = sanitizeClientBillingUrl(
+        result.checkout_url,
+        "whop_only",
+      );
+      if (!checkoutUrl) {
+        setCheckoutError("Checkout is temporarily unavailable.");
+        return;
+      }
+      window.location.assign(checkoutUrl);
     } catch {
       setCheckoutError("Checkout is temporarily unavailable.");
     } finally {
@@ -171,80 +204,47 @@ export function RecommendedPath({
       </p>
 
       <div className="mt-8 rounded-[1.5rem] border border-[var(--join-accent)]/40 bg-[var(--join-accent)]/20 px-5 py-4 md:px-6">
-        <p className="font-serif text-xl text-[var(--join-ink)]">Your first month is on us.</p>
+        <p className="font-serif text-xl text-[var(--join-ink)]">
+          Your first month is on us.
+        </p>
         <p className="mt-1 text-sm leading-relaxed text-[var(--join-ink)]/75">
           Explore MetFix classes, resources, and tools free for 30 days.
         </p>
       </div>
 
-      <section className="mt-12">
-        <h2 className="font-serif text-3xl text-[var(--join-ink)]">Start with these courses</h2>
-        <div className={railClass} tabIndex={0} aria-label="Recommended courses">
-          {courses.map((course) => (
-            <article
-              key={course.id}
-              className={`${itemClass} flex flex-col overflow-hidden rounded-[1.6rem] border border-[var(--join-line)] bg-[var(--join-paper)] shadow-[0_12px_30px_rgba(23,21,18,0.04)]`}
-            >
-              <div
-                className="aspect-[16/8] w-full bg-cover bg-center"
-                style={{ backgroundImage: `url(${course.image}), ${course.tone}` }}
-                role="img"
-                aria-label={course.title}
-              />
-              <div className="flex flex-1 flex-col p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--join-accent-2)]">
-                  {course.category}
-                </p>
-                <h3 className="mt-1 font-serif text-2xl text-[var(--join-ink)]">{course.title}</h3>
-                {course.badge ? (
-                  <p className="mt-2 inline-block rounded-full bg-[var(--join-accent)]/25 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--join-ink)]">
-                    {course.badge}
-                  </p>
-                ) : null}
-                <p className="mt-3 text-sm leading-relaxed text-[var(--join-muted)]">
-                  {course.description}
-                </p>
-                <p className="mt-3 flex-1 text-xs text-[var(--join-muted-2)]">{course.hours}</p>
-                <button
-                  type="button"
-                  onClick={() => onStartCourse(course)}
-                  className="mt-5 self-start rounded-full bg-[var(--join-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]"
-                >
-                  Start course
-                </button>
-              </div>
-            </article>
+      <section className="mt-12" aria-label="Recommended next steps">
+        <h2 className="font-serif text-3xl text-[var(--join-ink)]">
+          Recommended next steps
+        </h2>
+        <ol className="mt-6 space-y-3">
+          {NEXT_STEPS.map((step) => (
+            <li key={step.href}>
+              <a
+                href={basePath(step.href)}
+                className={
+                  step.primary
+                    ? "block rounded-[1.4rem] bg-[var(--join-accent)] px-5 py-4 text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-accent-2)]"
+                    : "block rounded-[1.4rem] border border-[var(--join-line)] bg-[var(--join-paper)] px-5 py-4 text-[var(--join-ink)] transition-colors duration-300 ease-out hover:border-[var(--join-accent)]"
+                }
+              >
+                <span className="block text-sm font-semibold">
+                  {step.label}
+                </span>
+                <span className="mt-1 block text-sm text-[var(--join-muted)]">
+                  {step.detail}
+                </span>
+              </a>
+            </li>
           ))}
-        </div>
-      </section>
-
-      <section className="mt-14">
-        <h2 className="font-serif text-3xl text-[var(--join-ink)]">Resources picked for you</h2>
-        <div className={railClass} tabIndex={0} aria-label="Recommended resources">
-          {articles.map((article) => (
-            <button
-              key={article.id}
-              type="button"
-              onClick={() => onOpenArticle(article)}
-              className={`${itemClass} rounded-[1.4rem] border border-[var(--join-line)] bg-[var(--join-paper)] p-5 text-left transition-shadow duration-300 ease-out hover:shadow-[0_12px_28px_rgba(23,21,18,0.06)]`}
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--join-accent-2)]">
-                {article.category}
-              </p>
-              <h3 className="mt-1 font-serif text-xl text-[var(--join-ink)]">{article.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--join-muted)]">
-                {article.description}
-              </p>
-              <p className="mt-3 text-xs text-[var(--join-muted-2)]">{article.minutes} read</p>
-            </button>
-          ))}
-        </div>
+        </ol>
       </section>
 
       <section className="mt-14 overflow-hidden rounded-[1.8rem] bg-[var(--join-paper)] px-6 py-10 md:px-10">
         <div className="grid items-center gap-8 md:grid-cols-[1fr_auto]">
           <div>
-            <h2 className="font-serif text-3xl text-[var(--join-ink)]">Take MetFix with you</h2>
+            <h2 className="font-serif text-3xl text-[var(--join-ink)]">
+              Take MetFix with you
+            </h2>
             <p className="mt-3 max-w-md text-[15px] leading-relaxed text-[var(--join-muted)]">
               Learn, track your progress, and access MetFix wherever you are.
             </p>
@@ -304,13 +304,16 @@ export function RecommendedPath({
                   "Path B — Online MetFix Essentials + Certificate Claimed (valid 3 years): Complete MetFix Essentials AND claim the certificate via cumulative LTV budget or direct purchase.",
                 ]}
                 cta="Start MetFix Essentials"
-                href="/library"
+                href={basePath("/courses")}
               />
             </div>
           ) : null}
 
           {showCoach ? (
-            <div className={`${itemClass} flex`} data-testid="seminars-cta-card">
+            <div
+              className={`${itemClass} flex`}
+              data-testid="seminars-cta-card"
+            >
               <PlanCard
                 title="In-person seminars"
                 price="Valid for 3 years from check-in"
@@ -319,8 +322,7 @@ export function RecommendedPath({
                   "Check in on-site to start your 3-year Foundations Coach credential",
                 ]}
                 cta="View Upcoming Seminars"
-                // Ruling (b): prefer /seminars when routed; App only mounts /affiliate-seminars.
-                href="/affiliate-seminars"
+                href={basePath("/affiliate-seminars")}
               />
             </div>
           ) : null}
@@ -345,7 +347,10 @@ export function RecommendedPath({
           ) : null}
 
           {isClinician ? (
-            <div className={`${itemClass} flex`} data-testid="medical-society-info">
+            <div
+              className={`${itemClass} flex`}
+              data-testid="medical-society-info"
+            >
               <PlanCard
                 title="MetFix Medical Society"
                 price="Directory listing & clinical peer network"
@@ -354,8 +359,8 @@ export function RecommendedPath({
                   "Clinical directory listing",
                   "Peer network and clinician resources",
                 ]}
-                cta="Explore Medical Society"
-                href="/join?explore=medical-society"
+                cta="Browse resources"
+                href={basePath("/library")}
               />
             </div>
           ) : null}
@@ -365,14 +370,23 @@ export function RecommendedPath({
       <p className="mt-8 text-center text-sm text-[var(--join-muted)]">
         You can explore the rest of MetFix anytime. Your first month stays free.
       </p>
-      <div className="mx-auto mt-4 max-w-xs">
+      <div className="mx-auto mt-4 max-w-xs space-y-3">
         <GoldButton
           onClick={() =>
-            document.getElementById("join-scroll")?.scrollTo({ top: 0, behavior: "smooth" })
+            document
+              .getElementById("join-scroll")
+              ?.scrollTo({ top: 0, behavior: "smooth" })
           }
         >
           Back to your path
         </GoldButton>
+        <button
+          type="button"
+          onClick={onOpenAffiliate}
+          className="w-full text-center text-sm font-semibold text-[var(--join-ink)] underline decoration-[var(--join-line)] underline-offset-4"
+        >
+          Affiliate application
+        </button>
       </div>
     </div>
   );

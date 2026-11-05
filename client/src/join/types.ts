@@ -11,7 +11,6 @@ export type JoinStep =
   | "path"
   | "affiliate";
 export type AuthView = "choose" | "email-signin" | "email-signup";
-export type PathView = "plan" | "article" | "course";
 export type WhopPlan = "pro" | "org";
 
 export type JoinProfile = {

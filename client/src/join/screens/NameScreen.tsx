@@ -6,7 +6,8 @@ const NAME_MAX = 80;
 export function validateNamePart(value: string): string | null {
   const t = value.trim();
   if (!t) return "Required";
-  if ([...t].length > NAME_MAX) return `Must be ${NAME_MAX} characters or fewer`;
+  if ([...t].length > NAME_MAX)
+    return `Must be ${NAME_MAX} characters or fewer`;
   return null;
 }
 
@@ -15,13 +16,11 @@ export function NameScreen({
   lastName,
   onChange,
   onContinue,
-  onSignIn,
 }: {
   firstName: string;
   lastName: string;
   onChange: (field: "firstName" | "lastName", value: string) => void;
   onContinue: () => void;
-  onSignIn: () => void;
 }) {
   const [attempted, setAttempted] = useState(false);
   const showErrors = attempted || firstName.length > 0 || lastName.length > 0;
@@ -63,16 +62,6 @@ export function NameScreen({
           Continue
         </GoldButton>
       </div>
-      <p className="mt-6 text-center text-sm text-[var(--join-muted)]">
-        Already have an account?{" "}
-        <button
-          type="button"
-          onClick={onSignIn}
-          className="font-semibold text-[var(--join-ink)] underline decoration-[var(--join-line)] underline-offset-4 transition-colors duration-300 ease-out hover:text-[var(--join-accent-2)]"
-        >
-          Sign in
-        </button>
-      </p>
     </ScreenForm>
   );
 }

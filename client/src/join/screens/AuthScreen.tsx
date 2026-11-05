@@ -52,7 +52,7 @@ export function AuthScreen({
 
   const startGoogle = () => {
     // Worker Google start uses `return` (not return_to).
-    const ret = encodeURIComponent("/join?step=roles");
+    const ret = encodeURIComponent("/join?step=name");
     window.location.assign(`/api/auth/google/start?return=${ret}`);
   };
 
@@ -152,17 +152,19 @@ export function AuthScreen({
 
   return (
     <div>
-      <Kicker>Nice to meet you{firstName ? `, ${firstName}` : ""}.</Kicker>
-      <Question>How would you like to continue?</Question>
+      <Kicker>Join MetFix.</Kicker>
+      <Question>Create an account or sign in.</Question>
       <p className="mt-4 text-sm text-[var(--join-muted)]">
-        Your first month of MetFix is free.
+        Your name, role, and membership come next — after your account is ready.
+        {firstName ? ` Welcome back, ${firstName}.` : ""}
       </p>
       <div className="mt-10 space-y-3">
+        <GoldButton onClick={() => onView("email-signup")}>Sign up with email</GoldButton>
         <GhostButton onClick={startGoogle}>
           <GoogleLogo className="h-5 w-5" />
           Continue with Google
         </GhostButton>
-        <GoldButton onClick={() => onView("email-signin")}>Continue with email</GoldButton>
+        <GhostButton onClick={() => onView("email-signin")}>Sign in</GhostButton>
       </div>
     </div>
   );
