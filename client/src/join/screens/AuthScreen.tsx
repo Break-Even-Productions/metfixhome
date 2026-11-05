@@ -29,6 +29,16 @@ function GoogleLogo({ className }: { className?: string }) {
   );
 }
 
+function AuthDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-3" role="separator">
+      <span className="h-px flex-1 bg-[var(--join-line)]" aria-hidden="true" />
+      <p className="shrink-0 text-sm text-[var(--join-muted)]">{label}</p>
+      <span className="h-px flex-1 bg-[var(--join-line)]" aria-hidden="true" />
+    </div>
+  );
+}
+
 export function AuthScreen({
   firstName,
   email,
@@ -141,8 +151,9 @@ export function AuthScreen({
           <GoldButton type="submit" disabled={busy || !canSubmit}>
             {busy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
           </GoldButton>
+          <AuthDivider label={isSignup ? "Already have an account?" : "Need an account?"} />
           <GhostButton onClick={() => onView(isSignup ? "email-signin" : "email-signup")}>
-            {isSignup ? "Already have an account? Sign in" : "Need an account? Sign up"}
+            {isSignup ? "Sign in" : "Sign up"}
           </GhostButton>
           <GhostButton onClick={() => onView("choose")}>Back</GhostButton>
         </div>
@@ -155,7 +166,6 @@ export function AuthScreen({
       <Kicker>Join MetFix.</Kicker>
       <Question>Create an account or sign in.</Question>
       <p className="mt-4 text-sm text-[var(--join-muted)]">
-        Your name, role, and membership come next — after your account is ready.
         {firstName ? ` Welcome back, ${firstName}.` : ""}
       </p>
       <div className="mt-10 space-y-3">
@@ -164,6 +174,7 @@ export function AuthScreen({
           <GoogleLogo className="h-5 w-5" />
           Continue with Google
         </GhostButton>
+        <AuthDivider label="Already have an account?" />
         <GhostButton onClick={() => onView("email-signin")}>Sign in</GhostButton>
       </div>
     </div>
