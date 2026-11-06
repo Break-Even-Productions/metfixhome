@@ -1,7 +1,7 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
-/** Find a Gym map (P-E-25 / T-E-54 — single definition). */
-export const METFIX_MAP_URL = "https://brokenscience.org/metfix/metfix-map/";
+/** In-app gym, clinic, and coach directory. */
+export const FIND_A_GYM_PATH = "/find-a-gym";
 
 /**
  * Nav search href (LR-4 / ER-11 / ER-14). Literal unshadowed renderable
@@ -30,6 +30,7 @@ const KNOWN_ROUTES = new Set([
   "courses",
   "become-an-affiliate",
   "affiliate-seminars",
+  "find-a-gym",
   "the-daily-fix",
   "posts",
   "library",

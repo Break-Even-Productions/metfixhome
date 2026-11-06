@@ -1,5 +1,51 @@
+import { mapAccessDisplay } from "../library/access";
+
 /**
- * D8 fail-closed unlock predicate (A9 / CQ B5 / PW30).
+ * Structural access gate for list + detail mapping.
+ * Requires `access_levels` (any array) and a plain `content_access_display` object.
+ * Exclusive / preview / gated posts are allowed — tags come from `postListAccessFlags`.
+ */
+export function hasMappablePostAccess(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const item = raw as Record<string, unknown>;
+
+  if (!Array.isArray(item.access_levels)) return false;
+
+  const display = item.content_access_display;
+  if (!display || typeof display !== "object" || Array.isArray(display)) return false;
+
+  return true;
+}
+
+/**
+ * List-card flags derived from BSI access fields.
+ * Exclusive covers membership gates, exclusive flags, and preview/none access.
+ */
+export function postListAccessFlags(raw: unknown): {
+  exclusive: boolean;
+  preview_available: boolean;
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { exclusive: false, preview_available: false };
+  }
+  const item = raw as Record<string, unknown>;
+  const access = mapAccessDisplay(item.content_access_display);
+  const levels = Array.isArray(item.access_levels) ? item.access_levels : [];
+  const exclusive =
+    access.is_exclusive ||
+    access.has_content_access ||
+    access.access === "preview" ||
+    access.access === "none" ||
+    levels.length > 0;
+  return {
+    exclusive,
+    preview_available: access.has_preview,
+  };
+}
+
+/**
+ * Fully public / free post (no exclusive tag). Kept for callers that need the
+ * historical D8 "unlocked" meaning — list/detail mapping no longer drops exclusives.
  *
  * Keep only when ALL hold:
  * - `access_levels` is an empty array
@@ -7,23 +53,14 @@
  * - `content_access_display.access === "full"`
  * - `content_access_display.is_exclusive === false`
  * - `content_access_display.has_content_access === false`
- *
- * Extra keys on `content_access_display` (e.g. `access_group_labels`, `show_same`,
- * `has_preview`) are ignored — an expired exclusive reported unlocked is kept (OQ-P2).
- * Never treat a missing field as unlocked (PM22).
  */
 export function isUnlockedPost(raw: unknown): boolean {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  if (!hasMappablePostAccess(raw)) return false;
   const item = raw as Record<string, unknown>;
 
-  if (!Array.isArray(item.access_levels)) return false;
   if (item.access_levels.length !== 0) return false;
 
-  const display = item.content_access_display;
-  // MISSING / null / array / string / non-object → locked
-  if (!display || typeof display !== "object" || Array.isArray(display)) return false;
-
-  const cad = display as Record<string, unknown>;
+  const cad = item.content_access_display as Record<string, unknown>;
   if (cad.access !== "full") return false;
   if (cad.is_exclusive !== false) return false;
   if (cad.has_content_access !== false) return false;

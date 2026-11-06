@@ -439,7 +439,7 @@ export default function GlobalNav() {
             {!onHome ? (
               accountName ? (
                 <Link href="/account" className="global-nav__login" data-nav-auth="account">
-                  {accountName}
+                  Dashboard
                 </Link>
               ) : (
                 <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
@@ -543,7 +543,7 @@ export default function GlobalNav() {
                   data-nav-auth={accountName ? "account" : "login"}
                   onClick={() => setMobileOpen(false)}
                 >
-                  {accountName ?? "Sign in"}
+                  {accountName ? "Dashboard" : "Sign in"}
                 </Link>
                 <button type="button" className="global-nav__join" onClick={openJoin}>
                   Join Today — 1 Month Free

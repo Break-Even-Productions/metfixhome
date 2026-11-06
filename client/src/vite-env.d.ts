@@ -15,12 +15,3 @@ interface Window {
   dataLayer?: unknown[];
   gtag?: Gtag;
 }
-
-interface ImportMetaEnv {
-  /** FU-1: KEY removal with Map.tsx; URL removed in PR E (S6). */
-  readonly VITE_FRONTEND_FORGE_API_KEY?: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}

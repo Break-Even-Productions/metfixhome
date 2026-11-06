@@ -9,6 +9,7 @@ import {
   stagingAuthHostsSet,
 } from "./auth/host";
 import {
+  bypassRecaptchaSiteverify,
   googleRedirectUri,
   isLocalAuthEnabled,
   parseLocalBsiOrigin,
@@ -379,6 +380,13 @@ describe("local auth helpers", () => {
     expect(isAuthHost(req("metfix.org"), env)).toBe(true);
     expect(isAuthHost(req("evil.example"), env)).toBe(false);
     expect(isAuthHost(req("preview.pages.dev"), env)).toBe(false);
+  });
+
+  it("LOCAL_AUTH bypasses reCAPTCHA siteverify; off does not", () => {
+    expect(bypassRecaptchaSiteverify({})).toBe(false);
+    expect(bypassRecaptchaSiteverify({ LOCAL_AUTH: "0" })).toBe(false);
+    expect(bypassRecaptchaSiteverify({ LOCAL_AUTH: "1" })).toBe(true);
+    expect(bypassRecaptchaSiteverify({ LOCAL_AUTH: "true" })).toBe(true);
   });
 
   it("assertBsiHost allows only prod BSI unless LOCAL_AUTH + BSI_ORIGIN", () => {

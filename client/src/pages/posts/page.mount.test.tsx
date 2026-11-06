@@ -143,6 +143,8 @@ function listPost(
     image: string | null;
     author: string | null;
     category: { name: string; slug: string } | null;
+    exclusive: boolean;
+    preview_available: boolean;
   }> = {},
 ) {
   return {
@@ -156,6 +158,8 @@ function listPost(
       overrides.category !== undefined
         ? overrides.category
         : { name: "Science", slug: "science" },
+    exclusive: overrides.exclusive ?? false,
+    preview_available: overrides.preview_available ?? false,
   };
 }
 

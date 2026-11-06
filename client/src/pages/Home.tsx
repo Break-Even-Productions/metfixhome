@@ -1,11 +1,12 @@
 /**
  * MetFix home — beta composition port (PR E).
- * Order: Hero → Classes → Membership → [Foundations coaches] → Experts → Resources
+ * Order: Hero → Daily Fix → Classes → Membership → [Foundations coaches] → Experts → Resources
  * → Testimonials → kept target sections → FAQ → Footer newsletter.
  */
 import { Membership } from "@/components/Membership";
 import { SiteFooter } from "@/components/SiteFooter";
 import { HomeClasses } from "@/components/home/HomeClasses";
+import { HomeDailyFix } from "@/components/home/HomeDailyFix";
 import { HomeExperts } from "@/components/home/HomeExperts";
 import { HomeFaq } from "@/components/home/HomeFaq";
 import { HomeFoundations } from "@/components/home/HomeFoundations";
@@ -109,6 +110,7 @@ export default function Home() {
       <div className="grain" aria-hidden="true" />
       <main id="main" className="page-stack">
         <HomeHero onJoin={onJoin} copy={copy} audience={audience} />
+        <HomeDailyFix />
         <HomeClasses onJoin={onJoin} courses={homeCourses} />
         <section id="membership-section" className="section-card bg-paper">
           <div className="px-3 py-4 md:px-4 md:py-5">

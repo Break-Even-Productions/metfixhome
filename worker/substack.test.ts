@@ -2,23 +2,26 @@ import { describe, expect, it, vi } from "vitest";
 import { fetchSubstackArchivePosts, handleSubstackArchive } from "./substack";
 
 describe("substack archive proxy", () => {
-  it("maps everyone posts and clips excerpts", async () => {
+  it("maps everyone posts and clips excerpts from wrapped { posts }", async () => {
     const fetchImpl = vi.fn(async () =>
-      Response.json([
-        {
-          title: "Public post",
-          subtitle: "A short dek",
-          canonical_url: "https://letsstartwiththetruth.substack.com/p/public-post",
-          post_date: "2026-10-01T00:00:00.000Z",
-          cover_image: "https://example.com/cover.jpg",
-          audience: "everyone",
-        },
-        {
-          title: "Paid only",
-          canonical_url: "https://letsstartwiththetruth.substack.com/p/paid",
-          audience: "only_paid",
-        },
-      ]),
+      Response.json({
+        posts: [
+          {
+            title: "Public post",
+            subtitle: "A short dek",
+            canonical_url: "https://letsstartwiththetruth.substack.com/p/public-post",
+            post_date: "2026-10-01T00:00:00.000Z",
+            cover_image: "https://example.com/cover.jpg",
+            audience: "everyone",
+          },
+          {
+            title: "Paid only",
+            canonical_url: "https://letsstartwiththetruth.substack.com/p/paid",
+            audience: "only_paid",
+          },
+        ],
+        nextCursor: "abc",
+      }),
     );
 
     const posts = await fetchSubstackArchivePosts(fetchImpl as unknown as typeof fetch);
@@ -32,18 +35,46 @@ describe("substack archive proxy", () => {
     });
   });
 
-  it("GET /api/substack/archive returns JSON", async () => {
+  it("still accepts a legacy bare array response", async () => {
     const fetchImpl = vi.fn(async () =>
       Response.json([
         {
-          title: "Hello",
-          description: "World",
-          canonical_url: "https://letsstartwiththetruth.substack.com/p/hello",
-          post_date: "2026-10-02T00:00:00.000Z",
+          title: "Legacy",
+          subtitle: "Old shape",
+          canonical_url: "https://letsstartwiththetruth.substack.com/p/legacy",
+          post_date: "2026-09-01T00:00:00.000Z",
           cover_image: null,
           audience: "everyone",
         },
       ]),
+    );
+
+    const posts = await fetchSubstackArchivePosts(fetchImpl as unknown as typeof fetch);
+    expect(posts).toEqual([
+      {
+        title: "Legacy",
+        excerpt: "Old shape",
+        url: "https://letsstartwiththetruth.substack.com/p/legacy",
+        date: "2026-09-01T00:00:00.000Z",
+        image: null,
+      },
+    ]);
+  });
+
+  it("GET /api/substack/archive returns JSON", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        posts: [
+          {
+            title: "Hello",
+            description: "World",
+            canonical_url: "https://letsstartwiththetruth.substack.com/p/hello",
+            post_date: "2026-10-02T00:00:00.000Z",
+            cover_image: null,
+            audience: "everyone",
+          },
+        ],
+      }),
     );
     const res = await handleSubstackArchive(new Request("https://metfix.org/api/substack/archive"), {
       fetchImpl: fetchImpl as unknown as typeof fetch,

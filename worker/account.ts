@@ -95,6 +95,7 @@ import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth
 import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
 import { sha256Hex } from "./auth/crypto";
+import { requireCsrf } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
 import { clientIp } from "./auth/throttle";
@@ -179,7 +180,11 @@ type RouteMatch = {
   method: string;
   params: Record<string, string>;
   limiter: LimiterKind;
-  /** Public GET /api/members/:id — no session. */
+  /**
+   * Public routes: no required session.
+   * - GET /api/members/:id
+   * - POST course checkout (guest mint; Bearer when signed in)
+   */
   public?: boolean;
 };
 
@@ -1377,7 +1382,7 @@ function matchRoute(method: string, path: string): RouteMatch | null {
     };
   }
 
-  // CR3 alias: POST /api/courses/:courseId/checkout
+  // CR3 alias: POST /api/courses/:courseId/checkout (public — guest mint OK)
   const coursesCheckout = path.match(/^\/api\/courses\/([^/]+)\/checkout$/);
   if (method === "POST" && coursesCheckout) {
     return {
@@ -1385,6 +1390,7 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       method: "POST",
       params: { courseId: coursesCheckout[1]! },
       limiter: "write",
+      public: true,
     };
   }
 
@@ -1419,10 +1425,16 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && (rest === "ltv-certificates" || rest === "spend")) {
     return { id: "DP5", method: "GET", params: {}, limiter: "read" };
   }
-  // CR3: purchase-checkout + checkout aliases under /api/account/courses/
+  // CR3: purchase-checkout + checkout aliases under /api/account/courses/ (public)
   const purchase = rest.match(/^courses\/([^/]+)\/(purchase-checkout|checkout)$/);
   if (method === "POST" && purchase) {
-    return { id: "DP7", method: "POST", params: { courseId: purchase[1]! }, limiter: "write" };
+    return {
+      id: "DP7",
+      method: "POST",
+      params: { courseId: purchase[1]! },
+      limiter: "write",
+      public: true,
+    };
   }
   // CL1 — three-path claim options (single route, N4)
   if (method === "GET" && rest === "certificate-claim-options") {
@@ -2033,6 +2045,8 @@ async function dispatch(
     }
     case "DP7": {
       // CR3 — exactly `{ checkout_url }` (lead ruling A / CR-CO-1 / N1 ignore extras).
+      // Public: Bearer when signed in; guest mint (no Authorization) when not.
+      // BSI still attempts to match the buyer after Whop checkout.
       const courseId = match.params.courseId!;
       if (!COURSE_ID_RE.test(courseId)) {
         return accountJson({ error: "invalid_request" }, 400);
@@ -2061,18 +2075,38 @@ async function dispatch(
       if (bsi_ref !== undefined) upstreamBody.bsi_ref = bsi_ref;
       if (return_path !== undefined) upstreamBody.return_path = return_path;
 
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountCourseCheckoutPath(courseId),
-        { body: JSON.stringify(upstreamBody), contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      if (ran.result.kind === "http") {
-        const code = upstreamErrorCode(ran.result.json);
+      const checkoutPath = accountCourseCheckoutPath(courseId);
+      const guestMint = (): Promise<BsiHttpResult> =>
+        accountBsiFetch(
+          bsiUrl(env, checkoutPath, opts),
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "User-Agent": UPSTREAM_USER_AGENT,
+            },
+            body: JSON.stringify(upstreamBody),
+          },
+          fetchImpl,
+          env,
+        );
+
+      let result: BsiHttpResult;
+      if (ctx) {
+        const ran = await runBearer(ctx, env, fetchImpl, opts, "POST", checkoutPath, {
+          body: JSON.stringify(upstreamBody),
+          contentType: "application/json",
+        });
+        if (ran instanceof Response) return mapUnauthenticated(ran);
+        result = ran.result;
+      } else {
+        // No usable session (including sticky dead sid) → guest mint; BSI matches after Whop.
+        result = await guestMint();
+      }
+
+      if (result.kind === "http") {
+        const code = upstreamErrorCode(result.json);
         if (
           code === "bsi_course_not_found" ||
           code === "bsi_course_whop_mapping_not_found"
@@ -2087,7 +2121,7 @@ async function dispatch(
         }
         return accountJson({ error: "upstream_error" }, 502);
       }
-      const mapped = mapUpstreamResult(ran.result);
+      const mapped = mapUpstreamResult(result);
       if (mapped instanceof Response) return mapped;
 
       // errata d6 DR-24/DR-28: strip stray fields before CR3 checkout DTO.
@@ -3489,15 +3523,29 @@ export async function handleAccountRoutes(
     if (resolved instanceof Response) return resolved;
     ctx = resolved;
   } else if (getSid(request)) {
-    // Optional session for members (Bearer when signed in).
+    // Optional session — Bearer when signed in; guest mint when not.
     const resolved = await resolveAccountSession(request, env, fetchImpl, opts);
     if (!(resolved instanceof Response)) ctx = resolved;
   }
 
   if (match.method !== "GET" && match.method !== "HEAD") {
-    if (!ctx) return accountJson({ error: "unauthenticated" }, 401);
-    const csrfFail = await requireSidCsrf(request, env, ctx.sid, accountJson);
-    if (csrfFail) return csrfFail;
+    if (match.public) {
+      // Guest or signed-in: Origin + Sec-Fetch-Site + sid/pre CSRF.
+      const csrf = await requireCsrf(request, env);
+      if (!csrf.ok) {
+        // Normalize to accountJson (private, no-store) — authJson uses bare no-store.
+        if (csrf.response.status === 503) {
+          return accountJson({ error: "unavailable" }, 503, {
+            "Retry-After": csrf.response.headers.get("Retry-After") ?? "300",
+          });
+        }
+        return accountJson({ error: "forbidden" }, 403);
+      }
+    } else {
+      if (!ctx) return accountJson({ error: "unauthenticated" }, 401);
+      const csrfFail = await requireSidCsrf(request, env, ctx.sid, accountJson);
+      if (csrfFail) return csrfFail;
+    }
   }
 
   const limitKey = match.public

@@ -32,6 +32,7 @@ import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostCommentsRoutes } from "./postComments";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import { handleAccountRoutes } from "./account";
+import { handleDirectoryRoutes } from "./directory";
 import { handleSubstackArchive } from "./substack";
 import { handleWhopCheckoutRoutes } from "./whop-checkout";
 import {
@@ -174,6 +175,14 @@ export async function handleRequest(
   ) {
     const accountRes = await handleAccountRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (accountRes) return accountRes;
+  }
+  if (
+    path === "/api/directory/gyms" ||
+    path === "/api/directory/clinics" ||
+    path === "/api/directory/coaches" ||
+    path === "/api/directory/geocode"
+  ) {
+    return handleDirectoryRoutes(request, env, ctx, { fetchImpl, cachesDefault: cache, bsiBaseUrl });
   }
   // Whop subscription checkout mint (before /api/* catch-all)
   if (path.startsWith("/api/billing/")) {

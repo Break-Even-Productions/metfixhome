@@ -8,7 +8,7 @@ import {
   POST_ID_RE,
   isPostDetailBody,
   isPostListBody,
-  isUnlockedPost,
+  hasMappablePostAccess,
   mapDetailResponse,
   mapListResponse,
   postsDetailCacheKey,
@@ -494,8 +494,8 @@ export async function getPost(
     console.info("posts:unmappable");
     return { kind: "unavailable" };
   }
-  // D8 before cache: locked → identical 404 to upstream (A9).
-  if (!isUnlockedPost(rawPost)) {
+  // Malformed access shape → identical 404 to missing (A9). Exclusive/preview kept.
+  if (!hasMappablePostAccess(rawPost)) {
     console.info("posts:locked");
     return { kind: "not_found" };
   }

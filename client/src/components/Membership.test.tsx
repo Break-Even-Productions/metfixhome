@@ -36,7 +36,7 @@ describe("Membership comparison", () => {
     const table = screen.getByRole("table", { name: /MetFix Pro vs Free membership comparison/i });
     expect(table).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: /Affiliate/i })).toBeNull();
-    expect(screen.queryByText(/\$30\/mo/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /Join MetFix Pro · \$30\/mo/i })).toBeTruthy();
     expect(screen.queryByText(/Daily Fix Embed/i)).toBeNull();
 
     for (const row of FALLBACK_MEMBERSHIP_COMPARISON.rows) {
@@ -49,7 +49,7 @@ describe("Membership comparison", () => {
       screen.getByLabelText(/Included — Access to most resources/i),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Join MetFix Pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Join MetFix Pro · \$30\/mo/i }));
     expect(onJoin).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("link", { name: /Become an Affiliate/i })).toBeNull();
   });
@@ -62,7 +62,9 @@ describe("Membership comparison", () => {
     expect(screen.getByRole("columnheader", { name: /Affiliate/i })).toBeTruthy();
     expect(screen.getByText(/Daily Fix Embed/i)).toBeTruthy();
     expect(screen.getByText("Unlimited")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Become an Affiliate/i })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Become an Affiliate · \$170\/mo/i }),
+    ).toBeTruthy();
 
     const expected = resolveMembershipComparisonRows(
       FALLBACK_MEMBERSHIP_COMPARISON,
@@ -77,18 +79,24 @@ describe("Membership comparison", () => {
     }
   });
 
-  it("shows Affiliate for clinicians and organizations", () => {
-    const { rerender } = renderMembership({
+  it("shows Affiliate for clinicians", () => {
+    renderMembership({
       onJoin: () => {},
       audience: "#for-clinicians",
     });
     expect(screen.getByRole("columnheader", { name: /Affiliate/i })).toBeTruthy();
-    rerender(
-      <Router>
-        <Membership onJoin={() => {}} audience="#for-organizations" />
-      </Router>,
-    );
-    expect(screen.getByRole("columnheader", { name: /Affiliate/i })).toBeTruthy();
+  });
+
+  it("replaces the comparison chart with a Fillout embed for organizations", () => {
+    renderMembership({ onJoin: () => {}, audience: "#for-organizations" });
+    expect(screen.queryByRole("table")).toBeNull();
+    const embed = screen.getByTestId("organizations-fillout-embed");
+    expect(embed.getAttribute("data-fillout-id")).toBe("m7qTgWE2S6us");
+    expect(embed.getAttribute("data-fillout-domain")).toBe("forms.metfix.org");
+    expect(embed.getAttribute("data-fillout-embed-type")).toBe("standard");
+    expect(
+      document.querySelector('script[data-mfx-fillout-embed][src="https://server.fillout.com/embed/v1/"]'),
+    ).toBeTruthy();
   });
 
   it("does not use WebGL LiquidGlass or direct DOM node removal", async () => {

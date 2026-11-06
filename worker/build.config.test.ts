@@ -73,6 +73,7 @@ describe("B1/B5/B6/B7 build config", () => {
       "https://metfix.org/become-an-affiliate",
       "https://metfix.org/classes",
       "https://metfix.org/affiliate-seminars",
+      "https://metfix.org/find-a-gym",
       "https://metfix.org/llms.txt",
       "https://metfix.org/llms-full.txt",
     ]);

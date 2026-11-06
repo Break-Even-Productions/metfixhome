@@ -794,7 +794,17 @@ describe("PW posts API", () => {
     expect(body.posts).toHaveLength(3);
     for (const p of body.posts) {
       expect(Object.keys(p).sort()).toEqual(
-        ["author", "category", "date", "excerpt", "id", "image", "title"].sort(),
+        [
+          "author",
+          "category",
+          "date",
+          "excerpt",
+          "exclusive",
+          "id",
+          "image",
+          "preview_available",
+          "title",
+        ].sort(),
       );
     }
     expect(isPostListBody(body)).toBe(true);
@@ -926,7 +936,7 @@ describe("PW posts API", () => {
     expect(body.posts[3]!.excerpt.endsWith("Z")).toBe(false);
   });
 
-  it("PW26 unmappable → 503; empty page ok; N4a locked-drop pages", async () => {
+  it("PW26 unmappable → 503; empty page ok; N4a malformed-drop pages", async () => {
     fetchMock.mockResolvedValue(jsonRes({ posts: "nope", meta: { total: 0, per_page: 10 } }));
     expect((await call("/api/posts")).status).toBe(503);
 
@@ -940,8 +950,8 @@ describe("PW posts API", () => {
     const empty = (await (await call("/api/posts?page=3")).json()) as Record<string, unknown>;
     expect(empty).toEqual({ posts: [], page: 3, per_page: 12, has_more: false });
 
-    // N4a (i): page 2, total 13, one locked → empty, has_more false
-    mockListOk([lockedItem(1)], 13);
+    // N4a (i): page 2, total 13, one malformed → empty, has_more false
+    mockListOk([lockedItem(1, { content_access_display: null })], 13);
     const n4a = (await (await call("/api/posts?page=2")).json()) as {
       posts: unknown[];
       page: number;
@@ -951,9 +961,11 @@ describe("PW posts API", () => {
     expect(n4a).toEqual({ posts: [], page: 2, per_page: 12, has_more: false });
     assertNoSecretsOrLock(JSON.stringify(n4a));
 
-    // N4a (ii): page 1, total 13, 12 locked → empty, has_more true
+    // N4a (ii): page 1, total 13, 12 malformed → empty, has_more true
     mockListOk(
-      Array.from({ length: 12 }, (_, i) => lockedItem(i + 1)),
+      Array.from({ length: 12 }, (_, i) =>
+        lockedItem(i + 1, { content_access_display: null }),
+      ),
       13,
     );
     const n4b = (await (await call("/api/posts")).json()) as {
@@ -976,14 +988,28 @@ describe("PW posts API", () => {
     expect(body.posts.map((p) => p.title)).toEqual(["T5-0", "T7-1", "T9-3"]);
   });
 
-  it("PW44 order preserved with drop + duplicate", async () => {
+  it("PW44 order preserved with exclusive keep + duplicate drop", async () => {
     clearCache();
     const ordered = [9, 3, 12, 1, 7].map((id) => unlockedItem(id));
-    ordered[1] = lockedItem(3);
+    ordered[1] = unlockedItem(3, {
+      title: "Exclusive essay",
+      excerpt: "Preview",
+      content: "<p>Preview</p>",
+      access_levels: ["members"],
+      content_access_display: {
+        has_content_access: true,
+        is_exclusive: true,
+        access: "preview",
+        has_preview: true,
+      },
+    });
     ordered.push(unlockedItem(9, { title: "dup" }));
     mockListOk(ordered, 6);
-    const body2 = (await (await call("/api/posts")).json()) as { posts: Array<{ id: number }> };
-    expect(body2.posts.map((p) => p.id)).toEqual([9, 12, 1, 7]);
+    const body2 = (await (await call("/api/posts")).json()) as {
+      posts: Array<{ id: number; exclusive?: boolean }>;
+    };
+    expect(body2.posts.map((p) => p.id)).toEqual([9, 3, 12, 1, 7]);
+    expect(body2.posts[1]?.exclusive).toBe(true);
   });
 
   // ── PW28–PW34 ────────────────────────────────────────────────────
@@ -1008,10 +1034,12 @@ describe("PW posts API", () => {
         "content_types",
         "date",
         "excerpt",
+        "exclusive",
         "id",
         "image",
         "locked",
         "permalink",
+        "preview_available",
         "title",
         "topics",
         "video",
@@ -1066,107 +1094,15 @@ describe("PW posts API", () => {
     expect(await (await call("/api/posts")).text()).not.toContain('"permalink"');
   });
 
-  it("PW30 D8 table: locked dropped / unlocked kept; LOCK absent", async () => {
+  it("PW30 access table: malformed dropped; exclusive/preview kept + tagged", async () => {
     const dropCases: Array<Record<string, unknown>> = [
       { access_levels: undefined },
       { access_levels: null },
       { access_levels: {} },
-      { access_levels: ["x"] },
-      { access_levels: [""] },
       { content_access_display: undefined },
       { content_access_display: null },
       { content_access_display: [] },
       { content_access_display: "full" },
-      {
-        content_access_display: {
-          has_content_access: true,
-          is_exclusive: false,
-          access: "full",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: "false",
-          is_exclusive: false,
-          access: "full",
-        },
-      },
-      {
-        content_access_display: {
-          is_exclusive: false,
-          access: "full",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: true,
-          access: "full",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: "false",
-          access: "full",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          access: "full",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: false,
-          access: "preview",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: false,
-          access: "none",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: false,
-          access: "Full",
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: false,
-        },
-      },
-      {
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: false,
-          access: null,
-        },
-      },
-      {
-        // expired exclusive still flagged
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: true,
-          access: "full",
-        },
-      },
-      {
-        access_levels: ["x"],
-        content_access_display: {
-          has_content_access: false,
-          is_exclusive: false,
-          access: "full",
-        },
-      },
     ];
 
     for (const [i, overrides] of dropCases.entries()) {
@@ -1190,8 +1126,40 @@ describe("PW posts API", () => {
       expect(cache.puts.length).toBe(0);
     }
 
-    // Expired exclusive reported unlocked → kept
-    const expiredUnlocked = unlockedItem(200, {
+    const exclusivePreview = unlockedItem(200, {
+      title: "Exclusive essay",
+      excerpt: "Public preview copy",
+      content: "<p>Preview body</p>",
+      access_levels: ["members"],
+      content_access_display: {
+        has_content_access: true,
+        is_exclusive: true,
+        access: "preview",
+        has_preview: true,
+      },
+    });
+    mockListOk([exclusivePreview], 1);
+    const kept = (await (await call("/api/posts")).json()) as {
+      posts: Array<{
+        id: number;
+        exclusive: boolean;
+        preview_available: boolean;
+        title: string;
+      }>;
+    };
+    expect(kept.posts).toEqual([
+      expect.objectContaining({
+        id: 200,
+        exclusive: true,
+        preview_available: true,
+        title: "Exclusive essay",
+      }),
+    ]);
+    mockDetailOk(exclusivePreview);
+    expect((await call("/api/posts/200")).status).toBe(200);
+
+    // Fully public with leftover labels still free (not exclusive)
+    const freeWithLabels = unlockedItem(201, {
       content_access_display: {
         has_content_access: false,
         is_exclusive: false,
@@ -1201,11 +1169,16 @@ describe("PW posts API", () => {
         has_preview: true,
       },
     });
-    mockListOk([expiredUnlocked], 1);
-    const kept = (await (await call("/api/posts")).json()) as { posts: Array<{ id: number }> };
-    expect(kept.posts.map((p) => p.id)).toEqual([200]);
-    mockDetailOk(expiredUnlocked);
-    expect((await call("/api/posts/200")).status).toBe(200);
+    clearCache();
+    mockListOk([freeWithLabels], 1);
+    const free = (await (await call("/api/posts")).json()) as {
+      posts: Array<{ id: number; exclusive: boolean; preview_available: boolean }>;
+    };
+    expect(free.posts[0]).toMatchObject({
+      id: 201,
+      exclusive: false,
+      preview_available: true,
+    });
 
     // Control unlocked
     mockListOk([unlockedItem(201)], 1);
@@ -1214,25 +1187,46 @@ describe("PW posts API", () => {
     ).toHaveLength(1);
   });
 
-  it("PW31 filter before cache: locked not in put; locked detail put=0", async () => {
-    mockListOk([unlockedItem(1), lockedItem(2)], 2);
+  it("PW31 filter before cache: malformed dropped; exclusive kept + tagged in put", async () => {
+    mockListOk(
+      [
+        unlockedItem(1),
+        lockedItem(2, { content_access_display: null }),
+        unlockedItem(3, {
+          title: "Exclusive essay",
+          excerpt: "Preview copy",
+          content: "<p>Preview</p>",
+          access_levels: ["members"],
+          content_access_display: {
+            has_content_access: true,
+            is_exclusive: true,
+            access: "preview",
+            has_preview: true,
+          },
+        }),
+      ],
+      3,
+    );
     await call("/api/posts");
     await flush(ctx);
     expect(cache.puts.length).toBe(1);
     const putText = await cache.puts[0]!.res.text();
     assertNoSecretsOrLock(putText);
     expect(putText).not.toContain('"id":2');
+    expect(putText).toContain('"id":3');
+    expect(putText).toContain('"exclusive":true');
+    expect(putText).toContain('"preview_available":true');
 
     cache.puts.length = 0;
-    mockDetailOk(lockedItem(8));
+    mockDetailOk(lockedItem(8, { content_access_display: null }));
     const res = await call("/api/posts/8");
     expect(res.status).toBe(404);
     expect(cache.puts.length).toBe(0);
   });
 
-  it("PW32 locked and upstream-404 identical; differ from catch-all", async () => {
+  it("PW32 malformed access and upstream-404 identical; differ from catch-all", async () => {
     clearCache();
-    mockDetailOk(lockedItem(8));
+    mockDetailOk(lockedItem(8, { content_access_display: null }));
     const locked = await call("/api/posts/8");
     const lockedText = await locked.clone().text();
     const lockedHeaders = Object.fromEntries(locked.headers);
@@ -1741,7 +1735,7 @@ describe("PW posts API", () => {
     expect(html).not.toContain("cdn.brokenscience.org");
   });
 
-  it("PH9 upstream 404 / locked / invalid id → 404; invalid no upstream", async () => {
+  it("PH9 upstream 404 / malformed access / invalid id → 404; exclusive HTML 200", async () => {
     const invalid = await call("/posts/abc", { headers: { Accept: "text/html" } });
     expect(invalid.status).toBe(404);
     expect(fetchMock).toHaveBeenCalledTimes(0);
@@ -1750,10 +1744,29 @@ describe("PW posts API", () => {
     const missing = await call("/posts/9", { headers: { Accept: "text/html" } });
     expect(missing.status).toBe(404);
 
-    mockDetailOk(lockedItem(8));
-    const locked = await call("/posts/8", { headers: { Accept: "text/html" } });
-    expect(locked.status).toBe(404);
-    assertNoSecretsOrLock(await locked.text());
+    mockDetailOk(lockedItem(8, { content_access_display: null }));
+    const malformed = await call("/posts/8", { headers: { Accept: "text/html" } });
+    expect(malformed.status).toBe(404);
+    assertNoSecretsOrLock(await malformed.text());
+
+    clearCache();
+    mockDetailOk(
+      unlockedItem(7, {
+        title: "Exclusive essay",
+        excerpt: "Preview copy",
+        content: "<p>Preview</p>",
+        access_levels: ["members"],
+        content_access_display: {
+          has_content_access: true,
+          is_exclusive: true,
+          access: "preview",
+          has_preview: true,
+        },
+      }),
+    );
+    const exclusive = await call("/posts/7", { headers: { Accept: "text/html" } });
+    expect(exclusive.status).toBe(200);
+    expect(await exclusive.text()).toContain("Exclusive essay");
   });
 
   it("PH10 upstream failure → 503; ASSETS failure → plain 503", async () => {
@@ -1789,7 +1802,7 @@ describe("PW posts API", () => {
     expect(c.headers.get("Location")).toBe("/posts/123");
   });
 
-  it("PH12 / PH14 / PH13 HTML shares cache; locked no LOCK; one robots", async () => {
+  it("PH12 / PH14 / PH13 HTML shares cache; malformed no LOCK; one robots", async () => {
     mockDetailOk(unlockedItem(5));
     const html = await call("/posts/5", { headers: { Accept: "text/html" } });
     expect(html.status).toBe(200);
@@ -1802,7 +1815,7 @@ describe("PW posts API", () => {
     expect((await call("/api/posts/5")).status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(0);
 
-    mockDetailOk(lockedItem(8));
+    mockDetailOk(lockedItem(8, { content_access_display: null }));
     const lockedHtml = await (await call("/posts/8", { headers: { Accept: "text/html" } })).text();
     assertNoSecretsOrLock(lockedHtml);
   });

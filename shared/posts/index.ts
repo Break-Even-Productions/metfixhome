@@ -28,7 +28,11 @@ export type {
 } from "./types";
 
 export { isPostListBody, isPostDetailBody } from "./guards";
-export { isUnlockedPost } from "./locked";
+export {
+  hasMappablePostAccess,
+  isUnlockedPost,
+  postListAccessFlags,
+} from "./locked";
 export {
   mapListItem,
   mapDetailPost,

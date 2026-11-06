@@ -56,4 +56,51 @@ describe("membershipComparison", () => {
     expect(row?.affiliate).toEqual({ kind: "check" });
     expect(row?.free).toEqual({ kind: "cross" });
   });
+
+  it("uses Nutrition and Fitness tools for default audiences", () => {
+    const rows = resolveMembershipComparisonRows(
+      FALLBACK_MEMBERSHIP_COMPARISON,
+      "#for-athletes",
+    );
+    expect(rows.some((r) => r.feature === "Nutrition and Fitness tools & resources")).toBe(
+      true,
+    );
+    expect(rows.some((r) => /Clinical tools|Coaching tools|Community Access/i.test(r.feature))).toBe(
+      false,
+    );
+    expect(rows.some((r) => /CME/i.test(r.feature))).toBe(false);
+    for (const feature of ["Expert-led instruction", "Certificate of completion"]) {
+      expect(rows.some((r) => r.feature === feature)).toBe(true);
+    }
+  });
+
+  it("uses Coaching tools for coaches and gym owners", () => {
+    for (const audience of ["#for-coaches", "#for-gym-owners"] as const) {
+      const rows = resolveMembershipComparisonRows(FALLBACK_MEMBERSHIP_COMPARISON, audience);
+      expect(rows.some((r) => r.feature === "Coaching tools")).toBe(true);
+      expect(
+        rows.some((r) =>
+          /Nutrition and Fitness tools|Clinical tools/i.test(r.feature),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("swaps clinical tools and inserts CME for clinicians", () => {
+    const rows = resolveMembershipComparisonRows(
+      FALLBACK_MEMBERSHIP_COMPARISON,
+      "#for-clinicians",
+    );
+    expect(rows.some((r) => r.feature === "Nutrition and Fitness tools & resources")).toBe(
+      false,
+    );
+    const toolsIdx = rows.findIndex((r) => r.feature === "Clinical tools & resources");
+    const cmeIdx = rows.findIndex((r) => r.feature === "CME / CE opportunities");
+    expect(toolsIdx).toBeGreaterThanOrEqual(0);
+    expect(cmeIdx).toBe(toolsIdx + 1);
+    expect(rows.some((r) => /Community Access/i.test(r.feature))).toBe(false);
+    for (const feature of ["Expert-led instruction", "Certificate of completion"]) {
+      expect(rows.some((r) => r.feature === feature)).toBe(true);
+    }
+  });
 });

@@ -1,3 +1,5 @@
+import { FIND_A_GYM_PATH } from "@/const";
+
 export type CourseStat = {
   value: string;
   label: string;
@@ -9,7 +11,7 @@ export type CourseModule = {
   description?: string;
 };
 
-export type CourseCtaType = "start" | "notify" | "none";
+export type CourseCtaType = "start" | "buy" | "notify" | "none";
 
 export type Course = {
   id: string;
@@ -67,8 +69,8 @@ export const DEFAULT_NAV_LINKS = [
   { label: "Daily Fix", href: "/the-daily-fix", openInNewTab: false },
   {
     label: "Find a Gym",
-    href: "https://brokenscience.org/metfix/metfix-map/",
-    openInNewTab: true,
+    href: FIND_A_GYM_PATH,
+    openInNewTab: false,
   },
   { label: "About", href: "/#about", openInNewTab: false },
   { label: "Shop", href: "https://brokenscience.org/shop/", openInNewTab: true },

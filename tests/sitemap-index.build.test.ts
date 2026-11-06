@@ -18,6 +18,7 @@ const PAGES: { loc: string; changefreq: string; priority: string; lastmod: null 
   { loc: "https://metfix.org/become-an-affiliate", changefreq: "weekly", priority: "0.9", lastmod: null },
   { loc: "https://metfix.org/classes", changefreq: "weekly", priority: "0.8", lastmod: null },
   { loc: "https://metfix.org/affiliate-seminars", changefreq: "weekly", priority: "0.8", lastmod: null },
+  { loc: "https://metfix.org/find-a-gym", changefreq: "daily", priority: "0.8", lastmod: null },
   { loc: "https://metfix.org/llms.txt", changefreq: "monthly", priority: "0.3", lastmod: null },
   { loc: "https://metfix.org/llms-full.txt", changefreq: "monthly", priority: "0.3", lastmod: null },
 ];
@@ -69,6 +70,7 @@ const SPA_ROUTES = [
   "/classes",
   "/courses",
   "/affiliate-seminars",
+  "/find-a-gym",
   "/the-daily-fix",
 ];
 
@@ -254,9 +256,9 @@ describe("sitemap index build", () => {
       priority: textOf(url, "priority"),
       lastmod: textOf(url, "lastmod"),
     }));
-    expect(tuples.length).toBe(6);
+    expect(tuples.length).toBe(7);
     const serialized = tuples.map((tuple) => JSON.stringify(tuple));
-    expect(new Set(serialized).size).toBe(6);
+    expect(new Set(serialized).size).toBe(7);
     expect(serialized.sort()).toEqual(PAGES.map((page) => JSON.stringify(page)).sort());
     expect(tuples.every((tuple) => tuple.lastmod === null)).toBe(true);
     expect(tuples.map((tuple) => tuple.loc), "T8 order").toEqual(PAGES.map((page) => page.loc));

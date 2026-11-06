@@ -1,3 +1,4 @@
+import { bypassRecaptchaSiteverify } from "../dev-auth";
 import type { Env, FetchImpl } from "../upstream";
 import { isAllowedRecaptchaHostname } from "./host";
 
@@ -8,6 +9,8 @@ export async function siteverifyComment(
   fetchImpl: FetchImpl,
   env: Env,
 ): Promise<"pass" | "fail" | "outage"> {
+  // LOCAL_AUTH: prod keys return browser-error on localhost (see login/signup).
+  if (bypassRecaptchaSiteverify(env)) return "pass";
   try {
     const body = new URLSearchParams({ secret, response: token });
     const res = await fetchImpl("https://www.google.com/recaptcha/api/siteverify", {

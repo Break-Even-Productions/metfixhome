@@ -53,7 +53,7 @@ describe("T-E-19 home repo-scan", () => {
     const hits: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, "utf8");
-      if (/substack\.com|\/api\/substack|manus|curie\.whop|biz_(?!u15G8d34g9c0B0)/i.test(text)) {
+      if (/substack\.com|\/api\/substack|manus|curie\.whop|biz_(?!dTbmi3gF7XpN3p)/i.test(text)) {
         hits.push(file);
       }
     }
@@ -108,7 +108,7 @@ describe("T-E-NAV-10 returnPath usage", () => {
 
   it("sole biz_ literal remains in shared/account/whop.ts", () => {
     const whop = readFileSync(WHOP_FILE, "utf8");
-    expect(whop).toMatch(/biz_u15G8d34g9c0B0/);
+    expect(whop).toMatch(/biz_dTbmi3gF7XpN3p/);
     const homeBiz = walk(HOME_DIR).flatMap((f) => {
       const m = readFileSync(f, "utf8").match(/biz_[A-Za-z0-9]+/g);
       return m ?? [];
@@ -241,20 +241,18 @@ describe("T-E-17 / SEC2 no wp-json in client/src", () => {
   });
 });
 
-describe("T-E-54 / NAVDATA1 METFIX_MAP_URL", () => {
-  it("METFIX_MAP_URL defined exactly once in const.ts", () => {
+describe("T-E-54 / NAVDATA1 FIND_A_GYM_PATH", () => {
+  it("FIND_A_GYM_PATH defined exactly once in const.ts", () => {
     const constSrc = readFileSync(
       fileURLToPath(new URL("../../const.ts", import.meta.url)),
       "utf8",
     );
-    expect(constSrc.match(/export const METFIX_MAP_URL/g)).toHaveLength(1);
-    expect(constSrc).toMatch(
-      /METFIX_MAP_URL\s*=\s*["']https:\/\/brokenscience\.org\/metfix\/metfix-map\/["']/,
-    );
+    expect(constSrc.match(/export const FIND_A_GYM_PATH/g)).toHaveLength(1);
+    expect(constSrc).toMatch(/FIND_A_GYM_PATH\s*=\s*["']\/find-a-gym["']/);
     const clientSrc = fileURLToPath(new URL("../..", import.meta.url));
     const defs = walk(clientSrc).flatMap((f) => {
       const text = readFileSync(f, "utf8");
-      return (text.match(/export\s+const\s+METFIX_MAP_URL\s*=/g) ?? []).map(() => f);
+      return (text.match(/export\s+const\s+FIND_A_GYM_PATH\s*=/g) ?? []).map(() => f);
     });
     expect(defs).toHaveLength(1);
   });

@@ -23,7 +23,6 @@ const GLOBAL_NAV_SRC = join(process.cwd(), "client/src/components/GlobalNav.tsx"
 const CONST_SRC = join(process.cwd(), "client/src/const.ts");
 const ALLOWED_EXTERNAL = [
   "https://whatis.metfix.org/",
-  "https://brokenscience.org/metfix/metfix-map/",
   "https://brokenscience.org/shop/",
 ];
 
@@ -35,6 +34,7 @@ const APP_ROUTES = [
   "/classes",
   "/courses",
   "/affiliate-seminars",
+  "/find-a-gym",
   "/the-daily-fix",
   "/posts",
   "/library",
@@ -101,9 +101,10 @@ describe("T-E-NAV-1 / T-E-NAV-9 GlobalNav routes", () => {
     expect(labels).not.toContain("scholarship");
   });
 
-  it("Find a Gym points at brokenscience map", () => {
+  it("Find a Gym points at the internal directory", () => {
     const gym = GLOBAL_NAV_ITEMS.find((i) => i.label === "Find a Gym");
-    expect(gym?.href).toBe("https://brokenscience.org/metfix/metfix-map/");
+    expect(gym?.href).toBe("/find-a-gym");
+    expect(gym?.openInNewTab).toBe(false);
   });
 
   it("ER-11/14: SEARCH_HREF tracks literal unshadowed /library/search (PR #24)", () => {

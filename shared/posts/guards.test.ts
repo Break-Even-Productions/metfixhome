@@ -10,6 +10,8 @@ const post = {
   image: null,
   author: "A",
   category: { name: "News", slug: "news" },
+  exclusive: false,
+  preview_available: false,
 };
 
 const listBody = {

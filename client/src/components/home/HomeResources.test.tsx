@@ -3,6 +3,7 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Router } from "wouter";
 import { SUBSTACK_ARCHIVE_URL } from "@/data/newsletter";
 import { HomeResources } from "./HomeResources";
 
@@ -22,6 +23,27 @@ vi.mock("@/lib/substack", async () => {
   };
 });
 
+vi.mock("@/lib/fetchPostsPage", () => ({
+  fetchPostsPage: async () => ({
+    posts: [
+      {
+        id: 42,
+        title: "Sample BSI post",
+        excerpt: "Newest from the BSI site",
+        date: "2026-10-01T00:00:00.000Z",
+        image: null,
+        author: "BSI",
+        category: { name: "Articles", slug: "articles" },
+        exclusive: true,
+        preview_available: true,
+      },
+    ],
+    page: 1,
+    per_page: 10,
+    has_more: false,
+  }),
+}));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -32,28 +54,43 @@ beforeEach(() => {
 });
 
 describe("HomeResources CTAs", () => {
-  it("loads Substack posts, links archive, and opens newsletter modal", async () => {
+  it("shows BSI posts above the divider with library + Pro CTAs, and Substack below", async () => {
     render(
-      <HomeResources
-        title="Let’s Start with the Truth"
-        resourceLibrary={
-          {
-            subtext: "Should not render",
-            fullLibraryCta: { label: "Full Library", href: "/library" },
-            bottomCta: { label: "Access the Full Library", href: "/library" },
-          } as never
-        }
-      />,
+      <Router>
+        <HomeResources
+          title="Let’s Start with the Truth"
+          resourceLibrary={
+            {
+              eyebrow: "Resource Library",
+              subtext: "Should not render",
+              fullLibraryCta: { label: "Full Library", href: "/library" },
+              bottomCta: { label: "Access the Full Library", href: "/library" },
+            } as never
+          }
+        />
+      </Router>,
     );
 
+    await waitFor(() => expect(screen.getByText("Sample BSI post")).toBeTruthy());
     await waitFor(() => expect(screen.getByText("Sample Substack post")).toBeTruthy());
     expect(screen.queryByText("Should not render")).toBeNull();
+    expect(screen.getByLabelText("Exclusive content")).toBeTruthy();
+    expect(screen.getByText("Preview available")).toBeTruthy();
 
-    const card = screen.getByRole("link", { name: /Sample Substack post/i });
-    expect(card.getAttribute("href")).toBe(
+    const bsiCard = screen.getByRole("link", { name: /Sample BSI post/i });
+    expect(bsiCard.getAttribute("href")).toBe("/posts/42");
+
+    const library = screen.getByRole("link", { name: /Explore Resource Library/i });
+    expect(library.getAttribute("href")).toBe("/library");
+
+    const pro = screen.getByRole("link", { name: /Join MetFix Pro/i });
+    expect(pro.getAttribute("href")).toBe("#membership-section");
+
+    const substackCard = screen.getByRole("link", { name: /Sample Substack post/i });
+    expect(substackCard.getAttribute("href")).toBe(
       "https://letsstartwiththetruth.substack.com/p/sample",
     );
-    expect(card.getAttribute("target")).toBe("_blank");
+    expect(substackCard.getAttribute("target")).toBe("_blank");
 
     const archive = screen.getByRole("link", { name: /Read the archive/i });
     expect(archive.getAttribute("href")).toBe(SUBSTACK_ARCHIVE_URL);

@@ -9,6 +9,7 @@ import {
 import { requireCsrf } from "./csrf";
 import { SID_COOKIE, getSid, setHostCookie } from "./cookies";
 import { randomId32 } from "./crypto";
+import { bypassRecaptchaSiteverify } from "../dev-auth";
 import { isAllowedRecaptchaHostname, isAuthHost } from "./host";
 import {
   BODY_INVALID_LOGIN,
@@ -131,12 +132,14 @@ export async function handleLogin(
     }
     const recaptchaToken = body.recaptcha;
 
-    const sv = await siteverifyLogin(recaptchaToken, cfg.recaptchaSecret, fetchImpl, env);
-    if (sv === "fail") {
-      return authJson(BODY_TRY_AGAIN, 403);
-    }
-    if (sv === "outage") {
-      return unavailable503(60);
+    if (!bypassRecaptchaSiteverify(env)) {
+      const sv = await siteverifyLogin(recaptchaToken, cfg.recaptchaSecret, fetchImpl, env);
+      if (sv === "fail") {
+        return authJson(BODY_TRY_AGAIN, 403);
+      }
+      if (sv === "outage") {
+        return unavailable503(60);
+      }
     }
 
     const r8c = await reserveR8c(env);

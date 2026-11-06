@@ -5,6 +5,7 @@
 import { getMetfixLoginUrl } from "@/const";
 import { fetchCsrf } from "@/lib/authRequest";
 import { sanitizeClientBillingUrl } from "@/lib/billing-url";
+import { readStoredBsiRef } from "@/lib/referralAttribution";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
 import { isWhopCheckoutUrl } from "@shared/account/url-allowlist";
 import type {
@@ -1232,17 +1233,47 @@ export function loadMember(
   return accountGet(`/api/members/${encodeURIComponent(memberId)}`, `member:${memberId}`, options);
 }
 
+/**
+ * Mint a Whop course checkout URL via BSI.
+ * Works signed-in (Bearer) or guest (pre CSRF); BSI matches the buyer after payment.
+ */
 export async function purchaseCourseCheckout(
   courseId: string | number,
   opts?: { bsi_ref?: string; return_path?: string },
 ): Promise<{ checkout_url: string }> {
   const body: Record<string, string> = {};
-  if (opts?.bsi_ref) body.bsi_ref = opts.bsi_ref;
+  const ref = opts?.bsi_ref ?? readStoredBsiRef() ?? undefined;
+  if (ref) body.bsi_ref = ref;
   if (opts?.return_path) body.return_path = opts.return_path;
-  return accountMutate(`/api/account/courses/${courseId}/purchase-checkout`, {
+  // Public mint — do not bounce guests to login on unexpected 401.
+  const csrf = await fetchCsrf();
+  if (!csrf) throw new Error("csrf_unavailable");
+  const res = await globalThis.fetch(`/api/account/courses/${courseId}/purchase-checkout`, {
     method: "POST",
-    body,
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrf,
+    },
+    body: JSON.stringify(body),
+    credentials: "same-origin",
   });
+  if (!res.ok) {
+    let errBody: unknown = null;
+    try {
+      errBody = await res.json();
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(`purchase_checkout_failed:${res.status}`) as Error & {
+      status: number;
+      body: unknown;
+    };
+    err.status = res.status;
+    err.body = errBody;
+    throw err;
+  }
+  return (await res.json()) as { checkout_url: string };
 }
 
 export function loadClaimOptions(options?: {

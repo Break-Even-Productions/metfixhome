@@ -10,7 +10,7 @@ import {
   PAGE_SIZE,
   TITLE_MAX,
 } from "./constants";
-import { isUnlockedPost } from "./locked";
+import { hasMappablePostAccess, postListAccessFlags } from "./locked";
 import { sanitizeHtml } from "./sanitize";
 import type { DetailPost, Post, PostDetailBody, PostListBody } from "./types";
 
@@ -111,12 +111,13 @@ function mapId(raw: unknown): number | null {
 }
 
 /**
- * Whitelist re-serialize one list item. D8 failures and unmappable fields → null.
+ * Whitelist re-serialize one list item. Malformed access shape / fields → null.
+ * Exclusive + preview posts are kept and tagged (no longer D8-dropped).
  * No object spread of upstream.
  */
 export function mapListItem(raw: unknown): Post | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  if (!isUnlockedPost(raw)) return null;
+  if (!hasMappablePostAccess(raw)) return null;
   const item = raw as Record<string, unknown>;
 
   const id = mapId(item.id);
@@ -128,6 +129,8 @@ export function mapListItem(raw: unknown): Post | null {
   const date = mapDate(item.date);
   if (date == null) return null;
 
+  const flags = postListAccessFlags(item);
+
   return {
     id,
     title,
@@ -136,16 +139,19 @@ export function mapListItem(raw: unknown): Post | null {
     image: mapImageUrl(item.featured_image),
     author: mapAuthor(item.author),
     category: mapCategory(item.categories),
+    exclusive: flags.exclusive,
+    preview_available: flags.preview_available,
   };
 }
 
 /**
- * Whitelist re-serialize a detail post (A7). D8 failure → null.
+ * Whitelist re-serialize a detail post (A7). Malformed access shape → null.
+ * Exclusive / preview posts are mapped; `locked` follows access === "none".
  * `content` is sanitized; empty after sanitize is still valid.
  */
 export function mapDetailPost(raw: unknown): DetailPost | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  if (!isUnlockedPost(raw)) return null;
+  if (!hasMappablePostAccess(raw)) return null;
   const item = raw as Record<string, unknown>;
 
   const id = mapId(item.id);
@@ -160,6 +166,7 @@ export function mapDetailPost(raw: unknown): DetailPost | null {
   const contentRaw = typeof item.content === "string" ? item.content : "";
   const content = sanitizeHtml(contentRaw);
   const access = mapAccessDisplay(item.content_access_display ?? item.access);
+  const flags = postListAccessFlags(item);
   const locked = access.access === "none";
   const allowPlayable = !locked || access.show_video_in_preview === true;
   const categories = mapTerms(item.categories);
@@ -176,6 +183,8 @@ export function mapDetailPost(raw: unknown): DetailPost | null {
     category: mapCategory(item.categories) ?? (categories[0]
       ? { name: categories[0].name, slug: categories[0].slug }
       : null),
+    exclusive: flags.exclusive,
+    preview_available: flags.preview_available,
     content: locked ? "" : content,
     permalink: mapPermalink(item.permalink),
     video: mapResourceVideo(item.video, { allowPlayable }),

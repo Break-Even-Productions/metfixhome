@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { assetUrl } from "@/const";
 import CopyrightText from "@/components/CopyrightText";
 import { UpgradePrompt } from "@/components/UpgradePrompt";
+import { openWhopCheckout, purchaseCourseCheckout } from "@/lib/account";
 import type { Course } from "@/lib/contentTypes";
 import { useCourses } from "@/hooks/useSiteContent";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -62,11 +63,35 @@ function CourseCard({
 }) {
   const isComing = course.comingSoon;
   const enrollHref = course.landingPageUrl || "";
+  const showBuy = course.ctaType === "buy" && Boolean(course.bsiPostId);
   const showStart = course.ctaType === "start" && Boolean(enrollHref);
   const showNotify = course.ctaType === "notify" && Boolean(enrollHref);
   const startLabel = course.startButtonLabel || "Start Here";
   const notifyLabel = course.notifyButtonLabel || "Notify Me";
   const tagColor = isComing ? "var(--color-muted)" : "var(--color-accent-text)";
+  const [buying, setBuying] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+  const buyInflight = useRef(false);
+
+  const onBuy = async () => {
+    if (!course.bsiPostId || buyInflight.current) return;
+    buyInflight.current = true;
+    setBuying(true);
+    setBuyError(null);
+    try {
+      const res = await purchaseCourseCheckout(course.bsiPostId, {
+        return_path: "/checkout/complete",
+      });
+      if (!openWhopCheckout(res.checkout_url)) {
+        setBuyError("Checkout unavailable. Try again.");
+      }
+    } catch {
+      setBuyError("Checkout unavailable. Try again.");
+    } finally {
+      buyInflight.current = false;
+      setBuying(false);
+    }
+  };
 
   return (
     <div id={course.id} className={`cls-course-card${isExpanded ? " is-expanded" : ""}`}>
@@ -311,6 +336,18 @@ function CourseCard({
               flexWrap: "wrap",
             }}
           >
+            {showBuy && (
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ padding: "0.875rem 2rem", fontSize: "0.85rem" }}
+                disabled={buying}
+                onClick={() => void onBuy()}
+              >
+                {buying ? "Opening…" : startLabel === "Buy Now" ? `Buy Now · ${course.price}` : startLabel}
+                <ArrowRight size={14} />
+              </button>
+            )}
             {showStart && (
               <a
                 href={enrollHref}
@@ -340,6 +377,11 @@ function CourseCard({
                 Included for Affiliates · Revenue Share Available
               </span>
             )}
+            {buyError ? (
+              <span className="cls-label" role="alert" style={{ color: "var(--color-danger, #c44)" }}>
+                {buyError}
+              </span>
+            ) : null}
           </div>
         </div>
       )}

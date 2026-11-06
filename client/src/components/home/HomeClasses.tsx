@@ -1,9 +1,10 @@
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { Clock } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { assetUrl } from "@/const";
 import { COURSE_FILTERS, type CourseFilter } from "@/data/home/audience";
+import { openWhopCheckout, purchaseCourseCheckout } from "@/lib/account";
 import type { HomeCourseCard } from "@/lib/homeTypes";
 import { easeOutExpo, fadeUp, stagger } from "./motion";
 import { Reveal } from "./Reveal";
@@ -20,11 +21,22 @@ function resolveCourseImage(src: string | undefined): string | null {
   return assetUrl(src);
 }
 
+function courseStatusLabel(course: HomeCourseCard): string {
+  if (course.live) return "Enroll";
+  if (course.notify) return "Notify Me";
+  return "Coming Soon";
+}
+
 function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => void }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+  const inflight = useRef(false);
   const image = !imageFailed ? resolveCourseImage(course.image) : null;
+  const canBuy = Boolean(course.live && course.bsiPostId);
+  const statusLabel = courseStatusLabel(course);
 
-  const openCourse = () => {
+  const openLanding = () => {
     if (!course.href || course.href === "#") return;
     if (course.href.startsWith("http")) {
       window.open(course.href, "_blank", "noopener,noreferrer");
@@ -33,7 +45,25 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
     }
   };
 
-  const priceLabel = course.live ? "Enroll" : course.notify ? "Notify Me" : "Coming Soon";
+  const startCheckout = async () => {
+    if (!course.bsiPostId || inflight.current) return;
+    inflight.current = true;
+    setBuying(true);
+    setBuyError(null);
+    try {
+      const res = await purchaseCourseCheckout(course.bsiPostId, {
+        return_path: "/checkout/complete",
+      });
+      if (!openWhopCheckout(res.checkout_url)) {
+        setBuyError("Checkout unavailable. Try again.");
+      }
+    } catch {
+      setBuyError("Checkout unavailable. Try again.");
+    } finally {
+      inflight.current = false;
+      setBuying(false);
+    }
+  };
 
   return (
     <motion.article
@@ -48,11 +78,11 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
       role="link"
       tabIndex={0}
       aria-label={`Open ${course.name}`}
-      onClick={openCourse}
+      onClick={openLanding}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          openCourse();
+          openLanding();
         }
       }}
     >
@@ -86,9 +116,25 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
             </p>
             <p className="mt-2 line-clamp-2 text-[13px] leading-snug text-current/80">{course.desc}</p>
             <div className="mt-3 border-t border-current/20 pt-3">
-              <p className="font-serif text-[1.35rem] leading-none tracking-tight">{priceLabel}</p>
+              {canBuy ? (
+                <button
+                  type="button"
+                  disabled={buying}
+                  aria-busy={buying || undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void startCheckout();
+                  }}
+                  className="course-buy-btn inline-flex w-full items-center justify-center rounded-full border border-line bg-white px-4 py-2.5 text-sm font-semibold text-[#171512] shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] disabled:cursor-wait disabled:opacity-70"
+                >
+                  {buying ? "Opening…" : "Buy Now"}
+                </button>
+              ) : (
+                <p className="font-serif text-[1.35rem] leading-none tracking-tight">{statusLabel}</p>
+              )}
               {course.live || course.notify ? (
-                <p className="mt-1.5 text-[12.5px] leading-snug text-current/80">
+                <p className="mt-2 text-[12.5px] font-bold leading-snug text-current">
                   or Free with{" "}
                   <button
                     type="button"
@@ -97,10 +143,15 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
                       event.stopPropagation();
                       onJoin();
                     }}
-                    className="underline decoration-current/45 underline-offset-[3px] transition-opacity duration-300 ease-out hover:opacity-70"
+                    className="font-bold underline decoration-current/45 underline-offset-[3px] transition-opacity duration-300 ease-out hover:opacity-70"
                   >
                     membership
                   </button>
+                </p>
+              ) : null}
+              {buyError ? (
+                <p className="mt-1.5 text-[12px] leading-snug text-red-300" role="alert">
+                  {buyError}
                 </p>
               ) : null}
             </div>

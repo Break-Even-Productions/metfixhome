@@ -38,6 +38,10 @@ export type HomeCourseCard = {
   notify: boolean;
   /** Absolute URL or site-relative path (e.g. `/Stills/...`). */
   image?: string;
+  /** BSI LearnPress post id — required for Whop Buy Now mint. */
+  bsiPostId?: number;
+  /** Display price for Buy Now cards (e.g. `$350`). */
+  price?: string;
 };
 
 export type LibraryResource = {

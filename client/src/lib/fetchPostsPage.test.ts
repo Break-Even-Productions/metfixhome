@@ -14,6 +14,8 @@ const body = {
       image: null,
       author: "MetFix",
       category: { name: "News", slug: "news" },
+      exclusive: false,
+      preview_available: false,
     },
   ],
   page: 1,

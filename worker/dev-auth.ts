@@ -18,6 +18,15 @@ export function isLocalAuthEnabled(env: LocalAuthEnv | undefined): boolean {
   return v === "1" || v === "true";
 }
 
+/**
+ * Prod reCAPTCHA keys return siteverify `browser-error` on localhost.
+ * When LOCAL_AUTH is on (`.dev.vars` only), skip Google siteverify so password
+ * login / signup / comments work locally. Never enabled in production wrangler.
+ */
+export function bypassRecaptchaSiteverify(env: LocalAuthEnv | undefined): boolean {
+  return isLocalAuthEnabled(env);
+}
+
 /** Extra Host values accepted only when LOCAL_AUTH is enabled. */
 export const LOCAL_AUTH_HOSTS = ["localhost", "127.0.0.1"] as const;
 
