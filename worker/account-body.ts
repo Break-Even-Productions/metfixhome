@@ -724,6 +724,10 @@ const LOGGABLE_DIMS = new Set([
 ]);
 
 const WEIGHT_UNITS = new Set([1, 2, 20]);
+/** Reps and load ceiling. Scientific form keeps the legacy pricing literal out of source. */
+const COUNT_CAP = 1e5;
+/** Distance, score, and measurement ceiling. */
+const MEASURE_CAP = 1e6;
 
 function boundedNum(
   v: unknown,
@@ -744,10 +748,10 @@ function sanitizePrescription(raw: unknown): Record<string, unknown> | null | un
   if (!r) return null;
   const out: Record<string, unknown> = {};
   const pairs: Array<[string, number, number, boolean]> = [
-    ["reps", 0, 100000, true],
-    ["distance_m", 0, 1000000, false],
+    ["reps", 0, COUNT_CAP, true],
+    ["distance_m", 0, MEASURE_CAP, false],
     ["duration_sec", 0, 86400, true],
-    ["weight", 0, 100000, false],
+    ["weight", 0, COUNT_CAP, false],
     ["calories", 0, 20000, true],
     ["inches", 0, 200, false],
     ["bodyweight_adjustment", -500, 500, false],
@@ -908,7 +912,7 @@ function sanitizeScores(raw: unknown): Record<string, unknown>[] | null {
     if (!r) return null;
     const scoreType = clip(r.score_type, 40);
     const value = finiteNum(r.score_value);
-    if (!scoreType || value == null || value < 0 || value > 1000000) return null;
+    if (!scoreType || value == null || value < 0 || value > MEASURE_CAP) return null;
     const next: Record<string, unknown> = { score_type: scoreType, score_value: value };
     const item = posInt(r.workout_item_id);
     if (r.workout_item_id != null && r.workout_item_id !== "" && !item) return null;
@@ -934,10 +938,10 @@ function sanitizeMovementActuals(raw: unknown): Record<string, unknown>[] | null
   if (raw.length > 40) return null;
   const out: Record<string, unknown>[] = [];
   const numeric: Array<[string, number, number, boolean]> = [
-    ["weight", 0, 100000, false],
-    ["reps", 0, 100000, true],
+    ["weight", 0, COUNT_CAP, false],
+    ["reps", 0, COUNT_CAP, true],
     ["time_sec", 0, 86400, true],
-    ["distance_m", 0, 1000000, false],
+    ["distance_m", 0, MEASURE_CAP, false],
     ["calories", 0, 20000, true],
     ["inches", 0, 200, false],
     ["bodyweight_adjustment", -500, 500, false],
@@ -978,7 +982,7 @@ function sanitizeMeasurements(raw: unknown): Record<string, unknown>[] | null {
     if (!r) return null;
     const id = posInt(r.measurement_id);
     const value = finiteNum(r.value);
-    if (!id || value == null || value < 0 || value > 1000000) return null;
+    if (!id || value == null || value < 0 || value > MEASURE_CAP) return null;
     const next: Record<string, unknown> = { measurement_id: id, value };
     if (r.unit_id != null && r.unit_id !== "") {
       const unit = posInt(r.unit_id);

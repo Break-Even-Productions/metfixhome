@@ -509,6 +509,19 @@ function gitPorcelain(): string {
   return r.stdout || "";
 }
 
+/**
+ * Vitest writes `node_modules/.vite-temp` while bundling this repo's config and
+ * deletes it later in the same run. TK1 compares porcelain around an isolated
+ * build, so that scratch must not move the snapshot. A new temp path still fails.
+ */
+function splitViteTemp(porcelain: string): { stable: string; viteTemp: string[] } {
+  const lines = porcelain.split("\n");
+  return {
+    stable: lines.filter((line) => !line.includes("node_modules/.vite-temp/")).join("\n"),
+    viteTemp: lines.filter((line) => line.includes("node_modules/.vite-temp/")),
+  };
+}
+
 function assertNAbsentForTk1(): void {
   const N = tokenName();
   if (process.env[N] !== undefined && String(process.env[N]).length > 0) {
@@ -993,7 +1006,7 @@ describe("TK1.r", () => {
     const preset = `preset-${randomBytes(4).toString("hex")}`;
     process.env.SANITY_API_READ_TOKEN = preset;
     const snap = snapshotEnv(keys);
-    const beforePorcelain = gitPorcelain();
+    const beforePorcelain = splitViteTemp(gitPorcelain());
     // Absolute dirs under os.tmpdir() — never the repo `dist/` (TK1.r / CQ e290ffc1).
     // Isolated project so Vite config bundling cannot write repo node_modules/.vite-temp.
     const outDir = path.resolve(mkdtempSync(path.join(tmpdir(), "tk1r-out-")));
@@ -1017,7 +1030,7 @@ describe("TK1.r", () => {
       });
       // Build wrote only to the isolated outDir — not the repo Vite default.
       expect(existsSync(outDir)).toBe(true);
-      if (!beforePorcelain.includes("dist/")) {
+      if (!beforePorcelain.stable.includes("dist/")) {
         expect(existsSync(path.join(REPO_ROOT, "dist", "public"))).toBe(false);
       }
     } finally {
@@ -1028,7 +1041,12 @@ describe("TK1.r", () => {
     }
     expect(process.env[N]).toBeUndefined();
     expect(process.env.SANITY_API_READ_TOKEN).toBe(preset);
-    expect(gitPorcelain()).toBe(beforePorcelain);
+    const afterPorcelain = splitViteTemp(gitPorcelain());
+    expect(afterPorcelain.stable).toBe(beforePorcelain.stable);
+    const tempsBefore = new Set(beforePorcelain.viteTemp);
+    for (const line of afterPorcelain.viteTemp) {
+      expect(tempsBefore.has(line)).toBe(true);
+    }
     expect(existsSync(outDir)).toBe(false);
     expect(existsSync(otherDir)).toBe(false);
     expect(existsSync(proj.root)).toBe(false);

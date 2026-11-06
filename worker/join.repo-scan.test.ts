@@ -91,9 +91,10 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
   });
 
   it("zero foreign plan_* / prod_* Whop identifiers", () => {
-    // `plan_key` is the BSI checkout field, not a Whop plan_… id.
+    // BSI field names, not Whop plan_… ids.
+    const bsiFields = new Set(["plan_key", "plan_date"]);
     const hits = scanHits(withDist, /\b(?:plan|prod)_[A-Za-z0-9]+/g).filter(
-      (h) => h.match !== "plan_key",
+      (h) => !bsiFields.has(h.match),
     );
     expect(hits).toEqual([]);
   });
