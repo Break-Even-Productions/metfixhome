@@ -894,6 +894,7 @@
   /* ─── Global mobile overrides ─── */
   @media (max-width: 767px) {
     /* Reduce section padding on mobile — exclude hero which manages its own padding */
+    section:not(.hero-section) { padding-top: 4rem !important; padding-bottom: 4rem !important; }
     /* Hero section: reduce container top padding on mobile, ensure min-height */
     .hero-section { min-height: max(85vh, 520px) !important; }
     .hero-container { padding-top: 6rem !important; padding-bottom: 3rem !important; }

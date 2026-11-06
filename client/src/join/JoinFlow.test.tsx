@@ -188,9 +188,8 @@ describe("JoinFlow P-WJ-1..8", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Sign in$/i }));
     await screen.findByLabelText(/^Email$/i);
     expect(screen.getByLabelText(/^Password$/i)).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /Need an account\? Sign up/i }),
-    ).toBeTruthy();
+    expect(screen.getByText(/Need an account\?/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Sign up$/i })).toBeTruthy();
     unmount();
 
     vi.spyOn(session, "loadMe").mockResolvedValue({

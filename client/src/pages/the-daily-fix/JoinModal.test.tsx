@@ -3,6 +3,8 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearCsrfCache } from "@/lib/authRequest";
+import * as session from "@/lib/session";
 import { JoinModal } from "./JoinModal";
 
 function mockAuthFetch() {
@@ -28,6 +30,10 @@ function mockAuthFetch() {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  delete (window as unknown as { grecaptcha?: unknown }).grecaptcha;
+  delete (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: unknown })
+    .__MFX_RECAPTCHA_SITE_KEY__;
+  clearCsrfCache();
 });
 
 describe("JoinModal", () => {
@@ -46,6 +52,26 @@ describe("JoinModal", () => {
   });
 
   it("posts login with CSRF after valid fields", async () => {
+    clearCsrfCache();
+    (
+      window as unknown as { __MFX_RECAPTCHA_SITE_KEY__: string }
+    ).__MFX_RECAPTCHA_SITE_KEY__ = "test-site-key";
+    (
+      window as unknown as {
+        grecaptcha: {
+          ready: (cb: () => void) => void;
+          execute: () => Promise<string>;
+        };
+      }
+    ).grecaptcha = {
+      ready: (cb) => cb(),
+      execute: async () => "test-recaptcha",
+    };
+    vi.spyOn(session, "refreshMeAfterAuthChange").mockResolvedValue({
+      status: "signed_in",
+      public_name: "Pat",
+      moderator: false,
+    });
     const onSignedIn = vi.fn();
     const fetchImpl = mockAuthFetch();
     render(<JoinModal open onClose={() => {}} onSignedIn={onSignedIn} fetchImpl={fetchImpl} />);

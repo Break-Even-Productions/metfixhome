@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -221,7 +221,8 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       </Router>,
     );
     await waitFor(() => expect(screen.getByText("Next Payment")).toBeTruthy());
-    const dailyFix = screen.getByRole("link", { name: /Daily Fix/i });
+    const tools = screen.getByRole("region", { name: /MetFix tools/i });
+    const dailyFix = within(tools).getByRole("link", { name: /Daily Fix/i });
     expect(dailyFix.getAttribute("href")).toBe("/the-daily-fix");
     expect(screen.getAllByText("No web page yet").length).toBeGreaterThan(0);
     expect(screen.queryByText("MetFix Admin")).toBeNull();
@@ -267,7 +268,8 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     );
     await waitFor(() => expect(screen.getByText("Meal plans")).toBeTruthy());
     expect(screen.queryByText("Next Payment")).toBeNull();
-    expect(screen.queryByRole("link", { name: /Daily Fix/i })).toBeNull();
+    const tools = screen.getByRole("region", { name: /MetFix tools/i });
+    expect(within(tools).queryByRole("link", { name: /Daily Fix/i })).toBeNull();
     expect(document.querySelectorAll('[data-state="locked"]').length).toBe(7);
   });
 

@@ -102,9 +102,24 @@ export async function prepareVisualPage(page: Page): Promise<void> {
   await routeVendoredFonts(page);
   await stubApi(page);
   await page.addInitScript(() => {
-    // Freeze clock to Chicago noon pin
-    const fixed = new Date("2026-10-29T17:00:00.000Z").valueOf();
-    Date.now = () => fixed;
+    // V8's `new Date()` does not call the replaced Date.now, so the pin has to
+    // replace the constructor. 2026-11-03T02:00:00Z is the visual baseline:
+    // America/Chicago is still Nov 2 (recipe count 630) and BSI today
+    // (Etc/GMT-2) is Tuesday, November 3.
+    const fixed = Date.parse("2026-11-03T02:00:00.000Z");
+    const RealDate = Date;
+    function PatchedDate(this: Date, ...args: unknown[]) {
+      if (!new.target) return new RealDate(fixed).toString();
+      if (args.length === 0) return new RealDate(fixed);
+      return new RealDate(...(args as ConstructorParameters<DateConstructor>));
+    }
+    PatchedDate.now = () => fixed;
+    PatchedDate.parse = RealDate.parse.bind(RealDate);
+    PatchedDate.UTC = RealDate.UTC.bind(RealDate);
+    PatchedDate.prototype = RealDate.prototype;
+    Object.setPrototypeOf(PatchedDate, RealDate);
+    (globalThis as unknown as { Date: DateConstructor }).Date =
+      PatchedDate as unknown as DateConstructor;
   });
 }
 
@@ -209,14 +224,17 @@ export async function settleForCapture(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const imgs = Array.from(document.images);
     await Promise.all(
-      imgs.map((img) =>
-        img.complete
-          ? Promise.resolve()
-          : new Promise<void>((resolve) => {
-              img.addEventListener("load", () => resolve(), { once: true });
-              img.addEventListener("error", () => resolve(), { once: true });
-            }),
-      ),
+      imgs.map((img) => {
+        if (img.complete) return Promise.resolve();
+        // Off-screen loading=lazy images never fire load or error.
+        img.loading = "eager";
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          window.setTimeout(done, 1_500);
+        });
+      }),
     );
   });
 }
