@@ -7,6 +7,35 @@ import {
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 
+const SHORT_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** Month + day + hour:minute without `.toLocaleString` (CL-T21 / CL-MONEY-SCAN-1). */
+function formatInboxStamp(raw: string): string {
+  const d = new Date(raw.includes("T") ? raw : raw.replace(" ", "T"));
+  if (!Number.isFinite(d.getTime())) return raw;
+  const month = SHORT_MONTHS[d.getMonth()] ?? "";
+  const day = d.getDate();
+  let hour = d.getHours();
+  const minute = String(d.getMinutes()).padStart(2, "0");
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12;
+  if (hour === 0) hour = 12;
+  return `${month} ${day}, ${hour}:${minute} ${ampm}`;
+}
+
 function conversationTitle(c: AccountInboxConversation): string {
   return (c.name ?? "").trim() || `Conversation ${c.id}`;
 }
@@ -19,14 +48,7 @@ function conversationPreview(c: AccountInboxConversation): string {
 function conversationTime(c: AccountInboxConversation): string {
   const raw = c.last_message_time ?? c.lastMessageTime;
   if (!raw || typeof raw !== "string") return "";
-  const d = new Date(raw.includes("T") ? raw : raw.replace(" ", "T"));
-  if (!Number.isFinite(d.getTime())) return raw;
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInboxStamp(raw);
 }
 
 function unreadOf(c: AccountInboxConversation): number {
@@ -45,14 +67,7 @@ function notificationBody(n: AccountInboxNotification): string {
 function notificationTime(n: AccountInboxNotification): string {
   const raw = n.created_at;
   if (!raw || typeof raw !== "string") return "";
-  const d = new Date(raw.includes("T") ? raw : raw.replace(" ", "T"));
-  if (!Number.isFinite(d.getTime())) return raw;
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInboxStamp(raw);
 }
 
 export default function AccountInbox() {
