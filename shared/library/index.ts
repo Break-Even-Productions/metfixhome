@@ -50,6 +50,7 @@ export {
   libraryFiltersCacheKey,
   libraryPopularCacheKey,
   librarySearchCacheKey,
+  libraryViewerCacheSalt,
 } from "./cache";
 
 export {
