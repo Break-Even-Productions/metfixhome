@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { basePath } from "@/const";
 import {
+  createShoppingListFromMeals,
   deriveMembershipStatus,
+  emailShoppingList,
+  generateShoppingList,
   loadMacrosDaily,
   loadMealsWeek,
   loadOverview,
   loadSubscriptions,
+  planMeal,
   type AccountOverview,
   type AccountSubscriptions,
   type MacrosDaily,
   type MealsWeek,
   type PlannedMeal,
+  type ShoppingList,
+  type ShoppingListGroceryItem,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 import { metfixToolsUnlocked } from "./metfixAppTools";
@@ -49,6 +55,66 @@ function formatG(n: number): string {
   return `${Math.round(n)}g`;
 }
 
+function flattenGroceryItems(list: ShoppingList | null): ShoppingListGroceryItem[] {
+  if (!list) return [];
+  const byCat = list.items_by_category;
+  if (byCat && typeof byCat === "object") {
+    const rows: ShoppingListGroceryItem[] = [];
+    for (const [category, items] of Object.entries(byCat)) {
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        rows.push({ ...item, category: item.category ?? category });
+      }
+    }
+    if (rows.length > 0) {
+      return rows.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    }
+  }
+  // Fallback: recipe snapshot ingredients before generate.
+  const snap: ShoppingListGroceryItem[] = [];
+  for (const item of list.items ?? []) {
+    const ingredients = item.snapshot_data?.ingredients;
+    if (Array.isArray(ingredients) && ingredients.length > 0) {
+      ingredients.forEach((name, i) => {
+        snap.push({
+          id: item.id * 1000 + i,
+          item_name: name,
+          quantity: "",
+          sort_order: i,
+          category: item.snapshot_data?.title ?? null,
+        });
+      });
+    } else if (item.snapshot_data?.title) {
+      snap.push({
+        id: item.id,
+        item_name: item.snapshot_data.title,
+        quantity: "",
+        sort_order: 0,
+      });
+    }
+  }
+  return snap;
+}
+
+function MealCardSkeleton() {
+  return (
+    <article className="dash-meal-card dash-meal-card--skel" aria-hidden="true">
+      <div className="dash-meal-card__media">
+        <div className="dash-skel dash-skel--media" />
+      </div>
+      <div className="dash-meal-card__body">
+        <div className="dash-skel dash-skel--title" />
+        <div className="dash-macro-row">
+          <div className="dash-skel dash-skel--macro" />
+          <div className="dash-skel dash-skel--macro" />
+          <div className="dash-skel dash-skel--macro" />
+          <div className="dash-skel dash-skel--macro" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function AccountMeals() {
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [subs, setSubs] = useState<AccountSubscriptions | null>(null);
@@ -58,6 +124,20 @@ export default function AccountMeals() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [planDate, setPlanDate] = useState(() => ymd(new Date()));
+  const [planSlot, setPlanSlot] = useState(1);
+  const [planSourceType, setPlanSourceType] = useState<"custom_recipe" | "daily_mod">(
+    "custom_recipe",
+  );
+  const [planSourceId, setPlanSourceId] = useState("");
+  const [planLabel, setPlanLabel] = useState("");
+  const [planning, setPlanning] = useState(false);
+  const [planMessage, setPlanMessage] = useState<string | null>(null);
+
+  const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
+  const [shoppingBusy, setShoppingBusy] = useState(false);
+  const [shoppingMessage, setShoppingMessage] = useState<string | null>(null);
+
   const weekDates = useMemo(() => {
     const start = startOfWeekMonday(new Date());
     return Array.from({ length: 7 }, (_, i) => {
@@ -66,17 +146,24 @@ export default function AccountMeals() {
     });
   }, []);
 
+  const weekStart = weekDates[0]!.date;
+  const weekEnd = weekDates[6]!.date;
+
+  async function refreshWeek(signal?: AbortSignal) {
+    const meals = await loadMealsWeek(weekStart, weekEnd, { force: true, signal });
+    setWeek(meals);
+    return meals;
+  }
+
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
     (async () => {
       try {
-        const start = weekDates[0]!.date;
-        const end = weekDates[6]!.date;
         const [ov, su, meals, mac] = await Promise.all([
           loadOverview({ signal: ac.signal }),
           loadSubscriptions({ signal: ac.signal }),
-          loadMealsWeek(start, end, { signal: ac.signal }),
+          loadMealsWeek(weekStart, weekEnd, { signal: ac.signal }),
           loadMacrosDaily(ymd(new Date()), { signal: ac.signal }).catch(() => null),
         ]);
         if (cancelled) return;
@@ -102,7 +189,7 @@ export default function AccountMeals() {
       cancelled = true;
       ac.abort();
     };
-  }, [weekDates]);
+  }, [weekDates, weekStart, weekEnd]);
 
   const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
   const pro = metfixToolsUnlocked(tier);
@@ -124,6 +211,8 @@ export default function AccountMeals() {
       ),
     [week],
   );
+
+  const groceryItems = useMemo(() => flattenGroceryItems(shoppingList), [shoppingList]);
 
   const targetP = macros?.goal_protein || macros?.protein || 0;
   const targetF = macros?.goal_fat || macros?.fat || 0;
@@ -152,27 +241,109 @@ export default function AccountMeals() {
         },
         {
           label: "Smart grocery list",
-          value: weekMealCount > 0 ? "Build from planned meals" : "Add meals to unlock list",
-          note: "Shopping-list generation stays in the MetFix app for now",
+          value: shoppingList
+            ? groceryItems.length > 0
+              ? `${groceryItems.length} item${groceryItems.length === 1 ? "" : "s"}`
+              : "List ready — generate items"
+            : weekMealCount > 0
+              ? "Build from planned meals"
+              : "Add meals to unlock list",
+          note: shoppingList?.title || "Create + generate from this week",
         },
       ]
     : [
         {
           label: "Daily metabolic target",
-          value: "165g P · 112g F · 24g C",
-          note: "🔒 Custom macro dial with Pro",
+          value: "Custom macro dial",
+          note: "🔒 Included with MetFix Pro",
         },
         {
           label: "Weekly structure",
-          value: "21 meals · 45m prep",
-          note: "🔒 Sunday batch timeline with Pro",
+          value: "Plan meals on your calendar",
+          note: "🔒 Live meal planning with Pro",
         },
         {
           label: "Smart grocery list",
-          value: "24 whole-food items",
-          note: "🔒 1-click grocery export with Pro",
+          value: "Emailable aisle list",
+          note: "🔒 Built from your planned meals with Pro",
         },
       ];
+
+  async function onPlanMeal(e: FormEvent) {
+    e.preventDefault();
+    setPlanMessage(null);
+    const sourceIdRaw = planSourceId.trim();
+    const label = planLabel.trim();
+    if (!sourceIdRaw && !label) {
+      setPlanMessage("Add a recipe id or a label.");
+      return;
+    }
+    const sourceId = sourceIdRaw ? Number(sourceIdRaw) : null;
+    if (sourceIdRaw && (!Number.isFinite(sourceId) || sourceId == null || sourceId <= 0)) {
+      setPlanMessage("Recipe id must be a positive number.");
+      return;
+    }
+    setPlanning(true);
+    try {
+      await planMeal(planDate, {
+        recipe_source_type: planSourceType,
+        recipe_source_id: sourceId,
+        slot_index: planSlot,
+        label: label || null,
+      });
+      await refreshWeek();
+      setSelectedDate(planDate);
+      setPlanMessage("Meal planned.");
+      setPlanLabel("");
+      setPlanSourceId("");
+    } catch {
+      setPlanMessage("Could not plan that meal. Try again.");
+    } finally {
+      setPlanning(false);
+    }
+  }
+
+  async function onBuildShoppingList() {
+    setShoppingMessage(null);
+    const meals = week?.meals ?? [];
+    if (meals.length === 0) {
+      setShoppingMessage("Plan meals this week before building a list.");
+      return;
+    }
+    setShoppingBusy(true);
+    try {
+      const created = await createShoppingListFromMeals({
+        title: `Week of ${weekStart}`,
+        dates: weekDates.map((d) => d.date),
+        meals: meals.map((m) => ({ planned_meal_id: m.id, servings: 1 })),
+      });
+      const generated = await generateShoppingList(created.id);
+      setShoppingList(generated.list);
+      setShoppingMessage("Shopping list generated from your planned meals.");
+    } catch {
+      setShoppingMessage("Could not build the shopping list.");
+    } finally {
+      setShoppingBusy(false);
+    }
+  }
+
+  async function onEmailShoppingList() {
+    if (!shoppingList?.id) return;
+    setShoppingMessage(null);
+    setShoppingBusy(true);
+    try {
+      const res = await emailShoppingList(shoppingList.id);
+      setShoppingMessage(
+        res.emailed_to
+          ? `Sent to ${res.emailed_to}.`
+          : res.message || "Shopping list emailed.",
+      );
+    } catch {
+      setShoppingMessage("Could not email this list.");
+    } finally {
+      setShoppingBusy(false);
+    }
+  }
 
   return (
     <DashboardLayout
@@ -249,13 +420,16 @@ export default function AccountMeals() {
           <section className="dash-locked-panel" aria-labelledby="meals-locked-menu">
             <div className="dash-locked-head">
               <div>
-                <p className="dash-kicker">Sample preview</p>
+                <p className="dash-kicker">Your week</p>
                 <h2 id="meals-locked-menu" className="dash-section-title">
-                  This week’s metabolic menu
+                  Live meal planning
                 </h2>
+                <p className="account-muted">
+                  Pro unlocks your real planned meals — we never show sample plates as yours.
+                </p>
               </div>
               <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                Unlock full week
+                Unlock meal planner
               </Link>
             </div>
             <div className="dash-day-tabs" role="tablist" aria-label="Preview days">
@@ -267,121 +441,32 @@ export default function AccountMeals() {
                 >
                   <span className="dash-day-tab__dow">{d.label}</span>
                   <span className="dash-day-tab__count">
-                    {i === 0 ? "SAMPLE" : <span className="dash-day-tab__lock">Locked</span>}
+                    <span className="dash-day-tab__lock">Locked</span>
                   </span>
                 </span>
               ))}
             </div>
-            <p className="account-muted dash-sample-note">
-              Monday · Heavy Lower &amp; Conditioning — sample macros only.
-            </p>
-            <div className="dash-meal-grid">
-              {[
-                {
-                  slot: "First meal",
-                  title: "Cilantro-Lime Grilled Steak & Greens",
-                  p: 48,
-                  f: 28,
-                  c: 6,
-                },
-                {
-                  slot: "Post-training",
-                  title: "Greek Yogurt Bowl with Berries",
-                  p: 36,
-                  f: 12,
-                  c: 22,
-                },
-                {
-                  slot: "Dinner",
-                  title: "Chicken-Wrapped Asparagus in Garlic Ghee",
-                  p: 42,
-                  f: 24,
-                  c: 8,
-                },
-              ].map((sample) => {
-                const kcal = Math.round(sample.p * 4 + sample.c * 4 + sample.f * 9);
-                return (
-                  <article key={sample.slot} className="dash-meal-card dash-meal-card--locked">
-                    <div className="dash-meal-card__media">
-                      <div className="dash-meal-card__ph" aria-hidden="true" />
-                      <span className="dash-meal-card__slot">{sample.slot} · Sample</span>
-                    </div>
-                    <div className="dash-meal-card__body">
-                      <h3 className="dash-meal-card__title">{sample.title}</h3>
-                      <dl className="dash-macro-row">
-                        <div>
-                          <dt>P</dt>
-                          <dd>{formatG(sample.p)}</dd>
-                        </div>
-                        <div>
-                          <dt>F</dt>
-                          <dd>{formatG(sample.f)}</dd>
-                        </div>
-                        <div>
-                          <dt>C</dt>
-                          <dd>{formatG(sample.c)}</dd>
-                        </div>
-                        <div>
-                          <dt>kcal</dt>
-                          <dd>{kcal}</dd>
-                        </div>
-                      </dl>
-                      <div className="dash-meal-card__actions">
-                        <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                          Unlock recipe &amp; steps
-                        </Link>
-                        <span className="dash-lock-pill">Swap</span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+            <div className="dash-empty dash-empty--locked">
+              <p className="account-muted">
+                Day tabs, meal cards, and grocery generation stay empty until Pro — no placeholder recipes.
+              </p>
             </div>
           </section>
 
-          <div className="dash-locked-grid">
-            <section className="dash-locked-panel" aria-labelledby="meals-locked-grocery">
-              <h2 id="meals-locked-grocery" className="dash-section-title">
-                Every ingredient for the week
-              </h2>
-              <p className="account-muted">Grouped by aisle — preview only.</p>
-              <div className="dash-locked-fade">
-                <ul className="dash-locked-fade__list">
-                  <li>2.25 lb grass-fed flank steak</li>
-                  <li>Greek yogurt, full-fat (32 oz)</li>
-                  <li>Asparagus · garlic · ghee</li>
-                  <li>Berries · spinach · eggs</li>
-                  <li>Extra-virgin olive oil</li>
-                </ul>
-                <div className="dash-locked-fade__veil">
-                  <span>+ 20 more whole-food ingredients locked</span>
-                  <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                    Unlock full grocery list
-                  </Link>
-                </div>
+          <section className="dash-locked-panel" aria-labelledby="meals-locked-grocery">
+            <div className="dash-locked-head">
+              <div>
+                <h2 id="meals-locked-grocery" className="dash-section-title">
+                  Shopping list from planned meals
+                </h2>
+                <p className="account-muted">Create, generate, and email your aisle list with Pro.</p>
               </div>
-            </section>
-            <section className="dash-locked-panel" aria-labelledby="meals-locked-prep">
-              <h2 id="meals-locked-prep" className="dash-section-title">
-                Cook once on Sunday
-              </h2>
-              <p className="account-muted">Batch prep timeline — locked with Pro.</p>
-              <div className="dash-locked-fade">
-                <ul className="dash-locked-fade__list">
-                  <li>Whisk the two weekly sauces — 00:08</li>
-                  <li>Portion proteins into containers — 00:15</li>
-                  <li>Roast vegetables for midweek — 00:25</li>
-                  <li>Label fridge shelves for grab-and-go</li>
-                </ul>
-                <div className="dash-locked-fade__veil">
-                  <span>Prep steps locked</span>
-                  <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                    Unlock prep mode
-                  </Link>
-                </div>
-              </div>
-            </section>
-          </div>
+              <span className="dash-locked-badge">Locked</span>
+            </div>
+            <Link href={basePath("/join")} className="account-btn account-btn--accent">
+              Unlock grocery list
+            </Link>
+          </section>
 
           <ProUnlockBanner />
         </div>
@@ -398,11 +483,14 @@ export default function AccountMeals() {
                   role="tab"
                   aria-selected={active}
                   className={`dash-day-tab${active ? " dash-day-tab--on" : ""}`}
-                  onClick={() => setSelectedDate(d.date)}
+                  onClick={() => {
+                    setSelectedDate(d.date);
+                    setPlanDate(d.date);
+                  }}
                 >
                   <span className="dash-day-tab__dow">{d.label}</span>
                   <span className="dash-day-tab__count">
-                    {count > 0 ? `${count} meal${count === 1 ? "" : "s"}` : "—"}
+                    {loading ? "…" : count > 0 ? `${count} meal${count === 1 ? "" : "s"}` : "—"}
                   </span>
                 </button>
               );
@@ -410,20 +498,22 @@ export default function AccountMeals() {
           </div>
 
           {loading ? (
-            <p className="account-muted">Loading your planned meals…</p>
+            <div className="dash-meal-grid" aria-busy="true" aria-label="Loading meals">
+              <MealCardSkeleton />
+              <MealCardSkeleton />
+              <MealCardSkeleton />
+            </div>
           ) : dayMeals.length === 0 ? (
             <div className="dash-empty">
               <h2 className="dash-section-title">No meals planned for this day</h2>
-              <p className="account-muted">
-                Plan meals in the MetFix app calendar — they’ll sync here automatically.
-              </p>
+              <p className="account-muted">Use the form below to plan a meal for {selectedDate}.</p>
             </div>
           ) : (
             <div className="dash-meal-grid">
               {dayMeals.map((m) => {
-                const macros = m.recipe_preview?.macros;
-                const kcal = macros
-                  ? Math.round(macros.protein * 4 + macros.carbs * 4 + macros.fat * 9)
+                const mealMacros = m.recipe_preview?.macros;
+                const kcal = mealMacros
+                  ? Math.round(mealMacros.protein * 4 + mealMacros.carbs * 4 + mealMacros.fat * 9)
                   : null;
                 return (
                   <article key={m.id} className="dash-meal-card">
@@ -441,19 +531,19 @@ export default function AccountMeals() {
                     <div className="dash-meal-card__body">
                       <h3 className="dash-meal-card__title">{mealTitle(m)}</h3>
                       {m.notes ? <p className="account-muted">{m.notes}</p> : null}
-                      {macros ? (
+                      {mealMacros ? (
                         <dl className="dash-macro-row">
                           <div>
                             <dt>P</dt>
-                            <dd>{formatG(macros.protein)}</dd>
+                            <dd>{formatG(mealMacros.protein)}</dd>
                           </div>
                           <div>
                             <dt>F</dt>
-                            <dd>{formatG(macros.fat)}</dd>
+                            <dd>{formatG(mealMacros.fat)}</dd>
                           </div>
                           <div>
                             <dt>C</dt>
-                            <dd>{formatG(macros.carbs)}</dd>
+                            <dd>{formatG(mealMacros.carbs)}</dd>
                           </div>
                           {kcal != null ? (
                             <div>
@@ -471,6 +561,142 @@ export default function AccountMeals() {
               })}
             </div>
           )}
+
+          <section className="dash-meals-plan" aria-labelledby="meals-plan-heading">
+            <h2 id="meals-plan-heading" className="dash-section-title">
+              Plan a meal
+            </h2>
+            <p className="account-muted">
+              Minimal planner — date, slot, source type, and a recipe id or label.
+            </p>
+            <form className="account-form dash-meals-plan__form" onSubmit={onPlanMeal}>
+              <div className="account-form-row">
+                <label>
+                  Date
+                  <input
+                    type="date"
+                    value={planDate}
+                    onChange={(e) => setPlanDate(e.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Slot
+                  <select
+                    value={planSlot}
+                    onChange={(e) => setPlanSlot(Number(e.target.value))}
+                  >
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <option key={n} value={n}>
+                        {SLOT_LABELS[n]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="account-form-row">
+                <label>
+                  Recipe source
+                  <select
+                    value={planSourceType}
+                    onChange={(e) =>
+                      setPlanSourceType(e.target.value as "custom_recipe" | "daily_mod")
+                    }
+                  >
+                    <option value="custom_recipe">custom_recipe</option>
+                    <option value="daily_mod">daily_mod</option>
+                  </select>
+                </label>
+                <label>
+                  Recipe source id
+                  <input
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    placeholder="Optional if label set"
+                    value={planSourceId}
+                    onChange={(e) => setPlanSourceId(e.target.value)}
+                  />
+                </label>
+              </div>
+              <label>
+                Label
+                <input
+                  type="text"
+                  placeholder="Optional if recipe id set"
+                  value={planLabel}
+                  onChange={(e) => setPlanLabel(e.target.value)}
+                />
+              </label>
+              <div className="dash-meals-plan__actions">
+                <button type="submit" className="account-btn account-btn--accent" disabled={planning}>
+                  {planning ? "Planning…" : "Plan meal"}
+                </button>
+                {planMessage ? <p className="account-muted">{planMessage}</p> : null}
+              </div>
+            </form>
+          </section>
+
+          <section className="dash-shopping" aria-labelledby="meals-shopping-heading">
+            <div className="dash-locked-head">
+              <div>
+                <h2 id="meals-shopping-heading" className="dash-section-title">
+                  Shopping list
+                </h2>
+                <p className="account-muted">
+                  Build from this week’s planned meals, generate aisle items, then email yourself the list.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="account-btn account-btn--accent"
+                disabled={shoppingBusy || weekMealCount === 0}
+                onClick={() => void onBuildShoppingList()}
+              >
+                {shoppingBusy ? "Working…" : "Create list + generate"}
+              </button>
+            </div>
+
+            {shoppingList ? (
+              <div className="dash-shopping__panel">
+                <p className="dash-kicker">
+                  {shoppingList.title || `List #${shoppingList.id}`}
+                  {shoppingList.status ? ` · ${shoppingList.status}` : ""}
+                </p>
+                {groceryItems.length === 0 ? (
+                  <p className="account-muted">No grocery items yet — generate may still be pending.</p>
+                ) : (
+                  <ul className="dash-shopping__items">
+                    {groceryItems.map((item) => (
+                      <li key={`${item.id}-${item.item_name}`}>
+                        <span>{item.item_name}</span>
+                        <span className="dash-shopping__meta">
+                          {[item.quantity, item.category].filter(Boolean).join(" · ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="dash-shopping__actions">
+                  <button
+                    type="button"
+                    className="account-btn"
+                    disabled={shoppingBusy}
+                    onClick={() => void onEmailShoppingList()}
+                  >
+                    Email me this list
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="account-muted">
+                {weekMealCount === 0
+                  ? "Plan meals first, then create a shopping list here."
+                  : `${weekMealCount} planned meal${weekMealCount === 1 ? "" : "s"} ready to turn into a list.`}
+              </p>
+            )}
+            {shoppingMessage ? <p className="account-muted">{shoppingMessage}</p> : null}
+          </section>
         </div>
       )}
     </DashboardLayout>

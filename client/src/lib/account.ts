@@ -300,6 +300,77 @@ export type MacrosDaily = {
   goal_carbs: number;
 };
 
+export type PlanMealBody = {
+  recipe_source_type: "daily_mod" | "custom_recipe";
+  /** Required by BSI when planning a known recipe; omit when using a free-text label. */
+  recipe_source_id?: number | null;
+  slot_index?: number;
+  label?: string | null;
+  notes?: string | null;
+};
+
+export type ShoppingListGroceryItem = {
+  id: number;
+  item_name: string;
+  quantity: string;
+  sort_order?: number;
+  category?: string | null;
+};
+
+export type ShoppingList = {
+  id: number;
+  title?: string | null;
+  status?: "created" | "generated" | "complete" | "failed" | string | null;
+  dates?: string[];
+  meals?: Array<{
+    planned_meal_id: number;
+    servings?: number;
+    date?: string;
+    slot_index?: number;
+    label?: string | null;
+  }>;
+  /** Recipe snapshot rows (pre-generate). */
+  items?: Array<{
+    id: number;
+    source_type?: string;
+    source_id?: number;
+    snapshot_data?: { title?: string; ingredients?: string[] } | null;
+  }>;
+  /** Generated grocery rows by aisle. */
+  items_by_category?: Record<string, ShoppingListGroceryItem[]>;
+  generated_at?: string | null;
+  [key: string]: unknown;
+};
+
+export type ShoppingListsPage = {
+  lists: ShoppingList[];
+  meta?: {
+    total?: number;
+    count?: number;
+    limit?: number;
+    offset?: number;
+  };
+};
+
+export type CreateShoppingListFromMealsBody = {
+  title?: string;
+  dates?: string[];
+  meals?: Array<{ planned_meal_id: number; servings: number }>;
+  other_considerations?: string;
+  notes?: string;
+};
+
+export type GenerateShoppingListResult = {
+  success?: boolean;
+  list: ShoppingList;
+};
+
+export type EmailShoppingListResult = {
+  success?: boolean;
+  emailed_to?: string | null;
+  message?: string | null;
+};
+
 export type PrOverviewRow = {
   name: string;
   type: string | null;
@@ -317,6 +388,45 @@ export type PrOverviewRow = {
 export type PrOverview = {
   workouts: PrOverviewRow[];
   movements: PrOverviewRow[];
+};
+
+/** BSI spark entry row — date + value are the chart contract; extras pass through. */
+export type SparkEntry = {
+  id?: string | number;
+  measurement_date: string;
+  value: number;
+  bsi_measurement_id?: number;
+  unit_id?: number;
+  unit_abbreviation?: string | null;
+  measurement_name?: string;
+  type?: "pending" | "accepted";
+  status?: "pending" | "accepted";
+  athlete_id?: number;
+  class_id?: number;
+};
+
+export type SparkEntriesPage = {
+  entries: SparkEntry[];
+  meta?: {
+    count?: number;
+    limit?: number;
+    offset?: number;
+  };
+};
+
+export type CreateSparkEntryInput = {
+  measurement_id: number;
+  value: number;
+  /** BSI accepts `Y-m-d H:i:s` or `Y-m-d\TH:i:s` (date-only is fine for dashboard). */
+  measurement_date: string;
+  unit_id?: number;
+};
+
+export type CreateSparkEntryResult = {
+  entry?: SparkEntry;
+  message?: string;
+  skipped?: boolean;
+  auto_log_skipped?: boolean;
 };
 
 type CacheKey =
@@ -337,7 +447,10 @@ type CacheKey =
   | `member:${string}`
   | `meals:${string}:${string}`
   | `meals-upcoming:${number}`
-  | `macros:${string}`;
+  | `macros:${string}`
+  | "shopping-lists"
+  | `shopping-list:${number}`
+  | `spark-entries:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
@@ -575,6 +688,89 @@ export function loadMacrosDaily(
   return accountGet(`/api/account/macros/daily/${encodeURIComponent(date)}`, key, options);
 }
 
+/** Plan or replace a meal on a calendar day (YYYY-MM-DD). */
+export async function planMeal(
+  date: string,
+  body: PlanMealBody,
+): Promise<PlannedMeal> {
+  const res = await accountMutate<PlannedMeal | { planned_meal: PlannedMeal }>(
+    `/api/account/meals/days/${encodeURIComponent(date)}`,
+    {
+      method: "POST",
+      body,
+    },
+  );
+  // Invalidate all week caches — date may sit in any cached range.
+  for (const key of [...cache.keys()]) {
+    if (typeof key === "string" && (key.startsWith("meals:") || key.startsWith("meals-upcoming:"))) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+  if (res && typeof res === "object" && "planned_meal" in res && res.planned_meal) {
+    return res.planned_meal;
+  }
+  return res as PlannedMeal;
+}
+
+/** Load one shopping list, or the member’s list index when `id` is omitted. */
+export function loadShoppingList(
+  id?: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<ShoppingList | ShoppingListsPage> {
+  if (id == null) {
+    return accountGet("/api/account/shopping-lists", "shopping-lists", options);
+  }
+  const key: CacheKey = `shopping-list:${id}`;
+  return accountGet(`/api/account/shopping-lists/${id}`, key, options);
+}
+
+/** Create a shopping list from planned meals / dates. */
+export async function createShoppingListFromMeals(
+  body: CreateShoppingListFromMealsBody,
+): Promise<ShoppingList> {
+  const list = await accountMutate<ShoppingList>("/api/account/shopping-lists", {
+    method: "POST",
+    body,
+    invalidate: ["shopping-lists"],
+  });
+  if (list?.id != null) {
+    cache.set(`shopping-list:${list.id}`, list);
+  }
+  return list;
+}
+
+/** Generate grocery items (LLM) for an existing shopping list. */
+export async function generateShoppingList(
+  id: number,
+): Promise<GenerateShoppingListResult> {
+  const res = await accountMutate<GenerateShoppingListResult | ShoppingList>(
+    `/api/account/shopping-lists/${id}/generate`,
+    {
+      method: "POST",
+      body: {},
+      invalidate: ["shopping-lists", `shopping-list:${id}`],
+    },
+  );
+  if (res && typeof res === "object" && "list" in res && res.list) {
+    cache.set(`shopping-list:${id}`, res.list);
+    return res as GenerateShoppingListResult;
+  }
+  const list = res as ShoppingList;
+  cache.set(`shopping-list:${id}`, list);
+  return { success: true, list };
+}
+
+/** Email the shopping list to the signed-in member. */
+export async function emailShoppingList(
+  id: number,
+): Promise<EmailShoppingListResult> {
+  return accountMutate(`/api/account/shopping-lists/${id}/email`, {
+    method: "POST",
+    body: {},
+  });
+}
+
 /** Spark PR / benchmark overview (lifts + conditioning benchmarks). */
 export function loadPrOverview(options?: {
   force?: boolean;
@@ -584,6 +780,82 @@ export function loadPrOverview(options?: {
   const cap = options?.catalogCap;
   const q = cap ? `?catalog_cap=${encodeURIComponent(String(cap))}` : "";
   return accountGet(`/api/account/pr-overview${q}`, "pr-overview", options);
+}
+
+function sparkEntriesCacheKey(params: {
+  measurement_id: number;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}): CacheKey {
+  const start = params.start_date ?? "";
+  const end = params.end_date ?? "";
+  const limit = params.limit ?? "";
+  return `spark-entries:${params.measurement_id}:${start}:${end}:${limit}`;
+}
+
+function invalidateSparkEntriesCaches(measurementId?: number): void {
+  for (const key of [...cache.keys()]) {
+    if (typeof key !== "string" || !key.startsWith("spark-entries:")) continue;
+    if (
+      measurementId != null &&
+      !key.startsWith(`spark-entries:${measurementId}:`)
+    ) {
+      continue;
+    }
+    cache.delete(key);
+    inflight.delete(key);
+  }
+}
+
+/**
+ * Spark measurement history (GET /api/account/spark/entries → BSI /spark/entries).
+ * Worker route assumed; client stubs the contract for dashboard charts.
+ */
+export function loadSparkEntries(
+  params: {
+    measurement_id: number;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+  },
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<SparkEntriesPage> {
+  const q = new URLSearchParams();
+  q.set("measurement_id", String(params.measurement_id));
+  if (params.start_date) q.set("start_date", params.start_date);
+  if (params.end_date) q.set("end_date", params.end_date);
+  if (params.limit != null) q.set("limit", String(params.limit));
+  return accountGet(
+    `/api/account/spark/entries?${q.toString()}`,
+    sparkEntriesCacheKey(params),
+    options,
+  );
+}
+
+/**
+ * Log a spark PR / measurement (POST /api/account/spark/entries → BSI /spark/entries).
+ * Sends force_log so intentional dashboard logs persist even if not an improvement.
+ */
+export async function createSparkEntry(
+  body: CreateSparkEntryInput,
+): Promise<CreateSparkEntryResult> {
+  const result = await accountMutate<CreateSparkEntryResult>(
+    "/api/account/spark/entries",
+    {
+      method: "POST",
+      body: {
+        measurement_id: body.measurement_id,
+        value: body.value,
+        measurement_date: body.measurement_date,
+        ...(body.unit_id != null ? { unit_id: body.unit_id } : {}),
+        force_log: true,
+      },
+      invalidate: ["pr-overview"],
+    },
+  );
+  invalidateSparkEntriesCaches(body.measurement_id);
+  return result;
 }
 
 export function loadReferrals(options?: {
