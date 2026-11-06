@@ -77,7 +77,9 @@ function toCard(course: Course | null, resource: LibraryResource | null): Course
   );
   const lockedResource =
     resource && isLockedCard(resource) && !filled(course?.landingPageUrl) ? resource : null;
-  const key = course ? `course-${course.id}` : `bsi-${resource!.type}-${resource!.id}`;
+  const key = course
+    ? `course-${course.id}`
+    : `bsi-${resource!.type}-${resource!.daily_fix_pillar ?? ""}-${resource!.id}`;
   return { key, title, image, badge, excerpt, href, lockedResource };
 }
 

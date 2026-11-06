@@ -22,6 +22,11 @@ import AccountBilling from "./pages/account/AccountBilling";
 import AccountProfile from "./pages/account/AccountProfile";
 import AccountCourses from "./pages/account/AccountCourses";
 import AccountFavorites from "./pages/account/AccountFavorites";
+import AccountExclusive from "./pages/account/AccountExclusive";
+import AccountLists from "./pages/account/AccountLists";
+import AccountListDetail, {
+  AccountListSharePage,
+} from "./pages/account/AccountListDetail";
 import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
@@ -152,6 +157,10 @@ function AppRoutes() {
       <Route path={"/account/profile"} component={AccountProfile} />
       <Route path={"/account/courses"} component={AccountCourses} />
       <Route path={"/account/favorites"} component={AccountFavorites} />
+      <Route path={"/account/exclusive"} component={AccountExclusive} />
+      <Route path={"/account/lists/share/:token"} component={AccountListSharePage} />
+      <Route path={"/account/lists/:id"} component={AccountListDetail} />
+      <Route path={"/account/lists"} component={AccountLists} />
       <Route path={"/account/organization"} component={AccountOrganization} />
       <Route path={"/account/referrals"} component={AccountReferrals} />
       <Route path={"/account/notifications"} component={AccountNotifications} />

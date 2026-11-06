@@ -91,15 +91,15 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
   {
     id: "brain",
     title: "Brain",
-    summary: "Exclusive feed, saved items, and shopping lists.",
-    href: "/the-daily-fix",
+    summary: "Exclusive posts, saved items, and lists.",
+    href: "/account/exclusive",
     proOnly: true,
     links: [
       {
         id: "exclusive-feed",
         title: "Exclusive feed",
-        summary: "Daily Fix reading and archive.",
-        href: "/the-daily-fix",
+        summary: "Posts exclusive to your access level.",
+        href: "/account/exclusive",
         proOnly: true,
       },
       {
@@ -111,9 +111,8 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
       {
         id: "lists",
         title: "Lists",
-        summary: "Shopping lists from planned meals.",
-        href: "/account/shopping-cart",
-        proOnly: true,
+        summary: "Collections you own, share, and subscribe to.",
+        href: "/account/lists",
       },
     ],
   },

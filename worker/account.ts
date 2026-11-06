@@ -50,6 +50,18 @@ import {
   accountFavoriteItemPath,
   accountFavoritesPath,
   accountInAppNotificationsPath,
+  accountListItemPath,
+  accountListItemsPath,
+  accountListPath,
+  accountListReorderPath,
+  accountListSharePath,
+  accountListSubscribePath,
+  accountListSubscriberPath,
+  accountListSubscribersPath,
+  accountListsPath,
+  accountContentReportsPath,
+  accountCustomWorkoutsPath,
+  accountListsPublicPath,
   accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
   accountMePath,
@@ -100,6 +112,28 @@ import {
   validatePlanWriteBody,
 } from "./belly-coaching";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
+import {
+  listItemWasOmitted,
+  parseAddListItemBody,
+  parseCreateListBody,
+  parseInviteSubscriberBody,
+  parseItemUpdateBody,
+  parseListIndexQuery,
+  parseReorderBody,
+  parseShareToken,
+  parseSubscribeBody,
+  parseUpdateListBody,
+  shapeItemsPayload,
+  shapeListEnvelope,
+  shapeListItemEnvelope,
+  shapeListPaymentRequired,
+  shapeListsPayload,
+} from "../shared/account/userLists";
+import { parseCatalogQuery, shapeCatalog } from "../shared/account/listCatalog";
+import {
+  parseContentReportBody,
+  shapeContentReport,
+} from "../shared/account/contentReports";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
@@ -402,6 +436,39 @@ function mapUpstreamErrorBody(json: unknown, status: number): Record<string, unk
   if (status === 409) return { error: "already_claimed" };
   if (status === 400) return { error: "invalid_request" };
   return { error: "upstream_error" };
+}
+
+async function callList(
+  ctx: ActingContext,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts: { baseUrl?: string } | undefined,
+  method: string,
+  path: string,
+  init?: { body?: Record<string, unknown>; query?: string },
+): Promise<Response | { json: unknown; status: number }> {
+  const ran = await runBearer(
+    ctx,
+    env,
+    fetchImpl,
+    opts,
+    method,
+    path,
+    init?.body != null
+      ? {
+          body: JSON.stringify(init.body),
+          contentType: "application/json",
+          query: init.query,
+        }
+      : init?.query
+        ? { query: init.query }
+        : undefined,
+  );
+  if (ran instanceof Response) return mapUnauthenticated(ran);
+  if (ran.result.kind === "http" && ran.result.status === 402) {
+    return accountJson(shapeListPaymentRequired(ran.result.json), 402);
+  }
+  return mapUpstreamResult(ran.result);
 }
 
 function mapUpstreamResult(result: BsiHttpResult): Response | { json: unknown; status: number } {
@@ -1611,6 +1678,135 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (planAcl && method === "POST") {
     return { id: "MF46", method: "POST", params: { id: planAcl[1]! }, limiter: "write" };
+  }
+  if (method === "GET" && rest === "lists") {
+    return { id: "LS1", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "lists/public") {
+    return { id: "LS2", method: "GET", params: {}, limiter: "read" };
+  }
+  const listShare = rest.match(/^lists\/share\/([a-f0-9]{32})$/);
+  if (method === "GET" && listShare) {
+    return {
+      id: "LS3",
+      method: "GET",
+      params: { token: listShare[1]! },
+      limiter: "read",
+    };
+  }
+  const listItems = rest.match(/^lists\/([1-9][0-9]{0,9})\/items$/);
+  if (method === "GET" && listItems) {
+    return {
+      id: "LS4",
+      method: "GET",
+      params: { id: listItems[1]! },
+      limiter: "read",
+    };
+  }
+  if (method === "POST" && listItems) {
+    return {
+      id: "LS5",
+      method: "POST",
+      params: { id: listItems[1]! },
+      limiter: "write",
+    };
+  }
+  const listReorder = rest.match(/^lists\/([1-9][0-9]{0,9})\/items\/reorder$/);
+  if (method === "PUT" && listReorder) {
+    return {
+      id: "LS6",
+      method: "PUT",
+      params: { id: listReorder[1]! },
+      limiter: "write",
+    };
+  }
+  const listItem = rest.match(/^lists\/([1-9][0-9]{0,9})\/items\/([1-9][0-9]{0,9})$/);
+  if (method === "DELETE" && listItem) {
+    return {
+      id: "LS7",
+      method: "DELETE",
+      params: { id: listItem[1]!, itemId: listItem[2]! },
+      limiter: "write",
+    };
+  }
+  if ((method === "PUT" || method === "PATCH") && listItem) {
+    return {
+      id: "LS8",
+      method: "PUT",
+      params: { id: listItem[1]!, itemId: listItem[2]! },
+      limiter: "write",
+    };
+  }
+  const listSub = rest.match(/^lists\/([1-9][0-9]{0,9})\/subscribe$/);
+  if (method === "POST" && listSub) {
+    return {
+      id: "LS9",
+      method: "POST",
+      params: { id: listSub[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "DELETE" && listSub) {
+    return {
+      id: "LS10",
+      method: "DELETE",
+      params: { id: listSub[1]! },
+      limiter: "write",
+    };
+  }
+  const listSubscriber = rest.match(
+    /^lists\/([1-9][0-9]{0,9})\/subscribers\/([1-9][0-9]{0,9})$/,
+  );
+  if (method === "DELETE" && listSubscriber) {
+    return {
+      id: "LS16",
+      method: "DELETE",
+      params: { id: listSubscriber[1]!, userId: listSubscriber[2]! },
+      limiter: "write",
+    };
+  }
+  const listSubscribers = rest.match(/^lists\/([1-9][0-9]{0,9})\/subscribers$/);
+  if (method === "POST" && listSubscribers) {
+    return {
+      id: "LS15",
+      method: "POST",
+      params: { id: listSubscribers[1]! },
+      limiter: "write",
+    };
+  }
+  const listOne = rest.match(/^lists\/([1-9][0-9]{0,9})$/);
+  if (method === "GET" && listOne) {
+    return {
+      id: "LS11",
+      method: "GET",
+      params: { id: listOne[1]! },
+      limiter: "read",
+    };
+  }
+  if (method === "POST" && rest === "lists") {
+    return { id: "LS12", method: "POST", params: {}, limiter: "write" };
+  }
+  if ((method === "PUT" || method === "PATCH") && listOne) {
+    return {
+      id: "LS13",
+      method: "PUT",
+      params: { id: listOne[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "DELETE" && listOne) {
+    return {
+      id: "LS14",
+      method: "DELETE",
+      params: { id: listOne[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "GET" && rest === "custom-workouts") {
+    return { id: "LS18", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "POST" && rest === "content-reports") {
+    return { id: "LS19", method: "POST", params: {}, limiter: "write" };
   }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
@@ -3713,6 +3909,334 @@ async function dispatch(
       const shaped = shapeMemberSummary(mapped.json);
       if (!shaped) return accountJson({ error: "unavailable" }, 502);
       return accountJson(shaped, 200);
+    }
+    case "LS1": {
+      const parsed = parseListIndexQuery(url.searchParams, { visibility: true });
+      if (!parsed.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountListsPath(),
+        { query: parsed.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListsPayload(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS2": {
+      const parsed = parseListIndexQuery(url.searchParams);
+      if (!parsed.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountListsPublicPath(),
+        { query: parsed.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListsPayload(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS3": {
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountListSharePath(match.params.token!),
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS4": {
+      const token = parseShareToken(url.searchParams.get("share_token"));
+      if (!token.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountListItemsPath(match.params.id!),
+        token.value ? { query: `share_token=${token.value}` } : undefined,
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeItemsPayload(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS5": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseAddListItemBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountListItemsPath(match.params.id!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListItemEnvelope(ran.json);
+      if (!shaped) {
+        if (listItemWasOmitted(ran.json)) {
+          return accountJson({ saved: true, listed: false }, 201);
+        }
+        return accountJson({ error: "unavailable" }, 502);
+      }
+      return accountJson(shaped, ran.status);
+    }
+    case "LS6": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseReorderBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountListReorderPath(match.params.id!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeItemsPayload(ran.json);
+      if (!shaped) return accountJson({ success: true }, 200);
+      return accountJson(shaped, 200);
+    }
+    case "LS7": {
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountListItemPath(match.params.id!, match.params.itemId!),
+      );
+      if (ran instanceof Response) return ran;
+      return accountJson({ success: true }, 200);
+    }
+    case "LS8": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseItemUpdateBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountListItemPath(match.params.id!, match.params.itemId!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListItemEnvelope(ran.json);
+      if (!shaped) return accountJson({ success: true }, 200);
+      return accountJson(shaped, 200);
+    }
+    case "LS9": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseSubscribeBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountListSubscribePath(match.params.id!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, ran.status);
+    }
+    case "LS10": {
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountListSubscribePath(match.params.id!),
+      );
+      if (ran instanceof Response) return ran;
+      return accountJson({ success: true }, 200);
+    }
+    case "LS11": {
+      const token = parseShareToken(url.searchParams.get("share_token"));
+      if (!token.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountListPath(match.params.id!),
+        token.value ? { query: `share_token=${token.value}` } : undefined,
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS12": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseCreateListBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountListsPath(),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, ran.status);
+    }
+    case "LS13": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseUpdateListBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountListPath(match.params.id!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, ran.status);
+    }
+    case "LS14": {
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountListPath(match.params.id!),
+      );
+      if (ran instanceof Response) return ran;
+      return accountJson({ success: true }, 200);
+    }
+    case "LS15": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseInviteSubscriberBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountListSubscribersPath(match.params.id!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, ran.status);
+    }
+    case "LS16": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountListSubscriberPath(match.params.id!, match.params.userId!),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const result = ran.result;
+      if (result.kind === "ok" || (result.kind === "bad_json" && result.status === 204)) {
+        return accountJson({ success: true }, 200);
+      }
+      if (result.kind === "http") {
+        return accountJson(mapUpstreamErrorBody(result.json, result.status), result.status);
+      }
+      return accountJson({ error: "unavailable" }, result.kind === "timeout" ? 503 : 502);
+    }
+    case "LS18": {
+      const query = parseCatalogQuery(url.searchParams);
+      if (!query.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomWorkoutsPath(),
+        { query: `${query.value}&owner_id=me` },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeCatalog(ran.json, "workouts");
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS19": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseContentReportBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountContentReportsPath(),
+        {
+          body: JSON.stringify(body.value),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const result = ran.result;
+      if (result.kind === "ok") {
+        const shaped = shapeContentReport(result.json);
+        if (!shaped) return accountJson({ error: "unavailable" }, 502);
+        return accountJson(shaped, result.status);
+      }
+      if (result.kind === "http") {
+        const code = upstreamErrorCode(result.json);
+        if (result.status === 409 || code === "duplicate_report") {
+          return accountJson({ error: "duplicate_report" }, 409);
+        }
+        if (result.status === 403) return accountJson({ error: "forbidden" }, 403);
+        if (result.status === 400) return accountJson({ error: "invalid_request" }, 400);
+        if (result.status === 404) return accountJson({ error: "not_found" }, 404);
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      return accountJson({ error: "unavailable" }, result.kind === "timeout" ? 503 : 502);
     }
     default:
       return accountJson({ error: "not_found" }, 404);

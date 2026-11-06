@@ -283,7 +283,7 @@ export default function SearchPage() {
           <div className="search-grid">
             {infinite.items.map((r) => (
               <ResourceCard
-                key={`${r.type}-${r.id}`}
+                key={`${r.type}-${r.daily_fix_pillar ?? ""}-${r.id}`}
                 resource={r}
                 onOpenLocked={setLocked}
               />

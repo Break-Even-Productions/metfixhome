@@ -34,6 +34,9 @@ import {
   mapPopularResponse,
   mapSearchResponse,
   mergeArchivePages,
+  buildExclusiveFeedQuery,
+  mapExclusiveAccessLevels,
+  retainExclusiveCatalog,
   postsDetailBaseFromOrigin,
   resourcesBaseFromOrigin,
   SLUG_RE,
@@ -1303,7 +1306,38 @@ async function getArchive(
   };
 }
 
-/** API: /api/library/search | /archive | /popular | /filters | /item/:type/:id */
+async function exclusiveLevelsResponse(
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts: { baseUrl?: string } | undefined,
+  isHead: boolean,
+): Promise<Response> {
+  const key = readApiKey(env);
+  if (key == null) return unavailableJson(isHead);
+  const upstream = await fetchBsi(
+    `${resourcesBase(env, opts)}/access-levels`,
+    key,
+    null,
+    fetchImpl,
+    env,
+  );
+  let access_levels: ReturnType<typeof mapExclusiveAccessLevels> = [];
+  if (upstream.kind === "http" && upstream.status === 200) {
+    try {
+      access_levels = mapExclusiveAccessLevels(JSON.parse(upstream.text));
+    } catch {
+      access_levels = [];
+    }
+  }
+  return jsonResponse(
+    { access_levels },
+    200,
+    apiOkHeaders(false),
+    isHead,
+  );
+}
+
+/** API: /api/library/exclusive | /search | /archive | /popular | /filters | /item/:type/:id */
 export async function handleLibraryApi(
   request: Request,
   env: Env,
@@ -1323,6 +1357,35 @@ export async function handleLibraryApi(
   const path = url.pathname;
 
   const acting = await optionalActing(request, env, fetchImpl, opts);
+
+  if (
+    path === "/api/library/exclusive/levels" ||
+    path === "/api/library/exclusive/levels/"
+  ) {
+    return exclusiveLevelsResponse(env, fetchImpl, opts, isHead);
+  }
+
+  if (path === "/api/library/exclusive" || path === "/api/library/exclusive/") {
+    const qs = buildExclusiveFeedQuery(url.searchParams);
+    if (qs == null) return badRequestJson(isHead);
+    const result = await getSearch(
+      qs,
+      env,
+      fetchImpl,
+      cache,
+      ctx,
+      "waitUntil",
+      acting,
+      opts,
+    );
+    if (result.kind === "ok") {
+      const body = retainExclusiveCatalog(result.body);
+      const headers = new Headers(apiOkHeaders(result.private));
+      if (isHead) return new Response(null, { status: 200, headers });
+      return new Response(JSON.stringify(body), { status: 200, headers });
+    }
+    return unavailableJson(isHead);
+  }
 
   if (path === "/api/library/search" || path === "/api/library/search/") {
     const qs = buildSearchUpstreamQuery(url.searchParams);

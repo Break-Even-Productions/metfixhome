@@ -3672,3 +3672,359 @@ describe("worker/account routes", () => {
     });
   });
 });
+
+describe("user lists proxy", () => {
+  let h: Harness;
+
+  beforeEach(() => {
+    h = createHarness();
+    installAccountLimiters(h.env);
+  });
+
+  it("GET /api/account/lists is bearer-only and strips item HTML", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/lists") && method === "GET") {
+          return Response.json({
+            lists: [
+              {
+                id: 4,
+                title: "Race week",
+                visibility: "private",
+                item_count: 1,
+                list_relationship: "owner",
+                body: "<p>nope</p>",
+              },
+            ],
+            meta: { count: 1, total: 1, limit: 20, offset: 0 },
+          });
+        }
+        if (path.endsWith("/lists/4/items") && method === "GET") {
+          return Response.json({
+            list_id: 4,
+            count: 1,
+            items: [
+              {
+                id: 9,
+                list_id: 4,
+                sort_order: 0,
+                content: {
+                  source_type: "post",
+                  source_id: 88,
+                  title: "Briefing",
+                  body: "<p>full article</p>",
+                  article_url: "https://brokenscience.org/briefing",
+                },
+              },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const index = await callAccount(
+      h,
+      "/api/account/lists",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(index.status).toBe(200);
+    const indexJson = (await index.json()) as { lists: Array<{ title: string }> };
+    expect(indexJson.lists[0]?.title).toBe("Race week");
+    expect(JSON.stringify(indexJson)).not.toContain("nope");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists");
+    expect(recorded[0]?.url).not.toContain("shopping-lists");
+    assertHasBearer(recorded[0]!);
+
+    const items = await callAccount(
+      h,
+      "/api/account/lists/4/items",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(items.status).toBe(200);
+    const itemsJson = (await items.json()) as {
+      items: Array<{ content: Record<string, unknown> }>;
+    };
+    expect(itemsJson.items[0]?.content.title).toBe("Briefing");
+    expect(itemsJson.items[0]?.content).not.toHaveProperty("body");
+    expect(JSON.stringify(itemsJson)).not.toContain("full article");
+  });
+
+  it("POST /api/account/lists forwards a title and rejects an empty one", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/lists") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { title: string; visibility: string };
+          return Response.json(
+            {
+              list: {
+                id: 8,
+                title: sent.title,
+                visibility: sent.visibility,
+                list_relationship: "owner",
+                item_count: 0,
+              },
+            },
+            { status: 201 },
+          );
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const bad = await callAccount(
+      h,
+      "/api/account/lists",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ title: "  " }),
+      },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const created = await callAccount(
+      h,
+      "/api/account/lists",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ title: "Travel", visibility: "unlisted" }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { list: { title: string; visibility: string } };
+    expect(body.list.title).toBe("Travel");
+    expect(body.list.visibility).toBe("unlisted");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists");
+    assertHasBearer(recorded[0]!);
+    expect(recorded[0]?.headers["x-api-key"]).toBeUndefined();
+  });
+
+  it("invites and removes a subscriber by user id", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/lists/4/subscribers") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { user_id: number };
+          return Response.json(
+            {
+              list: {
+                id: 4,
+                title: "Race week",
+                visibility: "private",
+                list_relationship: "subscriber",
+                owner_user_id: 1,
+                item_count: 0,
+              },
+            },
+            { status: sent.user_id === 15 ? 201 : 400 },
+          );
+        }
+        if (path.endsWith("/lists/4/subscribers/15") && method === "DELETE") {
+          return new Response(null, { status: 204 });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const bad = await callAccount(
+      h,
+      "/api/account/lists/4/subscribers",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ user_id: "nope" }),
+      },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const invited = await callAccount(
+      h,
+      "/api/account/lists/4/subscribers",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ user_id: 15, email: "hidden@example.test" }),
+      },
+      fetchImpl,
+    );
+    expect(invited.status).toBe(201);
+    expect(JSON.parse(recorded[0]?.bodyText ?? "{}")).toEqual({ user_id: 15 });
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists/4/subscribers");
+    assertHasBearer(recorded[0]!);
+
+    const removed = await callAccount(
+      h,
+      "/api/account/lists/4/subscribers/15",
+      {
+        method: "DELETE",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+      },
+      fetchImpl,
+    );
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toEqual({ success: true });
+  });
+
+  it("uses Belly custom recipes and strips owned workout templates", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, url }) => {
+        if (path.endsWith("/custom-recipes") && method === "GET") {
+          expect(url).toContain("limit=20");
+          expect(url).not.toContain("org_id");
+          return Response.json({
+            recipes: [{ id: 3, title: "My bowl", instructions: "secret steps" }],
+          });
+        }
+        if (path.endsWith("/custom-workouts") && method === "GET") {
+          expect(url).toContain("owner_id=me");
+          return Response.json({
+            workouts: [{ id: 8, title: "Engine", structure: { steps: ["secret"] }, body: "<p>html</p>" }],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const recipes = await callAccount(
+      h,
+      "/api/account/custom-recipes?limit=20&org_id=9",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(recipes.status).toBe(200);
+    const recipeJson = await recipes.json();
+    expect(recipeJson).toEqual({
+      recipes: [{ id: 3, title: "My bowl", instructions: "secret steps" }],
+      meta: {},
+    });
+
+    const workouts = await callAccount(
+      h,
+      "/api/account/custom-workouts?owner_id=99",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(workouts.status).toBe(200);
+    const workoutJson = await workouts.json();
+    expect(workoutJson).toEqual({ items: [{ id: 8, title: "Engine" }] });
+    expect(JSON.stringify(workoutJson)).not.toContain("secret");
+    assertHasBearer(recorded[1]!);
+  });
+
+  it("submits a list report and maps a duplicate to duplicate_report", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/content-reports") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { platform?: string; note?: string };
+          if (sent.note === "again") {
+            return Response.json(
+              {
+                code: "duplicate_report",
+                message: "You already have an open report for this content.",
+                data: { status: 409 },
+              },
+              { status: 409 },
+            );
+          }
+          expect(sent.platform).toBe("web");
+          return Response.json(
+            {
+              id: 9,
+              report_id: 9,
+              content_type: "user_list",
+              content_id: 4,
+              status: "pending",
+              message: "internal",
+            },
+            { status: 201 },
+          );
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const created = await callAccount(
+      h,
+      "/api/account/content-reports",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          content_type: "user_list",
+          content_id: 4,
+          reason_code: "spam",
+          platform: "ios",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(201);
+    const createdJson = await created.json();
+    expect(createdJson).toEqual({
+      id: 9,
+      content_type: "user_list",
+      content_id: 4,
+      status: "pending",
+    });
+    expect(JSON.stringify(createdJson)).not.toContain("internal");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/content-reports");
+    assertHasBearer(recorded[0]!);
+
+    const duplicate = await callAccount(
+      h,
+      "/api/account/content-reports",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          content_type: "user_list",
+          content_id: 4,
+          reason_code: "spam",
+          note: "again",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(duplicate.status).toBe(409);
+    const duplicateJson = await duplicate.json();
+    expect(duplicateJson).toEqual({ error: "duplicate_report" });
+    expect(JSON.stringify(duplicateJson)).not.toContain("already have");
+  });
+
+  it("reports a saved custom workout when the catalog omits the row", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/lists/4/items") && method === "POST") {
+          return Response.json({ list_item: null }, { status: 201 });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+    const added = await callAccount(
+      h,
+      "/api/account/lists/4/items",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ source_type: "custom_workout", source_id: 8 }),
+      },
+      fetchImpl,
+    );
+    expect(added.status).toBe(201);
+    expect(await added.json()).toEqual({ saved: true, listed: false });
+  });
+});

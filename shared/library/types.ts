@@ -43,6 +43,11 @@ export type LibraryResource = {
   access: ContentAccessDisplay;
   /** Daily Fix only */
   daily_fix_date?: string | null;
+  /**
+   * Component the search row came from. BSI uses the same numeric id
+   * across a day's recipe, workout, and article.
+   */
+  daily_fix_pillar?: "belly" | "body" | "brain";
   /** Parsed from BSI composite_thumbnail_html (never raw HTML). */
   composite?: LibraryCompositeThumbnail | null;
 };

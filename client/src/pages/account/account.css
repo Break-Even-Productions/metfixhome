@@ -2919,3 +2919,158 @@ a.account-saved-item__title:hover {
     grid-template-columns: 17.5rem minmax(0, 1fr);
   }
 }
+
+.account-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+  margin: 0.5rem 0 1rem;
+}
+
+.account-search__label {
+  flex: 1 1 100%;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.account-search input,
+.account-list-form input,
+.account-list-form textarea,
+.account-list-form select,
+.account-note input {
+  font: inherit;
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+  padding: 0.55rem 0.7rem;
+  min-width: 0;
+}
+
+.account-search input {
+  flex: 1 1 12rem;
+}
+
+.account-exclusive__filters,
+.account-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.account-chip {
+  border: 1px solid var(--color-line);
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+
+.account-chip--on {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-color: var(--color-ink);
+}
+
+.account-exclusive-grid,
+.account-lists-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+}
+
+@media (min-width: 720px) {
+  .account-exclusive-grid,
+  .account-lists-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.account-list-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--color-line);
+  background: var(--color-paper);
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.account-list-card__cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--color-cream, #f3eee4);
+}
+
+.account-list-card__body {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem 1rem;
+}
+
+.account-list-form {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.account-list-form label,
+.account-note label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.account-list-form fieldset {
+  border: 1px solid var(--color-line);
+  margin: 0;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.account-check {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+
+.account-list-items {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-list-item {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid var(--color-line);
+  padding: 0.85rem;
+  background: var(--color-paper);
+}
+
+.account-list-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.account-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+}

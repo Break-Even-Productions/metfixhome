@@ -30,6 +30,12 @@ const DAILY_FIX_UPSTREAM_TYPES = new Set([
   "daily_fix_thought",
 ]);
 
+const DAILY_FIX_PILLAR: Record<string, "belly" | "body" | "brain"> = {
+  daily_fix_mod: "belly",
+  daily_fix_workout: "body",
+  daily_fix_thought: "brain",
+};
+
 function truncateCodePoints(input: string, max: number): string {
   const chars = Array.from(input);
   if (chars.length <= max) return input;
@@ -246,6 +252,8 @@ export function mapLibraryResource(raw: unknown): LibraryResource | null {
   if (dailyFixDate) {
     resource.daily_fix_date = dailyFixDate;
   }
+  const pillar = DAILY_FIX_PILLAR[upstreamType];
+  if (pillar) resource.daily_fix_pillar = pillar;
   if (composite) {
     resource.composite = composite;
   }
@@ -259,7 +267,7 @@ function mapResourceList(list: unknown[]): LibraryResource[] {
   for (const item of list) {
     const mapped = mapLibraryResource(item);
     if (!mapped) continue;
-    const key = `${mapped.type}:${mapped.id}`;
+    const key = `${mapped.type}:${mapped.daily_fix_pillar ?? ""}:${mapped.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
     resources.push(mapped);
