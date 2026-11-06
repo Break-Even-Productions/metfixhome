@@ -72,13 +72,17 @@ import {
   accountReferralEarningsPath,
   accountReferralsPath,
   accountCalendarMealPath,
+  accountCustomRecipePath,
   accountCustomRecipesPath,
   accountMacrosRangePath,
+  accountPlanAclPath,
   accountPlanActivePath,
   accountPlanPath,
   accountPlanPublishPath,
   accountPlanSchedulePath,
   accountPlansLibraryPath,
+  accountPlansPath,
+  accountPtCoachClientsPath,
   accountShoppingListEmailPath,
   accountShoppingListGeneratePath,
   accountShoppingListGeneratedDatesPath,
@@ -90,6 +94,11 @@ import {
   certificateClaimOptionsPath,
   certificatePrepayCheckoutPath,
 } from "../shared/account/bsi-paths";
+import {
+  shapeBellyCoachingCoach,
+  validateCustomRecipeBody,
+  validatePlanWriteBody,
+} from "./belly-coaching";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
@@ -1570,6 +1579,39 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "shopping-lists/generated-dates") {
     return { id: "MF23", method: "GET", params: {}, limiter: "read" };
   }
+  /* Belly writes + coaching (MF37+ — Body #41 owns MF24–MF36 on its branch). */
+  if (method === "GET" && rest === "coaching/coach") {
+    return { id: "MF37", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "POST" && rest === "custom-recipes") {
+    return { id: "MF38", method: "POST", params: {}, limiter: "write" };
+  }
+  const recipeOne = rest.match(/^custom-recipes\/(\d+)$/);
+  if (recipeOne && method === "GET") {
+    return { id: "MF39", method: "GET", params: { id: recipeOne[1]! }, limiter: "read" };
+  }
+  if (recipeOne && method === "PUT") {
+    return { id: "MF40", method: "PUT", params: { id: recipeOne[1]! }, limiter: "write" };
+  }
+  if (recipeOne && method === "DELETE") {
+    return { id: "MF41", method: "DELETE", params: { id: recipeOne[1]! }, limiter: "write" };
+  }
+  if (method === "POST" && rest === "plans") {
+    return { id: "MF42", method: "POST", params: {}, limiter: "write" };
+  }
+  if (planOne && method === "PUT") {
+    return { id: "MF43", method: "PUT", params: { id: planOne[1]! }, limiter: "write" };
+  }
+  if (planOne && method === "DELETE") {
+    return { id: "MF44", method: "DELETE", params: { id: planOne[1]! }, limiter: "write" };
+  }
+  const planAcl = rest.match(/^plans\/(\d+)\/acl$/);
+  if (planAcl && method === "GET") {
+    return { id: "MF45", method: "GET", params: { id: planAcl[1]! }, limiter: "read" };
+  }
+  if (planAcl && method === "POST") {
+    return { id: "MF46", method: "POST", params: { id: planAcl[1]! }, limiter: "write" };
+  }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
   }
@@ -3031,6 +3073,10 @@ async function dispatch(
       const parts = [`start_date=${encodeURIComponent(start)}`];
       const end = url.searchParams.get("end_date");
       if (end && YMD_RE.test(end)) parts.push(`end_date=${encodeURIComponent(end)}`);
+      const target = url.searchParams.get("target_user_id");
+      if (target && /^[1-9][0-9]{0,9}$/.test(target)) {
+        parts.push(`target_user_id=${encodeURIComponent(target)}`);
+      }
       const ran = await runBearer(
         ctx!,
         env,
@@ -3110,6 +3156,194 @@ async function dispatch(
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
+    }
+    case "MF37": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtCoachClientsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeBellyCoachingCoach(mapped.json), 200);
+    }
+    case "MF38": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const validated = validateCustomRecipeBody(parsed.json);
+      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountCustomRecipesPath(),
+        { body: JSON.stringify(validated.body), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.recipe ?? mapped.json, mapped.status === 201 ? 201 : mapped.status);
+    }
+    case "MF39": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomRecipePath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.recipe ?? mapped.json, 200);
+    }
+    case "MF40": {
+      const id = match.params.id!;
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const validated = validateCustomRecipeBody(parsed.json);
+      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountCustomRecipePath(id),
+        { body: JSON.stringify(validated.body), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.recipe ?? mapped.json, 200);
+    }
+    case "MF41": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountCustomRecipePath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
+    }
+    case "MF42": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const validated = validatePlanWriteBody(parsed.json);
+      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlansPath(),
+        { body: JSON.stringify(validated.body), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.plan ?? mapped.json, mapped.status === 201 ? 201 : mapped.status);
+    }
+    case "MF43": {
+      const id = match.params.id!;
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const validated = validatePlanWriteBody(parsed.json);
+      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountPlanPath(id),
+        { body: JSON.stringify(validated.body), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.plan ?? mapped.json, 200);
+    }
+    case "MF44": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountPlanPath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
+    }
+    case "MF45": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlanAclPath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { entries: [] }, 200);
+    }
+    case "MF46": {
+      const id = match.params.id!;
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const userId = body.user_id;
+      const uid =
+        typeof userId === "number"
+          ? userId
+          : typeof userId === "string" && /^[1-9][0-9]{0,9}$/.test(userId)
+            ? Number(userId)
+            : null;
+      if (uid == null) return accountJson({ error: "invalid_request" }, 400);
+      const permission = body.permission === "edit" ? "edit" : "view";
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanAclPath(id),
+        {
+          body: JSON.stringify({ user_id: uid, permission }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
     case "MF23": {
       const start = url.searchParams.get("start_date") ?? "";

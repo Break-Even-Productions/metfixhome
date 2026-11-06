@@ -538,6 +538,8 @@ type CacheKey =
   | "plans-library"
   | `plan:${number}`
   | "custom-recipes"
+  | `custom-recipe:${number}`
+  | "coaching-coach"
   | `macros-range:${string}`
   | `shopping-generated-dates:${string}`;
 
@@ -1153,6 +1155,175 @@ export function loadCustomRecipes(
     "custom-recipes",
     options,
   );
+}
+
+export function loadCustomRecipe(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<CustomRecipe> {
+  return accountGet(`/api/account/custom-recipes/${id}`, `custom-recipe:${id}`, options);
+}
+
+export type CustomRecipeWrite = {
+  title: string;
+  excerpt?: string | null;
+  photo_url?: string | null;
+  recipe_ingredients?: Array<{
+    ingredient_id?: number | null;
+    display_name?: string | null;
+    quantity?: number | null;
+    unit_id?: number | null;
+    adjustment_id?: number | null;
+    notes?: string | null;
+  }>;
+  ingredients_text?: string | null;
+  recipe_steps?: Array<{ instruction: string }>;
+  steps?: string | null;
+  protein_g?: number | null;
+  fat_g?: number | null;
+  carbs_g?: number | null;
+  calories?: number | null;
+  macros_json?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+};
+
+export async function createCustomRecipe(body: CustomRecipeWrite): Promise<CustomRecipe> {
+  return accountMutate("/api/account/custom-recipes", {
+    method: "POST",
+    body,
+    invalidate: ["custom-recipes"],
+  });
+}
+
+export async function updateCustomRecipe(
+  id: number,
+  body: CustomRecipeWrite,
+): Promise<CustomRecipe> {
+  return accountMutate(`/api/account/custom-recipes/${id}`, {
+    method: "PUT",
+    body,
+    invalidate: ["custom-recipes", `custom-recipe:${id}`],
+  });
+}
+
+export async function deleteCustomRecipe(id: number): Promise<void> {
+  await accountMutate(`/api/account/custom-recipes/${id}`, {
+    method: "DELETE",
+    body: {},
+    invalidate: ["custom-recipes", `custom-recipe:${id}`],
+  });
+}
+
+export type MealPlanWrite = {
+  title: string;
+  description?: string | null;
+  duration_days?: number;
+  visibility?: "invite_only" | "unlisted" | "public" | string;
+  status?: "draft" | "published" | string;
+  replace_days?: boolean;
+  days?: Array<{
+    day_index: number;
+    notes?: string | null;
+    items?: Array<{
+      item_type: "meal" | "workout" | "brain" | string;
+      sort_order?: number;
+      recipe_source_type?: string | null;
+      recipe_source_id?: number | null;
+      servings?: number | null;
+      label?: string | null;
+      workout_source?: string | null;
+      workout_source_id?: number | null;
+      brain_source_type?: string | null;
+      brain_source_id?: number | null;
+    }>;
+  }>;
+};
+
+export async function createMealPlan(
+  body: MealPlanWrite,
+): Promise<MealPlanSummary & { plan_id?: number }> {
+  return accountMutate("/api/account/plans", {
+    method: "POST",
+    body,
+    invalidate: ["plans-library"],
+  });
+}
+
+export async function updateMealPlan(
+  id: number,
+  body: MealPlanWrite,
+): Promise<MealPlanSummary> {
+  return accountMutate(`/api/account/plans/${id}`, {
+    method: "PUT",
+    body,
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function deleteMealPlan(id: number): Promise<void> {
+  await accountMutate(`/api/account/plans/${id}`, {
+    method: "DELETE",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function shareMealPlanWithClient(
+  planId: number,
+  userId: number,
+  permission: "view" | "edit" = "view",
+): Promise<void> {
+  await accountMutate(`/api/account/plans/${planId}/acl`, {
+    method: "POST",
+    body: { user_id: userId, permission },
+  });
+}
+
+export async function scheduleMealPlanForClient(
+  id: number,
+  body: { start_date: string; end_date?: string; target_user_id: number },
+): Promise<void> {
+  const q = new URLSearchParams({
+    start_date: body.start_date,
+    target_user_id: String(body.target_user_id),
+  });
+  if (body.end_date) q.set("end_date", body.end_date);
+  await accountMutate(`/api/account/plans/${id}/schedule?${q.toString()}`, {
+    method: "POST",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export type CoachingRelationship = {
+  id: number;
+  status: string;
+  invited_by?: string | null;
+  viewer_is_coach?: boolean;
+  counterparty: {
+    user_id: string;
+    name: string | null;
+    display_name: string | null;
+  };
+};
+
+export type CoachingAffiliate = {
+  affiliate_id: number;
+  name: string;
+  role?: string | null;
+  logo?: string | null;
+  member_count?: number | null;
+};
+
+export type CoachingCoachOverview = {
+  affiliates: CoachingAffiliate[];
+  clients: CoachingRelationship[];
+};
+
+export function loadCoachingCoach(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<CoachingCoachOverview> {
+  return accountGet("/api/account/coaching/coach", "coaching-coach", options);
 }
 
 export function loadMacrosRange(

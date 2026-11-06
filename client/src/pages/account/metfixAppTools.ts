@@ -31,14 +31,14 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
   {
     id: "belly",
     title: "Belly",
-    summary: "Meal plans, shopping cart, and the meals you log.",
+    summary: "Meal plans, shopping cart, recipes, and coaching share tools.",
     href: "/account/meal-plans",
     proOnly: true,
     links: [
       {
         id: "meal-plans",
         title: "Meal Plans",
-        summary: "Active and saved hybrid meal plans.",
+        summary: "Build, edit, and schedule hybrid meal plans.",
         href: "/account/meal-plans",
         proOnly: true,
       },
@@ -52,7 +52,7 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
       {
         id: "my-meals",
         title: "My Meals",
-        summary: "Today, past, and upcoming planned and logged meals.",
+        summary: "Logged meals and the custom recipe builder.",
         href: "/account/my-meals",
         proOnly: true,
       },

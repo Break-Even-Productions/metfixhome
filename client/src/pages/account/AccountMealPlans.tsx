@@ -13,6 +13,7 @@ import {
   type MealPlanLibrary,
   type MealPlanSummary,
 } from "@/lib/account";
+import { BellyCoachingPanel } from "./BellyCoachingPanel";
 import DashboardLayout from "./DashboardLayout";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
@@ -223,25 +224,30 @@ export default function AccountMealPlans() {
                 Same buckets as the app: active vs inactive, with schedule-to-calendar.
               </p>
             </div>
-            <div className="belly-tabs" role="tablist" aria-label="Plan status">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "active"}
-                className={tab === "active" ? "belly-tabs__btn belly-tabs__btn--on" : "belly-tabs__btn"}
-                onClick={() => setTab("active")}
-              >
-                Active ({library?.meta?.active_count ?? flattenBucket(library, "active").length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "inactive"}
-                className={tab === "inactive" ? "belly-tabs__btn belly-tabs__btn--on" : "belly-tabs__btn"}
-                onClick={() => setTab("inactive")}
-              >
-                Inactive ({library?.meta?.inactive_count ?? flattenBucket(library, "inactive").length})
-              </button>
+            <div className="belly-builder-actions">
+              <Link href={basePath("/account/meal-plans/new")} className="account-btn account-btn--accent">
+                Create plan
+              </Link>
+              <div className="belly-tabs" role="tablist" aria-label="Plan status">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "active"}
+                  className={tab === "active" ? "belly-tabs__btn belly-tabs__btn--on" : "belly-tabs__btn"}
+                  onClick={() => setTab("active")}
+                >
+                  Active ({library?.meta?.active_count ?? flattenBucket(library, "active").length})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "inactive"}
+                  className={tab === "inactive" ? "belly-tabs__btn belly-tabs__btn--on" : "belly-tabs__btn"}
+                  onClick={() => setTab("inactive")}
+                >
+                  Inactive ({library?.meta?.inactive_count ?? flattenBucket(library, "inactive").length})
+                </button>
+              </div>
             </div>
           </div>
 
@@ -258,8 +264,11 @@ export default function AccountMealPlans() {
             <div className="account-empty">
               <h3 className="account-empty__title">No {tab} plans</h3>
               <p className="account-muted">
-                Create and publish plans in the MetFix app, then start them here onto your calendar.
+                Create a hybrid plan here, then start it onto your calendar.
               </p>
+              <Link href={basePath("/account/meal-plans/new")} className="account-btn account-btn--accent">
+                Create plan
+              </Link>
             </div>
           ) : (
             <ul className="belly-plan-list">
@@ -284,6 +293,12 @@ export default function AccountMealPlans() {
                         ) : null}
                       </div>
                       <div className="belly-plan-card__actions">
+                        <Link
+                          href={basePath(`/account/meal-plans/${plan.id}/edit`)}
+                          className="account-btn"
+                        >
+                          Edit
+                        </Link>
                         <button
                           type="button"
                           className="account-btn"
@@ -350,6 +365,17 @@ export default function AccountMealPlans() {
           )}
           {message ? <p className="account-muted">{message}</p> : null}
         </section>
+      ) : null}
+
+      {unlocked && !loading ? (
+        <BellyCoachingPanel
+          overview={overview}
+          tier={tier}
+          plans={[
+            ...flattenBucket(library, "active"),
+            ...flattenBucket(library, "inactive"),
+          ]}
+        />
       ) : null}
     </DashboardLayout>
   );

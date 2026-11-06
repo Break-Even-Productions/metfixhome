@@ -1096,6 +1096,51 @@ a.account-btn.account-btn--accent {
   color: var(--color-muted);
 }
 
+.belly-builder-block {
+  margin: 0.85rem 0 1rem;
+}
+
+.belly-builder-macros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+}
+
+.belly-builder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.belly-plain-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.belly-coach-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 28rem;
+}
+
+.belly-plan-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.belly-plan-row__title {
+  margin: 0;
+  font-weight: 600;
+}
+
 .belly-field input,
 .belly-field select,
 .belly-field textarea {

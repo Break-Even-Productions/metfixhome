@@ -457,14 +457,24 @@ export default function AccountMyMeals() {
           </section>
 
           <section className="belly-panel" aria-labelledby="custom-recipes-heading">
-            <h2 id="custom-recipes-heading" className="dash-section-title">
-              Custom recipes
-            </h2>
-            <p className="account-muted">
-              Recipe library from <code>GET /custom-recipes</code> (app Recipe Builder / library).
-            </p>
+            <div className="belly-panel__head">
+              <div>
+                <h2 id="custom-recipes-heading" className="dash-section-title">
+                  Custom recipes
+                </h2>
+                <p className="account-muted">
+                  Same library as the MetFix app Recipe Builder — create and edit on the web.
+                </p>
+              </div>
+              <Link
+                href={basePath("/account/my-meals/recipes/new")}
+                className="account-btn account-btn--accent"
+              >
+                Create recipe
+              </Link>
+            </div>
             {recipes.length === 0 ? (
-              <p className="account-muted">No custom recipes yet. Create them in the app Recipe Builder.</p>
+              <p className="account-muted">No custom recipes yet. Create one to use in meal plans.</p>
             ) : (
               <ul className="belly-meal-list">
                 {recipes.map((r) => (
@@ -478,6 +488,12 @@ export default function AccountMyMeals() {
                           : ""}
                       </p>
                     </div>
+                    <Link
+                      href={basePath(`/account/my-meals/recipes/${r.id}/edit`)}
+                      className="account-btn"
+                    >
+                      Edit
+                    </Link>
                   </li>
                 ))}
               </ul>

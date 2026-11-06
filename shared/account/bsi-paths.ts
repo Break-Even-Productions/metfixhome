@@ -198,6 +198,11 @@ export function accountInAppNotificationsPath(): string {
   return `${BSI}/in-app-notifications`;
 }
 
+/** Hybrid meal/workout plans collection (create). */
+export function accountPlansPath(): string {
+  return `${METFIX}/plans`;
+}
+
 /** Hybrid meal/workout plan library (active / inactive buckets). */
 export function accountPlansLibraryPath(): string {
   return `${METFIX}/plans/library`;
@@ -225,6 +230,15 @@ export function accountCustomRecipesPath(): string {
 
 export function accountCustomRecipePath(id: string): string {
   return `${METFIX}/custom-recipes/${encodeURIComponent(id)}`;
+}
+
+export function accountPlanAclPath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}/acl`;
+}
+
+/** Coach hub — 1:1 clients + gym affiliates (same path Body #41 uses). */
+export function accountPtCoachClientsPath(): string {
+  return `${METFIX}/pt/coach/clients`;
 }
 
 export function accountMacrosRangePath(): string {
