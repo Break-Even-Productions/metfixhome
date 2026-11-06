@@ -63,6 +63,14 @@ function resource(
   };
 }
 
+function dailyFixResource(id: number, title: string): LibraryResource {
+  return {
+    ...resource(id, title, OPEN_ACCESS),
+    type: "daily_fix",
+    daily_fix_date: "2026-10-22",
+  };
+}
+
 function searchBody(resources: LibraryResource[], limit: number) {
   return {
     resources,
@@ -93,7 +101,7 @@ describe("library hub sections", () => {
   let LibraryPage: ComponentType;
   let fetchLog: Array<{ path: string; params: URLSearchParams }>;
 
-  function installFetch() {
+  function installFetch(opts?: { dailyFix?: boolean }) {
     fetchLog = [];
     const free = Array.from({ length: 6 }, (_, i) =>
       resource(100 + i, `Free resource ${i + 1}`, OPEN_ACCESS),
@@ -113,6 +121,19 @@ describe("library hub sections", () => {
     const archives = Array.from({ length: 6 }, (_, i) =>
       resource(600 + i, `Glassman note ${i + 1}`, OPEN_ACCESS),
     );
+    if (opts?.dailyFix) {
+      popular.unshift(
+        dailyFixResource(901, "Daily Fix breakfast"),
+        {
+          ...resource(902, "Labeled post day", OPEN_ACCESS),
+          daily_fix_date: "2026-10-23",
+        },
+      );
+      free.unshift(dailyFixResource(903, "Daily Fix open note"));
+      metfix.unshift(dailyFixResource(904, "Daily Fix metfix"));
+      bsi.unshift(dailyFixResource(905, "Daily Fix bsi"));
+      archives.unshift(dailyFixResource(906, "Daily Fix glassman"));
+    }
 
     vi.stubGlobal(
       "fetch",
@@ -275,6 +296,100 @@ describe("library hub sections", () => {
       (entry) => entry.path === "/api/library/archive",
     );
     expect(archive?.params.get("limit")).toBe("3");
+  });
+
+  it("cascades filters, then popular, then searches, then archive", async () => {
+    const order: string[] = [];
+    let releaseFilters!: () => void;
+    let releasePopular!: () => void;
+    let releaseSearches!: () => void;
+    const filtersGate = new Promise<void>((resolve) => {
+      releaseFilters = resolve;
+    });
+    const popularGate = new Promise<void>((resolve) => {
+      releasePopular = resolve;
+    });
+    const searchGate = new Promise<void>((resolve) => {
+      releaseSearches = resolve;
+    });
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const u = new URL(String(input), "http://local.test");
+        if (u.pathname === "/api/library/filters") {
+          order.push("filters");
+          await filtersGate;
+          return json({
+            topics: [],
+            content_type_terms: [],
+            categories: [
+              { id: 11, name: "MetFix", slug: "metfix", description: null, image: null },
+              { id: 12, name: "BSI", slug: "bsi", description: null, image: null },
+            ],
+          });
+        }
+        if (u.pathname === "/api/library/popular") {
+          order.push("popular");
+          await popularGate;
+          return json(searchBody([], 3));
+        }
+        if (u.pathname === "/api/library/search") {
+          order.push("search");
+          await searchGate;
+          return json(searchBody([], 3));
+        }
+        if (u.pathname === "/api/library/archive") {
+          order.push("archive");
+          return json(searchBody([], 3));
+        }
+        return json(searchBody([], 0));
+      }),
+    );
+
+    try {
+      renderHub();
+      await waitFor(() => expect(order).toEqual(["filters"]));
+      releaseFilters();
+      await waitFor(() => expect(order).toEqual(["filters", "popular"]));
+      releasePopular();
+      await waitFor(() =>
+        expect(order.filter((step) => step === "search")).toHaveLength(4),
+      );
+      expect(order).not.toContain("archive");
+      releaseSearches();
+      await waitFor(() => expect(order).toContain("archive"));
+      expect(order.indexOf("popular")).toBeLessThan(order.indexOf("search"));
+      expect(order.lastIndexOf("search")).toBeLessThan(order.indexOf("archive"));
+    } finally {
+      releaseFilters();
+      releasePopular();
+      releaseSearches();
+    }
+  });
+
+  it("does not show Daily Fix items in the library sections", async () => {
+    installFetch({ dailyFix: true });
+    renderHub();
+    await waitFor(() => {
+      expect(cardCount("Top resources")).toBe(3);
+      expect(cardCount("Free / open")).toBe(3);
+      expect(cardCount("MetFix")).toBe(3);
+      expect(cardCount("BSI")).toBe(3);
+      expect(cardCount("Glassman & Book Library")).toBe(3);
+    });
+    expect(screen.queryByText("Daily Fix breakfast")).toBeNull();
+    expect(screen.queryByText("Labeled post day")).toBeNull();
+    expect(screen.queryByText("Daily Fix open note")).toBeNull();
+    expect(screen.queryByText("Daily Fix metfix")).toBeNull();
+    expect(screen.queryByText("Daily Fix bsi")).toBeNull();
+    expect(screen.queryByText("Daily Fix glassman")).toBeNull();
+    expect(within(section("Top resources")).getByText("Popular resource 1")).toBeTruthy();
   });
 
   it("opens the existing filtered views for Pro library and top resources", async () => {

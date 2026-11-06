@@ -156,11 +156,31 @@ export async function loadSession(
   return { hex, record: data.record };
 }
 
-export async function ensureActingAccess(
+export type ActingAccessResult =
+  | { ok: true; hex: string; record: SessionRecord }
+  | { ok: false; reason: "invalid_grant" | "ended" };
+
+/** Read the ensure-access body. Only a refresh `invalid_grant` is that reason. */
+export function actingFailureReason(
+  status: number,
+  body: unknown,
+): "invalid_grant" | "ended" {
+  if (
+    status === 401 &&
+    body != null &&
+    typeof body === "object" &&
+    (body as { status?: unknown }).status === "invalid_grant"
+  ) {
+    return "invalid_grant";
+  }
+  return "ended";
+}
+
+export async function loadActingAccess(
   env: Env,
   rawId: string,
   opts?: { force?: boolean; baseUrl?: string },
-): Promise<{ hex: string; record: SessionRecord } | null> {
+): Promise<ActingAccessResult> {
   const hex = await sessionKeyHex(rawId);
   const stub = sessionStub(env, hex);
   const res = await doFetch(stub, "/ensure-access", {
@@ -175,18 +195,34 @@ export async function ensureActingAccess(
     throw new SessionUnavailableError(ra);
   }
   if (res.status === 401 || res.status === 404) {
+    let reason: "invalid_grant" | "ended" = "ended";
+    try {
+      reason = actingFailureReason(res.status, await res.json());
+    } catch {
+      reason = "ended";
+    }
     try {
       await deleteMeCache(env, hex);
     } catch {
       /* */
     }
-    return null;
+    return { ok: false, reason };
   }
   if (!res.ok) throw new SessionUnavailableError();
   const data = (await res.json()) as { record?: SessionRecord; refreshed: boolean };
-  if (!data.record) return null;
+  if (!data.record) return { ok: false, reason: "ended" };
   if (data.refreshed === true) await putMeCache(env, hex, data.record);
-  return { hex, record: data.record };
+  return { ok: true, hex, record: data.record };
+}
+
+export async function ensureActingAccess(
+  env: Env,
+  rawId: string,
+  opts?: { force?: boolean; baseUrl?: string },
+): Promise<{ hex: string; record: SessionRecord } | null> {
+  const loaded = await loadActingAccess(env, rawId, opts);
+  if (!loaded.ok) return null;
+  return { hex: loaded.hex, record: loaded.record };
 }
 
 export async function destroySession(env: Env, rawId: string): Promise<SessionRecord | null> {

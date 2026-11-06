@@ -14,6 +14,7 @@ import {
   QUERY_MAX,
   SEARCH_TYPE_PILLS,
   buildLibraryHead,
+  isDailyFixResource,
   isFreeOpen,
   isProfessionalTagged,
   type LibraryFilterTerm,
@@ -47,6 +48,7 @@ type RailState =
 
 type BrandSlug = "metfix" | "bsi";
 type SectionSlug = "featured" | "free" | "gated" | "archives";
+type HubPhase = "filters" | "popular" | "searches" | "archive";
 
 const TOP_LIMIT = 3;
 const COURSE_DISPLAY_LIMIT = 6;
@@ -67,6 +69,11 @@ function softFailRail(setState: Dispatch<SetStateAction<RailState>>): void {
       ? prev
       : { status: "error" },
   );
+}
+
+/** Daily Fix days stay on /the-daily-fix. */
+function withoutDailyFix(items: LibraryResource[]): LibraryResource[] {
+  return items.filter((item) => !isDailyFixResource(item));
 }
 
 /** Hub rails never render more cards than their cap, even if a response is long. */
@@ -94,7 +101,7 @@ function useRail(params: SearchParams | null, refreshKey: number): RailState {
       try {
         const body = await fetchLibrarySearch(params, controller.signal);
         if (controller.signal.aborted) return;
-        setState({ status: "data", items: body.resources });
+        setState({ status: "data", items: withoutDailyFix(body.resources) });
       } catch {
         if (controller.signal.aborted) return;
         softFailRail(setState);
@@ -127,7 +134,7 @@ function useArchiveRail(limit: number | null, refreshKey: number): RailState {
           controller.signal,
         );
         if (controller.signal.aborted) return;
-        setState({ status: "data", items: body.resources });
+        setState({ status: "data", items: withoutDailyFix(body.resources) });
       } catch {
         if (controller.signal.aborted) return;
         softFailRail(setState);
@@ -170,7 +177,7 @@ function usePopular(
       try {
         const body = await load();
         if (controller.signal.aborted) return;
-        setState({ status: "data", items: body.resources });
+        setState({ status: "data", items: withoutDailyFix(body.resources) });
       } catch {
         if (controller.signal.aborted) return;
         // One cheap retry for popular — cold BSI often clears on the second try.
@@ -179,7 +186,7 @@ function usePopular(
           if (controller.signal.aborted) return;
           const body = await load();
           if (controller.signal.aborted) return;
-          setState({ status: "data", items: body.resources });
+          setState({ status: "data", items: withoutDailyFix(body.resources) });
         } catch {
           if (controller.signal.aborted) return;
           softFailRail(setState);
@@ -300,11 +307,30 @@ export default function LibraryPage() {
   const [catalogCourses, setCatalogCourses] = useState<Course[]>([]);
   const [catalogCoursesReady, setCatalogCoursesReady] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [cascade, setCascade] = useState<{ key: number; phase: HubPhase }>({
+    key: 0,
+    phase: "filters",
+  });
 
   const archiveMode = Boolean(
     submittedQuery || activeType || activeCategory || activeSection,
   );
   const browseMode = !archiveMode;
+  const cascadeKey = browseMode ? refresh : -1;
+  if (cascade.key !== cascadeKey) {
+    setCascade({ key: cascadeKey, phase: "filters" });
+  }
+  const phase: HubPhase =
+    cascade.key === cascadeKey ? cascade.phase : "filters";
+
+  useEffect(() => {
+    if (!browseMode || !filtersReady) return;
+    setCascade((current) =>
+      current.key === refresh && current.phase === "filters"
+        ? { key: refresh, phase: "popular" }
+        : current,
+    );
+  }, [browseMode, filtersReady, refresh]);
 
   useEffect(() => {
     const c = new AbortController();
@@ -408,6 +434,7 @@ export default function LibraryPage() {
     archiveMode,
     archiveKind,
     archiveResetKey,
+    true,
   );
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -425,41 +452,70 @@ export default function LibraryPage() {
     return () => io.disconnect();
   }, [archiveMode, infinite.hasMore, infinite.loadMore, infinite.items.length]);
 
-  // Catalog powers free/gated hub rails only.
-  const catalog = useRail(browseMode ? hubCatalogParams : null, refresh);
-
-  // Top resources: BSI popular-by-views, courses omitted via content_types.
+  // Top resources first. Searches wait for it. Archive waits for the searches.
   const popular = usePopular(
-    browseMode ? TOP_LIMIT : null,
+    browseMode && phase !== "filters" ? TOP_LIMIT : null,
     refresh,
     POPULAR_CONTENT_TYPES,
   );
 
+  useEffect(() => {
+    if (!browseMode || phase !== "popular") return;
+    if (popular.status === "loading") return;
+    setCascade((current) =>
+      current.key === refresh && current.phase === "popular"
+        ? { key: refresh, phase: "searches" }
+        : current,
+    );
+  }, [browseMode, phase, popular.status, refresh]);
+
+  const searchesOn =
+    browseMode && (phase === "searches" || phase === "archive");
+
+  // Catalog powers free/gated hub rails only.
+  const catalog = useRail(searchesOn ? hubCatalogParams : null, refresh);
+
   const coursesRail = useRail(
     // Extra rows so catalog cards can still merge BSI fields; the rail shows 6.
-    browseMode ? { content_types: ["course"], limit: 9, offset: 0 } : null,
+    searchesOn ? { content_types: ["course"], limit: 9, offset: 0 } : null,
     refresh,
   );
 
   const metfixRail = useRail(
-    browseMode && filtersReady
+    searchesOn
       ? metfixCatIds.length
         ? { categories: metfixCatIds, limit: SECTION_LIMIT, offset: 0 }
         : { query: "metfix", limit: SECTION_LIMIT, offset: 0 }
       : null,
     refresh,
   );
-  const archivesRail = useArchiveRail(
-    browseMode ? ARCHIVE_RAIL_LIMIT : null,
-    refresh,
-  );
 
   const bsiRail = useRail(
-    browseMode && filtersReady
+    searchesOn
       ? bsiCatIds.length
         ? { categories: bsiCatIds, limit: SECTION_LIMIT, offset: 0 }
         : { query: "broken science", limit: SECTION_LIMIT, offset: 0 }
       : null,
+    refresh,
+  );
+
+  const searchesSettled =
+    catalog.status !== "loading" &&
+    coursesRail.status !== "loading" &&
+    metfixRail.status !== "loading" &&
+    bsiRail.status !== "loading";
+
+  useEffect(() => {
+    if (!browseMode || phase !== "searches" || !searchesSettled) return;
+    setCascade((current) =>
+      current.key === refresh && current.phase === "searches"
+        ? { key: refresh, phase: "archive" }
+        : current,
+    );
+  }, [browseMode, phase, searchesSettled, refresh]);
+
+  const archivesRail = useArchiveRail(
+    browseMode && phase === "archive" ? ARCHIVE_RAIL_LIMIT : null,
     refresh,
   );
 
