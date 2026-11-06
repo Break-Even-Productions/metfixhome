@@ -1167,15 +1167,8 @@ a.account-btn.account-btn--accent {
   color: rgba(243, 238, 228, 0.55);
 }
 
-.dash-greet__stat-info {
-  margin: 0.55rem 0 0;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.75rem;
-  background: rgba(15, 14, 12, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 0.72rem;
-  line-height: 1.4;
-  color: rgba(243, 238, 228, 0.82);
+.dash-greet__credit-dialog {
+  max-width: 26rem;
 }
 
 .account-info-btn--on-dark {

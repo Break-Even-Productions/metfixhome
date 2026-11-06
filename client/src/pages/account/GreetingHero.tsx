@@ -1,5 +1,12 @@
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { basePath } from "@/const";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 import { formatUsdFromCents } from "@shared/account/ltv";
@@ -8,8 +15,8 @@ import type { LtvCertificates, MembershipStatusLabel } from "@/lib/account";
 import { DashAsteriskFallback, useDashHeroGlass } from "./DashHeroGlass";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 
-const LTV_INFO =
-  "Your certificate LTV budget grows with MetFix subscription spend. When you claim a course certificate, MetFix can allocate lifetime spend toward that course’s listed value (redeem LTV), let you prepay any shortfall, or buy the certificate outright. Claimed certificates reduce available balance. This is separate from membership tier and onboarding audience attributes.";
+const CERTIFICATE_CREDIT_INFO =
+  "Every dollar you spend on MetFix subscriptions and merch contributes to your Certificate Credit. You can use this credit to claim the certificate for courses you redeemed as part of your included subscription usage.";
 
 type Stat = {
   label: string;
@@ -46,7 +53,6 @@ export function GreetingHero({
   const markRef = useRef<HTMLDivElement>(null);
   const glassReady = useDashHeroGlass(rootRef, barRef, markRef, photo);
   const [ltvOpen, setLtvOpen] = useState(false);
-  const ltvInfoId = useId();
 
   const unlocked = metfixToolsUnlocked(tier);
   const available = ltv ? formatUsdFromCents(ltv.available_certificate_ltv_cents) : "$0.00";
@@ -60,7 +66,7 @@ export function GreetingHero({
       value: tierDisplayLabel(tier, { legacy_source: legacySource ?? null }),
     },
     {
-      label: "Certificate LTV Available",
+      label: "Certificate Credit Available",
       value: available,
       note: `${total} total · ${claimed} claimed`,
       info: true,
@@ -118,27 +124,30 @@ export function GreetingHero({
                 <button
                   type="button"
                   className="account-info-btn account-info-btn--on-dark"
+                  aria-haspopup="dialog"
                   aria-expanded={ltvOpen}
-                  aria-controls={ltvInfoId}
-                  onClick={() => setLtvOpen((v) => !v)}
+                  onClick={() => setLtvOpen(true)}
                 >
                   <span className="account-info-btn__glyph" aria-hidden="true">
                     i
                   </span>
-                  <span className="sr-only">How course claim and LTV works</span>
+                  <span className="sr-only">How Certificate Credit works</span>
                 </button>
               ) : null}
             </div>
             <p className="dash-greet__stat-value account-metric">{stat.value}</p>
             {stat.note ? <p className="dash-greet__stat-note">{stat.note}</p> : null}
-            {stat.info && ltvOpen ? (
-              <p id={ltvInfoId} className="dash-greet__stat-info" role="note">
-                {LTV_INFO}
-              </p>
-            ) : null}
           </div>
         ))}
       </div>
+      <Dialog open={ltvOpen} onOpenChange={setLtvOpen}>
+        <DialogContent className="dash-greet__credit-dialog">
+          <DialogHeader>
+            <DialogTitle>Certificate Credit</DialogTitle>
+            <DialogDescription>{CERTIFICATE_CREDIT_INFO}</DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -81,7 +81,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(screen.getAllByText("$100.00").length).toBeGreaterThan(0);
     expect(screen.getByText(/\$300\.00 total · \$200\.00 claimed/)).toBeTruthy();
     expect(
-      screen.getAllByRole("button", { name: /How course claim and LTV works/i }).length,
+      screen.getAllByRole("button", { name: /How Certificate Credit works/i }).length,
     ).toBeGreaterThan(0);
 
     const mono = document.querySelectorAll(".account-metric, .account-mono");
