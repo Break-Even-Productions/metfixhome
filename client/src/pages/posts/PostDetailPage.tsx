@@ -5,6 +5,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "wouter";
+import { isFirstParagraphPreview } from "@shared/library";
 import {
   isPostDetailBody,
   POST_ID_MAX,
@@ -128,17 +129,34 @@ export default function PostDetailPage({
 
 function DetailBody({ post }: { post: DetailPost }) {
   const model = toDetailReaderModel(post);
+  const fadePreview =
+    post.access.access === "preview" && isFirstParagraphPreview(post.access.show_same);
+  const prompt = fadePreview ? (
+    <UpgradePrompt
+      title="Continue with MetFix"
+      body="You’re seeing a preview. Join or sign in for the full piece."
+    />
+  ) : (
+    <UpgradePrompt
+      title="Get the full MetFix library"
+      body="Start your free month for courses, The Daily Fix archive, and cumulative LTV toward certificates."
+    />
+  );
   return (
     <>
       <DetailReader model={model}>
-        <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+        {fadePreview ? (
+          <div className="posts-preview-wrap">
+            <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+            <div className="posts-preview-fade">
+              <div className="posts-preview-fade-inner">{prompt}</div>
+            </div>
+          </div>
+        ) : (
+          <SafeHtml html={post.content} className="posts-detail-content" as="div" />
+        )}
         {/* WJ18: exactly one UpgradePrompt (B6 forbids unlocked doubles only). */}
-        <div style={{ marginTop: "2rem" }}>
-          <UpgradePrompt
-            title="Get the full MetFix library"
-            body="Start your free month for courses, The Daily Fix archive, and cumulative LTV toward certificates."
-          />
-        </div>
+        {fadePreview ? null : <div style={{ marginTop: "2rem" }}>{prompt}</div>}
         {post.permalink ? (
           <a
             className="posts-external"

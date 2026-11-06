@@ -30,6 +30,7 @@ export {
 
 export {
   htmlShowsMembershipGate,
+  isFirstParagraphPreview,
   isFreeOpen,
   isLockedCard,
   isProfessionalTagged,
