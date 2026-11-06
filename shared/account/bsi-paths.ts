@@ -169,6 +169,38 @@ export function accountPlanMealPath(date: string): string {
   return `${METFIX}/calendar/days/${encodeURIComponent(date)}/meals`;
 }
 
+export function accountListsPath(): string {
+  return `${METFIX}/lists`;
+}
+
+export function accountListsPublicPath(): string {
+  return `${METFIX}/lists/public`;
+}
+
+export function accountListPath(id: string): string {
+  return `${METFIX}/lists/${encodeURIComponent(id)}`;
+}
+
+export function accountListSharePath(token: string): string {
+  return `${METFIX}/lists/share/${encodeURIComponent(token)}`;
+}
+
+export function accountListItemsPath(id: string): string {
+  return `${METFIX}/lists/${encodeURIComponent(id)}/items`;
+}
+
+export function accountListItemPath(id: string, itemId: string): string {
+  return `${METFIX}/lists/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`;
+}
+
+export function accountListReorderPath(id: string): string {
+  return `${METFIX}/lists/${encodeURIComponent(id)}/items/reorder`;
+}
+
+export function accountListSubscribePath(id: string): string {
+  return `${METFIX}/lists/${encodeURIComponent(id)}/subscribe`;
+}
+
 export function accountShoppingListsPath(): string {
   return `${METFIX}/shopping-lists`;
 }

@@ -41,6 +41,15 @@ describe("library search query builder", () => {
     ).toBeNull();
   });
 
+  it("does not forward access-level ids on the main catalog", () => {
+    const qs = buildSearchUpstreamQuery(
+      new URLSearchParams("content_access[]=5&content_types[]=post"),
+    );
+    expect(qs).toContain("content_types");
+    expect(qs).toContain("post");
+    expect(qs).not.toContain("content_access");
+  });
+
   it("rejects bad content_types", () => {
     expect(
       buildSearchUpstreamQuery(new URLSearchParams("content_types[]=evil")),
@@ -742,5 +751,109 @@ describe("library popular cushions (timeout + stale + membership skip)", () => {
     };
     expect(body.resources[0]?.access.access).toBe("none");
     timeoutSpy.mockRestore();
+  });
+});
+
+describe("exclusive feed API", () => {
+  function makeEnv(): Env {
+    return { BSI_POSTS_API_KEY: "test-key" } as Env;
+  }
+  function makeCtx(): ExecutionContext {
+    return {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+  }
+
+  it("requests exclusive resources and drops Daily Fix rows", async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      return new Response(
+        JSON.stringify({
+          resources: [
+            {
+              id: 7,
+              type: "exclusive_resource",
+              title: "Member briefing",
+              excerpt: "Only members",
+              date: "2026-02-01T00:00:00Z",
+              content_access_display: { access: "full", is_exclusive: true },
+            },
+            {
+              id: 8,
+              type: "daily_fix",
+              title: "Wednesday Fix",
+              excerpt: "day",
+              date: "2026-02-02T00:00:00Z",
+              daily_fix_date: "2026-02-02",
+              content_access_display: { access: "full", is_exclusive: false },
+            },
+            {
+              id: 9,
+              type: "post",
+              title: "Open post",
+              excerpt: "public",
+              date: "2026-02-03T00:00:00Z",
+              content_access_display: { access: "full", is_exclusive: false },
+            },
+          ],
+          meta: { total: 3, count: 3, limit: 12, offset: 0, has_more: false },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const res = await handleLibraryApi(
+      new Request("https://metfix.org/api/library/exclusive?content_access[]=5&query=brief"),
+      makeEnv(),
+      makeCtx(),
+      {
+        fetchImpl,
+        cachesDefault: {
+          match: async () => undefined,
+          put: async () => {},
+        } as unknown as Cache,
+      },
+    );
+    expect(res.status).toBe(200);
+    const upstream = urls.find((u) => u.includes("/resources/search")) ?? "";
+    expect(upstream).toContain("exclusive_resource");
+    expect(upstream).toContain("content_access");
+    expect(upstream).not.toContain("daily_fix");
+    const body = (await res.json()) as { resources: Array<{ title: string; type: string }> };
+    expect(body.resources.map((r) => r.title)).toEqual(["Member briefing"]);
+    expect(JSON.stringify(body)).not.toContain("the-daily-fix");
+  });
+
+  it("returns access level chips", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          access_levels: [
+            { id: 5, name: "MetFix Pro", slug: "metfix" },
+            { id: 0, name: "Bad", slug: "bad" },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const res = await handleLibraryApi(
+      new Request("https://metfix.org/api/library/exclusive/levels"),
+      makeEnv(),
+      makeCtx(),
+      {
+        fetchImpl,
+        cachesDefault: {
+          match: async () => undefined,
+          put: async () => {},
+        } as unknown as Cache,
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      access_levels: [{ id: 5, name: "MetFix Pro", slug: "metfix" }],
+    });
   });
 });

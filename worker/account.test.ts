@@ -3672,3 +3672,139 @@ describe("worker/account routes", () => {
     });
   });
 });
+
+describe("user lists proxy", () => {
+  let h: Harness;
+
+  beforeEach(() => {
+    h = createHarness();
+    installAccountLimiters(h.env);
+  });
+
+  it("GET /api/account/lists is bearer-only and strips item HTML", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/lists") && method === "GET") {
+          return Response.json({
+            lists: [
+              {
+                id: 4,
+                title: "Race week",
+                visibility: "private",
+                item_count: 1,
+                list_relationship: "owner",
+                body: "<p>nope</p>",
+              },
+            ],
+            meta: { count: 1, total: 1, limit: 20, offset: 0 },
+          });
+        }
+        if (path.endsWith("/lists/4/items") && method === "GET") {
+          return Response.json({
+            list_id: 4,
+            count: 1,
+            items: [
+              {
+                id: 9,
+                list_id: 4,
+                sort_order: 0,
+                content: {
+                  source_type: "post",
+                  source_id: 88,
+                  title: "Briefing",
+                  body: "<p>full article</p>",
+                  article_url: "https://brokenscience.org/briefing",
+                },
+              },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const index = await callAccount(
+      h,
+      "/api/account/lists",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(index.status).toBe(200);
+    const indexJson = (await index.json()) as { lists: Array<{ title: string }> };
+    expect(indexJson.lists[0]?.title).toBe("Race week");
+    expect(JSON.stringify(indexJson)).not.toContain("nope");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists");
+    expect(recorded[0]?.url).not.toContain("shopping-lists");
+    assertHasBearer(recorded[0]!);
+
+    const items = await callAccount(
+      h,
+      "/api/account/lists/4/items",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(items.status).toBe(200);
+    const itemsJson = (await items.json()) as {
+      items: Array<{ content: Record<string, unknown> }>;
+    };
+    expect(itemsJson.items[0]?.content.title).toBe("Briefing");
+    expect(itemsJson.items[0]?.content).not.toHaveProperty("body");
+    expect(JSON.stringify(itemsJson)).not.toContain("full article");
+  });
+
+  it("POST /api/account/lists forwards a title and rejects an empty one", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/lists") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { title: string; visibility: string };
+          return Response.json(
+            {
+              list: {
+                id: 8,
+                title: sent.title,
+                visibility: sent.visibility,
+                list_relationship: "owner",
+                item_count: 0,
+              },
+            },
+            { status: 201 },
+          );
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const bad = await callAccount(
+      h,
+      "/api/account/lists",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ title: "  " }),
+      },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const created = await callAccount(
+      h,
+      "/api/account/lists",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ title: "Travel", visibility: "unlisted" }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { list: { title: string; visibility: string } };
+    expect(body.list.title).toBe("Travel");
+    expect(body.list.visibility).toBe("unlisted");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists");
+    assertHasBearer(recorded[0]!);
+    expect(recorded[0]?.headers["x-api-key"]).toBeUndefined();
+  });
+});
