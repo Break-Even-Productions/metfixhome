@@ -605,6 +605,11 @@ export async function handlePostsHtml(
     const result = await getPost(id, env, fetchImpl, cache, ctx, "await");
     if (result.kind === "ok") {
       const post = result.body.post;
+      // Exclusive posts with no preview are locked: same 404 as a missing post,
+      // so the member body never lands in the HTML document. Preview shells stay 200.
+      if (post.locked || (post.exclusive && !post.preview_available)) {
+        return htmlNotFound(request, env);
+      }
       const head = buildPostsHead({
         kind: "detail",
         id: post.id,
