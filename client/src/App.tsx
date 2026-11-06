@@ -51,8 +51,7 @@ const FindAGymPage = lazy(() => import("./pages/find-a-gym/FindAGymPage"));
 
 function BsiRefCapture() {
   useEffect(() => {
-    if (typeof window === "undefined" || typeof sessionStorage === "undefined")
-      return;
+    if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
     captureBsiRef(window.location.search, sessionStorage);
   }, []);
   return null;
