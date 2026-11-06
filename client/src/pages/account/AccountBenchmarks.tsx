@@ -16,6 +16,16 @@ import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
 import { ToolHero } from "./ToolHero";
 
+/** One decimal without `.toFixed` (CL-T21 money-scan forbids it in account/). */
+function formatScoreNumber(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  const tenths = Math.round(n * 10) / 10;
+  if (Number.isInteger(tenths)) return String(tenths);
+  const whole = Math.trunc(tenths);
+  const frac = Math.abs(Math.round((tenths - whole) * 10));
+  return `${whole}.${frac}`;
+}
+
 function formatScore(row: PrOverviewRow): string {
   if (row.best_score == null) return "—";
   const n = row.best_score;
@@ -29,8 +39,8 @@ function formatScore(row: PrOverviewRow): string {
   if (row.score_unit_id === 1 || unit === "lb" || unit === "lbs") {
     return `${Math.round(n)} lb`;
   }
-  if (unit) return `${Number.isInteger(n) ? n : n.toFixed(1)} ${unit}`;
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  if (unit) return `${formatScoreNumber(n)} ${unit}`;
+  return formatScoreNumber(n);
 }
 
 function workingPercents(oneRm: number): Array<{ pct: number; reps: string; load: number }> {
