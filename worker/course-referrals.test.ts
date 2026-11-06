@@ -1474,14 +1474,16 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
     spy.mockRestore();
   });
 
-  it("CR3 guest checkout: no sid → Bearer-less BSI mint still returns checkout_url", async () => {
-    const pre = "pre_guest_checkout_test_01";
-    const csrf = await csrfForPre(h.env.CSRF_SECRET!, pre);
+  it("purchase-checkout forwards POST /courses/:id/checkout with the account bearer", async () => {
+    const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
-      async ({ path, method, headers }) => {
-        if (path.includes("/courses/28822/checkout") && method === "POST") {
-          expect(headers.authorization).toBeUndefined();
+      async ({ path, method, headers, bodyText }) => {
+        if (path === "/wp-json/bsi/v1/courses/20231/checkout" && method === "POST") {
+          expect(headers.authorization).toBe(`Bearer ${ACCESS1}`);
+          expect(headers.cookie).toBeUndefined();
+          expect(headers["x-wp-nonce"]).toBeUndefined();
           expect(headers["x-api-key"]).toBeUndefined();
+          expect(JSON.parse(bodyText)).toEqual({ return_path: "/checkout/complete" });
           return Response.json(CHECKOUT_OK);
         }
         return new Response(null, { status: 404 });
@@ -1489,7 +1491,67 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
     ]);
     const res = await callAccount(
       h,
-      "/api/account/courses/28822/purchase-checkout",
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ return_path: "/checkout/complete" }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+    const upstream = recorded.filter((r) => r.url.includes("/wp-json/"));
+    expect(upstream).toHaveLength(1);
+    expect(upstream[0]!.url).toBe(`${BSI_ORIGIN}/wp-json/bsi/v1/courses/20231/checkout`);
+    expect(upstream[0]!.method).toBe("POST");
+  });
+
+  it("bsi_unauthorized is 401 unauthenticated, not upstream_error", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.includes("/courses/20231/checkout") && method === "POST") {
+          return Response.json(
+            { code: "bsi_unauthorized", message: "Unauthorized.", data: { status: 401 } },
+            { status: 422 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect(recorded.filter((r) => r.url.includes("/courses/20231/checkout"))).toHaveLength(1);
+  });
+
+  it("guest checkout with no usable session is 401 and does not call BSI", async () => {
+    const pre = "pre_guest_checkout_test_01";
+    const csrf = await csrfForPre(h.env.CSRF_SECRET!, pre);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async () => Response.json(CHECKOUT_OK),
+    ]);
+    const cases: RequestInit[] = [
+      {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": IP,
+        },
+        body: JSON.stringify({}),
+      },
       {
         method: "POST",
         headers: {
@@ -1502,22 +1564,31 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
         },
         body: JSON.stringify({}),
       },
-      fetchImpl,
-    );
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      checkout_url: CHECKOUT_OK.checkout_url,
-    });
-    const upstream = recorded.find((r) => r.url.includes("/courses/28822/checkout"));
-    expect(upstream).toBeTruthy();
-    expect(upstream!.headers.authorization).toBeUndefined();
-  });
-
-  it("CR3 guest checkout without pre CSRF → 403 and 0 upstream", async () => {
-    const { fetchImpl, recorded } = makeFetchMock([]);
-    const res = await callAccount(
+      {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": IP,
+          Cookie: `${SID_COOKIE}=${encodeURIComponent("dead-sid-not-a-session")}`,
+        },
+        body: JSON.stringify({}),
+      },
+    ];
+    for (const init of cases) {
+      const res = await callAccount(
+        h,
+        "/api/account/courses/20231/purchase-checkout",
+        init,
+        fetchImpl,
+      );
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthenticated" });
+    }
+    const alias = await callAccount(
       h,
-      "/api/account/courses/28822/purchase-checkout",
+      "/api/courses/20231/checkout",
       {
         method: "POST",
         headers: {
@@ -1530,11 +1601,8 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
       },
       fetchImpl,
     );
-    expect(res.status).toBe(403);
+    expect(alias.status).toBe(401);
     expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
   });
 });
-
-// silence unused ACCESS1 import warning path — used by harness login
-void ACCESS1;
 void NOW_ISO;
