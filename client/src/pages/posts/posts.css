@@ -193,12 +193,36 @@
   box-shadow: 0 12px 28px rgba(23, 21, 18, 0.08);
 }
 
+.posts-card-media {
+  position: relative;
+  background: var(--posts-cream-2);
+}
+
+.posts-card-media-empty {
+  aspect-ratio: 16 / 9;
+}
+
 .posts-card-image {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
   background: var(--posts-cream-2);
+}
+
+/* Match library-card-lock (ResourceCard). */
+.posts-card-lock {
+  position: absolute;
+  z-index: 3;
+  top: 0.65rem;
+  right: 0.65rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: rgba(23, 21, 18, 0.75);
+  color: var(--posts-paper, #faf7f1);
+  display: grid;
+  place-items: center;
 }
 
 .posts-card-body {

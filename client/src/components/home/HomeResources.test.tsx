@@ -74,7 +74,7 @@ describe("HomeResources CTAs", () => {
     await waitFor(() => expect(screen.getByText("Sample BSI post")).toBeTruthy());
     await waitFor(() => expect(screen.getByText("Sample Substack post")).toBeTruthy());
     expect(screen.queryByText("Should not render")).toBeNull();
-    expect(screen.getByText("Exclusive")).toBeTruthy();
+    expect(screen.getByLabelText("Exclusive content")).toBeTruthy();
     expect(screen.getByText("Preview available")).toBeTruthy();
 
     const bsiCard = screen.getByRole("link", { name: /Sample BSI post/i });

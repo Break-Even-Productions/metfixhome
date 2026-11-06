@@ -104,7 +104,7 @@ function popupHtml(listing: DirectoryListing): string {
     ? `<p class="gym-popup__address">${escapeHtml(listing.address)}</p>`
     : "";
   const profileLink = profile
-    ? `<a class="gym-popup__link" href="${escapeHtml(profile)}">${escapeHtml(profileCtaLabel(listing))}</a>`
+    ? `<a class="gym-popup__link" href="${escapeHtml(profile)}" target="_blank" rel="noopener noreferrer">${escapeHtml(profileCtaLabel(listing))}</a>`
     : "";
   const websiteLink = website
     ? `<a class="gym-popup__link" href="${escapeHtml(website)}" target="_blank" rel="noopener noreferrer">Visit website</a>`

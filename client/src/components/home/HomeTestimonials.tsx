@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { storiesFor, type FeaturePlacement, type Testimonial } from "@/data/home/stories";
+import { Play } from "lucide-react";
+import {
+  storiesFor,
+  type FeaturePlacement,
+  type PhotoStory,
+  type StoryCard,
+  type VideoStory,
+} from "@/data/home/stories";
 import type { AudienceHref, LandingCopy } from "@/data/home/audience";
 import { SectionPad } from "./SectionCard";
 
@@ -35,14 +42,32 @@ const sponsorLoop = [...partners, ...partners];
 
 function columnsFor(audience: AudienceHref) {
   const { featuredAt, testimonials } = storiesFor(audience);
-  return featuredAt.map((feature, index) => ({
-    feature,
-    quote: testimonials[index % testimonials.length],
+  // One column per story card so videos + original photos all appear.
+  return testimonials.map((story, index) => ({
+    feature: featuredAt[index % featuredAt.length],
+    story,
     featureFirst: index % 2 === 0,
   }));
 }
 
-function QuoteCard({ item }: { item: Testimonial }) {
+function storyKey(story: StoryCard) {
+  return story.kind === "video" ? story.videoId : story.photo;
+}
+
+function youtubePoster(videoId: string) {
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+}
+
+function youtubeEmbed(videoId: string) {
+  const embed = new URL(`https://www.youtube.com/embed/${videoId}`);
+  embed.searchParams.set("rel", "0");
+  embed.searchParams.set("modestbranding", "1");
+  embed.searchParams.set("playsinline", "1");
+  embed.searchParams.set("autoplay", "1");
+  return embed.toString();
+}
+
+function PhotoStoryCard({ item }: { item: PhotoStory }) {
   return (
     <figure className="story-card relative h-[19.5rem] overflow-hidden rounded-[1.35rem] bg-ink shadow-[0_10px_30px_rgba(23,21,18,0.08)] md:h-[22.5rem]">
       <img
@@ -52,10 +77,73 @@ function QuoteCard({ item }: { item: Testimonial }) {
         className="absolute inset-0 h-full w-full max-w-none object-cover"
         style={{ objectPosition: item.position }}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-transparent" />
-      <figcaption className="absolute inset-x-0 bottom-0 px-5 pb-5 pt-16 text-white">
+    </figure>
+  );
+}
+
+function VideoStoryCard({
+  item,
+  interactive,
+  onPlay,
+}: {
+  item: VideoStory;
+  interactive: boolean;
+  onPlay: () => void;
+}) {
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    setPlaying(false);
+  }, [item.videoId]);
+
+  const start = () => {
+    if (!interactive) return;
+    setPlaying(true);
+    onPlay();
+  };
+
+  return (
+    <figure className="story-card relative h-[19.5rem] overflow-hidden rounded-[1.35rem] bg-ink shadow-[0_10px_30px_rgba(23,21,18,0.08)] md:h-[22.5rem]">
+      {playing && interactive ? (
+        <iframe
+          src={youtubeEmbed(item.videoId)}
+          title={`${item.name} testimonial`}
+          className="absolute inset-0 h-full w-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+      ) : (
+        <>
+          <img
+            src={youtubePoster(item.videoId)}
+            alt=""
+            loading="lazy"
+            className="absolute inset-0 h-full w-full max-w-none object-cover"
+          />
+          <button
+            type="button"
+            aria-label={`Play ${item.name} video`}
+            disabled={!interactive}
+            onClick={start}
+            className="absolute inset-0 z-[1] flex items-center justify-center disabled:pointer-events-none"
+          >
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-cream/90 text-ink shadow">
+              <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+            </span>
+          </button>
+        </>
+      )}
+      <div
+        className={`pointer-events-none absolute inset-0 ${
+          playing
+            ? "bg-gradient-to-t from-black/70 via-transparent to-transparent"
+            : "bg-gradient-to-t from-black/85 via-black/35 to-transparent"
+        }`}
+      />
+      <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] px-5 pb-5 pt-16 text-white">
         <blockquote>
-          <p className="font-serif text-[1.05rem] leading-snug text-pretty md:text-[1.15rem]">
+          <p className="line-clamp-5 font-serif text-[0.95rem] leading-snug text-pretty md:text-[1.05rem]">
             &ldquo;{item.quote}&rdquo;
           </p>
         </blockquote>
@@ -65,6 +153,19 @@ function QuoteCard({ item }: { item: Testimonial }) {
       </figcaption>
     </figure>
   );
+}
+
+function StoryMediaCard({
+  item,
+  interactive,
+  onPlay,
+}: {
+  item: StoryCard;
+  interactive: boolean;
+  onPlay: () => void;
+}) {
+  if (item.kind === "photo") return <PhotoStoryCard item={item} />;
+  return <VideoStoryCard item={item} interactive={interactive} onPlay={onPlay} />;
 }
 
 function FeatureCard({ item }: { item: FeaturePlacement }) {
@@ -79,19 +180,25 @@ function FeatureCard({ item }: { item: FeaturePlacement }) {
 function Column({
   column,
   stableKey,
+  interactive,
+  onPlay,
 }: {
   column: ReturnType<typeof columnsFor>[number];
   stableKey: string;
+  interactive: boolean;
+  onPlay: () => void;
 }) {
   const feature = <FeatureCard item={column.feature} />;
-  const quote = <QuoteCard item={column.quote} />;
+  const story = (
+    <StoryMediaCard item={column.story} interactive={interactive} onPlay={onPlay} />
+  );
   return (
     <div
       data-column-key={stableKey}
       className="story-column flex w-[15.25rem] shrink-0 flex-col gap-3 md:w-[17rem]"
     >
-      {column.featureFirst ? feature : quote}
-      {column.featureFirst ? quote : feature}
+      {column.featureFirst ? feature : story}
+      {column.featureFirst ? story : feature}
     </div>
   );
 }
@@ -147,9 +254,11 @@ export function HomeTestimonials({ copy, audience }: HomeTestimonialsProps) {
               <div key={copyIndex} className="story-set" aria-hidden={copyIndex === 1}>
                 {base.map((column) => (
                   <Column
-                    key={`${copyIndex}-${column.feature.name}-${column.quote.name}`}
-                    stableKey={`${copyIndex}-${column.feature.name}`}
+                    key={`${copyIndex}-${column.feature.name}-${storyKey(column.story)}`}
+                    stableKey={`${copyIndex}-${column.feature.name}-${storyKey(column.story)}`}
                     column={column}
+                    interactive={copyIndex === 0}
+                    onPlay={() => setPaused(true)}
                   />
                 ))}
               </div>

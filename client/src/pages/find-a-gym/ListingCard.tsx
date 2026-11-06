@@ -75,7 +75,11 @@ export function ListingCard({ listing, selected, activeCommunities, onSelect }: 
       ) : null}
       {profile || website ? (
         <div className="gym-card__cta">
-          {profile ? <a href={profile}>{profileCtaLabel(listing)}</a> : null}
+          {profile ? (
+            <a href={profile} target="_blank" rel="noopener noreferrer">
+              {profileCtaLabel(listing)}
+            </a>
+          ) : null}
           {website ? (
             <a href={website} target="_blank" rel="noopener noreferrer">
               Visit website

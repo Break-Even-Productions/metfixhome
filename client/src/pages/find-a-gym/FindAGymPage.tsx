@@ -342,25 +342,50 @@ export default function FindAGymPage() {
             onBounds={onBounds}
             onReady={onReady}
           />
-          <section aria-label="Results" className="min-w-0">
-            <p className="text-sm text-muted">
-              {loading
-                ? "Loading gyms…"
-                : `${visible.length} ${visible.length === 1 ? "result" : "results"} in view`}
-            </p>
+          <section aria-label="Results" className="min-w-0" aria-busy={loading}>
+            {loading ? (
+              <p className="gym-results-skel" aria-hidden="true">
+                <span className="gym-card-skel__line gym-card-skel__line--short" />
+              </p>
+            ) : (
+              <p className="text-sm text-muted">
+                {`${visible.length} ${visible.length === 1 ? "result" : "results"} in view`}
+              </p>
+            )}
             {gymError ? (
               <p className="mt-3 text-sm text-danger-text">Couldn’t load gyms. Try again later.</p>
             ) : null}
             <div className="find-gym__results mt-3">
-              {visible.map((listing) => (
-                <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  selected={listing.id === selectedId}
-                  activeCommunities={communities}
-                  onSelect={selectListing}
-                />
-              ))}
+              {loading ? (
+                <div className="gym-card-skel-list" role="status" aria-label="Loading gyms">
+                  {Array.from({ length: 5 }, (_, index) => (
+                    <div key={index} className="gym-card gym-card-skel" aria-hidden="true">
+                      <div className="gym-card-skel__main">
+                        <span className="gym-card-skel__logo" />
+                        <span className="gym-card-skel__meta">
+                          <span className="gym-card-skel__chip" />
+                          <span className="gym-card-skel__title" />
+                          <span className="gym-card-skel__line" />
+                          <span className="gym-card-skel__line gym-card-skel__line--short" />
+                        </span>
+                      </div>
+                      <span className="gym-card-skel__line" />
+                      <span className="gym-card-skel__line gym-card-skel__line--short" />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {!loading
+                ? visible.map((listing) => (
+                    <ListingCard
+                      key={listing.id}
+                      listing={listing}
+                      selected={listing.id === selectedId}
+                      activeCommunities={communities}
+                      onSelect={selectListing}
+                    />
+                  ))
+                : null}
               {!loading && visible.length === 0 ? (
                 <p className="rounded-[1.5rem] border border-line bg-white p-5 text-sm text-muted">
                   Nothing in this view. Zoom out or clear a filter.

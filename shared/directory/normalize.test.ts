@@ -25,12 +25,12 @@ describe("normalizeDirectoryRow", () => {
       city: "Jacksonville",
       state: "FL",
       website: "https://example.com",
-      profileUrl: "https://metfix.org/affiliates/44/metfix-jax",
+      profileUrl: "https://brokenscience.org/affiliates/44/metfix-jax",
       communities: ["First Responders", "Youth"],
     });
   });
 
-  it("rewrites absolute BSI affiliate URLs onto metfix.org", () => {
+  it("keeps absolute affiliate profiles on brokenscience.org", () => {
     const listing = normalizeDirectoryRow(
       {
         affiliate_id: 52,
@@ -41,7 +41,7 @@ describe("normalizeDirectoryRow", () => {
       },
       "gym",
     );
-    expect(listing?.profileUrl).toBe("https://metfix.org/affiliates/52/bsi-staff");
+    expect(listing?.profileUrl).toBe("https://brokenscience.org/affiliates/52/bsi-staff");
   });
 
   it("drops pins without coordinates", () => {
