@@ -388,26 +388,152 @@ async function installMocks(mode) {
         meta: { count: 3, total: 3, limit: 20, offset: 0, has_more: false },
       });
     }
+    if (url.includes("/api/account/meals/days/") && route.request().method() === "POST") {
+      return json({
+        id: 88,
+        date: dates[0],
+        slot_index: 1,
+        recipe_source_type: "daily_mod",
+        recipe_source_id: 11,
+        label: "Planned meal",
+        recipe_preview: {
+          title: "Planned meal",
+          photo_url: null,
+          macros: { protein: 40, fat: 20, carbs: 5 },
+        },
+      });
+    }
     if (url.includes("/api/account/meals")) return json(mealsWeek);
     if (url.includes("/api/account/macros/daily/")) return json(macrosDaily);
+    if (url.includes("/api/account/calendar/surface")) {
+      const meal_counts = {};
+      const workout_counts = {};
+      meal_counts[dates[0]] = 3;
+      meal_counts[dates[2]] = 1;
+      workout_counts[dates[1]] = 1;
+      workout_counts[dates[3]] = 2;
+      return json({
+        meal_counts,
+        workout_counts,
+        brain_counts: { [dates[4]]: 1 },
+        event_counts: {},
+        meta: { start_date: dates[0], end_date: dates[6], total_dates: 7 },
+      });
+    }
     if (url.includes("/api/account/pr-overview")) return json(prOverview);
+    if (url.includes("/api/account/spark/entries") && route.request().method() === "POST") {
+      return json({
+        entry: {
+          id: "e-new",
+          measurement_date: `${dates[0]} 12:00:00`,
+          value: 340,
+          bsi_measurement_id: 7,
+          unit_abbreviation: "lb",
+        },
+      });
+    }
+    if (url.includes("/api/account/spark/entries")) {
+      return json({
+        entries: [
+          { id: "e1", measurement_date: "2026-09-01 12:00:00", value: 305, bsi_measurement_id: 7, unit_abbreviation: "lb" },
+          { id: "e2", measurement_date: "2026-09-15 12:00:00", value: 315, bsi_measurement_id: 7, unit_abbreviation: "lb" },
+          { id: "e3", measurement_date: "2026-10-01 12:00:00", value: 325, bsi_measurement_id: 7, unit_abbreviation: "lb" },
+          { id: "e4", measurement_date: "2026-10-20 12:00:00", value: 335, bsi_measurement_id: 7, unit_abbreviation: "lb" },
+        ],
+        meta: { count: 4, limit: 40, offset: 0 },
+      });
+    }
+    if (url.includes("/api/account/shopping-lists/") && url.includes("/email")) {
+      return json({ success: true, emailed_to: "ethan@metfix.org" });
+    }
+    if (url.includes("/api/account/shopping-lists/") && url.includes("/generate")) {
+      return json({
+        success: true,
+        list: {
+          id: 9,
+          title: "Week of meals",
+          status: "generated",
+          items_by_category: {
+            Produce: [{ id: 1, item_name: "Asparagus", quantity: "1 lb", sort_order: 0 }],
+            Meat: [{ id: 2, item_name: "Chicken thighs", quantity: "2 lb", sort_order: 0 }],
+          },
+        },
+      });
+    }
+    if (url.includes("/api/account/shopping-lists") && route.request().method() === "POST") {
+      return json(
+        { id: 9, title: "Week of meals", status: "created", dates, meals: [], items: [] },
+        201,
+      );
+    }
+    if (url.includes("/api/account/shopping-lists")) {
+      return json({ lists: [], meta: { total: 0 } });
+    }
+    if (url.includes("/api/account/inbox")) {
+      return json({
+        conversations: [
+          {
+            id: 1,
+            name: "Coach Mia",
+            last_message: "Nice PR on back squat.",
+            last_message_time: "2026-11-05 14:22:00",
+            unread_count: 1,
+          },
+        ],
+        notifications: [
+          {
+            id: 2,
+            title: "Shopping list ready",
+            message: "Your week list was generated.",
+            created_at: "2026-11-04 09:00:00",
+          },
+        ],
+      });
+    }
+    if (url.includes("/api/account/payments")) {
+      return json({
+        items: [
+          {
+            id: "pay_1",
+            created_at: "2026-10-01T12:00:00.000Z",
+            amount_cents: 4900,
+            currency: "usd",
+            status: "paid",
+            description: "MetFix Pro",
+            invoice_url: null,
+          },
+        ],
+        page: 1,
+        per_page: 20,
+        total: 1,
+      });
+    }
     return json({ error: "not_found" }, 404);
   });
 }
 
 for (const [path, name, mode] of [
   // Free = Mia locked-tool mockup fidelity for hero + meals/benchmarks
-  ["/account", "new_dashboard_overview", "free"],
-  ["/account/benchmarks", "new_dashboard_benchmarks", "free"],
-  ["/account/meals", "new_dashboard_meals", "free"],
+  ["/account", "feedback_overview", "pro"],
+  ["/account/benchmarks", "feedback_benchmarks", "pro"],
+  ["/account/meals", "feedback_meals", "pro"],
+  ["/account/courses", "feedback_courses", "pro"],
+  ["/account/referrals", "feedback_referrals", "pro"],
+  ["/account/favorites", "feedback_saved", "pro"],
+  ["/account/billing", "feedback_billing", "pro"],
+  ["/account/spark", "feedback_spark", "pro"],
+  ["/account/inbox", "feedback_inbox", "pro"],
   ["/account/profile", "new_dashboard_profile", "pro"],
-  ["/account/courses", "new_dashboard_courses", "pro"],
-  ["/account/referrals", "new_dashboard_referrals", "pro"],
 ]) {
   await installMocks(mode);
-  await page.goto(`http://127.0.0.1:4173${path}`, { waitUntil: "networkidle", timeout: 60000 });
-  await page.waitForSelector(".account-shell, .dash-greet, .dash-tool-hero", { timeout: 15000 });
-  await page.waitForTimeout(900);
+  await page.goto(`http://127.0.0.1:4173${path}`, {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+  await page.waitForSelector(".account-shell, .dash-greet, .dash-tool-hero, .account-page", {
+    timeout: 20000,
+  });
+  await page.waitForTimeout(1200);
   const dest = `${out}/${name}.png`;
   await page.screenshot({ path: dest, fullPage: true });
   await copyFile(dest, `${artifacts}/${name}.png`);

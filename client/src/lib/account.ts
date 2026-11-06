@@ -533,7 +533,12 @@ type CacheKey =
   | "shopping-lists"
   | `shopping-list:${number}`
   | `spark-entries:${string}`
-  | `calendar-surface:${string}`;
+  | `calendar-surface:${string}`
+  | "plans-library"
+  | `plan:${number}`
+  | "custom-recipes"
+  | `macros-range:${string}`
+  | `shopping-generated-dates:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
@@ -991,6 +996,205 @@ export async function createSparkEntry(
   );
   invalidateSparkEntriesCaches(body.measurement_id);
   return result;
+}
+
+/* ——— Belly: meal plans / custom recipes / macros range ——— */
+
+export type MealPlanSummary = {
+  id: number;
+  title: string;
+  description?: string | null;
+  duration_days: number;
+  visibility?: string;
+  status?: "draft" | "published" | string;
+  is_active: boolean;
+  times_scheduled?: number;
+  can_publish?: boolean;
+  can_schedule?: boolean;
+  usage_status?: "saved_only" | "used" | string;
+  days?: Array<{
+    id: number;
+    day_index: number;
+    notes?: string | null;
+    items: Array<{
+      id: number;
+      item_type: "meal" | "workout" | "brain" | string;
+      label?: string | null;
+      recipe_source_type?: string | null;
+      recipe_source_id?: number | null;
+      servings?: number | null;
+    }>;
+  }>;
+  [key: string]: unknown;
+};
+
+export type MealPlanLibrary = {
+  active: { saved_only: MealPlanSummary[]; used: MealPlanSummary[] };
+  inactive: { saved_only: MealPlanSummary[]; used: MealPlanSummary[] };
+  meta?: { active_count?: number; inactive_count?: number };
+};
+
+export type CustomRecipe = {
+  id: number;
+  title: string;
+  photo_url?: string | null;
+  image_url?: string | null;
+  macros?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+  ingredients?: string[];
+  instructions?: string[];
+  [key: string]: unknown;
+};
+
+export type CustomRecipesPage = {
+  recipes: CustomRecipe[];
+  meta?: { count?: number; limit?: number; offset?: number; has_more?: boolean };
+};
+
+export type MacrosRangeEntry = {
+  date: string;
+  totals?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+  meals?: Array<{
+    mealId?: number | string;
+    mealTitle?: string;
+    title?: string;
+    slotIndex?: number;
+    macros?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+    photoUrl?: string | null;
+    macroEntryId?: number;
+    recipeSourceType?: string;
+    recipeSourceId?: number;
+  }>;
+};
+
+export type MacrosRange = {
+  entries: MacrosRangeEntry[];
+};
+
+export function loadPlanLibrary(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<MealPlanLibrary> {
+  return accountGet("/api/account/plans/library", "plans-library", options);
+}
+
+export function loadPlan(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MealPlanSummary> {
+  return accountGet(`/api/account/plans/${id}?include_days=1`, `plan:${id}`, options);
+}
+
+export async function setMealPlanActive(
+  id: number,
+  isActive: boolean,
+): Promise<MealPlanSummary> {
+  return accountMutate(`/api/account/plans/${id}/active`, {
+    method: "PATCH",
+    body: { is_active: isActive },
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function publishMealPlan(id: number): Promise<MealPlanSummary> {
+  return accountMutate(`/api/account/plans/${id}/publish`, {
+    method: "POST",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function scheduleMealPlan(
+  id: number,
+  body: { start_date: string; end_date?: string },
+): Promise<void> {
+  const q = new URLSearchParams({ start_date: body.start_date });
+  if (body.end_date) q.set("end_date", body.end_date);
+  await accountMutate(`/api/account/plans/${id}/schedule?${q.toString()}`, {
+    method: "POST",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+  for (const key of [...cache.keys()]) {
+    if (typeof key === "string" && key.startsWith("meals:")) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+}
+
+/** App startPlan: publish if needed → schedule → set active. */
+export async function startMealPlan(
+  id: number,
+  startDate: string,
+  plan?: MealPlanSummary,
+): Promise<void> {
+  let current = plan;
+  if (!current) {
+    try {
+      current = await loadPlan(id, { force: true });
+    } catch {
+      current = undefined;
+    }
+  }
+  if (current && current.can_schedule === false) {
+    await publishMealPlan(id);
+  }
+  await scheduleMealPlan(id, { start_date: startDate });
+  await setMealPlanActive(id, true);
+}
+
+export function loadCustomRecipes(
+  options?: { force?: boolean; signal?: AbortSignal; limit?: number },
+): Promise<CustomRecipesPage> {
+  const limit = options?.limit ?? 50;
+  return accountGet(
+    `/api/account/custom-recipes?limit=${limit}`,
+    "custom-recipes",
+    options,
+  );
+}
+
+export function loadMacrosRange(
+  startDate: string,
+  endDate: string,
+  options?: { force?: boolean; signal?: AbortSignal; includeMeals?: boolean },
+): Promise<MacrosRange> {
+  const includeMeals = options?.includeMeals !== false;
+  const key: CacheKey = `macros-range:${startDate}:${endDate}:${includeMeals}`;
+  const q = new URLSearchParams({
+    start_date: startDate,
+    end_date: endDate,
+    include_meals: includeMeals ? "1" : "0",
+  });
+  return accountGet(`/api/account/macros/range?${q.toString()}`, key, options);
+}
+
+export async function deletePlannedMeal(id: number): Promise<void> {
+  await accountMutate(`/api/account/meals/${id}`, {
+    method: "DELETE",
+    body: {},
+  });
+  for (const key of [...cache.keys()]) {
+    if (
+      typeof key === "string" &&
+      (key.startsWith("meals:") ||
+        key.startsWith("meals-upcoming:") ||
+        key.startsWith("macros-range:"))
+    ) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+}
+
+export function loadShoppingGeneratedDates(
+  startDate: string,
+  endDate: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ dates: string[] }> {
+  const key: CacheKey = `shopping-generated-dates:${startDate}:${endDate}`;
+  const q = `start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+  return accountGet(`/api/account/shopping-lists/generated-dates?${q}`, key, options);
 }
 
 export function loadReferrals(options?: {

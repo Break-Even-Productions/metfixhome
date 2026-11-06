@@ -197,3 +197,44 @@ export function accountMessagesConversationsPath(): string {
 export function accountInAppNotificationsPath(): string {
   return `${BSI}/in-app-notifications`;
 }
+
+/** Hybrid meal/workout plan library (active / inactive buckets). */
+export function accountPlansLibraryPath(): string {
+  return `${METFIX}/plans/library`;
+}
+
+export function accountPlanPath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}`;
+}
+
+export function accountPlanActivePath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}/active`;
+}
+
+export function accountPlanSchedulePath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}/schedule`;
+}
+
+export function accountPlanPublishPath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}/publish`;
+}
+
+export function accountCustomRecipesPath(): string {
+  return `${METFIX}/custom-recipes`;
+}
+
+export function accountCustomRecipePath(id: string): string {
+  return `${METFIX}/custom-recipes/${encodeURIComponent(id)}`;
+}
+
+export function accountMacrosRangePath(): string {
+  return `${METFIX}/macros/range`;
+}
+
+export function accountCalendarMealPath(id: string): string {
+  return `${METFIX}/calendar/meals/${encodeURIComponent(id)}`;
+}
+
+export function accountShoppingListGeneratedDatesPath(): string {
+  return `${METFIX}/shopping-lists/generated-dates`;
+}

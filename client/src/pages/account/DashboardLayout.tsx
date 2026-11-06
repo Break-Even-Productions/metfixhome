@@ -163,6 +163,9 @@ export default function DashboardLayout({
         location === "/account" ||
         location === "/account/" ||
         location.startsWith("/account/meals") ||
+        location.startsWith("/account/meal-plans") ||
+        location.startsWith("/account/shopping-cart") ||
+        location.startsWith("/account/my-meals") ||
         location.startsWith("/account/benchmarks")
       );
     }

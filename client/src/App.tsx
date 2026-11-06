@@ -26,7 +26,9 @@ import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
 import AccountOrganization from "./pages/account/AccountOrganization";
-import AccountMeals from "./pages/account/AccountMeals";
+import AccountMealPlans from "./pages/account/AccountMealPlans";
+import AccountShoppingCart from "./pages/account/AccountShoppingCart";
+import AccountMyMeals from "./pages/account/AccountMyMeals";
 import AccountBenchmarks from "./pages/account/AccountBenchmarks";
 import AccountSpark from "./pages/account/AccountSpark";
 import AccountInbox from "./pages/account/AccountInbox";
@@ -145,8 +147,10 @@ function AppRoutes() {
       <Route path={"/account/referrals"} component={AccountReferrals} />
       <Route path={"/account/notifications"} component={AccountNotifications} />
       <Route path={"/account/privacy"} component={AccountPrivacy} />
-      <Route path={"/account/meals"} component={AccountMeals} />
-      <Route path={"/account/meal-plans"} component={AccountMeals} />
+      <Route path={"/account/meals"} component={AccountMyMeals} />
+      <Route path={"/account/meal-plans"} component={AccountMealPlans} />
+      <Route path={"/account/shopping-cart"} component={AccountShoppingCart} />
+      <Route path={"/account/my-meals"} component={AccountMyMeals} />
       <Route path={"/account/benchmarks"} component={AccountBenchmarks} />
       <Route path={"/account/prs"} component={AccountBenchmarks} />
       <Route path={"/account/spark"} component={AccountSpark} />

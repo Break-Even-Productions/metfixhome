@@ -997,6 +997,250 @@ a.account-btn.account-btn--accent {
   min-height: 12rem;
 }
 
+.account-tool--belly {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.account-tool__watermark {
+  position: absolute;
+  right: -0.35rem;
+  bottom: -0.55rem;
+  width: 7.5rem;
+  height: 7.5rem;
+  color: var(--color-ink);
+  opacity: 0.07;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.account-tool--belly > *:not(.account-tool__watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.belly-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 1.25rem;
+}
+
+.belly-subnav__link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--color-paper) 80%, transparent);
+  color: var(--color-ink);
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+
+.belly-subnav__link:hover {
+  background: var(--color-cream-2);
+}
+
+.belly-subnav__link--active {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.belly-panel {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--color-paper) 88%, transparent);
+}
+
+.belly-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.belly-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.belly-tabs__btn {
+  border: 1px solid var(--color-line);
+  background: transparent;
+  color: var(--color-ink);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.belly-tabs__btn--on {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.belly-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.65rem 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.belly-field input,
+.belly-field select,
+.belly-field textarea {
+  border: 1px solid var(--color-line);
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+}
+
+.belly-plan-list,
+.belly-meal-list,
+.belly-plan-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.belly-plan-card,
+.belly-meal-card {
+  border: 1px solid var(--color-line);
+  border-radius: 0.7rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--color-paper);
+}
+
+.belly-plan-card__main,
+.belly-meal-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.belly-plan-card__title,
+.belly-meal-card__title {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+  font-family: var(--font-display, Georgia, serif);
+}
+
+.belly-plan-card__desc {
+  margin: 0.35rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+.belly-plan-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.belly-plan-card__detail {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--color-line);
+}
+
+.belly-plan-days {
+  gap: 0.45rem;
+  font-size: 0.88rem;
+}
+
+.belly-plan-days ul {
+  margin: 0.25rem 0 0 1rem;
+  color: var(--color-muted);
+}
+
+.belly-month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.belly-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.belly-day {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-height: 3.4rem;
+  padding: 0.4rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.belly-day:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.belly-day--meals {
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-cream-2) 70%, transparent);
+}
+
+.belly-day--on {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+.belly-day__n {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.belly-day__meta {
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.belly-plan-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.55rem 0.75rem;
+  align-items: end;
+}
+
+.belly-subhead {
+  margin: 0.85rem 0 0.4rem;
+  font-size: 0.92rem;
+}
+
+@media (max-width: 720px) {
+  .belly-day-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .account-tool__links {
   list-style: none;
   margin: 0.55rem 0 0;

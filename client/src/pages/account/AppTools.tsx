@@ -90,6 +90,27 @@ function toolClassName(
     .join(" ");
 }
 
+/** Faded fork + knife watermark for the Belly pillar (not a stomach). */
+function BellyForkKnifeMark() {
+  return (
+    <svg
+      className="account-tool__watermark"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+      <path d="M7 2v20" />
+      <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+    </svg>
+  );
+}
+
 function ToolCard({ tool, tier }: { tool: AppTool; tier: CanonicalSubscriptionTier }) {
   const unlocked = toolUnlocked(tool, tier);
   const open = unlocked && tool.href != null;
@@ -98,10 +119,16 @@ function ToolCard({ tool, tier }: { tool: AppTool; tier: CanonicalSubscriptionTi
   const status = unlocked ? "Included" : "Locked";
   const href = linkHref(tool, unlocked);
   const hasLinks = Array.isArray(tool.links) && tool.links.length > 0;
-  const className = toolClassName(open, available, unlocked, hasLinks);
+  const className = [
+    toolClassName(open, available, unlocked, hasLinks),
+    tool.id === "belly" ? "account-tool--belly" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const header = (
     <>
+      {tool.id === "belly" ? <BellyForkKnifeMark /> : null}
       <span className="account-tool__status">{status}</span>
       <div className="account-tool__row">
         <span className="account-tool__title">{tool.title}</span>

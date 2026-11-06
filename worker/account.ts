@@ -71,8 +71,17 @@ import {
   accountReferralCodePath,
   accountReferralEarningsPath,
   accountReferralsPath,
+  accountCalendarMealPath,
+  accountCustomRecipesPath,
+  accountMacrosRangePath,
+  accountPlanActivePath,
+  accountPlanPath,
+  accountPlanPublishPath,
+  accountPlanSchedulePath,
+  accountPlansLibraryPath,
   accountShoppingListEmailPath,
   accountShoppingListGeneratePath,
+  accountShoppingListGeneratedDatesPath,
   accountShoppingListPath,
   accountShoppingListsPath,
   accountSparkEntriesPath,
@@ -1517,6 +1526,38 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "inbox") {
     return { id: "MF14", method: "GET", params: {}, limiter: "read" };
   }
+  if (method === "GET" && rest === "plans/library") {
+    return { id: "MF15", method: "GET", params: {}, limiter: "read" };
+  }
+  const planOne = rest.match(/^plans\/(\d+)$/);
+  if (method === "GET" && planOne) {
+    return { id: "MF16", method: "GET", params: { id: planOne[1]! }, limiter: "read" };
+  }
+  const planActive = rest.match(/^plans\/(\d+)\/active$/);
+  if (method === "PATCH" && planActive) {
+    return { id: "MF17", method: "PATCH", params: { id: planActive[1]! }, limiter: "write" };
+  }
+  const planPublish = rest.match(/^plans\/(\d+)\/publish$/);
+  if (method === "POST" && planPublish) {
+    return { id: "MF18", method: "POST", params: { id: planPublish[1]! }, limiter: "write" };
+  }
+  const planSchedule = rest.match(/^plans\/(\d+)\/schedule$/);
+  if (method === "POST" && planSchedule) {
+    return { id: "MF19", method: "POST", params: { id: planSchedule[1]! }, limiter: "write" };
+  }
+  if (method === "GET" && rest === "custom-recipes") {
+    return { id: "MF20", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "macros/range") {
+    return { id: "MF21", method: "GET", params: {}, limiter: "read" };
+  }
+  const mealDelete = rest.match(/^meals\/(\d+)$/);
+  if (method === "DELETE" && mealDelete) {
+    return { id: "MF22", method: "DELETE", params: { id: mealDelete[1]! }, limiter: "write" };
+  }
+  if (method === "GET" && rest === "shopping-lists/generated-dates") {
+    return { id: "MF23", method: "GET", params: {}, limiter: "read" };
+  }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
   }
@@ -2871,6 +2912,199 @@ async function dispatch(
         return accountJson({ error: "unavailable" }, 502);
       }
       return accountJson({ conversations, notifications, items: notifications }, 200);
+    }
+    case "MF15": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlansLibraryPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { active: {}, inactive: {} }, 200);
+    }
+    case "MF16": {
+      const id = match.params.id!;
+      const includeDays = url.searchParams.get("include_days");
+      const q =
+        includeDays === "0" || includeDays === "false"
+          ? undefined
+          : "include_days=1";
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlanPath(id),
+        { query: q },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.plan ?? mapped.json, 200);
+    }
+    case "MF17": {
+      const id = match.params.id!;
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const is_active = body.is_active === true || body.is_active === 1;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PATCH",
+        accountPlanActivePath(id),
+        {
+          body: JSON.stringify({ is_active }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.plan ?? mapped.json, 200);
+    }
+    case "MF18": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanPublishPath(id),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(obj.plan ?? mapped.json, 200);
+    }
+    case "MF19": {
+      const id = match.params.id!;
+      const start = url.searchParams.get("start_date") ?? "";
+      if (!YMD_RE.test(start)) return accountJson({ error: "invalid_request" }, 400);
+      const parts = [`start_date=${encodeURIComponent(start)}`];
+      const end = url.searchParams.get("end_date");
+      if (end && YMD_RE.test(end)) parts.push(`end_date=${encodeURIComponent(end)}`);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanSchedulePath(id),
+        {
+          query: parts.join("&"),
+          body: "{}",
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+    }
+    case "MF20": {
+      const limitRaw = url.searchParams.get("limit") ?? "50";
+      const limit = /^[1-9][0-9]*$/.test(limitRaw) ? Math.min(Number(limitRaw), 100) : 50;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomRecipesPath(),
+        { query: `limit=${limit}` },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const recipes = Array.isArray(obj.recipes)
+        ? obj.recipes
+        : Array.isArray(mapped.json)
+          ? (mapped.json as unknown[])
+          : [];
+      return accountJson({ recipes, meta: asRecord(obj.meta) ?? {} }, 200);
+    }
+    case "MF21": {
+      const start = url.searchParams.get("start_date") ?? "";
+      const end = url.searchParams.get("end_date") ?? "";
+      if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const includeMeals = boolFlag(url.searchParams.get("include_meals"), true);
+      const q = `start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}&include_meals=${includeMeals ? "1" : "0"}`;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMacrosRangePath(),
+        { query: q },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const entries = Array.isArray(obj.entries) ? obj.entries : [];
+      return accountJson({ entries }, 200);
+    }
+    case "MF22": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountCalendarMealPath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
+    }
+    case "MF23": {
+      const start = url.searchParams.get("start_date") ?? "";
+      const end = url.searchParams.get("end_date") ?? "";
+      if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const q = `start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountShoppingListGeneratedDatesPath(),
+        { query: q },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const dates = Array.isArray(obj.dates)
+        ? obj.dates.filter((d): d is string => typeof d === "string" && YMD_RE.test(d))
+        : Array.isArray(mapped.json)
+          ? (mapped.json as unknown[]).filter(
+              (d): d is string => typeof d === "string" && YMD_RE.test(d),
+            )
+          : [];
+      return accountJson({ dates }, 200);
     }
     case "DP21": {
       const type = url.searchParams.get("type") ?? "all";

@@ -240,8 +240,14 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     await waitFor(() => expect(screen.getByText("Next Payment")).toBeTruthy());
     const dailyFix = screen.getByRole("link", { name: /Daily Fix Archive/i });
     expect(dailyFix.getAttribute("href")).toBe("/the-daily-fix");
-    expect(screen.getByRole("link", { name: /Meal plans/i }).getAttribute("href")).toBe(
-      "/account/meals",
+    expect(screen.getByRole("link", { name: /^Meal Plans$/i }).getAttribute("href")).toBe(
+      "/account/meal-plans",
+    );
+    expect(screen.getByRole("link", { name: /^Shopping Cart$/i }).getAttribute("href")).toBe(
+      "/account/shopping-cart",
+    );
+    expect(screen.getByRole("link", { name: /^My Meals$/i }).getAttribute("href")).toBe(
+      "/account/my-meals",
     );
     expect(screen.getByRole("link", { name: /PR tracking/i }).getAttribute("href")).toBe(
       "/account/benchmarks",
@@ -306,7 +312,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
         <AccountOverview />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByText("Meal plans + cart")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Meal Plans")).toBeTruthy());
+    expect(screen.getByText("Shopping Cart")).toBeTruthy();
+    expect(screen.getByText("My Meals")).toBeTruthy();
     expect(screen.queryByText("Next Payment")).toBeNull();
     // Locked tools upgrade via /join — Daily Fix Archive is not opened for free accounts.
     expect(
