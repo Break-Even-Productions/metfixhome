@@ -15,19 +15,6 @@ import {
 import DashboardLayout from "./DashboardLayout";
 import { BodyNav, BodyPanel, FeedSkeleton } from "./BodyWatermark";
 
-const LOGGING = [
-  ["time", "Time"],
-  ["reps", "Reps"],
-  ["score", "Score"],
-  ["calories", "Calories"],
-  ["distance", "Distance"],
-  ["completion", "Completion"],
-  ["weight_max", "Max weight"],
-  ["weight_sum", "Total weight"],
-  ["weight_min", "Min weight"],
-  ["rounds", "Rounds"],
-] as const;
-
 const PRESETS = [
   ["straight", "Straight"],
   ["rounds", "Rounds"],
@@ -37,6 +24,37 @@ const PRESETS = [
   ["chipper", "Chipper"],
   ["tabata", "Tabata"],
 ] as const;
+
+const SCORE_PRIMARY = [
+  { id: "time", title: "Time", subtitle: "For time or time cap", accent: "#FF9F0A" },
+  { id: "reps", title: "Reps", subtitle: "Rep totals and rounds plus reps", accent: "#30D158" },
+  { id: "score", title: "Score", subtitle: "Composite or custom numeric score", accent: "#5E5CE6" },
+  { id: "calories", title: "Calories", subtitle: "Energy burned", accent: "#FF453A" },
+  { id: "distance", title: "Distance", subtitle: "Meters, miles, and similar", accent: "#64D2FF" },
+  { id: "completion", title: "Completion", subtitle: "Finished or not finished", accent: "#32D74B" },
+  { id: "rounds", title: "Rounds", subtitle: "Rounds completed", accent: "#0A84FF" },
+] as const;
+
+const WEIGHT_SUBS = [
+  { id: "weight_max", label: "Max", hint: "Heaviest lift" },
+  { id: "weight_sum", label: "Total", hint: "Total load" },
+  { id: "weight_min", label: "Min", hint: "Lightest lift" },
+] as const;
+
+function isWeightScore(id: string): boolean {
+  return id === "weight_max" || id === "weight_sum" || id === "weight_min";
+}
+
+function scoreSummary(id: string): { title: string; subtitle: string; accent: string } {
+  const primary = SCORE_PRIMARY.find((row) => row.id === id);
+  if (primary) return primary;
+  const sub = WEIGHT_SUBS.find((row) => row.id === id);
+  return {
+    title: "Weight",
+    subtitle: sub ? `Load-based score · ${sub.label}` : "Load-based score",
+    accent: "#BF5AF2",
+  };
+}
 
 function emptyStructure(): WorkoutStructure {
   return {
@@ -87,6 +105,7 @@ export default function AccountWorkoutBuilder() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scoreOpen, setScoreOpen] = useState(true);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -112,6 +131,7 @@ export default function AccountWorkoutBuilder() {
         setTitle(row.title);
         setExcerpt(row.excerpt ?? "");
         setLoggingType(row.logging_type ?? "time");
+        setScoreOpen(false);
         setStructure(
           row.structure && row.structure.segments?.length ? row.structure : emptyStructure(),
         );
@@ -167,6 +187,8 @@ export default function AccountWorkoutBuilder() {
       });
       return { ...prev, segments };
     });
+    setMovements([]);
+    setQuery("");
   }
 
   function updateStep(
@@ -298,62 +320,155 @@ export default function AccountWorkoutBuilder() {
           </Link>
         </div>
         <h2 className="dash-section-title">{editing ? "Edit workout" : "Build a workout"}</h2>
-        {mine.length > 0 ? (
-          <ul className="dash-coach-list">
-            {mine.map((row) => (
-              <li key={row.id}>
-                <Link href={basePath(`/account/workouts/builder/${row.id}`)} className="dash-feed-row">
-                  <span className="dash-feed-row__title">{row.title}</span>
-                  <span className="dash-feed-row__meta">{row.logging_type ?? "Workout"}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : null}
         {loading ? <FeedSkeleton label="Loading workout" /> : null}
         {error ? <p className="account-error">{error}</p> : null}
         {!loading ? (
-          <form className="account-form" onSubmit={onSave}>
-            <label>
-              Title
-              <input value={title} onChange={(ev) => setTitle(ev.target.value)} required maxLength={180} />
-            </label>
-            <label>
-              Notes
-              <textarea value={excerpt} onChange={(ev) => setExcerpt(ev.target.value)} maxLength={500} />
-            </label>
-            <p className="dash-kicker">Score</p>
-            <div className="dash-segment" role="group" aria-label="Logging type">
-              {LOGGING.map(([id, label]) => (
+          <form className="dash-wb" onSubmit={onSave}>
+            {mine.length > 0 ? (
+              <div className="dash-wb__library">
+                <p className="dash-wb__label">Your workouts</p>
+                <div className="dash-wb__chips">
+                  {mine.map((row) => (
+                    <Link key={row.id} href={basePath(`/account/workouts/builder/${row.id}`)} className="dash-wb__chip">
+                      {row.title}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <p className="dash-wb__label">Basics</p>
+            <input
+              className="dash-wb__input"
+              aria-label="Title"
+              placeholder="Title"
+              value={title}
+              onChange={(ev) => setTitle(ev.target.value)}
+              required
+              maxLength={180}
+            />
+            <textarea
+              className="dash-wb__input dash-wb__notes"
+              aria-label="Notes"
+              placeholder="Short description (optional)"
+              value={excerpt}
+              onChange={(ev) => setExcerpt(ev.target.value)}
+              maxLength={500}
+            />
+            <div className="dash-wb__section-head">
+              <p className="dash-wb__label">Scoring</p>
+              {scoreOpen ? null : (
                 <button
-                  key={id}
                   type="button"
-                  className={loggingType === id ? "dash-segment__on" : ""}
-                  aria-pressed={loggingType === id}
-                  onClick={() => setLoggingType(id)}
+                  className="dash-wb__text-btn"
+                  aria-label="Change scoring type"
+                  onClick={() => setScoreOpen(true)}
                 >
-                  {label}
+                  Change
                 </button>
-              ))}
+              )}
             </div>
-            {structure.segments.map((seg, segIndex) => (
-              <fieldset key={seg.id} className="dash-builder-segment">
-                <legend>Segment {segIndex + 1}</legend>
-                <label>
-                  Format
-                  <select
-                    value={seg.preset}
-                    onChange={(ev) => updateSegment(segIndex, { preset: ev.target.value, params: {} })}
+            <p className="dash-wb__hint">How should this block be scored on the leaderboard?</p>
+            {scoreOpen ? (
+              <div className="dash-wb__score-grid" role="group" aria-label="Logging type">
+                {SCORE_PRIMARY.map((cell) => {
+                  const on = loggingType === cell.id;
+                  return (
+                    <button
+                      key={cell.id}
+                      type="button"
+                      className={on ? "dash-wb__score-card dash-wb__score-card--on" : "dash-wb__score-card"}
+                      aria-pressed={on}
+                      onClick={() => {
+                        setLoggingType(cell.id);
+                        setScoreOpen(false);
+                      }}
+                    >
+                      <span className="dash-wb__score-icon" style={{ background: `${cell.accent}29`, color: cell.accent }} aria-hidden="true">
+                        {cell.title.slice(0, 1)}
+                      </span>
+                      <span>
+                        <span className="dash-wb__score-title">{cell.title}</span>
+                        <span className="dash-wb__score-sub">{cell.subtitle}</span>
+                      </span>
+                      <span className={on ? "dash-wb__check dash-wb__check--on" : "dash-wb__check"} aria-hidden="true" />
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className={isWeightScore(loggingType) ? "dash-wb__score-card dash-wb__score-card--on" : "dash-wb__score-card"}
+                  aria-pressed={isWeightScore(loggingType)}
+                  onClick={() => {
+                    if (!isWeightScore(loggingType)) setLoggingType("weight_max");
+                    setScoreOpen(false);
+                  }}
+                >
+                  <span className="dash-wb__score-icon" style={{ background: "#BF5AF229", color: "#BF5AF2" }} aria-hidden="true">
+                    W
+                  </span>
+                  <span>
+                    <span className="dash-wb__score-title">Weight</span>
+                    <span className="dash-wb__score-sub">Load-based score</span>
+                  </span>
+                  <span className={isWeightScore(loggingType) ? "dash-wb__check dash-wb__check--on" : "dash-wb__check"} aria-hidden="true" />
+                </button>
+              </div>
+            ) : (
+              <div className="dash-wb__score-summary">
+                <div className="dash-wb__score-card dash-wb__score-card--on">
+                  <span
+                    className="dash-wb__score-icon"
+                    style={{ background: `${scoreSummary(loggingType).accent}29`, color: scoreSummary(loggingType).accent }}
+                    aria-hidden="true"
                   >
-                    {PRESETS.map(([id, label]) => (
-                      <option key={id} value={id}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    {scoreSummary(loggingType).title.slice(0, 1)}
+                  </span>
+                  <span>
+                    <span className="dash-wb__score-title">{scoreSummary(loggingType).title}</span>
+                    <span className="dash-wb__score-sub">{scoreSummary(loggingType).subtitle}</span>
+                  </span>
+                  <span className="dash-wb__check dash-wb__check--on" aria-hidden="true" />
+                </div>
+              </div>
+            )}
+            {isWeightScore(loggingType) && !scoreOpen ? (
+              <div className="dash-wb__weight-row" role="group" aria-label="Weight score">
+                {WEIGHT_SUBS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={loggingType === opt.id ? "dash-wb__weight dash-wb__weight--on" : "dash-wb__weight"}
+                    aria-pressed={loggingType === opt.id}
+                    onClick={() => setLoggingType(opt.id)}
+                  >
+                    <span>{opt.label}</span>
+                    <span className="dash-wb__score-sub">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <p className="dash-wb__label">Segment</p>
+            <p className="dash-wb__hint">
+              One timer format per block. Pick a preset, set rounds or a time cap where needed, then add movements.
+            </p>
+            {structure.segments.map((seg, segIndex) => (
+              <section key={seg.id} className="dash-wb__card" aria-label={`Segment ${segIndex + 1}`}>
+                <h3 className="dash-wb__card-title">Segment {segIndex + 1}</h3>
+                <div className="dash-wb__chips" role="group" aria-label="Format">
+                  {PRESETS.map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={seg.preset === id ? "dash-wb__chip dash-wb__chip--on" : "dash-wb__chip"}
+                      aria-pressed={seg.preset === id}
+                      onClick={() => updateSegment(segIndex, { preset: id, params: {} })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {seg.preset === "rounds" ? (
-                  <label>
+                  <label className="dash-wb__param">
                     Rounds
                     <input
                       type="number"
@@ -369,7 +484,7 @@ export default function AccountWorkoutBuilder() {
                   </label>
                 ) : null}
                 {seg.preset === "amrap" ? (
-                  <label>
+                  <label className="dash-wb__param">
                     Time cap (seconds)
                     <input
                       type="number"
@@ -384,7 +499,7 @@ export default function AccountWorkoutBuilder() {
                   </label>
                 ) : null}
                 {seg.preset === "emom" || seg.preset === "alternating_emom" ? (
-                  <label>
+                  <label className="dash-wb__param">
                     Minutes
                     <input
                       type="number"
@@ -399,7 +514,7 @@ export default function AccountWorkoutBuilder() {
                   </label>
                 ) : null}
                 {seg.preset === "tabata" ? (
-                  <div className="account-form-row">
+                  <div className="dash-wb__metrics">
                     <label>
                       Work seconds
                       <input
@@ -444,13 +559,17 @@ export default function AccountWorkoutBuilder() {
                     </label>
                   </div>
                 ) : null}
-                <ul className="dash-coach-list">
+                <div className="dash-wb__moves-head">
+                  <p className="dash-wb__moves-label">Movements</p>
+                </div>
+                {seg.steps.length === 0 ? <p className="dash-wb__hint">No movements yet.</p> : null}
+                <ul className="dash-wb__moves">
                   {seg.steps.map((step, stepIndex) => (
-                    <li key={`${step.movement_id}-${stepIndex}`} className="dash-builder-step">
-                      <p className="dash-feed-row__title">{step.movement_name || `Movement ${step.movement_id}`}</p>
-                      <div className="account-form-row">
+                    <li key={`${step.movement_id}-${stepIndex}`} className="dash-wb__move">
+                      <p className="dash-wb__move-name">{step.movement_name || `Movement ${step.movement_id}`}</p>
+                      <div className="dash-wb__metrics">
                         <label>
-                          Rx reps
+                          Reps
                           <input
                             type="number"
                             min={0}
@@ -459,7 +578,7 @@ export default function AccountWorkoutBuilder() {
                           />
                         </label>
                         <label>
-                          Rx weight
+                          Weight
                           <input
                             type="number"
                             min={0}
@@ -501,7 +620,7 @@ export default function AccountWorkoutBuilder() {
                           </select>
                         </label>
                         <label>
-                          Women’s Rx weight
+                          Women’s Rx
                           <input
                             type="number"
                             min={0}
@@ -510,7 +629,7 @@ export default function AccountWorkoutBuilder() {
                           />
                         </label>
                         <label>
-                          Rx meters
+                          Meters
                           <input
                             type="number"
                             min={0}
@@ -519,7 +638,7 @@ export default function AccountWorkoutBuilder() {
                           />
                         </label>
                         <label>
-                          Rx seconds
+                          Seconds
                           <input
                             type="number"
                             min={0}
@@ -531,46 +650,49 @@ export default function AccountWorkoutBuilder() {
                     </li>
                   ))}
                 </ul>
-              </fieldset>
+                {segIndex === structure.segments.length - 1 ? (
+                  <>
+                    <div className="dash-wb__add">
+                      <input
+                        aria-label="Add a movement"
+                        value={query}
+                        onChange={(ev) => setQuery(ev.target.value)}
+                        placeholder="Search the movement catalog"
+                        onKeyDown={(ev) => {
+                          if (ev.key !== "Enter") return;
+                          ev.preventDefault();
+                          void onSearch();
+                        }}
+                      />
+                      <button type="button" className="dash-wb__add-btn" disabled={searching} onClick={() => void onSearch()}>
+                        {searching ? "Searching…" : "Find movement"}
+                      </button>
+                    </div>
+                    {movements.length > 0 ? (
+                      <ul className="dash-wb__results">
+                        {movements.map((movement) => (
+                          <li key={movement.id}>
+                            <button type="button" onClick={() => addMovement(movement)}>
+                              <span>{movement.name}</span>
+                              {movement.category ? <span className="dash-wb__score-sub">{movement.category}</span> : null}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </>
+                ) : null}
+              </section>
             ))}
-            <div className="account-form">
-              <label>
-                Add a movement
-                <input
-                  value={query}
-                  onChange={(ev) => setQuery(ev.target.value)}
-                  placeholder="Search the movement catalog"
-                />
-              </label>
-              <button type="button" className="account-btn account-btn--ghost" disabled={searching} onClick={() => void onSearch()}>
-                {searching ? "Searching…" : "Find movement"}
+            {message ? <p className="dash-wb__hint">{message}</p> : null}
+            <button type="submit" className="account-btn dash-wb__save" disabled={busy}>
+              {busy ? "Saving…" : "Save workout"}
+            </button>
+            {editing ? (
+              <button type="button" className="account-btn account-btn--ghost dash-wb__delete" onClick={onDelete} disabled={busy}>
+                Delete
               </button>
-            </div>
-            {movements.length > 0 ? (
-              <ul className="dash-coach-list">
-                {movements.map((movement) => (
-                  <li key={movement.id}>
-                    <button type="button" className="dash-feed-row" onClick={() => addMovement(movement)}>
-                      <span className="dash-feed-row__title">{movement.name}</span>
-                      {movement.category ? (
-                        <span className="dash-feed-row__meta">{movement.category}</span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
             ) : null}
-            {message ? <p className="account-muted">{message}</p> : null}
-            <div className="dash-feed-actions">
-              <button type="submit" className="account-btn" disabled={busy}>
-                {busy ? "Saving…" : "Save workout"}
-              </button>
-              {editing ? (
-                <button type="button" className="account-btn account-btn--ghost" onClick={onDelete} disabled={busy}>
-                  Delete
-                </button>
-              ) : null}
-            </div>
           </form>
         ) : null}
       </BodyPanel>

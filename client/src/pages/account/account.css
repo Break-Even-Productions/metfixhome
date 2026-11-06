@@ -3148,6 +3148,335 @@ button.dash-bench-card {
   margin: 0.25rem 0 0.85rem;
 }
 
+.dash-wb {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+
+.dash-wb__label,
+.dash-wb__moves-label {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--color-muted);
+}
+
+.dash-wb__hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.dash-wb__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dash-wb__section-head .dash-wb__label {
+  margin: 0;
+}
+
+.dash-wb__text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0.2rem 0.1rem;
+}
+
+.dash-wb input[type="number"] {
+  appearance: textfield;
+}
+
+.dash-wb input[type="number"]::-webkit-outer-spin-button,
+.dash-wb input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.dash-wb__input,
+.dash-wb__add input,
+.dash-wb__param input,
+.dash-wb__metrics input,
+.dash-wb__metrics select {
+  width: 100%;
+  font: inherit;
+  color: var(--color-ink);
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.dash-wb__notes {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.dash-wb__score-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.dash-wb__score-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+  width: 100%;
+  min-height: 5.4rem;
+  padding: 0.7rem;
+  text-align: left;
+  border: 2px solid var(--color-line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+  cursor: default;
+}
+
+button.dash-wb__score-card {
+  cursor: pointer;
+}
+
+.dash-wb__score-card--on {
+  border-color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-ink) 7%, #fff);
+}
+
+.dash-wb__score-icon {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.dash-wb__score-title,
+.dash-wb__score-sub {
+  display: block;
+}
+
+.dash-wb__score-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.dash-wb__score-sub {
+  margin-top: 0.15rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.dash-wb__check {
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid var(--color-line);
+  border-radius: 999px;
+}
+
+.dash-wb__check--on {
+  border-color: var(--color-ink);
+  background: var(--color-ink);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.dash-wb__weight-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.dash-wb__weight {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.dash-wb__weight--on {
+  border-color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-ink) 7%, #fff);
+}
+
+.dash-wb__library {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dash-wb__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dash-wb__chip {
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-ink);
+  padding: 0.42rem 0.8rem;
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dash-wb__chip--on {
+  border-color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-ink) 8%, #fff);
+  font-weight: 700;
+}
+
+.dash-wb__card {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.15rem;
+  padding: 0.95rem;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-paper) 55%, #fff);
+}
+
+.dash-wb__card-title,
+.dash-wb__move-name {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.dash-wb__param,
+.dash-wb__metrics label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.dash-wb__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.dash-wb__metrics input,
+.dash-wb__metrics select,
+.dash-wb__param input {
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.92rem;
+}
+
+.dash-wb__moves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.dash-wb__move {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.dash-wb__add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.dash-wb__add-btn {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-ink);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 650;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+}
+
+.dash-wb__add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dash-wb__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dash-wb__results button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  text-align: left;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 650;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+}
+
+.dash-wb__save,
+.dash-wb__delete {
+  width: 100%;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  font-size: 1.02rem;
+}
+
+.dash-wb__save {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 560px) {
+  .dash-wb__score-grid,
+  .dash-wb__metrics,
+  .dash-wb__weight-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-wb__add {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 .dash-builder-segment,
 .dash-builder-step {
   margin: 0.85rem 0;
