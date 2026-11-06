@@ -1411,7 +1411,8 @@ export function loadMember(
 
 /**
  * Mint a Whop course checkout URL via BSI.
- * Works signed-in (Bearer) or guest (pre CSRF); BSI matches the buyer after payment.
+ * Requires a metfix.org session. The browser sends the sid cookie and X-CSRF-Token;
+ * the Worker adds the same Bearer other account routes use. A 401 sends the user to login.
  */
 export async function purchaseCourseCheckout(
   courseId: string | number,
@@ -1421,35 +1422,10 @@ export async function purchaseCourseCheckout(
   const ref = opts?.bsi_ref ?? readStoredBsiRef() ?? undefined;
   if (ref) body.bsi_ref = ref;
   if (opts?.return_path) body.return_path = opts.return_path;
-  // Public mint — do not bounce guests to login on unexpected 401.
-  const csrf = await fetchCsrf();
-  if (!csrf) throw new Error("csrf_unavailable");
-  const res = await globalThis.fetch(`/api/account/courses/${courseId}/purchase-checkout`, {
+  return accountMutate(`/api/account/courses/${courseId}/purchase-checkout`, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrf,
-    },
-    body: JSON.stringify(body),
-    credentials: "same-origin",
+    body,
   });
-  if (!res.ok) {
-    let errBody: unknown = null;
-    try {
-      errBody = await res.json();
-    } catch {
-      /* ignore */
-    }
-    const err = new Error(`purchase_checkout_failed:${res.status}`) as Error & {
-      status: number;
-      body: unknown;
-    };
-    err.status = res.status;
-    err.body = errBody;
-    throw err;
-  }
-  return (await res.json()) as { checkout_url: string };
 }
 
 export function loadClaimOptions(options?: {
