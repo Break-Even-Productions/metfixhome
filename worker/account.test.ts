@@ -920,6 +920,149 @@ describe("worker/account routes", () => {
     expect(recorded.length).toBe(0);
   });
 
+  it("MF meals + macros + pr-overview proxy live BSI metfix/v1 routes", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, url }) => {
+        if (path.includes("/calendar/meals/upcoming")) {
+          return Response.json({
+            meals: [
+              {
+                id: 9,
+                date: "2026-11-07",
+                slot_index: 1,
+                recipe_source_type: "daily_mod",
+                recipe_source_id: 3,
+                label: "Eggs",
+                recipe_preview: {
+                  title: "Eggs",
+                  photo_url: null,
+                  macros: { protein: 30, fat: 20, carbs: 2 },
+                },
+              },
+            ],
+            meta: { count: 1, total: 1, limit: 20, offset: 0, has_more: false },
+          });
+        }
+        if (path.includes("/calendar/meals")) {
+          expect(url).toContain("start_date=2026-11-03");
+          expect(url).toContain("end_date=2026-11-09");
+          return Response.json({
+            meals: [
+              {
+                id: 1,
+                date: "2026-11-03",
+                slot_index: 1,
+                recipe_source_type: "daily_mod",
+                recipe_source_id: 2,
+                recipe_preview: {
+                  title: "Steak",
+                  photo_url: "https://cdn.example/steak.jpg",
+                  macros: { protein: 40, fat: 22, carbs: 0 },
+                },
+              },
+            ],
+          });
+        }
+        if (path.includes("/macros/daily/2026-11-06")) {
+          return Response.json({
+            date: "2026-11-06",
+            totals: { protein: 120, fat: 80, carbs: 30, calories: 1320 },
+            goals: { protein: 165, fat: 115, carbs: 24 },
+          });
+        }
+        if (path.includes("/spark/pr-overview")) {
+          return Response.json({
+            workout_benchmarks: [
+              {
+                name: "Fran",
+                type: "workout",
+                custom_workout_id: 44,
+                best_score: 194,
+                last_score: 210,
+                total_entries: 3,
+                is_benchmark: true,
+              },
+            ],
+            movement_benchmarks: [
+              {
+                name: "Back Squat",
+                type: "movement",
+                bsi_measurement_id: 7,
+                best_score: 335,
+                last_score: 325,
+                total_entries: 6,
+                unit_abbreviation: "lb",
+                score_unit_id: 1,
+              },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const meals = await callAccount(
+      h,
+      "/api/account/meals?start_date=2026-11-03&end_date=2026-11-09",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(meals.status).toBe(200);
+    const mealsJson = (await meals.json()) as {
+      meals: Array<{ id: number; recipe_preview: { title: string } | null }>;
+      grouped_by_date: Record<string, unknown[]>;
+    };
+    expect(mealsJson.meals[0]?.recipe_preview?.title).toBe("Steak");
+    expect(mealsJson.grouped_by_date["2026-11-03"]?.length).toBe(1);
+
+    const badRange = await callAccount(
+      h,
+      "/api/account/meals?start_date=nope&end_date=2026-11-09",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(badRange.status).toBe(400);
+
+    const upcoming = await callAccount(
+      h,
+      "/api/account/meals/upcoming?limit=20",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(upcoming.status).toBe(200);
+
+    const macros = await callAccount(
+      h,
+      "/api/account/macros/daily/2026-11-06",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(macros.status).toBe(200);
+    const macrosJson = (await macros.json()) as { protein: number; goal_protein: number };
+    expect(macrosJson.protein).toBe(120);
+    expect(macrosJson.goal_protein).toBe(165);
+
+    const pr = await callAccount(
+      h,
+      "/api/account/pr-overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(pr.status).toBe(200);
+    const prJson = (await pr.json()) as {
+      workouts: Array<{ name: string; best_score: number }>;
+      movements: Array<{ name: string; best_score: number }>;
+    };
+    expect(prJson.workouts[0]?.name).toBe("Fran");
+    expect(prJson.movements[0]?.best_score).toBe(335);
+
+    for (const rec of recorded) {
+      assertHasBearer(rec);
+      expect(rec.url).toMatch(/\/wp-json\/metfix\/v1\//);
+    }
+  });
+
   it("DP-T-24/25/26/28/29/30 referrals gifts notifications privacy password email", async () => {
     const sess = await withSession(h);
     const referralsDto = {

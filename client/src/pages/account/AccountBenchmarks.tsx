@@ -4,37 +4,93 @@ import { basePath } from "@/const";
 import {
   deriveMembershipStatus,
   loadOverview,
+  loadPrOverview,
   loadSubscriptions,
   type AccountOverview,
   type AccountSubscriptions,
+  type PrOverview,
+  type PrOverviewRow,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
+import { ToolHero } from "./ToolHero";
 
-/**
- * PR & benchmarks dashboard shell matching the Mia mockup.
- * Live PR/lab tracking is not yet on metfix.org — Pro users get the UI shell;
- * non-Pro see preview + upgrade CTA. Do not treat placeholder figures as truth.
- */
+function formatScore(row: PrOverviewRow): string {
+  if (row.best_score == null) return "—";
+  const n = row.best_score;
+  const unit = row.unit_abbreviation?.trim();
+  // Time-like scores under 3600s with no weight unit → mm:ss
+  if (!unit && n > 30 && n < 3600 && Number.isInteger(n)) {
+    const m = Math.floor(n / 60);
+    const s = n % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  if (row.score_unit_id === 1 || unit === "lb" || unit === "lbs") {
+    return `${Math.round(n)} lb`;
+  }
+  if (unit) return `${Number.isInteger(n) ? n : n.toFixed(1)} ${unit}`;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+function workingPercents(oneRm: number): Array<{ pct: number; reps: string; load: number }> {
+  return [
+    { pct: 95, reps: "2 RM", load: Math.round(oneRm * 0.95) },
+    { pct: 90, reps: "3 RM", load: Math.round(oneRm * 0.9) },
+    { pct: 85, reps: "5 RM", load: Math.round(oneRm * 0.85) },
+    { pct: 80, reps: "6–8", load: Math.round(oneRm * 0.8) },
+    { pct: 75, reps: "8–10", load: Math.round(oneRm * 0.75) },
+    { pct: 70, reps: "10–12", load: Math.round(oneRm * 0.7) },
+  ];
+}
+
+function isStrengthMovement(row: PrOverviewRow): boolean {
+  const u = (row.unit_abbreviation ?? "").toLowerCase();
+  return row.score_unit_id === 1 || u === "lb" || u === "lbs" || u === "kg";
+}
+
 export default function AccountBenchmarks() {
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [subs, setSubs] = useState<AccountSubscriptions | null>(null);
+  const [prs, setPrs] = useState<PrOverview | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
     (async () => {
       try {
-        const [ov, su] = await Promise.all([
+        const [ov, su, overviewPr] = await Promise.all([
           loadOverview({ signal: ac.signal }),
           loadSubscriptions({ signal: ac.signal }),
+          loadPrOverview({ signal: ac.signal, catalogCap: 500 }),
         ]);
         if (cancelled) return;
         setOverview(ov);
         setSubs(su);
-      } catch {
-        /* layout handles account errors */
+        setPrs(overviewPr);
+        const firstLift =
+          overviewPr.movements.find((m) => m.best_score != null && isStrengthMovement(m)) ??
+          overviewPr.movements.find((m) => m.best_score != null) ??
+          overviewPr.workouts.find((w) => w.best_score != null) ??
+          null;
+        if (firstLift) {
+          setActiveId(
+            firstLift.measurement_id
+              ? `m-${firstLift.measurement_id}`
+              : firstLift.custom_workout_id
+                ? `w-${firstLift.custom_workout_id}`
+                : firstLift.name,
+          );
+        }
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError("Unable to load PRs & benchmarks.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -49,21 +105,104 @@ export default function AccountBenchmarks() {
     overview?.display_name?.trim().split(/\s+/).filter(Boolean)[0] || "Member";
   const status = useMemo(() => deriveMembershipStatus(subs), [subs]);
 
+  const strength = useMemo(() => {
+    const rows = (prs?.movements ?? []).filter(
+      (m) => m.best_score != null && isStrengthMovement(m),
+    );
+    return [...rows].sort((a, b) => (b.best_score ?? 0) - (a.best_score ?? 0));
+  }, [prs]);
+
+  const conditioning = useMemo(() => {
+    const rows = (prs?.workouts ?? []).filter((w) => w.best_score != null);
+    return [...rows].sort((a, b) => (b.total_entries ?? 0) - (a.total_entries ?? 0));
+  }, [prs]);
+
+  const markers = useMemo(() => {
+    const rows = (prs?.movements ?? []).filter(
+      (m) => m.best_score != null && !isStrengthMovement(m),
+    );
+    return rows.slice(0, 8);
+  }, [prs]);
+
+  const activeRow: PrOverviewRow | null = useMemo(() => {
+    if (!activeId || !prs) return null;
+    const all = [...prs.movements, ...prs.workouts];
+    return (
+      all.find((r) =>
+        r.measurement_id
+          ? `m-${r.measurement_id}` === activeId
+          : r.custom_workout_id
+            ? `w-${r.custom_workout_id}` === activeId
+            : r.name === activeId,
+      ) ?? null
+    );
+  }, [activeId, prs]);
+
+  const topSquat = strength.find((r) => /squat/i.test(r.name));
+  const topDead = strength.find((r) => /dead/i.test(r.name));
+  const topFran = conditioning.find((r) => /fran/i.test(r.name));
+  const topOther = conditioning.find((r) => r !== topFran);
+
+  const heroStats = pro
+    ? [
+        {
+          label: "Strength index",
+          value:
+            topSquat || topDead
+              ? [topSquat && `${formatScore(topSquat)} ${topSquat.name}`, topDead && `${formatScore(topDead)} ${topDead.name}`]
+                  .filter(Boolean)
+                  .join(" · ") || `${strength.length} lifts`
+              : strength.length > 0
+                ? `${strength.length} logged lifts`
+                : "No lifts yet",
+          note: "From spark/pr-overview movements",
+        },
+        {
+          label: "Benchmark conditioning",
+          value:
+            topFran || topOther
+              ? [topFran && `${formatScore(topFran)} Fran`, topOther && `${formatScore(topOther)} ${topOther.name}`]
+                  .filter(Boolean)
+                  .join(" · ")
+              : conditioning.length > 0
+                ? `${conditioning.length} benchmarks`
+                : "No benchmarks yet",
+          note: "From spark/pr-overview workouts",
+        },
+        {
+          label: "Metabolic markers",
+          value: markers.length > 0 ? `${markers.length} markers` : "Log labs in the app",
+          note: "Non-weight movement measurements",
+        },
+      ]
+    : [
+        {
+          label: "Strength index",
+          value: "Preview lifts",
+          note: "🔒 Auto-% working sets with Pro",
+        },
+        {
+          label: "Benchmark conditioning",
+          value: "Daily Fix repeats",
+          note: "🔒 Compare repeat dates with Pro",
+        },
+        {
+          label: "Metabolic markers",
+          value: "Labs & waist",
+          note: "🔒 Lab & body marker log with Pro",
+        },
+      ];
+
   return (
     <DashboardLayout
       title={`${firstName}’s PRs, benchmarks & body markers`}
       description="Keep 1RM lifts, Daily Fix benchmark times, and metabolic markers in one place."
       hideChromeTitle
     >
-      <section className="dash-tool-hero">
-        <img
-          src="/Stills/athlete-bodyweight-deadlift-indoors-sunt-tropics-hydration.jpg"
-          alt=""
-          className="dash-tool-hero__photo"
-        />
-        <div className="dash-tool-hero__shade" aria-hidden="true" />
-        <div className="dash-tool-hero__copy">
-          <div className="dash-tool-hero__chips">
+      <ToolHero
+        photo="/Stills/athlete-bodyweight-deadlift-indoors-sunt-tropics-hydration.jpg"
+        chips={
+          <>
             <Link href={basePath("/account")} className="dash-chip">
               Overview
             </Link>
@@ -72,60 +211,181 @@ export default function AccountBenchmarks() {
             ) : (
               <span className="dash-chip">Status · {status}</span>
             )}
-          </div>
-          <h1 className="dash-tool-hero__title">
-            {firstName}’s PRs, benchmarks & body markers.
-          </h1>
-          <p className="dash-tool-hero__lede">
-            Keep your 1RM lifts, repeat Daily Fix benchmark times, and metabolic blood work
-            in one place — with live working-set percentages and zero spreadsheets.
-          </p>
-          {!pro ? (
+          </>
+        }
+        title={`${firstName}’s PRs, benchmarks & body markers.`}
+        lede="Keep your 1RM lifts, repeat Daily Fix benchmark times, and metabolic markers in one place — with live working-set percentages from your logged PRs."
+        cta={
+          !pro ? (
             <Link href={basePath("/join")} className="account-btn account-btn--accent">
               Unlock PR & Benchmark Tracking — 1 Month Free
             </Link>
-          ) : null}
-        </div>
-        <div className="dash-tool-hero__stats">
-          {[
-            {
-              label: "Strength index",
-              value: pro ? "Your lifts" : "Preview lifts",
-              note: pro
-                ? "Live PR log from BSI/app is not wired yet — shell only."
-                : "🔒 Auto-% working sets with Pro",
-            },
-            {
-              label: "Benchmark conditioning",
-              value: "Daily Fix repeats",
-              note: pro
-                ? "Repeat WOD history pending data surface"
-                : "🔒 Compare repeat dates with Pro",
-            },
-            {
-              label: "Metabolic markers",
-              value: "Labs & waist",
-              note: pro
-                ? "Marker log pending BSI/app API"
-                : "🔒 Lab & body marker log with Pro",
-            },
-          ].map((s) => (
-            <div key={s.label} className="dash-tool-hero__stat">
-              <p className="dash-greet__stat-label">{s.label}</p>
-              <p className="dash-greet__stat-value">{s.value}</p>
-              <p className="dash-greet__stat-note">{s.note}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+          ) : null
+        }
+        stats={heroStats}
+      />
 
-      <div className="dash-panel">
-        <p className="account-muted" role="note">
-          Data gap: no live PR / benchmark / lab API on MetFix.org yet. This page matches the
-          mockup shell without inventing production metrics.
-        </p>
-        {!pro ? <ProUnlockBanner /> : null}
-      </div>
+      {error ? <p className="account-error">{error}</p> : null}
+
+      {!pro ? (
+        <div className="dash-panel">
+          <ProUnlockBanner />
+        </div>
+      ) : (
+        <div className="dash-panel dash-bench">
+          {loading ? (
+            <p className="account-muted">Loading your PR overview…</p>
+          ) : (
+            <>
+              <section className="dash-bench-section" aria-labelledby="strength-heading">
+                <div className="dash-bench-head">
+                  <div>
+                    <p className="dash-kicker">Strength progression</p>
+                    <h2 id="strength-heading" className="dash-section-title">
+                      Strength & working percentages
+                    </h2>
+                  </div>
+                  <span className="dash-chip">
+                    {strength.length} lift{strength.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {strength.length === 0 ? (
+                  <p className="account-muted">
+                    No strength PRs yet. Log movement benchmarks in the MetFix app — they’ll sync here.
+                  </p>
+                ) : (
+                  <>
+                    <div className="dash-lift-tabs" role="tablist" aria-label="Lifts">
+                      {strength.slice(0, 12).map((row) => {
+                        const id = row.measurement_id
+                          ? `m-${row.measurement_id}`
+                          : row.name;
+                        const on = id === activeId;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            role="tab"
+                            aria-selected={on}
+                            className={`dash-lift-tab${on ? " dash-lift-tab--on" : ""}`}
+                            onClick={() => setActiveId(id)}
+                          >
+                            {row.name}
+                            <span className="dash-lift-tab__score">{formatScore(row)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {activeRow && isStrengthMovement(activeRow) && activeRow.best_score != null ? (
+                      <div className="dash-lift-detail">
+                        <div>
+                          <p className="dash-kicker">{activeRow.name} · 1-rep max</p>
+                          <p className="dash-lift-max">{formatScore(activeRow)}</p>
+                          <p className="account-muted">
+                            {activeRow.total_entries} entr
+                            {activeRow.total_entries === 1 ? "y" : "ies"}
+                            {activeRow.last_score != null
+                              ? ` · last ${formatScore({ ...activeRow, best_score: activeRow.last_score })}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="dash-pct-table">
+                          <p className="dash-kicker">Working-set percentages</p>
+                          <p className="account-muted">
+                            Based on {formatScore(activeRow)} 1RM
+                          </p>
+                          <table>
+                            <tbody>
+                              {workingPercents(activeRow.best_score).map((row) => (
+                                <tr key={row.pct}>
+                                  <td>{row.pct}%</td>
+                                  <td>{row.reps}</td>
+                                  <td>{row.load} lb</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </section>
+
+              <section className="dash-bench-section" aria-labelledby="cond-heading">
+                <div className="dash-bench-head">
+                  <div>
+                    <p className="dash-kicker">Repeat tests</p>
+                    <h2 id="cond-heading" className="dash-section-title">
+                      Benchmark conditioning times
+                    </h2>
+                  </div>
+                </div>
+                {conditioning.length === 0 ? (
+                  <p className="account-muted">No workout benchmarks logged yet.</p>
+                ) : (
+                  <div className="dash-bench-grid">
+                    {conditioning.slice(0, 8).map((row) => {
+                      const id = row.custom_workout_id
+                        ? `w-${row.custom_workout_id}`
+                        : row.name;
+                      return (
+                        <article key={id} className="dash-bench-card">
+                          <h3 className="dash-meal-card__title">{row.name}</h3>
+                          <p className="dash-lift-max dash-lift-max--sm">{formatScore(row)}</p>
+                          <p className="account-muted">
+                            Best · {row.total_entries} attempt
+                            {row.total_entries === 1 ? "" : "s"}
+                            {row.benchmark_classification
+                              ? ` · ${row.benchmark_classification}`
+                              : ""}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section className="dash-bench-section" aria-labelledby="mark-heading">
+                <div className="dash-bench-head">
+                  <div>
+                    <p className="dash-kicker">Pro health log</p>
+                    <h2 id="mark-heading" className="dash-section-title">
+                      Metabolic & body markers
+                    </h2>
+                  </div>
+                </div>
+                {markers.length === 0 ? (
+                  <p className="account-muted">
+                    No lab / body markers in your PR overview yet.
+                  </p>
+                ) : (
+                  <div className="dash-bench-grid">
+                    {markers.map((row) => {
+                      const id = row.measurement_id
+                        ? `m-${row.measurement_id}`
+                        : row.name;
+                      return (
+                        <article key={id} className="dash-bench-card">
+                          <h3 className="dash-meal-card__title">{row.name}</h3>
+                          <p className="dash-lift-max dash-lift-max--sm">{formatScore(row)}</p>
+                          <p className="account-muted">
+                            {row.total_entries} entr
+                            {row.total_entries === 1 ? "y" : "ies"}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+      )}
     </DashboardLayout>
   );
 }

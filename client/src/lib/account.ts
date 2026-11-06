@@ -243,6 +243,68 @@ export type MemberSummary = {
 /** CL-REQ-1: single cache key for claim options (invalidateQueries equivalent). */
 export const CLAIM_OPTIONS_QUERY_KEY = "certificate-claim-options" as const;
 
+export type PlannedMeal = {
+  id: number;
+  date: string;
+  slot_index: number;
+  recipe_source_type: "daily_mod" | "custom_recipe";
+  recipe_source_id: number | null;
+  label: string | null;
+  notes: string | null;
+  logged: number;
+  recipe_preview: {
+    title: string;
+    photo_url: string | null;
+    macros: { protein: number; fat: number; carbs: number };
+  } | null;
+};
+
+export type MealsWeek = {
+  meals: PlannedMeal[];
+  grouped_by_date: Record<string, PlannedMeal[]>;
+};
+
+export type MealsUpcoming = {
+  meals: PlannedMeal[];
+  meta: {
+    count: number;
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+};
+
+export type MacrosDaily = {
+  date: string | null;
+  protein: number;
+  fat: number;
+  carbs: number;
+  calories: number;
+  goal_protein: number;
+  goal_fat: number;
+  goal_carbs: number;
+};
+
+export type PrOverviewRow = {
+  name: string;
+  type: string | null;
+  custom_workout_id: number | null;
+  measurement_id: number | null;
+  best_score: number | null;
+  last_score: number | null;
+  total_entries: number;
+  unit_abbreviation: string | null;
+  score_unit_id: number | null;
+  benchmark_classification: string | null;
+  is_benchmark: boolean;
+};
+
+export type PrOverview = {
+  workouts: PrOverviewRow[];
+  movements: PrOverviewRow[];
+};
+
 type CacheKey =
   | "overview"
   | "subscriptions"
@@ -254,10 +316,14 @@ type CacheKey =
   | "gifts"
   | "notifications"
   | "privacy"
+  | "pr-overview"
   | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
-  | `member:${string}`;
+  | `member:${string}`
+  | `meals:${string}:${string}`
+  | `meals-upcoming:${number}`
+  | `macros:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
@@ -466,6 +532,44 @@ export function loadFavorites(
   const key: CacheKey = `favorites:${type}`;
   const q = type === "all" ? "" : `?type=${encodeURIComponent(type)}`;
   return accountGet(`/api/account/favorites${q}`, key, options);
+}
+
+/** Planned meals for a YYYY-MM-DD range (mobile meal-plan calendar). */
+export function loadMealsWeek(
+  startDate: string,
+  endDate: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MealsWeek> {
+  const key: CacheKey = `meals:${startDate}:${endDate}`;
+  const q = `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+  return accountGet(`/api/account/meals${q}`, key, options);
+}
+
+export function loadMealsUpcoming(
+  limit = 20,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MealsUpcoming> {
+  const key: CacheKey = `meals-upcoming:${limit}`;
+  return accountGet(`/api/account/meals/upcoming?limit=${limit}`, key, options);
+}
+
+export function loadMacrosDaily(
+  date: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MacrosDaily> {
+  const key: CacheKey = `macros:${date}`;
+  return accountGet(`/api/account/macros/daily/${encodeURIComponent(date)}`, key, options);
+}
+
+/** Spark PR / benchmark overview (lifts + conditioning benchmarks). */
+export function loadPrOverview(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+  catalogCap?: number;
+}): Promise<PrOverview> {
+  const cap = options?.catalogCap;
+  const q = cap ? `?catalog_cap=${encodeURIComponent(String(cap))}` : "";
+  return accountGet(`/api/account/pr-overview${q}`, "pr-overview", options);
 }
 
 export function loadReferrals(options?: {

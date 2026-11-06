@@ -138,3 +138,23 @@ export function accountEmailConfirmPath(): string {
 export function accountMemberSummaryPath(memberId: string): string {
   return `${BSI}/profiles/summary/${encodeURIComponent(memberId)}`;
 }
+
+/** Planned meals for a date range — mobile meal-plan calendar. */
+export function accountCalendarMealsPath(): string {
+  return `${METFIX}/calendar/meals`;
+}
+
+/** Paginated upcoming planned meals. */
+export function accountCalendarMealsUpcomingPath(): string {
+  return `${METFIX}/calendar/meals/upcoming`;
+}
+
+/** Daily macro totals (protein/fat/carbs) for a YYYY-MM-DD day. */
+export function accountMacrosDailyPath(date: string): string {
+  return `${METFIX}/macros/daily/${encodeURIComponent(date)}`;
+}
+
+/** PR / benchmark overview (Movement Library + measurements). */
+export function accountPrOverviewPath(): string {
+  return `${METFIX}/spark/pr-overview`;
+}

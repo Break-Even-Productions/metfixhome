@@ -160,6 +160,182 @@ const profile = {
   attributes: [],
 };
 
+function weekDates() {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7;
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - day);
+  const ymd = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    return ymd(d);
+  });
+}
+
+const dates = weekDates();
+const mealsWeek = {
+  meals: [
+    {
+      id: 1,
+      date: dates[0],
+      slot_index: 1,
+      recipe_source_type: "daily_mod",
+      recipe_source_id: 11,
+      label: null,
+      notes: null,
+      logged: 0,
+      recipe_preview: {
+        title: "Chicken-Wrapped Asparagus in Garlic Ghee",
+        photo_url: "/daily-fix/260930-cilantro-lime-steak.jpg",
+        macros: { protein: 48, fat: 28, carbs: 6 },
+      },
+    },
+    {
+      id: 2,
+      date: dates[0],
+      slot_index: 2,
+      recipe_source_type: "daily_mod",
+      recipe_source_id: 12,
+      label: null,
+      notes: "Post-training",
+      logged: 1,
+      recipe_preview: {
+        title: "Greek Yogurt Bowl with Berries",
+        photo_url: null,
+        macros: { protein: 36, fat: 12, carbs: 22 },
+      },
+    },
+    {
+      id: 3,
+      date: dates[0],
+      slot_index: 3,
+      recipe_source_type: "custom_recipe",
+      recipe_source_id: 99,
+      label: "Dinner",
+      notes: null,
+      logged: 0,
+      recipe_preview: {
+        title: "Grass-Fed Flank Steak & Greens",
+        photo_url: "/daily-fix/260930-cilantro-lime-steak.jpg",
+        macros: { protein: 52, fat: 30, carbs: 8 },
+      },
+    },
+  ],
+  grouped_by_date: {},
+};
+mealsWeek.grouped_by_date[dates[0]] = mealsWeek.meals;
+
+const macrosDaily = {
+  date: dates[0],
+  protein: 136,
+  fat: 70,
+  carbs: 36,
+  calories: 1314,
+  goal_protein: 165,
+  goal_fat: 115,
+  goal_carbs: 24,
+};
+
+const prOverview = {
+  workouts: [
+    {
+      name: "Fran",
+      type: "workout",
+      custom_workout_id: 44,
+      measurement_id: null,
+      best_score: 194,
+      last_score: 222,
+      total_entries: 4,
+      unit_abbreviation: null,
+      score_unit_id: null,
+      benchmark_classification: "girl",
+      is_benchmark: true,
+    },
+    {
+      name: "Row & L-Sit",
+      type: "workout",
+      custom_workout_id: 45,
+      measurement_id: null,
+      best_score: 788,
+      last_score: 832,
+      total_entries: 3,
+      unit_abbreviation: null,
+      score_unit_id: null,
+      benchmark_classification: "custom",
+      is_benchmark: true,
+    },
+  ],
+  movements: [
+    {
+      name: "Back Squat",
+      type: "movement",
+      custom_workout_id: null,
+      measurement_id: 7,
+      best_score: 335,
+      last_score: 325,
+      total_entries: 6,
+      unit_abbreviation: "lb",
+      score_unit_id: 1,
+      benchmark_classification: null,
+      is_benchmark: true,
+    },
+    {
+      name: "Deadlift",
+      type: "movement",
+      custom_workout_id: null,
+      measurement_id: 8,
+      best_score: 425,
+      last_score: 415,
+      total_entries: 5,
+      unit_abbreviation: "lb",
+      score_unit_id: 1,
+      benchmark_classification: null,
+      is_benchmark: true,
+    },
+    {
+      name: "Strict Press",
+      type: "movement",
+      custom_workout_id: null,
+      measurement_id: 9,
+      best_score: 170,
+      last_score: 165,
+      total_entries: 4,
+      unit_abbreviation: "lb",
+      score_unit_id: 1,
+      benchmark_classification: null,
+      is_benchmark: true,
+    },
+    {
+      name: "Triglyceride : HDL Ratio",
+      type: "movement",
+      custom_workout_id: null,
+      measurement_id: 21,
+      best_score: 1.1,
+      last_score: 1.2,
+      total_entries: 2,
+      unit_abbreviation: "ratio",
+      score_unit_id: null,
+      benchmark_classification: null,
+      is_benchmark: false,
+    },
+    {
+      name: "Fasting Insulin",
+      type: "movement",
+      custom_workout_id: null,
+      measurement_id: 22,
+      best_score: 4.2,
+      last_score: 4.8,
+      total_entries: 2,
+      unit_abbreviation: "µIU/mL",
+      score_unit_id: null,
+      benchmark_classification: null,
+      is_benchmark: false,
+    },
+  ],
+};
+
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 
@@ -185,6 +361,12 @@ await page.route("**/api/**", async (route) => {
   if (url.includes("/api/account/favorites")) return json({ items: [] });
   if (url.includes("/api/account/notifications")) return json({ preferences: {} });
   if (url.includes("/api/account/privacy")) return json({ directory_visible: true });
+  if (url.includes("/api/account/meals/upcoming")) {
+    return json({ meals: mealsWeek.meals, meta: { count: 3, total: 3, limit: 20, offset: 0, has_more: false } });
+  }
+  if (url.includes("/api/account/meals")) return json(mealsWeek);
+  if (url.includes("/api/account/macros/daily/")) return json(macrosDaily);
+  if (url.includes("/api/account/pr-overview")) return json(prOverview);
   return json({ error: "not_found" }, 404);
 });
 

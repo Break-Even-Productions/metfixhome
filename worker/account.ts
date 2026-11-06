@@ -37,6 +37,8 @@ import {
 } from "../shared/join/membership-domain";
 import { isWhopCheckoutUrl, sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import {
+  accountCalendarMealsPath,
+  accountCalendarMealsUpcomingPath,
   accountCancelDuplicatePath,
   accountClaimCertificatePath,
   accountConvertToWhopPath,
@@ -46,6 +48,7 @@ import {
   accountEmailPath,
   accountFavoriteItemPath,
   accountFavoritesPath,
+  accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
   accountMePath,
   accountMeProfilePath,
@@ -56,6 +59,7 @@ import {
   accountPasswordResetPath,
   accountPaymentsPath,
   accountPortalLinkPath,
+  accountPrOverviewPath,
   accountPrivacySettingsPath,
   accountProfilesMeAttributesPath,
   accountProfilesMePath,
@@ -928,6 +932,199 @@ function shapeCourses(raw: unknown): Record<string, unknown> | null {
   };
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function shapePlannedMeal(row: unknown): Record<string, unknown> | null {
+  const r = asRecord(row);
+  if (!r) return null;
+  const id = typeof r.id === "number" && Number.isSafeInteger(r.id) ? r.id : null;
+  const date = typeof r.date === "string" && YMD_RE.test(r.date) ? r.date : null;
+  if (id == null || !date) return null;
+  const preview = asRecord(r.recipe_preview);
+  const macros = preview ? asRecord(preview.macros) : null;
+  return {
+    id,
+    date,
+    slot_index: typeof r.slot_index === "number" ? r.slot_index : 1,
+    recipe_source_type:
+      r.recipe_source_type === "custom_recipe" ? "custom_recipe" : "daily_mod",
+    recipe_source_id:
+      typeof r.recipe_source_id === "number" && Number.isSafeInteger(r.recipe_source_id)
+        ? r.recipe_source_id
+        : null,
+    label: typeof r.label === "string" ? r.label : null,
+    notes: typeof r.notes === "string" ? r.notes : null,
+    logged: r.logged === 1 || r.logged === true ? 1 : 0,
+    recipe_preview: preview
+      ? {
+          title: typeof preview.title === "string" ? preview.title : "Meal",
+          photo_url: typeof preview.photo_url === "string" ? preview.photo_url : null,
+          macros: {
+            protein: typeof macros?.protein === "number" ? macros.protein : 0,
+            fat: typeof macros?.fat === "number" ? macros.fat : 0,
+            carbs: typeof macros?.carbs === "number" ? macros.carbs : 0,
+          },
+        }
+      : null,
+  };
+}
+
+function shapeMeals(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw);
+  const mealsIn = Array.isArray(obj?.meals)
+    ? obj!.meals
+    : Array.isArray(raw)
+      ? (raw as unknown[])
+      : [];
+  const meals: Record<string, unknown>[] = [];
+  for (const row of mealsIn) {
+    const shaped = shapePlannedMeal(row);
+    if (shaped) meals.push(shaped);
+  }
+  const grouped: Record<string, Record<string, unknown>[]> = {};
+  for (const m of meals) {
+    const d = String(m.date);
+    if (!grouped[d]) grouped[d] = [];
+    grouped[d]!.push(m);
+  }
+  return { meals, grouped_by_date: grouped };
+}
+
+function shapeMealsUpcoming(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw);
+  const mealsIn = Array.isArray(obj?.meals) ? obj!.meals : [];
+  const meals: Record<string, unknown>[] = [];
+  for (const row of mealsIn) {
+    const shaped = shapePlannedMeal(row);
+    if (shaped) meals.push(shaped);
+  }
+  const meta = asRecord(obj?.meta) ?? {};
+  return {
+    meals,
+    meta: {
+      count: typeof meta.count === "number" ? meta.count : meals.length,
+      total: typeof meta.total === "number" ? meta.total : meals.length,
+      limit: typeof meta.limit === "number" ? meta.limit : 20,
+      offset: typeof meta.offset === "number" ? meta.offset : 0,
+      has_more: meta.has_more === true,
+    },
+  };
+}
+
+function shapeMacrosDaily(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const totals = asRecord(obj.totals) ?? asRecord(obj.macros) ?? obj;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  return {
+    date: typeof obj.date === "string" ? obj.date : null,
+    protein: num(totals.protein ?? totals.protein_g),
+    fat: num(totals.fat ?? totals.fat_g),
+    carbs: num(totals.carbs ?? totals.carbohydrates ?? totals.carbs_g),
+    calories: num(totals.calories ?? totals.kcal),
+    goal_protein: num(obj.goal_protein ?? asRecord(obj.goals)?.protein),
+    goal_fat: num(obj.goal_fat ?? asRecord(obj.goals)?.fat),
+    goal_carbs: num(obj.goal_carbs ?? asRecord(obj.goals)?.carbs),
+  };
+}
+
+function shapePrOverview(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const pickRows = (...keys: string[]): unknown[] => {
+    for (const k of keys) {
+      const v = obj[k];
+      if (Array.isArray(v)) return v;
+    }
+    return [];
+  };
+  const shapeRow = (row: unknown): Record<string, unknown> | null => {
+    const r = asRecord(row);
+    if (!r) return null;
+    const name =
+      (typeof r.name === "string" && r.name) ||
+      (typeof r.title === "string" && r.title) ||
+      (typeof r.group === "string" && r.group) ||
+      "PR";
+    const best =
+      typeof r.best_score === "number"
+        ? r.best_score
+        : typeof r.best_score === "string"
+          ? Number(r.best_score)
+          : null;
+    const last =
+      typeof r.last_score === "number"
+        ? r.last_score
+        : typeof r.last_score === "string"
+          ? Number(r.last_score)
+          : null;
+    return {
+      name,
+      type:
+        typeof r.type === "string"
+          ? r.type
+          : typeof r.row_kind === "string"
+            ? r.row_kind
+            : null,
+      custom_workout_id:
+        typeof r.custom_workout_id === "number" ? r.custom_workout_id : null,
+      measurement_id:
+        typeof r.bsi_measurement_id === "number"
+          ? r.bsi_measurement_id
+          : typeof r.measurement_id === "number"
+            ? r.measurement_id
+            : null,
+      best_score: best != null && Number.isFinite(best) ? best : null,
+      last_score: last != null && Number.isFinite(last) ? last : null,
+      total_entries:
+        typeof r.total_entries === "number" ? r.total_entries : 0,
+      unit_abbreviation:
+        typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
+      score_unit_id:
+        typeof r.score_unit_id === "number" ? r.score_unit_id : null,
+      benchmark_classification:
+        typeof r.benchmark_classification === "string"
+          ? r.benchmark_classification
+          : null,
+      is_benchmark: r.is_benchmark === true || r.is_benchmark === 1,
+    };
+  };
+  const workoutsIn = pickRows(
+    "workout_benchmarks",
+    "workout_benchmark_rows",
+    "workouts",
+    "workout_prs",
+  );
+  const movementsIn = pickRows(
+    "movement_benchmarks",
+    "movement_benchmark_rows",
+    "movements",
+    "measurement_prs",
+  );
+  let workouts: Record<string, unknown>[] = [];
+  let movements: Record<string, unknown>[] = [];
+  for (const row of workoutsIn) {
+    const s = shapeRow(row);
+    if (s) workouts.push(s);
+  }
+  for (const row of movementsIn) {
+    const s = shapeRow(row);
+    if (s) movements.push(s);
+  }
+  if (workouts.length === 0 && movements.length === 0) {
+    const merged = pickRows("items", "rows", "overview", "data", "prs");
+    for (const row of merged) {
+      const s = shapeRow(row);
+      if (!s) continue;
+      const t = String(s.type ?? "").toLowerCase();
+      if (t.includes("movement") || t.includes("measurement") || s.measurement_id) {
+        movements.push(s);
+      } else {
+        workouts.push(s);
+      }
+    }
+  }
+  return { workouts, movements };
+}
+
 /** R3-B1: public member DTO — badge boolean only; no foundations_coach object. */
 export const PUBLIC_MEMBER_SUMMARY_KEYS = [
   "member_id",
@@ -1049,6 +1246,24 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "GET" && rest === "courses") {
     return { id: "DP18", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "meals") {
+    return { id: "MF1", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "meals/upcoming") {
+    return { id: "MF2", method: "GET", params: {}, limiter: "read" };
+  }
+  const macrosDay = rest.match(/^macros\/daily\/(\d{4}-\d{2}-\d{2})$/);
+  if (method === "GET" && macrosDay) {
+    return {
+      id: "MF3",
+      method: "GET",
+      params: { date: macrosDay[1]! },
+      limiter: "read",
+    };
+  }
+  if (method === "GET" && rest === "pr-overview") {
+    return { id: "MF4", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
@@ -1811,6 +2026,88 @@ async function dispatch(
       const shaped = shapeCourses(mapped.json);
       if (!shaped) return accountJson({ error: "unavailable" }, 502);
       return accountJson(shaped, 200);
+    }
+    case "MF1": {
+      const start = url.searchParams.get("start_date") ?? "";
+      const end = url.searchParams.get("end_date") ?? "";
+      if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const q = `start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarMealsPath(),
+        { query: q },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeMeals(mapped.json), 200);
+    }
+    case "MF2": {
+      const limitRaw = url.searchParams.get("limit") ?? "20";
+      const offsetRaw = url.searchParams.get("offset") ?? "0";
+      if (!/^[1-9][0-9]*$/.test(limitRaw) || !/^(0|[1-9][0-9]*)$/.test(offsetRaw)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limit = Math.min(Number(limitRaw), 100);
+      const offset = Number(offsetRaw);
+      const from = url.searchParams.get("from_date");
+      const parts = [`limit=${limit}`, `offset=${offset}`];
+      if (from && YMD_RE.test(from)) parts.push(`from_date=${encodeURIComponent(from)}`);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarMealsUpcomingPath(),
+        { query: parts.join("&") },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeMealsUpcoming(mapped.json), 200);
+    }
+    case "MF3": {
+      const date = match.params.date!;
+      if (!YMD_RE.test(date)) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMacrosDailyPath(date),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeMacrosDaily(mapped.json), 200);
+    }
+    case "MF4": {
+      const capRaw = url.searchParams.get("catalog_cap");
+      const q =
+        capRaw && /^[1-9][0-9]{0,3}$/.test(capRaw)
+          ? `catalog_cap=${encodeURIComponent(capRaw)}`
+          : undefined;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPrOverviewPath(),
+        { query: q },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapePrOverview(mapped.json), 200);
     }
     case "DP21": {
       const type = url.searchParams.get("type") ?? "all";
