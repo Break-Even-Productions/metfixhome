@@ -90,6 +90,9 @@ export default function AccountBilling() {
   const legacySource =
     subs?.items.find((i) => i.legacy_source === "medical_society_stripe")?.legacy_source ?? null;
   const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
+  /** Prefer an explicit can_open_portal flag — never invent a manage URL. */
+  const portalItem =
+    (subs?.items ?? []).find((i) => i.can_open_portal === true) ?? null;
 
   const grandfathered = useMemo(
     () =>
@@ -204,6 +207,14 @@ export default function AccountBilling() {
         tier={tier}
         legacySource={legacySource}
         ltv={ltv}
+        onManageTier={
+          portalItem
+            ? () => {
+                void onManage(portalItem);
+              }
+            : null
+        }
+        manageBusy={portalItem ? busy === `portal:${portalItem.sub_ref}` : false}
       />
       <ConversionBanner conversion={subs?.conversion} />
 
@@ -270,14 +281,16 @@ export default function AccountBilling() {
             >
               Switch to Whop Organization Owner
             </button>
-            <button
-              type="button"
-              className="account-btn account-btn--ghost"
-              disabled={busy === `portal:${item.sub_ref}`}
-              onClick={() => void onManage(item)}
-            >
-              Manage in billing portal
-            </button>
+            {item.can_open_portal === true ? (
+              <button
+                type="button"
+                className="account-btn account-btn--ghost"
+                disabled={busy === `portal:${item.sub_ref}`}
+                onClick={() => void onManage(item)}
+              >
+                Manage in billing portal
+              </button>
+            ) : null}
           </div>
         </section>
       ))}
@@ -315,14 +328,16 @@ export default function AccountBilling() {
                   </div>
                 ) : null}
                 <div className="account-course-card__actions" style={{ marginTop: "0.65rem" }}>
-                  <button
-                    type="button"
-                    className="account-btn account-btn--ghost"
-                    disabled={busy === `portal:${item.sub_ref}`}
-                    onClick={() => void onManage(item)}
-                  >
-                    Manage in billing portal
-                  </button>
+                  {item.can_open_portal === true ? (
+                    <button
+                      type="button"
+                      className="account-btn account-btn--ghost"
+                      disabled={busy === `portal:${item.sub_ref}`}
+                      onClick={() => void onManage(item)}
+                    >
+                      Manage in billing portal
+                    </button>
+                  ) : null}
                   {item.is_duplicate_stripe ? (
                     <button
                       type="button"

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JoinModal } from "./JoinModal";
 
 function mockAuthFetch() {
@@ -25,9 +25,35 @@ function mockAuthFetch() {
   });
 }
 
-afterEach(() => {
+function stubRecaptcha(token = "recaptcha-ok") {
+  (
+    window as unknown as { __MFX_RECAPTCHA_SITE_KEY__: string }
+  ).__MFX_RECAPTCHA_SITE_KEY__ = "test-site-key";
+  (
+    window as unknown as {
+      grecaptcha: {
+        ready: (cb: () => void) => void;
+        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
+      };
+    }
+  ).grecaptcha = {
+    ready: (cb) => cb(),
+    execute: async () => token,
+  };
+}
+
+beforeEach(() => {
+  stubRecaptcha();
+});
+
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
+  delete (window as unknown as { grecaptcha?: unknown }).grecaptcha;
+  delete (window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: unknown })
+    .__MFX_RECAPTCHA_SITE_KEY__;
+  const { clearCsrfCache } = await import("@/lib/authRequest");
+  clearCsrfCache();
 });
 
 describe("JoinModal", () => {

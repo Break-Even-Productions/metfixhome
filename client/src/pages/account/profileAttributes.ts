@@ -1,53 +1,31 @@
-import type { AccountProfile } from "@/lib/account";
+import type { AccountProfile, ProfileAttrSection, ProfileAttributeField } from "@/lib/account";
 import { humanSettingLabel } from "./settingLabels";
-
-/** Worker `EDITABLE_ATTR_IDS` — saves outside this set are rejected. */
-const EDITABLE_ATTR_IDS = new Set([1, 2, 3, 4, 5]);
-
-/**
- * Documented member attributes (BSI migrations README).
- * Used only when the profile payload has no attribute list yet.
- */
-const FALLBACK_FIELDS: ReadonlyArray<{ attr_id: number; label: string }> = [
-  { attr_id: 1, label: "Address" },
-  { attr_id: 5, label: "Video" },
-];
 
 export type EditableProfileAttribute = {
   attr_id: number;
   label: string;
   value: string;
+  section: ProfileAttrSection;
+  form_type: string;
 };
 
-type AttributeRow = {
-  attr_id?: number;
+type AttributeRow = ProfileAttributeField & {
   id?: number;
-  key?: string;
-  name?: string;
-  label?: string;
   attr_name?: string;
-  value?: string;
 };
 
-function rowLabel(row: AttributeRow, attrId: number): string | null {
+function rowLabel(row: AttributeRow): string | null {
   const named = row.label ?? row.name ?? row.attr_name ?? row.key;
-  if (typeof named === "string") {
-    if (/email/i.test(named)) return null;
-    const label = humanSettingLabel(named);
-    if (label) return label;
-  }
-  const fallback = FALLBACK_FIELDS.find((field) => field.attr_id === attrId);
-  return fallback?.label ?? null;
+  if (typeof named !== "string" || !named.trim()) return null;
+  if (/email/i.test(named)) return null;
+  return humanSettingLabel(named) ?? named;
 }
 
-/** Labeled fields the member can edit. Never includes a raw attribute id as the label. */
-export function editableProfileAttributes(
-  profile: AccountProfile | null,
+function normalizeSectionRows(
+  rows: unknown,
+  section: ProfileAttrSection,
 ): EditableProfileAttribute[] {
-  const rows = Array.isArray(profile?.attributes) ? profile.attributes : null;
-  if (!rows) {
-    return FALLBACK_FIELDS.map((field) => ({ ...field, value: "" }));
-  }
+  if (!Array.isArray(rows)) return [];
   const out: EditableProfileAttribute[] = [];
   const seen = new Set<number>();
   for (const row of rows) {
@@ -59,16 +37,41 @@ export function editableProfileAttributes(
         : typeof record.id === "number"
           ? record.id
           : null;
-    if (attrId == null || !Number.isInteger(attrId) || !EDITABLE_ATTR_IDS.has(attrId)) continue;
+    if (attrId == null || !Number.isInteger(attrId) || attrId <= 0) continue;
     if (seen.has(attrId)) continue;
-    const label = rowLabel(record, attrId);
+    const formType = typeof record.form_type === "string" ? record.form_type : "text";
+    if (formType === "email" || formType === "file") continue;
+    const label = rowLabel(record);
     if (!label) continue;
     seen.add(attrId);
     out.push({
       attr_id: attrId,
       label,
       value: typeof record.value === "string" ? record.value : "",
+      section,
+      form_type: formType,
     });
   }
   return out;
+}
+
+/** Labeled fields for one Profile section (Personal / Affiliate / Clinic). */
+export function editableProfileAttributesForSection(
+  profile: AccountProfile | null,
+  section: ProfileAttrSection,
+): EditableProfileAttribute[] {
+  const attrs = profile?.attributes;
+  if (!attrs || typeof attrs !== "object") return [];
+  return normalizeSectionRows(attrs[section], section);
+}
+
+/** All editable fields across sections (tests / diagnostics). */
+export function editableProfileAttributes(
+  profile: AccountProfile | null,
+): EditableProfileAttribute[] {
+  return ([
+    "personal",
+    "affiliate",
+    "clinic",
+  ] as const).flatMap((section) => editableProfileAttributesForSection(profile, section));
 }

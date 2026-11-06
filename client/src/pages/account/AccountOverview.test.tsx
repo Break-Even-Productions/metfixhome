@@ -54,6 +54,15 @@ beforeEach(() => {
         return jsonResponse(LTV300_AC);
       }
       if (url.includes("/api/account/courses")) return jsonResponse(COURSES_LTV300);
+      if (url.includes("/api/account/calendar/surface")) {
+        return jsonResponse({
+          meal_counts: {},
+          workout_counts: {},
+          brain_counts: {},
+          event_counts: {},
+          meta: { start_date: "2026-11-01", end_date: "2026-11-30", total_dates: 30 },
+        });
+      }
       return jsonResponse({ error: "not_found" }, 404);
     }),
   );
@@ -78,9 +87,11 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     });
     expect(screen.getByText(/Membership Tier/i)).toBeTruthy();
     expect(screen.getAllByText(/MetFix Pro \(\$30\/mo\)/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$100.00").length).toBeGreaterThan(0);
+    expect(screen.getByText(/\$300\.00 total · \$200\.00 claimed/)).toBeTruthy();
     expect(
-      screen.getByText(/\$100\.00 available \(\$300\.00 total LTV · \$200\.00 claimed\)/),
-    ).toBeTruthy();
+      screen.getAllByRole("button", { name: /How Certificate Credit works/i }).length,
+    ).toBeGreaterThan(0);
 
     const mono = document.querySelectorAll(".account-metric, .account-mono");
     expect(mono.length).toBeGreaterThan(0);
@@ -100,7 +111,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
         <AccountOverview />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByText(/Foundations Coach/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /Foundations Coach/i })).toBeTruthy(),
+    );
     expect(screen.getByText(/in-person seminar check-in/i)).toBeTruthy();
     expect(screen.getByText(/Expires/i)).toBeTruthy();
   });
@@ -163,7 +176,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(css).toMatch(/min-width:\s*1024px[\s\S]*?\.account-mobile-nav[\s\S]*?display:\s*none/);
   });
 
-  it("mounting /account fires ≤3 account GETs (overview, subscriptions, ltv-certificates)", async () => {
+  it("mounting /account fires ≤4 account GETs (overview, subscriptions, ltv, calendar surface)", async () => {
     const fetchImpl = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
     render(
       <Router>
@@ -171,6 +184,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       </Router>,
     );
     await waitFor(() => expect(screen.getAllByText("Active").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(document.querySelector(".account-calendar")).toBeTruthy(),
+    );
     const gets = accountGets(fetchImpl);
     const paths = gets.map((c) => String(c[0]).replace(/\?.*$/, ""));
     expect(paths.filter((p) => p.endsWith("/overview")).length).toBeLessThanOrEqual(1);
@@ -178,7 +194,8 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(
       paths.filter((p) => p.endsWith("/ltv-certificates") || p.endsWith("/spend")).length,
     ).toBeLessThanOrEqual(1);
-    expect(gets.length).toBeLessThanOrEqual(3);
+    expect(paths.filter((p) => p.endsWith("/calendar/surface")).length).toBeLessThanOrEqual(1);
+    expect(gets.length).toBeLessThanOrEqual(4);
   });
 
   it("renders LTV visualizer totals for LTV300 after A+C", async () => {
@@ -221,13 +238,34 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       </Router>,
     );
     await waitFor(() => expect(screen.getByText("Next Payment")).toBeTruthy());
-    const dailyFix = screen.getByRole("link", { name: /Daily Fix/i });
+    const dailyFix = screen.getByRole("link", { name: /Daily Fix Archive/i });
     expect(dailyFix.getAttribute("href")).toBe("/the-daily-fix");
+    expect(screen.getByRole("link", { name: /^Meal Plans$/i }).getAttribute("href")).toBe(
+      "/account/meal-plans",
+    );
+    expect(screen.getByRole("link", { name: /^Shopping Cart$/i }).getAttribute("href")).toBe(
+      "/account/shopping-cart",
+    );
+    expect(screen.getByRole("link", { name: /^My Meals$/i }).getAttribute("href")).toBe(
+      "/account/my-meals",
+    );
+    expect(screen.getByRole("link", { name: /PR tracking/i }).getAttribute("href")).toBe(
+      "/account/benchmarks",
+    );
+    expect(screen.getByRole("link", { name: /My Data \/ Spark/i }).getAttribute("href")).toBe(
+      "/account/spark",
+    );
+    expect(screen.getByRole("link", { name: /Inbox/i }).getAttribute("href")).toBe(
+      "/account/inbox",
+    );
     expect(screen.getAllByText("No web page yet").length).toBeGreaterThan(0);
     expect(screen.queryByText("MetFix Admin")).toBeNull();
-    expect(document.querySelector('[data-tool="spark"]')?.getAttribute("data-state")).toBe(
+    expect(document.querySelector('[data-tool="workout-feed"]')?.getAttribute("data-state")).toBe(
       "available",
     );
+    expect(document.querySelector('[data-tool="belly"]')).toBeTruthy();
+    expect(document.querySelector('[data-tool="body"]')).toBeTruthy();
+    expect(document.querySelector('[data-tool="brain"]')).toBeTruthy();
   });
 
   it("hides next payment and locks tools when the account has no payments", async () => {
@@ -257,6 +295,15 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
         if (url.includes("/api/account/ltv-certificates") || url.includes("/api/account/spend")) {
           return jsonResponse({ ...LTV300_AC, canonical_tier: "free" });
         }
+        if (url.includes("/api/account/calendar/surface")) {
+          return jsonResponse({
+            meal_counts: {},
+            workout_counts: {},
+            brain_counts: {},
+            event_counts: {},
+            meta: { start_date: "2026-11-01", end_date: "2026-11-30", total_dates: 30 },
+          });
+        }
         return jsonResponse({ error: "not_found" }, 404);
       }),
     );
@@ -265,10 +312,21 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
         <AccountOverview />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByText("Meal plans")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Meal Plans")).toBeTruthy());
+    expect(screen.getByText("Shopping Cart")).toBeTruthy();
+    expect(screen.getByText("My Meals")).toBeTruthy();
     expect(screen.queryByText("Next Payment")).toBeNull();
-    expect(screen.queryByRole("link", { name: /Daily Fix/i })).toBeNull();
-    expect(document.querySelectorAll('[data-state="locked"]').length).toBe(7);
+    // Locked tools upgrade via /join — Daily Fix Archive is not opened for free accounts.
+    expect(
+      Array.from(document.querySelectorAll('[data-tool="daily-fix-archive"]')).every(
+        (el) => el.getAttribute("href") === "/join",
+      ),
+    ).toBe(true);
+    // Belly/Body/Brain + Daily Fix + Spark locked; Inbox stays open for free.
+    expect(document.querySelectorAll('.account-tool[data-state="locked"]').length).toBe(5);
+    expect(document.querySelector('[data-tool="inbox"]')?.getAttribute("data-state")).toBe(
+      "open",
+    );
   });
 
   it("shows Admin and MetFix Admin when the account has those roles", async () => {

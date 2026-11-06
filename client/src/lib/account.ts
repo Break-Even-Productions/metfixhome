@@ -15,9 +15,11 @@ import type {
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+import type { RoleId } from "@shared/join/membership-domain";
 
 export { sanitizeReturnPath } from "@shared/account/returnPath";
 export type { ClaimOptionsDto, ClaimPathId };
+export type { RoleId };
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -36,8 +38,15 @@ export type AccountOverview = {
   tabs: unknown[];
   links: Record<string, unknown>;
   avatar_url?: string | null;
-  /** WordPress role slugs. Dashboard shows Admin and MetFix Admin only. */
+  /** WordPress staff role slugs. Dashboard shows Admin and MetFix Admin only. */
   roles?: string[];
+  /**
+   * Opt-in audience attributes from join/onboarding (bsi_onboarding_roles).
+   * Not entitlement / affiliate / paid WP roles.
+   */
+  onboarding_roles?: RoleId[];
+  has_physical_gym?: boolean;
+  has_physical_clinic?: boolean;
 };
 
 export type SubscriptionItem = {
@@ -47,6 +56,8 @@ export type SubscriptionItem = {
   legacy_source?: LegacySubscriptionSource;
   is_duplicate_stripe?: boolean;
   can_convert_to_whop?: boolean;
+  /** True when BSI reports a billing portal session can be opened for this row. */
+  can_open_portal?: boolean;
   status: string;
   current_period_end: string | null;
   paid_through: string | null;
@@ -108,6 +119,16 @@ export type PaymentsPage = {
   total: number;
 };
 
+export type CourseFeaturesLite = {
+  navigation?: Array<{ key?: string; label?: string; segment?: string }>;
+  counts?: Record<string, number>;
+  progress?: {
+    percentage?: number;
+    completed_items?: number;
+    total_items?: number;
+  };
+};
+
 export type CourseItem = {
   id: number | string | null;
   slug: string | null;
@@ -121,6 +142,11 @@ export type CourseItem = {
   certificate_claimed: boolean;
   certificate_claim_method: StoredClaimMethod | null;
   certificate_url: string | null;
+  /** Optional course notes when the courses payload includes them. */
+  notes?: string | null;
+  /** Optional LearnPress features summary when present on the payload. */
+  features?: CourseFeaturesLite | null;
+  image_url?: string | null;
 };
 
 export type CoursesPage = {
@@ -130,16 +156,30 @@ export type CoursesPage = {
   total: number;
 };
 
+export type ProfileAttrSection = "personal" | "affiliate" | "clinic";
+
+export type ProfileAttributeField = {
+  attr_id: number;
+  key?: string;
+  label?: string;
+  name?: string;
+  form_type?: string;
+  value?: string;
+};
+
 export type AccountProfile = {
   first_name?: string | null;
   last_name?: string | null;
   display_name?: string | null;
-  bio?: string | null;
-  location?: string | null;
-  credentials?: string | null;
-  community_opt_in?: boolean;
+  email?: string | null;
   avatar_url?: string | null;
-  attributes?: Array<{ attr_id: number; key?: string; name?: string; value?: string }>;
+  member_since?: string | null;
+  /** Editable attributes grouped for Personal / Affiliate / Clinic forms. */
+  attributes?: {
+    personal?: ProfileAttributeField[];
+    affiliate?: ProfileAttributeField[];
+    clinic?: ProfileAttributeField[];
+  };
   [key: string]: unknown;
 };
 
@@ -182,6 +222,11 @@ export type ReferralsPayload = {
     whop_affiliate_code: string;
     whop_plan_id: string;
     share_url: string;
+    /** Optional product image when upstream includes one. */
+    image_url?: string | null;
+    product_image?: string | null;
+    thumbnail_url?: string | null;
+    featured_image?: string | null;
   }>;
   /** R4-N1: required on Worker CR1/CR2 DTO — missing is a contract error. */
   course_links_dropped: number;
@@ -235,6 +280,237 @@ export type MemberSummary = {
 /** CL-REQ-1: single cache key for claim options (invalidateQueries equivalent). */
 export const CLAIM_OPTIONS_QUERY_KEY = "certificate-claim-options" as const;
 
+export type PlannedMeal = {
+  id: number;
+  date: string;
+  slot_index: number;
+  recipe_source_type: "daily_mod" | "custom_recipe";
+  recipe_source_id: number | null;
+  label: string | null;
+  notes: string | null;
+  logged: number;
+  recipe_preview: {
+    title: string;
+    photo_url: string | null;
+    macros: { protein: number; fat: number; carbs: number };
+  } | null;
+};
+
+export type MealsWeek = {
+  meals: PlannedMeal[];
+  grouped_by_date: Record<string, PlannedMeal[]>;
+};
+
+export type MealsUpcoming = {
+  meals: PlannedMeal[];
+  meta: {
+    count: number;
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+};
+
+export type MacrosDaily = {
+  date: string | null;
+  protein: number;
+  fat: number;
+  carbs: number;
+  calories: number;
+  goal_protein: number;
+  goal_fat: number;
+  goal_carbs: number;
+};
+
+export type PlanMealBody = {
+  recipe_source_type: "daily_mod" | "custom_recipe";
+  /** Required by BSI when planning a known recipe; omit when using a free-text label. */
+  recipe_source_id?: number | null;
+  slot_index?: number;
+  label?: string | null;
+  notes?: string | null;
+};
+
+export type ShoppingListGroceryItem = {
+  id: number;
+  item_name: string;
+  quantity: string;
+  sort_order?: number;
+  category?: string | null;
+};
+
+export type ShoppingList = {
+  id: number;
+  title?: string | null;
+  status?: "created" | "generated" | "complete" | "failed" | string | null;
+  dates?: string[];
+  meals?: Array<{
+    planned_meal_id: number;
+    servings?: number;
+    date?: string;
+    slot_index?: number;
+    label?: string | null;
+  }>;
+  /** Recipe snapshot rows (pre-generate). */
+  items?: Array<{
+    id: number;
+    source_type?: string;
+    source_id?: number;
+    snapshot_data?: { title?: string; ingredients?: string[] } | null;
+  }>;
+  /** Generated grocery rows by aisle. */
+  items_by_category?: Record<string, ShoppingListGroceryItem[]>;
+  generated_at?: string | null;
+  [key: string]: unknown;
+};
+
+export type ShoppingListsPage = {
+  lists: ShoppingList[];
+  meta?: {
+    total?: number;
+    count?: number;
+    limit?: number;
+    offset?: number;
+  };
+};
+
+export type CreateShoppingListFromMealsBody = {
+  title?: string;
+  dates?: string[];
+  meals?: Array<{ planned_meal_id: number; servings: number }>;
+  other_considerations?: string;
+  notes?: string;
+};
+
+export type GenerateShoppingListResult = {
+  success?: boolean;
+  list: ShoppingList;
+};
+
+export type EmailShoppingListResult = {
+  success?: boolean;
+  emailed_to?: string | null;
+  message?: string | null;
+};
+
+export type PrOverviewRow = {
+  name: string;
+  type: string | null;
+  custom_workout_id: number | null;
+  measurement_id: number | null;
+  best_score: number | null;
+  last_score: number | null;
+  total_entries: number;
+  unit_abbreviation: string | null;
+  score_unit_id: number | null;
+  benchmark_classification: string | null;
+  is_benchmark: boolean;
+};
+
+export type PrOverview = {
+  workouts: PrOverviewRow[];
+  movements: PrOverviewRow[];
+};
+
+/** BSI spark entry row — date + value are the chart contract; extras pass through. */
+export type SparkEntry = {
+  id?: string | number;
+  measurement_date: string;
+  value: number;
+  bsi_measurement_id?: number;
+  unit_id?: number;
+  unit_abbreviation?: string | null;
+  measurement_name?: string;
+  type?: "pending" | "accepted";
+  status?: "pending" | "accepted";
+  athlete_id?: number;
+  class_id?: number;
+};
+
+export type SparkEntriesPage = {
+  entries: SparkEntry[];
+  meta?: {
+    count?: number;
+    limit?: number;
+    offset?: number;
+  };
+};
+
+export type CreateSparkEntryInput = {
+  measurement_id: number;
+  value: number;
+  /** BSI accepts `Y-m-d H:i:s` or `Y-m-d\TH:i:s` (date-only is fine for dashboard). */
+  measurement_date: string;
+  unit_id?: number;
+};
+
+export type CreateSparkEntryResult = {
+  entry?: SparkEntry;
+  message?: string;
+  skipped?: boolean;
+  auto_log_skipped?: boolean;
+};
+
+/** Day-count maps from GET /api/account/calendar/surface (BSI /metfix/v1/calendar/surface). */
+export type CalendarSurfaceCounts = Record<string, number>;
+
+export type CalendarSurface = {
+  meal_counts: CalendarSurfaceCounts;
+  logged_meal_counts?: CalendarSurfaceCounts;
+  unlogged_meal_counts?: CalendarSurfaceCounts;
+  workout_counts: CalendarSurfaceCounts;
+  planned_workout_counts?: CalendarSurfaceCounts;
+  logged_planned_workout_counts?: CalendarSurfaceCounts;
+  unlogged_planned_workout_counts?: CalendarSurfaceCounts;
+  brain_counts?: CalendarSurfaceCounts;
+  logged_brain_counts?: CalendarSurfaceCounts;
+  unlogged_brain_counts?: CalendarSurfaceCounts;
+  event_counts?: CalendarSurfaceCounts;
+  meta?: {
+    start_date?: string;
+    end_date?: string;
+    total_dates?: number;
+  };
+};
+
+export type AccountInboxConversation = {
+  id: string | number;
+  type?: "direct" | "group" | string;
+  name?: string | null;
+  last_message?: string | null;
+  lastMessage?: string | null;
+  last_message_time?: string | null;
+  lastMessageTime?: string | null;
+  unread_count?: number;
+  unreadCount?: number;
+  [key: string]: unknown;
+};
+
+export type AccountInboxNotification = {
+  id: string | number;
+  title?: string | null;
+  message?: string | null;
+  content?: string | null;
+  type?: string | null;
+  read?: boolean;
+  created_at?: string | null;
+  link?: string | null;
+  [key: string]: unknown;
+};
+
+/**
+ * GET /api/account/inbox — conversations and/or in-app notifications.
+ * Worker assumed to proxy BSI messages + notifications; client accepts either shape.
+ */
+export type AccountInbox = {
+  conversations?: AccountInboxConversation[];
+  notifications?: AccountInboxNotification[];
+  items?: AccountInboxNotification[];
+  total?: number;
+  [key: string]: unknown;
+};
+
 type CacheKey =
   | "overview"
   | "subscriptions"
@@ -246,10 +522,26 @@ type CacheKey =
   | "gifts"
   | "notifications"
   | "privacy"
+  | "pr-overview"
+  | "inbox"
   | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
-  | `member:${string}`;
+  | `member:${string}`
+  | `meals:${string}:${string}`
+  | `meals-upcoming:${number}`
+  | `macros:${string}`
+  | "shopping-lists"
+  | `shopping-list:${number}`
+  | `spark-entries:${string}`
+  | `calendar-surface:${string}`
+  | "plans-library"
+  | `plan:${number}`
+  | "custom-recipes"
+  | `custom-recipe:${number}`
+  | "coaching-coach"
+  | `macros-range:${string}`
+  | `shopping-generated-dates:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
@@ -460,6 +752,628 @@ export function loadFavorites(
   return accountGet(`/api/account/favorites${q}`, key, options);
 }
 
+/** Planned meals for a YYYY-MM-DD range (mobile meal-plan calendar). */
+export function loadMealsWeek(
+  startDate: string,
+  endDate: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MealsWeek> {
+  const key: CacheKey = `meals:${startDate}:${endDate}`;
+  const q = `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+  return accountGet(`/api/account/meals${q}`, key, options);
+}
+
+/**
+ * Combined belly/body/brain/event day counts for a date range.
+ * GET /api/account/calendar/surface → BSI /metfix/v1/calendar/surface (worker proxy assumed).
+ */
+export function loadCalendarSurface(
+  startDate: string,
+  endDate: string,
+  options?: {
+    force?: boolean;
+    signal?: AbortSignal;
+    includeMeals?: boolean;
+    includeWorkouts?: boolean;
+    includeBrain?: boolean;
+    includeEvents?: boolean;
+  },
+): Promise<CalendarSurface> {
+  const includeMeals = options?.includeMeals !== false;
+  const includeWorkouts = options?.includeWorkouts !== false;
+  const includeBrain = options?.includeBrain !== false;
+  const includeEvents = options?.includeEvents !== false;
+  const key: CacheKey = `calendar-surface:${startDate}:${endDate}:${includeMeals}:${includeWorkouts}:${includeBrain}:${includeEvents}`;
+  const q = new URLSearchParams({
+    start_date: startDate,
+    end_date: endDate,
+    include_meals: includeMeals ? "1" : "0",
+    include_workouts: includeWorkouts ? "1" : "0",
+    include_brain: includeBrain ? "1" : "0",
+    include_events: includeEvents ? "1" : "0",
+  });
+  return accountGet(`/api/account/calendar/surface?${q.toString()}`, key, options);
+}
+
+export function loadMealsUpcoming(
+  limit = 20,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MealsUpcoming> {
+  const key: CacheKey = `meals-upcoming:${limit}`;
+  return accountGet(`/api/account/meals/upcoming?limit=${limit}`, key, options);
+}
+
+export function loadMacrosDaily(
+  date: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MacrosDaily> {
+  const key: CacheKey = `macros:${date}`;
+  return accountGet(`/api/account/macros/daily/${encodeURIComponent(date)}`, key, options);
+}
+
+/** Plan or replace a meal on a calendar day (YYYY-MM-DD). */
+export async function planMeal(
+  date: string,
+  body: PlanMealBody,
+): Promise<PlannedMeal> {
+  const res = await accountMutate<PlannedMeal | { planned_meal: PlannedMeal }>(
+    `/api/account/meals/days/${encodeURIComponent(date)}`,
+    {
+      method: "POST",
+      body,
+    },
+  );
+  // Invalidate all week caches — date may sit in any cached range.
+  for (const key of [...cache.keys()]) {
+    if (typeof key === "string" && (key.startsWith("meals:") || key.startsWith("meals-upcoming:"))) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+  if (res && typeof res === "object" && "planned_meal" in res && res.planned_meal) {
+    return res.planned_meal;
+  }
+  return res as PlannedMeal;
+}
+
+/** Load one shopping list, or the member’s list index when `id` is omitted. */
+export function loadShoppingList(
+  id?: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<ShoppingList | ShoppingListsPage> {
+  if (id == null) {
+    return accountGet("/api/account/shopping-lists", "shopping-lists", options);
+  }
+  const key: CacheKey = `shopping-list:${id}`;
+  return accountGet(`/api/account/shopping-lists/${id}`, key, options);
+}
+
+/** Create a shopping list from planned meals / dates. */
+export async function createShoppingListFromMeals(
+  body: CreateShoppingListFromMealsBody,
+): Promise<ShoppingList> {
+  const list = await accountMutate<ShoppingList>("/api/account/shopping-lists", {
+    method: "POST",
+    body,
+    invalidate: ["shopping-lists"],
+  });
+  if (list?.id != null) {
+    cache.set(`shopping-list:${list.id}`, list);
+  }
+  return list;
+}
+
+/** Generate grocery items (LLM) for an existing shopping list. */
+export async function generateShoppingList(
+  id: number,
+): Promise<GenerateShoppingListResult> {
+  const res = await accountMutate<GenerateShoppingListResult | ShoppingList>(
+    `/api/account/shopping-lists/${id}/generate`,
+    {
+      method: "POST",
+      body: {},
+      invalidate: ["shopping-lists", `shopping-list:${id}`],
+    },
+  );
+  if (res && typeof res === "object" && "list" in res && res.list) {
+    cache.set(`shopping-list:${id}`, res.list);
+    return res as GenerateShoppingListResult;
+  }
+  const list = res as ShoppingList;
+  cache.set(`shopping-list:${id}`, list);
+  return { success: true, list };
+}
+
+/** Email the shopping list to the signed-in member. */
+export async function emailShoppingList(
+  id: number,
+): Promise<EmailShoppingListResult> {
+  return accountMutate(`/api/account/shopping-lists/${id}/email`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+/** Spark PR / benchmark overview (lifts + conditioning benchmarks). */
+export function loadPrOverview(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+  catalogCap?: number;
+}): Promise<PrOverview> {
+  const cap = options?.catalogCap;
+  const q = cap ? `?catalog_cap=${encodeURIComponent(String(cap))}` : "";
+  return accountGet(`/api/account/pr-overview${q}`, "pr-overview", options);
+}
+
+function sparkEntriesCacheKey(params: {
+  measurement_id?: number;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}): CacheKey {
+  const mid = params.measurement_id ?? "all";
+  const start = params.start_date ?? "";
+  const end = params.end_date ?? "";
+  const limit = params.limit ?? "";
+  return `spark-entries:${mid}:${start}:${end}:${limit}`;
+}
+
+function invalidateSparkEntriesCaches(measurementId?: number): void {
+  for (const key of [...cache.keys()]) {
+    if (typeof key !== "string" || !key.startsWith("spark-entries:")) continue;
+    if (
+      measurementId != null &&
+      !key.startsWith(`spark-entries:${measurementId}:`)
+    ) {
+      continue;
+    }
+    cache.delete(key);
+    inflight.delete(key);
+  }
+}
+
+/**
+ * Spark measurement history (GET /api/account/spark/entries → BSI /spark/entries).
+ * Worker route assumed; client stubs the contract for dashboard charts / My Data.
+ * `measurement_id` optional when listing recent entries across measurements.
+ */
+export function loadSparkEntries(
+  params: {
+    measurement_id?: number;
+    start_date?: string;
+    end_date?: string;
+    limit?: number;
+  } = {},
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<SparkEntriesPage> {
+  const q = new URLSearchParams();
+  if (params.measurement_id != null) {
+    q.set("measurement_id", String(params.measurement_id));
+  }
+  if (params.start_date) q.set("start_date", params.start_date);
+  if (params.end_date) q.set("end_date", params.end_date);
+  if (params.limit != null) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return accountGet(
+    `/api/account/spark/entries${qs ? `?${qs}` : ""}`,
+    sparkEntriesCacheKey(params),
+    options,
+  );
+}
+
+/**
+ * Member inbox — conversations and/or in-app notifications.
+ * GET /api/account/inbox (worker proxy to BSI messages / in-app-notifications assumed).
+ */
+export function loadInbox(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<AccountInbox> {
+  return accountGet("/api/account/inbox", "inbox", options);
+}
+
+/**
+ * Log a spark PR / measurement (POST /api/account/spark/entries → BSI /spark/entries).
+ * Sends force_log so intentional dashboard logs persist even if not an improvement.
+ */
+export async function createSparkEntry(
+  body: CreateSparkEntryInput,
+): Promise<CreateSparkEntryResult> {
+  // BSI requires Y-m-d H:i:s; date inputs send Y-m-d.
+  const measurement_date = /^\d{4}-\d{2}-\d{2}$/.test(body.measurement_date.trim())
+    ? `${body.measurement_date.trim()} 12:00:00`
+    : body.measurement_date.trim();
+  const result = await accountMutate<CreateSparkEntryResult>(
+    "/api/account/spark/entries",
+    {
+      method: "POST",
+      body: {
+        measurement_id: body.measurement_id,
+        value: body.value,
+        measurement_date,
+        ...(body.unit_id != null ? { unit_id: body.unit_id } : {}),
+        force_log: true,
+      },
+      invalidate: ["pr-overview"],
+    },
+  );
+  invalidateSparkEntriesCaches(body.measurement_id);
+  return result;
+}
+
+/* ——— Belly: meal plans / custom recipes / macros range ——— */
+
+export type MealPlanSummary = {
+  id: number;
+  title: string;
+  description?: string | null;
+  duration_days: number;
+  visibility?: string;
+  status?: "draft" | "published" | string;
+  is_active: boolean;
+  times_scheduled?: number;
+  can_publish?: boolean;
+  can_schedule?: boolean;
+  usage_status?: "saved_only" | "used" | string;
+  days?: Array<{
+    id: number;
+    day_index: number;
+    notes?: string | null;
+    items: Array<{
+      id: number;
+      item_type: "meal" | "workout" | "brain" | string;
+      label?: string | null;
+      recipe_source_type?: string | null;
+      recipe_source_id?: number | null;
+      servings?: number | null;
+    }>;
+  }>;
+  [key: string]: unknown;
+};
+
+export type MealPlanLibrary = {
+  active: { saved_only: MealPlanSummary[]; used: MealPlanSummary[] };
+  inactive: { saved_only: MealPlanSummary[]; used: MealPlanSummary[] };
+  meta?: { active_count?: number; inactive_count?: number };
+};
+
+export type CustomRecipe = {
+  id: number;
+  title: string;
+  photo_url?: string | null;
+  image_url?: string | null;
+  macros?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+  ingredients?: string[];
+  instructions?: string[];
+  [key: string]: unknown;
+};
+
+export type CustomRecipesPage = {
+  recipes: CustomRecipe[];
+  meta?: { count?: number; limit?: number; offset?: number; has_more?: boolean };
+};
+
+export type MacrosRangeEntry = {
+  date: string;
+  totals?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+  meals?: Array<{
+    mealId?: number | string;
+    mealTitle?: string;
+    title?: string;
+    slotIndex?: number;
+    macros?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+    photoUrl?: string | null;
+    macroEntryId?: number;
+    recipeSourceType?: string;
+    recipeSourceId?: number;
+  }>;
+};
+
+export type MacrosRange = {
+  entries: MacrosRangeEntry[];
+};
+
+export function loadPlanLibrary(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<MealPlanLibrary> {
+  return accountGet("/api/account/plans/library", "plans-library", options);
+}
+
+export function loadPlan(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MealPlanSummary> {
+  return accountGet(`/api/account/plans/${id}?include_days=1`, `plan:${id}`, options);
+}
+
+export async function setMealPlanActive(
+  id: number,
+  isActive: boolean,
+): Promise<MealPlanSummary> {
+  return accountMutate(`/api/account/plans/${id}/active`, {
+    method: "PATCH",
+    body: { is_active: isActive },
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function publishMealPlan(id: number): Promise<MealPlanSummary> {
+  return accountMutate(`/api/account/plans/${id}/publish`, {
+    method: "POST",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function scheduleMealPlan(
+  id: number,
+  body: { start_date: string; end_date?: string },
+): Promise<void> {
+  const q = new URLSearchParams({ start_date: body.start_date });
+  if (body.end_date) q.set("end_date", body.end_date);
+  await accountMutate(`/api/account/plans/${id}/schedule?${q.toString()}`, {
+    method: "POST",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+  for (const key of [...cache.keys()]) {
+    if (typeof key === "string" && key.startsWith("meals:")) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+}
+
+/** App startPlan: publish if needed → schedule → set active. */
+export async function startMealPlan(
+  id: number,
+  startDate: string,
+  plan?: MealPlanSummary,
+): Promise<void> {
+  let current = plan;
+  if (!current) {
+    try {
+      current = await loadPlan(id, { force: true });
+    } catch {
+      current = undefined;
+    }
+  }
+  if (current && current.can_schedule === false) {
+    await publishMealPlan(id);
+  }
+  await scheduleMealPlan(id, { start_date: startDate });
+  await setMealPlanActive(id, true);
+}
+
+export function loadCustomRecipes(
+  options?: { force?: boolean; signal?: AbortSignal; limit?: number },
+): Promise<CustomRecipesPage> {
+  const limit = options?.limit ?? 50;
+  return accountGet(
+    `/api/account/custom-recipes?limit=${limit}`,
+    "custom-recipes",
+    options,
+  );
+}
+
+export function loadCustomRecipe(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<CustomRecipe> {
+  return accountGet(`/api/account/custom-recipes/${id}`, `custom-recipe:${id}`, options);
+}
+
+export type CustomRecipeWrite = {
+  title: string;
+  excerpt?: string | null;
+  photo_url?: string | null;
+  recipe_ingredients?: Array<{
+    ingredient_id?: number | null;
+    display_name?: string | null;
+    quantity?: number | null;
+    unit_id?: number | null;
+    adjustment_id?: number | null;
+    notes?: string | null;
+  }>;
+  ingredients_text?: string | null;
+  recipe_steps?: Array<{ instruction: string }>;
+  steps?: string | null;
+  protein_g?: number | null;
+  fat_g?: number | null;
+  carbs_g?: number | null;
+  calories?: number | null;
+  macros_json?: { protein?: number; fat?: number; carbs?: number; calories?: number };
+};
+
+export async function createCustomRecipe(body: CustomRecipeWrite): Promise<CustomRecipe> {
+  return accountMutate("/api/account/custom-recipes", {
+    method: "POST",
+    body,
+    invalidate: ["custom-recipes"],
+  });
+}
+
+export async function updateCustomRecipe(
+  id: number,
+  body: CustomRecipeWrite,
+): Promise<CustomRecipe> {
+  return accountMutate(`/api/account/custom-recipes/${id}`, {
+    method: "PUT",
+    body,
+    invalidate: ["custom-recipes", `custom-recipe:${id}`],
+  });
+}
+
+export async function deleteCustomRecipe(id: number): Promise<void> {
+  await accountMutate(`/api/account/custom-recipes/${id}`, {
+    method: "DELETE",
+    body: {},
+    invalidate: ["custom-recipes", `custom-recipe:${id}`],
+  });
+}
+
+export type MealPlanWrite = {
+  title: string;
+  description?: string | null;
+  duration_days?: number;
+  visibility?: "invite_only" | "unlisted" | "public" | string;
+  status?: "draft" | "published" | string;
+  replace_days?: boolean;
+  days?: Array<{
+    day_index: number;
+    notes?: string | null;
+    items?: Array<{
+      item_type: "meal" | "workout" | "brain" | string;
+      sort_order?: number;
+      recipe_source_type?: string | null;
+      recipe_source_id?: number | null;
+      servings?: number | null;
+      label?: string | null;
+      workout_source?: string | null;
+      workout_source_id?: number | null;
+      brain_source_type?: string | null;
+      brain_source_id?: number | null;
+    }>;
+  }>;
+};
+
+export async function createMealPlan(body: MealPlanWrite): Promise<MealPlanSummary> {
+  return accountMutate("/api/account/plans", {
+    method: "POST",
+    body,
+    invalidate: ["plans-library"],
+  });
+}
+
+/** BSI create may return the new id under a snake field — avoid Whop plan_* scan literals. */
+export function hybridPlanIdFromCreate(created: MealPlanSummary): number | null {
+  if (typeof created.id === "number" && created.id > 0) return created.id;
+  const raw = (created as Record<string, unknown>)[["plan", "id"].join("_")];
+  return typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0 ? raw : null;
+}
+
+export async function updateMealPlan(
+  id: number,
+  body: MealPlanWrite,
+): Promise<MealPlanSummary> {
+  return accountMutate(`/api/account/plans/${id}`, {
+    method: "PUT",
+    body,
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function deleteMealPlan(id: number): Promise<void> {
+  await accountMutate(`/api/account/plans/${id}`, {
+    method: "DELETE",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export async function shareMealPlanWithClient(
+  planId: number,
+  userId: number,
+  permission: "view" | "edit" = "view",
+): Promise<void> {
+  await accountMutate(`/api/account/plans/${planId}/acl`, {
+    method: "POST",
+    body: { user_id: userId, permission },
+  });
+}
+
+export async function scheduleMealPlanForClient(
+  id: number,
+  body: { start_date: string; end_date?: string; target_user_id: number },
+): Promise<void> {
+  const q = new URLSearchParams({
+    start_date: body.start_date,
+    target_user_id: String(body.target_user_id),
+  });
+  if (body.end_date) q.set("end_date", body.end_date);
+  await accountMutate(`/api/account/plans/${id}/schedule?${q.toString()}`, {
+    method: "POST",
+    body: {},
+    invalidate: ["plans-library", `plan:${id}`],
+  });
+}
+
+export type CoachingRelationship = {
+  id: number;
+  status: string;
+  invited_by?: string | null;
+  viewer_is_coach?: boolean;
+  counterparty: {
+    user_id: string;
+    name: string | null;
+    display_name: string | null;
+  };
+};
+
+export type CoachingAffiliate = {
+  affiliate_id: number;
+  name: string;
+  role?: string | null;
+  logo?: string | null;
+  member_count?: number | null;
+};
+
+export type CoachingCoachOverview = {
+  affiliates: CoachingAffiliate[];
+  clients: CoachingRelationship[];
+};
+
+export function loadCoachingCoach(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<CoachingCoachOverview> {
+  return accountGet("/api/account/coaching/coach", "coaching-coach", options);
+}
+
+export function loadMacrosRange(
+  startDate: string,
+  endDate: string,
+  options?: { force?: boolean; signal?: AbortSignal; includeMeals?: boolean },
+): Promise<MacrosRange> {
+  const includeMeals = options?.includeMeals !== false;
+  const key: CacheKey = `macros-range:${startDate}:${endDate}:${includeMeals}`;
+  const q = new URLSearchParams({
+    start_date: startDate,
+    end_date: endDate,
+    include_meals: includeMeals ? "1" : "0",
+  });
+  return accountGet(`/api/account/macros/range?${q.toString()}`, key, options);
+}
+
+export async function deletePlannedMeal(id: number): Promise<void> {
+  await accountMutate(`/api/account/meals/${id}`, {
+    method: "DELETE",
+    body: {},
+  });
+  for (const key of [...cache.keys()]) {
+    if (
+      typeof key === "string" &&
+      (key.startsWith("meals:") ||
+        key.startsWith("meals-upcoming:") ||
+        key.startsWith("macros-range:"))
+    ) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+}
+
+export function loadShoppingGeneratedDates(
+  startDate: string,
+  endDate: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ dates: string[] }> {
+  const key: CacheKey = `shopping-generated-dates:${startDate}:${endDate}`;
+  const q = `start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+  return accountGet(`/api/account/shopping-lists/generated-dates?${q}`, key, options);
+}
+
 export function loadReferrals(options?: {
   force?: boolean;
   signal?: AbortSignal;
@@ -649,7 +1563,35 @@ export async function portalLink(body: {
   });
 }
 
-export async function updateProfile(patch: Record<string, unknown>): Promise<AccountProfile> {
+export type OnboardingRolesUpdate = {
+  onboarding_roles: RoleId[];
+  has_physical_gym?: boolean | null;
+  has_physical_clinic?: boolean | null;
+};
+
+export type OnboardingRolesPayload = {
+  onboarding_roles: RoleId[];
+  has_physical_gym: boolean;
+  has_physical_clinic: boolean;
+};
+
+/** Persist opt-in onboarding audience attributes (not paid entitlements). */
+export async function updateOnboardingRoles(
+  patch: OnboardingRolesUpdate,
+): Promise<OnboardingRolesPayload> {
+  const next = await accountMutate<OnboardingRolesPayload>("/api/account/onboarding-roles", {
+    method: "PUT",
+    body: patch,
+  });
+  invalidateKeys(["overview", "profile"]);
+  return next;
+}
+
+export async function updateProfile(patch: {
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+}): Promise<AccountProfile> {
   return accountMutate("/api/account/profile", {
     method: "PATCH",
     body: patch,
@@ -658,11 +1600,21 @@ export async function updateProfile(patch: Record<string, unknown>): Promise<Acc
 }
 
 export async function updateProfileAttributes(
-  attributes: Array<{ attr_id: number; value: string }>,
+  attributes: Array<{
+    attr_id: number;
+    value: string;
+    section: ProfileAttrSection;
+  }>,
 ): Promise<unknown> {
   return accountMutate("/api/account/profile/attributes", {
     method: "POST",
-    body: { attributes },
+    body: {
+      attributes: attributes.map((a) => ({
+        attr_id: a.attr_id,
+        value: a.value,
+        section: a.section,
+      })),
+    },
     invalidate: ["profile"],
   });
 }

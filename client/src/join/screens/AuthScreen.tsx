@@ -152,7 +152,12 @@ export function AuthScreen({
             {busy ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
           </GoldButton>
           <AuthDivider label={isSignup ? "Already have an account?" : "Need an account?"} />
-          <GhostButton onClick={() => onView(isSignup ? "email-signin" : "email-signup")}>
+          <GhostButton
+            aria-label={
+              isSignup ? "Already have an account? Sign in" : "Need an account? Sign up"
+            }
+            onClick={() => onView(isSignup ? "email-signin" : "email-signup")}
+          >
             {isSignup ? "Sign in" : "Sign up"}
           </GhostButton>
           <GhostButton onClick={() => onView("choose")}>Back</GhostButton>

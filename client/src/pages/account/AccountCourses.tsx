@@ -300,6 +300,69 @@ export default function AccountCourses() {
       ? claimOptions.courses.find((c) => c.course_id === activeCourseId) ?? null
       : null;
 
+  /** Active / in-progress: not completed, or completed but certificate not yet claimed. */
+  const activeCourses = courses.filter(
+    (c) => !c.completed || !c.certificate_claimed,
+  );
+  const archivedCourses = courses.filter(
+    (c) => c.completed && c.certificate_claimed,
+  );
+
+  function renderCourseCard(course: CourseItem) {
+    const cost = formatUsdFromCents(course.course_price_cents);
+    const featureLabels =
+      course.features?.navigation
+        ?.map((n) => n.label || n.key)
+        .filter((x): x is string => Boolean(x))
+        .slice(0, 4) ?? [];
+    return (
+      <article key={String(course.id)} className="account-course-card account-course-card--rail">
+        <div className="account-course-card__top">
+          <h2 className="account-course-card-title">{course.title ?? "Course"}</h2>
+          {course.certificate_claimed ? (
+            <span className="account-tag account-tag--claimed">Certificate claimed</span>
+          ) : null}
+        </div>
+        <p className="account-muted">
+          Listed value <span className="account-mono">{cost}</span>
+          {" · "}
+          {course.completed ? "Completed" : `${course.progress_percent}% complete`}
+        </p>
+        {course.notes ? (
+          <p className="account-muted account-course-notes">{course.notes}</p>
+        ) : null}
+        {featureLabels.length > 0 ? (
+          <div className="account-course-badges" aria-label="Course features">
+            {featureLabels.map((label) => (
+              <span key={label} className="account-tag">
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {course.certificate_claimed ? (
+          course.certificate_url ? (
+            <p>
+              <a href={course.certificate_url} rel="noreferrer">
+                View certificate
+              </a>
+            </p>
+          ) : (
+            <p className="account-muted">Certificate claimed.</p>
+          )
+        ) : (
+          <button
+            type="button"
+            className="account-btn"
+            onClick={() => void openClaim(course)}
+          >
+            Claim Certificate
+          </button>
+        )}
+      </article>
+    );
+  }
+
   return (
     <DashboardLayout
       title="My Courses & Certificates"
@@ -327,43 +390,33 @@ export default function AccountCourses() {
           {ltv ? <LtvVisualizer ltv={ltv} /> : null}
           {coach ? <FoundationsCoachCard coach={coach} /> : null}
 
-          <div className="account-course-grid">
-            {courses.map((course) => {
-              const cost = formatUsdFromCents(course.course_price_cents);
-              return (
-                <article key={String(course.id)} className="account-course-card">
-                  <h2 className="account-course-card-title">{course.title ?? "Course"}</h2>
-                  <p className="account-muted">
-                    Listed value <span className="account-mono">{cost}</span>
-                    {" · "}
-                    {course.completed
-                      ? "Completed"
-                      : `${course.progress_percent}% complete`}
-                    {course.certificate_claimed ? " · Claimed" : null}
-                  </p>
-                  {course.certificate_claimed ? (
-                    course.certificate_url ? (
-                      <p>
-                        <a href={course.certificate_url} rel="noreferrer">
-                          View certificate
-                        </a>
-                      </p>
-                    ) : (
-                      <p className="account-muted">Certificate claimed.</p>
-                    )
-                  ) : (
-                    <button
-                      type="button"
-                      className="account-btn"
-                      onClick={() => void openClaim(course)}
-                    >
-                      Claim Certificate
-                    </button>
-                  )}
-                </article>
-              );
-            })}
-          </div>
+          <section className="account-card" aria-labelledby="active-courses-heading">
+            <h2 id="active-courses-heading">Active &amp; in progress</h2>
+            {activeCourses.length === 0 ? (
+              <p className="account-muted">No active courses right now.</p>
+            ) : (
+              <div className="account-course-rail" role="list">
+                {activeCourses.map((course) => (
+                  <div key={String(course.id)} role="listitem">
+                    {renderCourseCard(course)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {archivedCourses.length > 0 ? (
+            <section className="account-card" aria-labelledby="claimed-courses-heading">
+              <h2 id="claimed-courses-heading">Certificates claimed</h2>
+              <div className="account-course-rail" role="list">
+                {archivedCourses.map((course) => (
+                  <div key={String(course.id)} role="listitem">
+                    {renderCourseCard(course)}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       )}
     </DashboardLayout>

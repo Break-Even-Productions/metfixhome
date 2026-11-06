@@ -206,9 +206,11 @@ export async function settleForCapture(page: Page): Promise<void> {
       document.fonts.check('16px "Playfair Display"'),
     { timeout: 15_000 },
   );
+  // Cap image settle so a stuck loader cannot burn the whole test timeout
+  // (seen on /library @390 under CI worker contention).
   await page.evaluate(async () => {
     const imgs = Array.from(document.images);
-    await Promise.all(
+    const waitImgs = Promise.all(
       imgs.map((img) =>
         img.complete
           ? Promise.resolve()
@@ -218,6 +220,10 @@ export async function settleForCapture(page: Page): Promise<void> {
             }),
       ),
     );
+    await Promise.race([
+      waitImgs,
+      new Promise<void>((r) => setTimeout(r, 8_000)),
+    ]);
   });
 }
 

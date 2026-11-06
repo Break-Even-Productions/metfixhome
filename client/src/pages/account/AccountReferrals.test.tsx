@@ -17,6 +17,7 @@ const SUBS_FIXTURE = {
       tier: "organization_owner",
       status: "active",
       cancel_at_period_end: false,
+      can_open_portal: true,
     },
   ],
 };
@@ -374,6 +375,90 @@ describe("AccountReferrals PR D", () => {
     const { container } = mount();
     await waitFor(() => expect(screen.getByRole("button", { name: /Generate Referral Link/i })).toBeTruthy());
     expect(container.textContent).not.toMatch(/%/);
+  });
+
+  it("shows Manage on Whop only when can_open_portal; portalLink intent manage", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+      if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+      if (url.includes("/api/account/subscriptions")) return jsonResponse(SUBS_FIXTURE);
+      if (url.includes("/api/account/referrals") && method === "GET") {
+        return jsonResponse({
+          eligible: true,
+          eligibility_type: "organization",
+          join_code: JOIN,
+          course_links: [
+            {
+              ...LINK,
+              image_url: "https://brokenscience.org/wp-content/uploads/course.jpg",
+            },
+          ],
+          course_links_dropped: 0,
+        });
+      }
+      if (url.includes("/portal-link") && method === "POST") {
+        return jsonResponse({ url: "https://whop.com/orders/mber_test/manage" });
+      }
+      if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+      return jsonResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mount();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Manage on Whop/i })).toBeTruthy());
+    expect(document.querySelector(".account-referral-card__image")).toBeTruthy();
+    expect(document.querySelector(".account-copy-box")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Manage on Whop/i }));
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter(
+        (c) => String(c[0]).includes("/portal-link") && (c[1] as RequestInit)?.method === "POST",
+      );
+      expect(posts.length).toBe(1);
+      expect(JSON.parse(String((posts[0]![1] as RequestInit).body))).toMatchObject({
+        intent: "manage",
+        sub_ref: "opaque_1",
+      });
+    });
+  });
+
+  it("hides Manage on Whop when no can_open_portal subscription", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+        if (url.includes("/api/account/subscriptions")) {
+          return jsonResponse({
+            canonical_tier: "organization_owner",
+            items: [
+              {
+                sub_ref: "opaque_1",
+                provider: "stripe",
+                tier: "organization_owner",
+                status: "active",
+                cancel_at_period_end: false,
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/account/referrals")) {
+          return jsonResponse({
+            eligible: true,
+            eligibility_type: "organization",
+            join_code: JOIN,
+            course_links: [LINK],
+            course_links_dropped: 0,
+          });
+        }
+        if (url.includes("/api/account/course-gifts")) return jsonResponse({ items: [] });
+        return jsonResponse({});
+      }),
+    );
+    mount();
+    await waitFor(() => expect(screen.getByRole("heading", { name: /^Join code$/i })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Manage on Whop/i })).toBeNull();
   });
 
   it("Copy Referral Link writes exact share_url; generate/rotate/revoke still work", async () => {

@@ -12,16 +12,20 @@ import {
 } from "@/lib/account";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 import DashboardLayout from "./DashboardLayout";
-import { MetricStrip } from "./MetricStrip";
 import { ConversionBanner } from "./ConversionBanner";
 import { LtvVisualizer } from "./LtvVisualizer";
 import { FoundationsCoachCard } from "./FoundationsCoachCard";
+import { AccountCalendar } from "./AccountCalendar";
 import { AppTools } from "./AppTools";
+import { GreetingHero } from "./GreetingHero";
+import { ProUnlockBanner } from "./ProUnlockBanner";
+import { metfixToolsUnlocked } from "./metfixAppTools";
 
-function greetingFor(now: Date): string {
+/** User-local: morning 3am–noon, afternoon noon–6pm, evening 6pm–3am. */
+export function greetingFor(now: Date): string {
   const hour = now.getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
+  if (hour >= 3 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
   return "Good evening";
 }
 
@@ -81,28 +85,34 @@ export default function AccountOverview() {
     day: "numeric",
     year: "numeric",
   });
+  const unlocked = metfixToolsUnlocked(tier);
 
   return (
     <DashboardLayout
       title="Overview"
       description="Your membership status, certificate LTV budget, and Foundations Coach qualification."
+      hideChromeTitle
     >
-      <p className="account-kicker">{today}</p>
-      <p className="account-greeting">
-        {greetingFor(new Date())}, {firstName(displayName)}.
-      </p>
       {error ? <p className="account-error">{error}</p> : null}
-      <MetricStrip
+      <GreetingHero
+        photo="/Stills/athlete-bodyweight-sit-gym.jpg"
+        date={today}
+        greeting={`${greetingFor(new Date())}, ${firstName(displayName)}.`}
         status={status}
         nextPayment={nextPayment}
         tier={tier}
-        legacySource={legacySource}
+        legacySource={legacySource ?? undefined}
         ltv={ltv}
+        showUpgradeCta
       />
-      <AppTools tier={tier} />
-      <ConversionBanner conversion={subs?.conversion} />
-      {ltv ? <LtvVisualizer ltv={ltv} /> : null}
-      {coach ? <FoundationsCoachCard coach={coach} /> : null}
+      <div className="dash-panel">
+        <AccountCalendar />
+        <AppTools tier={tier} />
+        <ConversionBanner conversion={subs?.conversion} />
+        {ltv ? <LtvVisualizer ltv={ltv} /> : null}
+        {coach ? <FoundationsCoachCard coach={coach} /> : null}
+        {!unlocked ? <ProUnlockBanner /> : null}
+      </div>
     </DashboardLayout>
   );
 }

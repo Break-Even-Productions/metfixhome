@@ -188,6 +188,8 @@ export type CourseLinkDto = {
   whop_affiliate_code: string;
   whop_plan_id: string;
   share_url: string;
+  /** Optional product image when upstream includes a safe https URL. */
+  image_url?: string | null;
 };
 
 export type ReferralsDto = {
@@ -471,6 +473,34 @@ export function buildReferralsDto(
       continue;
     }
 
+    const imageCandidate =
+      strField(r.image_url) ??
+      strField(r.product_image) ??
+      strField(r.thumbnail_url) ??
+      strField(r.featured_image);
+    let image_url: string | null = null;
+    if (imageCandidate) {
+      try {
+        const u = new URL(imageCandidate);
+        if (
+          u.protocol === "https:" &&
+          u.username === "" &&
+          u.password === "" &&
+          u.port === "" &&
+          (u.hostname === "brokenscience.org" ||
+            u.hostname === "www.brokenscience.org" ||
+            u.hostname === "metfix.org" ||
+            u.hostname === "www.metfix.org" ||
+            u.hostname.endsWith(".whop.com") ||
+            u.hostname === "whop.com")
+        ) {
+          image_url = u.toString();
+        }
+      } catch {
+        image_url = null;
+      }
+    }
+
     course_links.push({
       course_id,
       course_slug,
@@ -484,6 +514,7 @@ export function buildReferralsDto(
       whop_affiliate_code,
       whop_plan_id,
       share_url, // byte-for-byte, never rewritten
+      ...(image_url ? { image_url } : {}),
     });
   }
 
