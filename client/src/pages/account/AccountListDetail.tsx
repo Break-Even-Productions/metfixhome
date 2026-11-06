@@ -450,7 +450,11 @@ function ListDetail({ token, id }: Props) {
     setError(null);
     try {
       const page = await loadCustomRecipes({ force: true });
-      setRecipeHits(Array.isArray(page.items) ? page.items : []);
+      setRecipeHits(
+        (page.recipes ?? [])
+          .filter((row) => Number.isInteger(row.id) && row.id > 0 && row.title.trim().length > 0)
+          .map((row) => ({ id: row.id, title: row.title.trim() })),
+      );
     } catch {
       setError("Unable to load your recipes.");
     }

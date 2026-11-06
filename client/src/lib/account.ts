@@ -1908,13 +1908,6 @@ export async function addUserListItem(
   return res;
 }
 
-export function loadCustomRecipes(options?: {
-  force?: boolean;
-  signal?: AbortSignal;
-}): Promise<{ items: CatalogHit[] }> {
-  return accountGet("/api/account/custom-recipes?limit=50&offset=0", "custom-recipes", options);
-}
-
 export function loadOwnedCustomWorkouts(options?: {
   force?: boolean;
   signal?: AbortSignal;

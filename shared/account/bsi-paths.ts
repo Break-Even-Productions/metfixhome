@@ -209,10 +209,6 @@ export function accountListSubscriberPath(id: string, userId: string): string {
   return `${METFIX}/lists/${encodeURIComponent(id)}/subscribers/${encodeURIComponent(userId)}`;
 }
 
-export function accountCustomRecipesPath(): string {
-  return `${METFIX}/custom-recipes`;
-}
-
 export function accountCustomWorkoutsPath(): string {
   return `${METFIX}/custom-workouts`;
 }

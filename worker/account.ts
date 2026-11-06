@@ -60,7 +60,6 @@ import {
   accountListSubscribersPath,
   accountListsPath,
   accountContentReportsPath,
-  accountCustomRecipesPath,
   accountCustomWorkoutsPath,
   accountListsPublicPath,
   accountMacrosDailyPath,
@@ -1802,9 +1801,6 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       params: { id: listOne[1]! },
       limiter: "write",
     };
-  }
-  if (method === "GET" && rest === "custom-recipes") {
-    return { id: "LS17", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "custom-workouts") {
     return { id: "LS18", method: "GET", params: {}, limiter: "read" };
@@ -4188,23 +4184,6 @@ async function dispatch(
         return accountJson(mapUpstreamErrorBody(result.json, result.status), result.status);
       }
       return accountJson({ error: "unavailable" }, result.kind === "timeout" ? 503 : 502);
-    }
-    case "LS17": {
-      const query = parseCatalogQuery(url.searchParams);
-      if (!query.ok) return accountJson({ error: "invalid_request" }, 400);
-      const ran = await callList(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountCustomRecipesPath(),
-        { query: query.value },
-      );
-      if (ran instanceof Response) return ran;
-      const shaped = shapeCatalog(ran.json, "recipes");
-      if (!shaped) return accountJson({ error: "unavailable" }, 502);
-      return accountJson(shaped, 200);
     }
     case "LS18": {
       const query = parseCatalogQuery(url.searchParams);

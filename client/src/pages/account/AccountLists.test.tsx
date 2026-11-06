@@ -254,7 +254,7 @@ describe("AccountLists", () => {
           });
         }
         if (url.includes("/api/account/custom-recipes")) {
-          return jsonResponse({ items: [{ id: 3, title: "My bowl" }] });
+          return jsonResponse({ recipes: [{ id: 3, title: "My bowl" }] });
         }
         if (url.includes("/api/account/custom-workouts")) {
           return jsonResponse({ items: [{ id: 8, title: "Engine" }] });

@@ -3876,7 +3876,7 @@ describe("user lists proxy", () => {
     expect(await removed.json()).toEqual({ success: true });
   });
 
-  it("lists owned recipes and workouts without their bodies", async () => {
+  it("uses Belly custom recipes and strips owned workout templates", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path, method, url }) => {
@@ -3905,8 +3905,10 @@ describe("user lists proxy", () => {
     );
     expect(recipes.status).toBe(200);
     const recipeJson = await recipes.json();
-    expect(recipeJson).toEqual({ items: [{ id: 3, title: "My bowl" }] });
-    expect(JSON.stringify(recipeJson)).not.toContain("secret");
+    expect(recipeJson).toEqual({
+      recipes: [{ id: 3, title: "My bowl", instructions: "secret steps" }],
+      meta: {},
+    });
 
     const workouts = await callAccount(
       h,
