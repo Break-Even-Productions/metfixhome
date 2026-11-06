@@ -720,12 +720,12 @@ a.account-btn.account-btn--accent {
 }
 
 .account-card {
-  border-radius: 1.4rem;
+  border-radius: 1rem;
   background: color-mix(in srgb, var(--color-cream) 50%, var(--color-paper));
 }
 
 .account-tool {
-  border-radius: 1.4rem;
+  border-radius: 1rem;
   background: color-mix(in srgb, var(--color-cream) 50%, transparent);
   min-height: 10rem;
   padding: 1.15rem 1.2rem;
@@ -804,9 +804,9 @@ a.account-btn.account-btn--accent {
   justify-content: flex-end;
   overflow: hidden;
   background: var(--color-ink);
-  min-height: 18rem;
-  padding: 1.5rem 1.25rem 0;
-  border-radius: 1.5rem;
+  min-height: 19rem;
+  padding: 1.75rem 1.35rem 1.35rem;
+  border-radius: 2rem;
 }
 
 .dash-greet__media {
@@ -881,7 +881,8 @@ a.account-btn.account-btn--accent {
   color: rgba(243, 238, 228, 0.75);
 }
 
-.dash-greet__hello {
+/* Beat .account-shell h2 { color: ink } so greeting stays white on photo. */
+.account-shell .dash-greet__hello {
   margin: 0.4rem 0 0;
   max-width: 18ch;
   font-family: var(--font-display);
@@ -889,7 +890,7 @@ a.account-btn.account-btn--accent {
   font-weight: 500;
   line-height: 1.02;
   letter-spacing: -0.03em;
-  color: var(--color-cream);
+  color: #fff;
 }
 
 .dash-greet__cta {
@@ -901,8 +902,8 @@ a.account-btn.account-btn--accent {
   z-index: 3;
   display: grid;
   grid-template-columns: 1fr;
-  margin: 1rem -0.15rem 0;
-  border-radius: 1.35rem 1.35rem 0 0;
+  margin: 1.15rem 0 0;
+  border-radius: 1rem;
   border: 0;
   background: rgba(23, 21, 18, 0.55);
   backdrop-filter: blur(14px);
@@ -955,7 +956,7 @@ a.account-btn.account-btn--accent {
   overflow: hidden;
   min-height: 9.5rem;
   margin-top: 1rem;
-  border-radius: 1.5rem;
+  border-radius: 1.25rem;
   background: var(--color-ink);
 }
 
@@ -1003,8 +1004,8 @@ a.account-btn.account-btn--accent {
   position: relative;
   overflow: hidden;
   background: var(--color-ink);
-  padding: 1.35rem 1.15rem 0;
-  border-radius: 1.5rem;
+  padding: 1.5rem 1.25rem 1.25rem;
+  border-radius: 2rem;
   min-height: 18rem;
 }
 
@@ -1080,7 +1081,7 @@ a.account-btn.account-btn--accent {
   font-size: 0.62rem;
 }
 
-.dash-tool-hero__title {
+.account-shell .dash-tool-hero__title {
   margin: 0.85rem 0 0;
   max-width: 22ch;
   font-family: var(--font-display);
@@ -1088,7 +1089,7 @@ a.account-btn.account-btn--accent {
   font-weight: 500;
   line-height: 1.03;
   letter-spacing: -0.03em;
-  color: var(--color-cream);
+  color: #fff;
 }
 
 .dash-tool-hero__lede {
@@ -1108,8 +1109,8 @@ a.account-btn.account-btn--accent {
   z-index: 2;
   display: grid;
   grid-template-columns: 1fr;
-  margin: 0.5rem -0.1rem 0;
-  border-radius: 1.35rem 1.35rem 0 0;
+  margin: 1rem 0 0;
+  border-radius: 1rem;
   background: rgba(23, 21, 18, 0.55);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -1265,6 +1266,26 @@ a.account-btn.account-btn--accent {
   color: var(--color-muted);
 }
 
+.dash-kicker--spaced {
+  margin-top: 1rem;
+}
+
+.dash-sample-note {
+  margin-bottom: 1rem;
+}
+
+.dash-pct-row--locked {
+  opacity: 0.45;
+}
+
+.dash-pct-unlock {
+  margin-top: 0.85rem;
+}
+
+.dash-bench-card--locked {
+  opacity: 0.72;
+}
+
 .dash-day-tabs,
 .dash-lift-tabs {
   display: flex;
@@ -1283,7 +1304,7 @@ a.account-btn.account-btn--accent {
   align-items: flex-start;
   gap: 0.15rem;
   padding: 0.55rem 0.85rem;
-  border-radius: 999px;
+  border-radius: 0.75rem;
   border: 1px solid var(--color-line);
   background: var(--color-paper);
   color: var(--color-ink);
@@ -1326,7 +1347,7 @@ a.account-btn.account-btn--accent {
 
 .dash-meal-card,
 .dash-bench-card {
-  border-radius: 1.15rem;
+  border-radius: 0.85rem;
   background: var(--color-paper);
   border: 1px solid var(--color-line);
   overflow: hidden;
@@ -1406,9 +1427,142 @@ a.account-btn.account-btn--accent {
 .dash-bench-section {
   margin-top: 1.75rem;
   padding: 1.25rem;
-  border-radius: 1.25rem;
+  border-radius: 1rem;
   background: var(--color-paper);
   border: 1px solid var(--color-line);
+}
+
+.dash-locked-panel {
+  margin-top: 1.25rem;
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
+}
+
+.dash-locked-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.dash-locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-danger-text) 12%, transparent);
+  color: var(--color-danger-text);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-lock-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dash-lock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-cream);
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.dash-lock-pill::before {
+  content: "🔒";
+  font-size: 0.7rem;
+}
+
+.dash-day-tab--locked {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.dash-day-tab__lock {
+  font-size: 0.65rem;
+  opacity: 0.8;
+}
+
+.dash-meal-card--locked .dash-meal-card__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(23, 21, 18, 0.45), transparent 55%);
+  pointer-events: none;
+}
+
+.dash-meal-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.dash-meal-card__actions .account-btn {
+  font-size: 0.78rem;
+  padding: 0.45rem 0.85rem;
+}
+
+.dash-locked-fade {
+  position: relative;
+  margin-top: 0.75rem;
+}
+
+.dash-locked-fade__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.dash-locked-fade__list li {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  font-size: 0.9rem;
+}
+
+.dash-locked-fade__veil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding-bottom: 0.35rem;
+  background: linear-gradient(to top, var(--color-paper) 35%, transparent);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.dash-locked-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 800px) {
+  .dash-locked-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .dash-bench-head {
@@ -1491,9 +1645,13 @@ a.account-btn.account-btn--accent {
 @media (min-width: 768px) {
   .account-card,
   .account-course-card,
-  .account-tool,
   .dash-unlock {
-    border-radius: 1.4rem;
+    border-radius: 1rem;
+  }
+
+  /* Keep tool cards as soft rectangles — not capsule/oval. */
+  .account-tool {
+    border-radius: 0.85rem;
   }
 
   .account-main {
@@ -1502,7 +1660,7 @@ a.account-btn.account-btn--accent {
 
   .dash-greet,
   .dash-tool-hero {
-    border-radius: 0;
+    border-radius: 2rem;
   }
 
   .dash-panel {

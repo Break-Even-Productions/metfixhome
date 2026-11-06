@@ -71,7 +71,7 @@ export function ToolHero({
       <div
         ref={barRef}
         className="dash-tool-hero__stats"
-        data-config='{"cornerRadius":28}'
+        data-config='{"cornerRadius":16}'
         role="group"
         aria-label="Summary"
       >

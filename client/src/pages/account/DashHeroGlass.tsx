@@ -41,7 +41,7 @@ export function useDashHeroGlass(
     void initLiquidGlass({
       root,
       glassElements: [bar, mark],
-      defaults: { brightness: -0.28, blurAmount: 0.28, cornerRadius: 28 },
+      defaults: { brightness: -0.28, blurAmount: 0.28, cornerRadius: 18 },
     })
       .then((next) => {
         if (cancelled) {

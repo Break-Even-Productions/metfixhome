@@ -20,10 +20,11 @@ import { GreetingHero } from "./GreetingHero";
 import { ProUnlockBanner } from "./ProUnlockBanner";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 
-function greetingFor(now: Date): string {
+/** User-local: morning 3am–noon, afternoon noon–6pm, evening 6pm–3am. */
+export function greetingFor(now: Date): string {
   const hour = now.getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
+  if (hour >= 3 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
   return "Good evening";
 }
 

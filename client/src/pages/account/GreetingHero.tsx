@@ -98,7 +98,7 @@ export function GreetingHero({
       <div
         ref={barRef}
         className="dash-greet__stats"
-        data-config='{"cornerRadius":28}'
+        data-config='{"cornerRadius":16}'
         role="group"
         aria-label="Account status"
       >

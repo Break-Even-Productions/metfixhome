@@ -159,17 +159,17 @@ export default function AccountMeals() {
     : [
         {
           label: "Daily metabolic target",
-          value: "Personalized macros",
+          value: "165g P · 112g F · 24g C",
           note: "🔒 Custom macro dial with Pro",
         },
         {
           label: "Weekly structure",
-          value: "21 meals · prep plan",
+          value: "21 meals · 45m prep",
           note: "🔒 Sunday batch timeline with Pro",
         },
         {
           label: "Smart grocery list",
-          value: "Whole-food items",
+          value: "24 whole-food items",
           note: "🔒 1-click grocery export with Pro",
         },
       ];
@@ -210,7 +210,179 @@ export default function AccountMeals() {
       {error ? <p className="account-error">{error}</p> : null}
 
       {!pro ? (
-        <div className="dash-panel">
+        <div className="dash-panel dash-meals">
+          <section className="dash-locked-panel" aria-labelledby="meals-locked-controls">
+            <div className="dash-locked-head">
+              <div>
+                <h2 id="meals-locked-controls" className="dash-section-title">
+                  Tailored to how you train and cook
+                </h2>
+                <p className="account-muted">Personalize macros, household scale, and exclusions.</p>
+              </div>
+              <div className="dash-locked-head">
+                <span className="dash-locked-badge">Locked controls</span>
+                <Link href={basePath("/join")} className="account-btn account-btn--accent">
+                  Unlock customization
+                </Link>
+              </div>
+            </div>
+            <p className="dash-kicker">Metabolic track</p>
+            <div className="dash-lock-pills" aria-hidden="true">
+              <span className="dash-lock-pill">Insulin sensitivity &amp; fat loss</span>
+              <span className="dash-lock-pill">Performance &amp; recovery</span>
+              <span className="dash-lock-pill">Steady energy</span>
+              <span className="dash-lock-pill">Recomp</span>
+            </div>
+            <p className="dash-kicker dash-kicker--spaced">Household scale</p>
+            <div className="dash-lock-pills" aria-hidden="true">
+              <span className="dash-lock-pill">1 person</span>
+              <span className="dash-lock-pill">2 people</span>
+              <span className="dash-lock-pill">4 people</span>
+            </div>
+            <p className="dash-kicker dash-kicker--spaced">Exclusions &amp; swaps</p>
+            <div className="dash-lock-pills" aria-hidden="true">
+              <span className="dash-lock-pill">Dairy-light</span>
+              <span className="dash-lock-pill">No seed oils</span>
+            </div>
+          </section>
+
+          <section className="dash-locked-panel" aria-labelledby="meals-locked-menu">
+            <div className="dash-locked-head">
+              <div>
+                <p className="dash-kicker">Sample preview</p>
+                <h2 id="meals-locked-menu" className="dash-section-title">
+                  This week’s metabolic menu
+                </h2>
+              </div>
+              <Link href={basePath("/join")} className="account-btn account-btn--accent">
+                Unlock full week
+              </Link>
+            </div>
+            <div className="dash-day-tabs" role="tablist" aria-label="Preview days">
+              {weekDates.map((d, i) => (
+                <span
+                  key={d.date}
+                  className={`dash-day-tab${i === 0 ? " dash-day-tab--on" : " dash-day-tab--locked"}`}
+                  aria-hidden={i !== 0}
+                >
+                  <span className="dash-day-tab__dow">{d.label}</span>
+                  <span className="dash-day-tab__count">
+                    {i === 0 ? "SAMPLE" : <span className="dash-day-tab__lock">Locked</span>}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <p className="account-muted dash-sample-note">
+              Monday · Heavy Lower &amp; Conditioning — sample macros only.
+            </p>
+            <div className="dash-meal-grid">
+              {[
+                {
+                  slot: "First meal",
+                  title: "Cilantro-Lime Grilled Steak & Greens",
+                  p: 48,
+                  f: 28,
+                  c: 6,
+                },
+                {
+                  slot: "Post-training",
+                  title: "Greek Yogurt Bowl with Berries",
+                  p: 36,
+                  f: 12,
+                  c: 22,
+                },
+                {
+                  slot: "Dinner",
+                  title: "Chicken-Wrapped Asparagus in Garlic Ghee",
+                  p: 42,
+                  f: 24,
+                  c: 8,
+                },
+              ].map((sample) => {
+                const kcal = Math.round(sample.p * 4 + sample.c * 4 + sample.f * 9);
+                return (
+                  <article key={sample.slot} className="dash-meal-card dash-meal-card--locked">
+                    <div className="dash-meal-card__media">
+                      <div className="dash-meal-card__ph" aria-hidden="true" />
+                      <span className="dash-meal-card__slot">{sample.slot} · Sample</span>
+                    </div>
+                    <div className="dash-meal-card__body">
+                      <h3 className="dash-meal-card__title">{sample.title}</h3>
+                      <dl className="dash-macro-row">
+                        <div>
+                          <dt>P</dt>
+                          <dd>{formatG(sample.p)}</dd>
+                        </div>
+                        <div>
+                          <dt>F</dt>
+                          <dd>{formatG(sample.f)}</dd>
+                        </div>
+                        <div>
+                          <dt>C</dt>
+                          <dd>{formatG(sample.c)}</dd>
+                        </div>
+                        <div>
+                          <dt>kcal</dt>
+                          <dd>{kcal}</dd>
+                        </div>
+                      </dl>
+                      <div className="dash-meal-card__actions">
+                        <Link href={basePath("/join")} className="account-btn account-btn--accent">
+                          Unlock recipe &amp; steps
+                        </Link>
+                        <span className="dash-lock-pill">Swap</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <div className="dash-locked-grid">
+            <section className="dash-locked-panel" aria-labelledby="meals-locked-grocery">
+              <h2 id="meals-locked-grocery" className="dash-section-title">
+                Every ingredient for the week
+              </h2>
+              <p className="account-muted">Grouped by aisle — preview only.</p>
+              <div className="dash-locked-fade">
+                <ul className="dash-locked-fade__list">
+                  <li>2.25 lb grass-fed flank steak</li>
+                  <li>Greek yogurt, full-fat (32 oz)</li>
+                  <li>Asparagus · garlic · ghee</li>
+                  <li>Berries · spinach · eggs</li>
+                  <li>Extra-virgin olive oil</li>
+                </ul>
+                <div className="dash-locked-fade__veil">
+                  <span>+ 20 more whole-food ingredients locked</span>
+                  <Link href={basePath("/join")} className="account-btn account-btn--accent">
+                    Unlock full grocery list
+                  </Link>
+                </div>
+              </div>
+            </section>
+            <section className="dash-locked-panel" aria-labelledby="meals-locked-prep">
+              <h2 id="meals-locked-prep" className="dash-section-title">
+                Cook once on Sunday
+              </h2>
+              <p className="account-muted">Batch prep timeline — locked with Pro.</p>
+              <div className="dash-locked-fade">
+                <ul className="dash-locked-fade__list">
+                  <li>Whisk the two weekly sauces — 00:08</li>
+                  <li>Portion proteins into containers — 00:15</li>
+                  <li>Roast vegetables for midweek — 00:25</li>
+                  <li>Label fridge shelves for grab-and-go</li>
+                </ul>
+                <div className="dash-locked-fade__veil">
+                  <span>Prep steps locked</span>
+                  <Link href={basePath("/join")} className="account-btn account-btn--accent">
+                    Unlock prep mode
+                  </Link>
+                </div>
+              </div>
+            </section>
+          </div>
+
           <ProUnlockBanner />
         </div>
       ) : (

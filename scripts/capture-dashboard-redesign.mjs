@@ -336,55 +336,82 @@ const prOverview = {
   ],
 };
 
+const overviewFree = {
+  ...overview,
+  canonical_tier: "free",
+  badges: { ...overview.badges, subscription: false },
+  onboarding_roles: [],
+};
+const subsFree = { canonical_tier: "free", items: [] };
+const ltvFree = {
+  ...ltv,
+  total_ltv_cents: 0,
+  claimed_courses_value_cents: 0,
+  available_certificate_ltv_cents: 0,
+  claimed_certificates: [],
+  canonical_tier: "free",
+};
+
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 
-await page.route("**/api/**", async (route) => {
-  const url = route.request().url();
-  const json = (body, status = 200) =>
-    route.fulfill({
-      status,
-      contentType: "application/json",
-      body: JSON.stringify(body),
-    });
-  if (url.includes("/api/auth/me")) {
-    return json({ signed_in: true, public_name: "Ethan Rush", moderator: false });
-  }
-  if (url.includes("/api/account/overview")) return json(overview);
-  if (url.includes("/api/account/subscriptions")) return json(subs);
-  if (url.includes("/api/account/ltv") || url.includes("/api/account/spend")) return json(ltv);
-  if (url.includes("/api/account/courses")) return json(courses);
-  if (url.includes("/api/account/referrals") || url.includes("/api/account/course-referrals"))
-    return json(referrals);
-  if (url.includes("/api/account/course-gifts")) return json({ items: [] });
-  if (url.includes("/api/account/profile")) return json(profile);
-  if (url.includes("/api/account/favorites")) return json({ items: [] });
-  if (url.includes("/api/account/notifications")) return json({ preferences: {} });
-  if (url.includes("/api/account/privacy")) return json({ directory_visible: true });
-  if (url.includes("/api/account/meals/upcoming")) {
-    return json({ meals: mealsWeek.meals, meta: { count: 3, total: 3, limit: 20, offset: 0, has_more: false } });
-  }
-  if (url.includes("/api/account/meals")) return json(mealsWeek);
-  if (url.includes("/api/account/macros/daily/")) return json(macrosDaily);
-  if (url.includes("/api/account/pr-overview")) return json(prOverview);
-  return json({ error: "not_found" }, 404);
-});
+async function installMocks(mode) {
+  await page.unroute("**/api/**").catch(() => {});
+  await page.route("**/api/**", async (route) => {
+    const url = route.request().url();
+    const json = (body, status = 200) =>
+      route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      });
+    const free = mode === "free";
+    if (url.includes("/api/auth/me")) {
+      return json({ signed_in: true, public_name: "Ethan Rush", moderator: false });
+    }
+    if (url.includes("/api/account/overview")) return json(free ? overviewFree : overview);
+    if (url.includes("/api/account/subscriptions")) return json(free ? subsFree : subs);
+    if (url.includes("/api/account/ltv") || url.includes("/api/account/spend")) {
+      return json(free ? ltvFree : ltv);
+    }
+    if (url.includes("/api/account/courses")) return json(courses);
+    if (url.includes("/api/account/referrals") || url.includes("/api/account/course-referrals"))
+      return json(referrals);
+    if (url.includes("/api/account/course-gifts")) return json({ items: [] });
+    if (url.includes("/api/account/profile")) return json(profile);
+    if (url.includes("/api/account/favorites")) return json({ items: [] });
+    if (url.includes("/api/account/notifications")) return json({ preferences: {} });
+    if (url.includes("/api/account/privacy")) return json({ directory_visible: true });
+    if (url.includes("/api/account/meals/upcoming")) {
+      return json({
+        meals: mealsWeek.meals,
+        meta: { count: 3, total: 3, limit: 20, offset: 0, has_more: false },
+      });
+    }
+    if (url.includes("/api/account/meals")) return json(mealsWeek);
+    if (url.includes("/api/account/macros/daily/")) return json(macrosDaily);
+    if (url.includes("/api/account/pr-overview")) return json(prOverview);
+    return json({ error: "not_found" }, 404);
+  });
+}
 
-for (const [path, name] of [
-  ["/account", "new_dashboard_overview"],
-  ["/account/benchmarks", "new_dashboard_benchmarks"],
-  ["/account/meals", "new_dashboard_meals"],
-  ["/account/profile", "new_dashboard_profile"],
-  ["/account/courses", "new_dashboard_courses"],
-  ["/account/referrals", "new_dashboard_referrals"],
+for (const [path, name, mode] of [
+  // Free = Mia locked-tool mockup fidelity for hero + meals/benchmarks
+  ["/account", "new_dashboard_overview", "free"],
+  ["/account/benchmarks", "new_dashboard_benchmarks", "free"],
+  ["/account/meals", "new_dashboard_meals", "free"],
+  ["/account/profile", "new_dashboard_profile", "pro"],
+  ["/account/courses", "new_dashboard_courses", "pro"],
+  ["/account/referrals", "new_dashboard_referrals", "pro"],
 ]) {
+  await installMocks(mode);
   await page.goto(`http://127.0.0.1:4173${path}`, { waitUntil: "networkidle", timeout: 60000 });
   await page.waitForSelector(".account-shell, .dash-greet, .dash-tool-hero", { timeout: 15000 });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(900);
   const dest = `${out}/${name}.png`;
   await page.screenshot({ path: dest, fullPage: true });
   await copyFile(dest, `${artifacts}/${name}.png`);
-  console.log("saved", name, page.url());
+  console.log("saved", name, mode, page.url());
 }
 
 await browser.close();
