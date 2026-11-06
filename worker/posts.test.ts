@@ -1750,6 +1750,15 @@ describe("PW posts API", () => {
     assertNoSecretsOrLock(await malformed.text());
 
     clearCache();
+    mockDetailOk(lockedItem(8));
+    const lockedHtml = await call("/posts/8", { headers: { Accept: "text/html" } });
+    expect(lockedHtml.status).toBe(404);
+    const lockedHtmlText = await lockedHtml.text();
+    expect(lockedHtmlText).not.toContain(LOCK_BODY);
+    expect(lockedHtmlText).not.toContain(LOCK_EXC);
+    expect(lockedHtmlText).not.toContain(LOCK_VID);
+
+    clearCache();
     mockDetailOk(
       unlockedItem(7, {
         title: "Exclusive essay",

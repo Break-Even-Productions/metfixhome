@@ -57,8 +57,8 @@ export function postListAccessFlags(raw: unknown): {
 export function isUnlockedPost(raw: unknown): boolean {
   if (!hasMappablePostAccess(raw)) return false;
   const item = raw as Record<string, unknown>;
-
-  if (item.access_levels.length !== 0) return false;
+  const levels = item.access_levels;
+  if (!Array.isArray(levels) || levels.length !== 0) return false;
 
   const cad = item.content_access_display as Record<string, unknown>;
   if (cad.access !== "full") return false;
