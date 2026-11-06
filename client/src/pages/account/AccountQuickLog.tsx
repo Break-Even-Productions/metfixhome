@@ -318,18 +318,16 @@ export default function AccountQuickLog() {
     const ac = new AbortController();
     (async () => {
       try {
-        const [page, prs] = await Promise.all([
-          loadMyCustomWorkouts({ signal: ac.signal, limit: 14 }),
-          loadPrOverview({ signal: ac.signal, catalogCap: 500 }),
-        ]);
-        if (ac.signal.aborted) return;
-        setMine(page.workouts ?? []);
-        setBenchmarks(prs.workouts ?? []);
+        const page = await loadMyCustomWorkouts({ signal: ac.signal, limit: 14 });
+        if (!ac.signal.aborted) setMine(page.workouts ?? []);
       } catch {
-        if (!ac.signal.aborted) {
-          setMine([]);
-          setBenchmarks([]);
-        }
+        if (!ac.signal.aborted) setMine([]);
+      }
+      try {
+        const prs = await loadPrOverview({ signal: ac.signal, catalogCap: 500 });
+        if (!ac.signal.aborted) setBenchmarks(prs.workouts ?? []);
+      } catch {
+        if (!ac.signal.aborted) setBenchmarks([]);
       }
     })();
     return () => ac.abort();
@@ -871,6 +869,7 @@ export default function AccountQuickLog() {
                                     type="number"
                                     min={0}
                                     step="any"
+                                    aria-label={dimensionLabel(dim)}
                                     placeholder={ph}
                                     value={row.weight}
                                     onChange={(ev) =>
@@ -978,6 +977,7 @@ export default function AccountQuickLog() {
                                 type="number"
                                 min={dim === "inches" || dim === "calories" || dim === "reps" || dim === "distance" || dim === "time" ? 0 : undefined}
                                 step="any"
+                                aria-label={dimensionLabel(dim)}
                                 placeholder={ph}
                                 value={row[field]}
                                 onChange={(ev) =>

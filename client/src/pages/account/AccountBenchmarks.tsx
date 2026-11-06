@@ -21,13 +21,13 @@ import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
 import { ToolHero } from "./ToolHero";
 import { BodyNav, BodyPanel } from "./BodyWatermark";
+import { formatStamp } from "./bodyDates";
 import { WorkoutPrAttempts } from "./WorkoutPrAttempts";
 import { HealthLogModal } from "./HealthLogModal";
 import {
   buildChartSeries,
   formatScoreNumber,
   formatValue,
-  parseEntryDate,
   PrChartSkeleton,
   PrProgressChart,
 } from "./PrProgressChart";
@@ -1257,15 +1257,7 @@ export default function AccountBenchmarks() {
                                     b.measurement_date.localeCompare(a.measurement_date),
                                   )
                                   .map((entry, i) => {
-                                    const d = parseEntryDate(entry.measurement_date);
-                                    const label = d
-                                      ? d.toLocaleString(undefined, {
-                                          month: "short",
-                                          day: "numeric",
-                                          hour: "numeric",
-                                          minute: "2-digit",
-                                        })
-                                      : entry.measurement_date.slice(0, 16);
+                                    const label = formatStamp(entry.measurement_date);
                                     return (
                                       <li
                                         key={

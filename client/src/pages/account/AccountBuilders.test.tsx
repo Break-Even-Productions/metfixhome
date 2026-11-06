@@ -169,7 +169,7 @@ describe("workout and plan builders", () => {
     await waitFor(() => expect(screen.getByLabelText(/Time/)).toBeTruthy());
     fireEvent.change(screen.getByLabelText(/Time/), { target: { value: "3:00" } });
     fireEvent.change(screen.getByLabelText("Reps"), { target: { value: "21" } });
-    fireEvent.change(screen.getByLabelText("Weight (lb)"), { target: { value: "95" } });
+    fireEvent.change(screen.getByLabelText("Weight"), { target: { value: "95" } });
     fireEvent.click(screen.getByRole("button", { name: "Log workout" }));
 
     await waitFor(() => expect(screen.getByText("Workout logged.")).toBeTruthy());

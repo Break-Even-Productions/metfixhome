@@ -893,6 +893,7 @@ type CacheKey =
   | `workout:${number}`
   | `custom-workout:${number}`
   | "custom-workouts"
+  | `custom-workouts:${number}`
   | `movements:${string}`
   | "plans"
   | `plan:${number}`
@@ -1481,7 +1482,7 @@ export async function saveCustomWorkout(
     id ? `/api/account/custom-workouts/${id}` : "/api/account/custom-workouts",
     { method: id ? "PUT" : "POST", body },
   );
-  cache.delete("custom-workouts");
+  dropCachePrefix("custom-workouts");
   if (id) {
     cache.delete(`custom-workout:${id}`);
     inflight.delete(`custom-workout:${id}`);
@@ -1491,8 +1492,9 @@ export async function saveCustomWorkout(
 
 export async function deleteCustomWorkout(id: number): Promise<void> {
   await accountMutate(`/api/account/custom-workouts/${id}`, { method: "DELETE" });
-  cache.delete("custom-workouts");
+  dropCachePrefix("custom-workouts");
   cache.delete(`custom-workout:${id}`);
+  inflight.delete(`custom-workout:${id}`);
 }
 
 export function searchMovements(
