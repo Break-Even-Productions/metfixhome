@@ -158,3 +158,42 @@ export function accountMacrosDailyPath(date: string): string {
 export function accountPrOverviewPath(): string {
   return `${METFIX}/spark/pr-overview`;
 }
+
+/** Combined belly/body/brain/event day counts for the overview calendar. */
+export function accountCalendarSurfacePath(): string {
+  return `${METFIX}/calendar/surface`;
+}
+
+/** Plan or replace a meal on a calendar day (YYYY-MM-DD). */
+export function accountPlanMealPath(date: string): string {
+  return `${METFIX}/calendar/days/${encodeURIComponent(date)}/meals`;
+}
+
+export function accountShoppingListsPath(): string {
+  return `${METFIX}/shopping-lists`;
+}
+
+export function accountShoppingListPath(id: string): string {
+  return `${METFIX}/shopping-lists/${encodeURIComponent(id)}`;
+}
+
+export function accountShoppingListGeneratePath(id: string): string {
+  return `${METFIX}/shopping-lists/${encodeURIComponent(id)}/generate`;
+}
+
+export function accountShoppingListEmailPath(id: string): string {
+  return `${METFIX}/shopping-lists/${encodeURIComponent(id)}/email`;
+}
+
+/** Spark measurement history + log PR write path (same as mobile). */
+export function accountSparkEntriesPath(): string {
+  return `${METFIX}/spark/entries`;
+}
+
+export function accountMessagesConversationsPath(): string {
+  return `${BSI}/messages/conversations`;
+}
+
+export function accountInAppNotificationsPath(): string {
+  return `${BSI}/in-app-notifications`;
+}

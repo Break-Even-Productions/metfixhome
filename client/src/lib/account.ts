@@ -971,6 +971,10 @@ export function loadInbox(options?: {
 export async function createSparkEntry(
   body: CreateSparkEntryInput,
 ): Promise<CreateSparkEntryResult> {
+  // BSI requires Y-m-d H:i:s; date inputs send Y-m-d.
+  const measurement_date = /^\d{4}-\d{2}-\d{2}$/.test(body.measurement_date.trim())
+    ? `${body.measurement_date.trim()} 12:00:00`
+    : body.measurement_date.trim();
   const result = await accountMutate<CreateSparkEntryResult>(
     "/api/account/spark/entries",
     {
@@ -978,7 +982,7 @@ export async function createSparkEntry(
       body: {
         measurement_id: body.measurement_id,
         value: body.value,
-        measurement_date: body.measurement_date,
+        measurement_date,
         ...(body.unit_id != null ? { unit_id: body.unit_id } : {}),
         force_log: true,
       },

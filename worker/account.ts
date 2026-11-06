@@ -39,6 +39,7 @@ import { isWhopCheckoutUrl, sanitizeExternalBillingUrl } from "../shared/account
 import {
   accountCalendarMealsPath,
   accountCalendarMealsUpcomingPath,
+  accountCalendarSurfacePath,
   accountCancelDuplicatePath,
   accountClaimCertificatePath,
   accountConvertToWhopPath,
@@ -48,16 +49,19 @@ import {
   accountEmailPath,
   accountFavoriteItemPath,
   accountFavoritesPath,
+  accountInAppNotificationsPath,
   accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
   accountMePath,
   accountMeProfilePath,
   accountMemberSummaryPath,
+  accountMessagesConversationsPath,
   accountMyCoursesPath,
   accountNewsletterPath,
   accountNotificationPreferencesPath,
   accountPasswordResetPath,
   accountPaymentsPath,
+  accountPlanMealPath,
   accountPortalLinkPath,
   accountPrOverviewPath,
   accountPrivacySettingsPath,
@@ -67,6 +71,11 @@ import {
   accountReferralCodePath,
   accountReferralEarningsPath,
   accountReferralsPath,
+  accountShoppingListEmailPath,
+  accountShoppingListGeneratePath,
+  accountShoppingListPath,
+  accountShoppingListsPath,
+  accountSparkEntriesPath,
   accountSpendPath,
   accountSubscriptionsPath,
   certificateClaimOptionsPath,
@@ -901,8 +910,8 @@ function shapeCourses(raw: unknown): Record<string, unknown> | null {
   if (!obj) return null;
   const itemsIn = Array.isArray(obj.items) ? obj.items : Array.isArray(obj) ? (raw as unknown[]) : [];
   const items: Record<string, unknown>[] = [];
-  for (const row of itemsIn) {
-    const r = asRecord(row);
+  for (const item of itemsIn) {
+    const r = asRecord(item);
     if (!r) continue;
     const row: Record<string, unknown> = {
       id: r.id ?? null,
@@ -1068,6 +1077,152 @@ function shapeMacrosDaily(raw: unknown): Record<string, unknown> {
     goal_fat: num(obj.goal_fat ?? asRecord(obj.goals)?.fat),
     goal_carbs: num(obj.goal_carbs ?? asRecord(obj.goals)?.carbs),
   };
+}
+
+function boolFlag(v: string | null, fallback: boolean): boolean {
+  if (v == null || v === "") return fallback;
+  return v === "1" || v.toLowerCase() === "true";
+}
+
+function shapeCountMap(raw: unknown): Record<string, number> {
+  const obj = asRecord(raw);
+  if (!obj) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!YMD_RE.test(k)) continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n) && n > 0) out[k] = n;
+  }
+  return out;
+}
+
+function shapeCalendarSurface(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const meta = asRecord(obj.meta) ?? {};
+  return {
+    meal_counts: shapeCountMap(obj.meal_counts),
+    logged_meal_counts: shapeCountMap(obj.logged_meal_counts),
+    unlogged_meal_counts: shapeCountMap(obj.unlogged_meal_counts),
+    workout_counts: shapeCountMap(obj.workout_counts),
+    planned_workout_counts: shapeCountMap(obj.planned_workout_counts),
+    logged_planned_workout_counts: shapeCountMap(obj.logged_planned_workout_counts),
+    unlogged_planned_workout_counts: shapeCountMap(obj.unlogged_planned_workout_counts),
+    brain_counts: shapeCountMap(obj.brain_counts),
+    logged_brain_counts: shapeCountMap(obj.logged_brain_counts),
+    unlogged_brain_counts: shapeCountMap(obj.unlogged_brain_counts),
+    event_counts: shapeCountMap(obj.event_counts),
+    meta: {
+      start_date: typeof meta.start_date === "string" ? meta.start_date : null,
+      end_date: typeof meta.end_date === "string" ? meta.end_date : null,
+      total_dates: typeof meta.total_dates === "number" ? meta.total_dates : null,
+    },
+  };
+}
+
+function shapeShoppingList(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id =
+    typeof obj.id === "number" && Number.isSafeInteger(obj.id)
+      ? obj.id
+      : typeof obj.id === "string" && /^\d+$/.test(obj.id)
+        ? Number(obj.id)
+        : null;
+  if (id == null) return null;
+  const itemsByCat = asRecord(obj.items_by_category) ?? {};
+  const shapedCat: Record<string, unknown[]> = {};
+  for (const [cat, rows] of Object.entries(itemsByCat)) {
+    if (!Array.isArray(rows)) continue;
+    shapedCat[cat] = rows
+      .map((row) => {
+        const r = asRecord(row);
+        if (!r) return null;
+        const name = typeof r.item_name === "string" ? r.item_name : null;
+        if (!name) return null;
+        return {
+          id: typeof r.id === "number" ? r.id : 0,
+          item_name: name,
+          quantity: typeof r.quantity === "string" ? r.quantity : "",
+          sort_order: typeof r.sort_order === "number" ? r.sort_order : 0,
+          category: typeof r.category === "string" ? r.category : cat,
+        };
+      })
+      .filter(Boolean);
+  }
+  return {
+    id,
+    title: typeof obj.title === "string" ? obj.title : null,
+    status: typeof obj.status === "string" ? obj.status : null,
+    dates: Array.isArray(obj.dates)
+      ? obj.dates.filter((d): d is string => typeof d === "string" && YMD_RE.test(d))
+      : [],
+    meals: Array.isArray(obj.meals) ? obj.meals : [],
+    items: Array.isArray(obj.items) ? obj.items : [],
+    items_by_category: shapedCat,
+    generated_at: typeof obj.generated_at === "string" ? obj.generated_at : null,
+    created_at: typeof obj.created_at === "string" ? obj.created_at : null,
+  };
+}
+
+function shapeSparkEntries(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw);
+  const entriesIn = Array.isArray(obj?.entries)
+    ? obj!.entries
+    : Array.isArray(raw)
+      ? (raw as unknown[])
+      : [];
+  const entries: Record<string, unknown>[] = [];
+  for (const row of entriesIn) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const value =
+      typeof r.value === "number"
+        ? r.value
+        : typeof r.value === "string"
+          ? Number(r.value)
+          : NaN;
+    const measurement_date =
+      typeof r.measurement_date === "string" ? r.measurement_date : null;
+    if (!measurement_date || !Number.isFinite(value)) continue;
+    entries.push({
+      id: r.id ?? null,
+      measurement_date,
+      value,
+      bsi_measurement_id:
+        typeof r.bsi_measurement_id === "number"
+          ? r.bsi_measurement_id
+          : typeof r.measurement_id === "number"
+            ? r.measurement_id
+            : undefined,
+      unit_id: typeof r.unit_id === "number" ? r.unit_id : undefined,
+      unit_abbreviation:
+        typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
+      measurement_name:
+        typeof r.measurement_name === "string" ? r.measurement_name : undefined,
+      type: typeof r.type === "string" ? r.type : undefined,
+      status: typeof r.status === "string" ? r.status : undefined,
+    });
+  }
+  const meta = asRecord(obj?.meta) ?? {};
+  return {
+    entries,
+    meta: {
+      count: typeof meta.count === "number" ? meta.count : entries.length,
+      limit: typeof meta.limit === "number" ? meta.limit : 100,
+      offset: typeof meta.offset === "number" ? meta.offset : 0,
+    },
+  };
+}
+
+/** BSI spark create requires Y-m-d H:i:s; dashboard date inputs send Y-m-d. */
+function normalizeSparkMeasurementDate(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (YMD_RE.test(s)) return `${s} 12:00:00`;
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
+    return s.replace("T", " ");
+  }
+  return null;
 }
 
 function shapePrOverview(raw: unknown): Record<string, unknown> {
@@ -1307,6 +1462,60 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "GET" && rest === "pr-overview") {
     return { id: "MF4", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "calendar/surface") {
+    return { id: "MF5", method: "GET", params: {}, limiter: "read" };
+  }
+  const planMealDay = rest.match(/^meals\/days\/(\d{4}-\d{2}-\d{2})$/);
+  if (method === "POST" && planMealDay) {
+    return {
+      id: "MF6",
+      method: "POST",
+      params: { date: planMealDay[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "GET" && rest === "shopping-lists") {
+    return { id: "MF7", method: "GET", params: {}, limiter: "read" };
+  }
+  const shoppingListOne = rest.match(/^shopping-lists\/(\d+)$/);
+  if (method === "GET" && shoppingListOne) {
+    return {
+      id: "MF8",
+      method: "GET",
+      params: { id: shoppingListOne[1]! },
+      limiter: "read",
+    };
+  }
+  if (method === "POST" && rest === "shopping-lists") {
+    return { id: "MF9", method: "POST", params: {}, limiter: "write" };
+  }
+  const shoppingGenerate = rest.match(/^shopping-lists\/(\d+)\/generate$/);
+  if (method === "POST" && shoppingGenerate) {
+    return {
+      id: "MF10",
+      method: "POST",
+      params: { id: shoppingGenerate[1]! },
+      limiter: "write",
+    };
+  }
+  const shoppingEmail = rest.match(/^shopping-lists\/(\d+)\/email$/);
+  if (method === "POST" && shoppingEmail) {
+    return {
+      id: "MF11",
+      method: "POST",
+      params: { id: shoppingEmail[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "GET" && rest === "spark/entries") {
+    return { id: "MF12", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "POST" && rest === "spark/entries") {
+    return { id: "MF13", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "inbox") {
+    return { id: "MF14", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
@@ -2300,6 +2509,368 @@ async function dispatch(
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
       return accountJson(shapePrOverview(mapped.json), 200);
+    }
+    case "MF5": {
+      const start = url.searchParams.get("start_date") ?? "";
+      const end = url.searchParams.get("end_date") ?? "";
+      if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const parts = [
+        `start_date=${encodeURIComponent(start)}`,
+        `end_date=${encodeURIComponent(end)}`,
+        `include_meals=${boolFlag(url.searchParams.get("include_meals"), true) ? "1" : "0"}`,
+        `include_workouts=${boolFlag(url.searchParams.get("include_workouts"), true) ? "1" : "0"}`,
+        `include_brain=${boolFlag(url.searchParams.get("include_brain"), true) ? "1" : "0"}`,
+        `include_events=${boolFlag(url.searchParams.get("include_events"), true) ? "1" : "0"}`,
+      ];
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarSurfacePath(),
+        { query: parts.join("&") },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeCalendarSurface(mapped.json), 200);
+    }
+    case "MF6": {
+      const date = match.params.date!;
+      if (!YMD_RE.test(date)) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const recipe_source_type =
+        body.recipe_source_type === "custom_recipe" ? "custom_recipe" : "daily_mod";
+      const recipe_source_id =
+        typeof body.recipe_source_id === "number" &&
+        Number.isSafeInteger(body.recipe_source_id) &&
+        body.recipe_source_id > 0
+          ? body.recipe_source_id
+          : null;
+      const slot_index =
+        typeof body.slot_index === "number" &&
+        Number.isSafeInteger(body.slot_index) &&
+        body.slot_index >= 1 &&
+        body.slot_index <= 6
+          ? body.slot_index
+          : undefined;
+      const label = typeof body.label === "string" ? body.label.trim().slice(0, 120) : "";
+      if (recipe_source_id == null && !label) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const upstream: Record<string, unknown> = {
+        recipe_source_type,
+        ...(recipe_source_id != null ? { recipe_source_id } : {}),
+        ...(slot_index != null ? { slot_index } : {}),
+        ...(label ? { label } : {}),
+      };
+      if (typeof body.notes === "string" && body.notes.trim()) {
+        upstream.notes = body.notes.trim().slice(0, 500);
+      }
+      // BSI requires recipe_source_id; free-text-only plans aren't supported upstream.
+      if (recipe_source_id == null) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanMealPath(date),
+        { body: JSON.stringify(upstream), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const shaped =
+        shapePlannedMeal(mapped.json) ??
+        shapePlannedMeal(asRecord(mapped.json)?.planned_meal);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, mapped.status >= 200 && mapped.status < 300 ? mapped.status : 200);
+    }
+    case "MF7": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountShoppingListsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listsIn = Array.isArray(obj.lists) ? obj.lists : [];
+      const lists = listsIn
+        .map((row) => shapeShoppingList(row))
+        .filter((x): x is Record<string, unknown> => x != null);
+      return accountJson({ lists, meta: asRecord(obj.meta) ?? {} }, 200);
+    }
+    case "MF8": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountShoppingListPath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const shaped = shapeShoppingList(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF9": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const title =
+        typeof body.title === "string" ? body.title.trim().slice(0, 120) : undefined;
+      const dates = Array.isArray(body.dates)
+        ? body.dates.filter((d): d is string => typeof d === "string" && YMD_RE.test(d))
+        : [];
+      const meals = Array.isArray(body.meals)
+        ? body.meals
+            .map((row) => {
+              const r = asRecord(row);
+              if (!r) return null;
+              const planned_meal_id =
+                typeof r.planned_meal_id === "number" && Number.isSafeInteger(r.planned_meal_id)
+                  ? r.planned_meal_id
+                  : null;
+              if (planned_meal_id == null) return null;
+              const servings =
+                typeof r.servings === "number" && Number.isFinite(r.servings) && r.servings > 0
+                  ? r.servings
+                  : 1;
+              return { planned_meal_id, servings };
+            })
+            .filter(Boolean)
+        : [];
+      const upstream: Record<string, unknown> = {
+        ...(title ? { title } : {}),
+        dates,
+        meals,
+      };
+      if (typeof body.other_considerations === "string" && body.other_considerations.trim()) {
+        upstream.other_considerations = body.other_considerations.trim().slice(0, 1000);
+      }
+      if (typeof body.notes === "string" && body.notes.trim()) {
+        upstream.notes = body.notes.trim().slice(0, 1000);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountShoppingListsPath(),
+        { body: JSON.stringify(upstream), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const shaped = shapeShoppingList(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, mapped.status === 201 ? 201 : 200);
+    }
+    case "MF10": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountShoppingListGeneratePath(id),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listRaw = obj.list ?? mapped.json;
+      const shaped = shapeShoppingList(listRaw);
+      if (!shaped) {
+        // Generate often returns a partial list; keep id + items_by_category.
+        const partial = asRecord(listRaw) ?? {};
+        return accountJson(
+          {
+            success: obj.success !== false,
+            list: {
+              id: Number(id),
+              status: typeof partial.status === "string" ? partial.status : "generated",
+              items_by_category: asRecord(partial.items_by_category) ?? {},
+            },
+          },
+          200,
+        );
+      }
+      return accountJson({ success: obj.success !== false, list: shaped }, 200);
+    }
+    case "MF11": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountShoppingListEmailPath(id),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      return accountJson(
+        {
+          success: obj.success !== false,
+          emailed_to: typeof obj.emailed_to === "string" ? obj.emailed_to : null,
+          message: typeof obj.message === "string" ? obj.message : null,
+        },
+        200,
+      );
+    }
+    case "MF12": {
+      const parts: string[] = [];
+      const mid = url.searchParams.get("measurement_id");
+      if (mid && /^[1-9][0-9]*$/.test(mid)) {
+        parts.push(`measurement_id=${encodeURIComponent(mid)}`);
+      }
+      const start = url.searchParams.get("start_date");
+      const end = url.searchParams.get("end_date");
+      if (start && YMD_RE.test(start)) parts.push(`start_date=${encodeURIComponent(start)}`);
+      if (end && YMD_RE.test(end)) parts.push(`end_date=${encodeURIComponent(end)}`);
+      const limitRaw = url.searchParams.get("limit");
+      if (limitRaw && /^[1-9][0-9]*$/.test(limitRaw)) {
+        parts.push(`limit=${Math.min(Number(limitRaw), 500)}`);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkEntriesPath(),
+        { query: parts.length ? parts.join("&") : undefined },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkEntries(mapped.json), 200);
+    }
+    case "MF13": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const measurement_id =
+        typeof body.measurement_id === "number" &&
+        Number.isSafeInteger(body.measurement_id) &&
+        body.measurement_id > 0
+          ? body.measurement_id
+          : null;
+      const value =
+        typeof body.value === "number" && Number.isFinite(body.value)
+          ? body.value
+          : typeof body.value === "string"
+            ? Number(body.value)
+            : NaN;
+      const measurement_date = normalizeSparkMeasurementDate(body.measurement_date);
+      if (measurement_id == null || !Number.isFinite(value) || !measurement_date) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const upstream: Record<string, unknown> = {
+        measurement_id,
+        value,
+        measurement_date,
+        force_log: body.force_log !== false,
+      };
+      if (
+        typeof body.unit_id === "number" &&
+        Number.isSafeInteger(body.unit_id) &&
+        body.unit_id > 0
+      ) {
+        upstream.unit_id = body.unit_id;
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountSparkEntriesPath(),
+        { body: JSON.stringify(upstream), contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      // Spark may return skipped as 200 with flags — pass shaped fields through.
+      if (ran.result.kind === "ok") {
+        const obj = asRecord(ran.result.json) ?? {};
+        return accountJson(
+          {
+            entry: asRecord(obj.entry) ?? undefined,
+            message: typeof obj.message === "string" ? obj.message : undefined,
+            skipped: obj.skipped === true,
+            auto_log_skipped: obj.auto_log_skipped === true,
+          },
+          ran.result.status,
+        );
+      }
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+    }
+    case "MF14": {
+      const [convRan, notifRan] = await Promise.all([
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountMessagesConversationsPath()),
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath()),
+      ]);
+      if (convRan instanceof Response) return mapUnauthenticated(convRan);
+      if (notifRan instanceof Response) return mapUnauthenticated(notifRan);
+      const conversations: unknown[] = [];
+      const notifications: unknown[] = [];
+      if (convRan.result.kind === "ok") {
+        const cobj = asRecord(convRan.result.json) ?? {};
+        const list = Array.isArray(cobj.conversations)
+          ? cobj.conversations
+          : Array.isArray(cobj.items)
+            ? cobj.items
+            : Array.isArray(convRan.result.json)
+              ? (convRan.result.json as unknown[])
+              : [];
+        conversations.push(...list);
+      } else if (convRan.result.kind !== "http" || convRan.result.status !== 404) {
+        // Soft-fail one side so a missing messages table doesn't blank notifications.
+      }
+      if (notifRan.result.kind === "ok") {
+        const nobj = asRecord(notifRan.result.json) ?? {};
+        const list = Array.isArray(nobj.notifications)
+          ? nobj.notifications
+          : Array.isArray(nobj.items)
+            ? nobj.items
+            : [];
+        notifications.push(...list);
+      }
+      // If both upstreams failed hard, surface unavailable.
+      if (
+        convRan.result.kind !== "ok" &&
+        notifRan.result.kind !== "ok" &&
+        !(convRan.result.kind === "http" && convRan.result.status === 404) &&
+        !(notifRan.result.kind === "http" && notifRan.result.status === 404)
+      ) {
+        return accountJson({ error: "unavailable" }, 502);
+      }
+      return accountJson({ conversations, notifications, items: notifications }, 200);
     }
     case "DP21": {
       const type = url.searchParams.get("type") ?? "all";

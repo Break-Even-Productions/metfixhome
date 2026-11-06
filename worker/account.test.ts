@@ -1015,7 +1015,7 @@ describe("worker/account routes", () => {
   it("MF meals + macros + pr-overview proxy live BSI metfix/v1 routes", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
-      async ({ path, url }) => {
+      async ({ path, url, method, bodyText }) => {
         if (path.includes("/calendar/meals/upcoming")) {
           return Response.json({
             meals: [
@@ -1034,6 +1034,31 @@ describe("worker/account routes", () => {
               },
             ],
             meta: { count: 1, total: 1, limit: 20, offset: 0, has_more: false },
+          });
+        }
+        if (path.includes("/calendar/surface")) {
+          expect(url).toContain("start_date=2026-11-01");
+          return Response.json({
+            meal_counts: { "2026-11-03": 2 },
+            workout_counts: { "2026-11-04": 1 },
+            brain_counts: {},
+            event_counts: {},
+            meta: { start_date: "2026-11-01", end_date: "2026-11-30", total_dates: 30 },
+          });
+        }
+        if (path.includes("/calendar/days/2026-11-03/meals") && method === "POST") {
+          const parsed = JSON.parse(bodyText || "{}") as {
+            recipe_source_id: number;
+            slot_index: number;
+          };
+          expect(parsed.recipe_source_id).toBe(2);
+          return Response.json({
+            id: 88,
+            date: "2026-11-03",
+            slot_index: parsed.slot_index ?? 1,
+            recipe_source_type: "daily_mod",
+            recipe_source_id: 2,
+            label: "Steak",
           });
         }
         if (path.includes("/calendar/meals")) {
@@ -1063,6 +1088,58 @@ describe("worker/account routes", () => {
             goals: { protein: 165, fat: 115, carbs: 24 },
           });
         }
+        if (path.includes("/shopping-lists/9/email") && method === "POST") {
+          return Response.json({ success: true, emailed_to: "a@example.com" });
+        }
+        if (path.includes("/shopping-lists/9/generate") && method === "POST") {
+          return Response.json({
+            success: true,
+            list: {
+              id: 9,
+              status: "generated",
+              items_by_category: {
+                Produce: [{ id: 1, item_name: "Spinach", quantity: "1 bag", sort_order: 0 }],
+              },
+            },
+          });
+        }
+        if (path.endsWith("/shopping-lists") && method === "POST") {
+          return Response.json(
+            { id: 9, title: "Week", status: "created", dates: ["2026-11-03"], meals: [], items: [] },
+            { status: 201 },
+          );
+        }
+        if (path.includes("/spark/entries") && method === "POST") {
+          const parsed = JSON.parse(bodyText || "{}") as {
+            measurement_date: string;
+            force_log: boolean;
+          };
+          expect(parsed.measurement_date).toBe("2026-11-06 12:00:00");
+          expect(parsed.force_log).toBe(true);
+          return Response.json({
+            entry: {
+              id: "e1",
+              measurement_date: "2026-11-06 12:00:00",
+              value: 340,
+              bsi_measurement_id: 7,
+            },
+          });
+        }
+        if (path.includes("/spark/entries")) {
+          expect(url).toContain("measurement_id=7");
+          return Response.json({
+            entries: [
+              {
+                id: "e0",
+                measurement_date: "2026-10-01 12:00:00",
+                value: 315,
+                bsi_measurement_id: 7,
+                unit_abbreviation: "lb",
+              },
+            ],
+            meta: { count: 1, limit: 40, offset: 0 },
+          });
+        }
         if (path.includes("/spark/pr-overview")) {
           return Response.json({
             workout_benchmarks: [
@@ -1088,6 +1165,14 @@ describe("worker/account routes", () => {
                 score_unit_id: 1,
               },
             ],
+          });
+        }
+        if (path.includes("/messages/conversations")) {
+          return Response.json({ conversations: [{ id: 1, name: "Coach" }] });
+        }
+        if (path.includes("/in-app-notifications")) {
+          return Response.json({
+            notifications: [{ id: 2, title: "Welcome", message: "Hi", created_at: "2026-11-01" }],
           });
         }
         return Response.json({ error: "unexpected" }, 500);
@@ -1149,9 +1234,122 @@ describe("worker/account routes", () => {
     expect(prJson.workouts[0]?.name).toBe("Fran");
     expect(prJson.movements[0]?.best_score).toBe(335);
 
+    const surface = await callAccount(
+      h,
+      "/api/account/calendar/surface?start_date=2026-11-01&end_date=2026-11-30",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(surface.status).toBe(200);
+    const surfaceJson = (await surface.json()) as { meal_counts: Record<string, number> };
+    expect(surfaceJson.meal_counts["2026-11-03"]).toBe(2);
+
+    const writeHeaders = {
+      ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+      "Content-Type": "application/json",
+    };
+
+    const planned = await callAccount(
+      h,
+      "/api/account/meals/days/2026-11-03",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          recipe_source_type: "daily_mod",
+          recipe_source_id: 2,
+          slot_index: 1,
+          label: "Steak",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(planned.status).toBe(200);
+
+    const createdList = await callAccount(
+      h,
+      "/api/account/shopping-lists",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          title: "Week",
+          dates: ["2026-11-03"],
+          meals: [{ planned_meal_id: 1, servings: 1 }],
+        }),
+      },
+      fetchImpl,
+    );
+    expect(createdList.status).toBe(201);
+
+    const generated = await callAccount(
+      h,
+      "/api/account/shopping-lists/9/generate",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: "{}",
+      },
+      fetchImpl,
+    );
+    expect(generated.status).toBe(200);
+
+    const emailed = await callAccount(
+      h,
+      "/api/account/shopping-lists/9/email",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: "{}",
+      },
+      fetchImpl,
+    );
+    expect(emailed.status).toBe(200);
+    const emailedJson = (await emailed.json()) as { emailed_to: string };
+    expect(emailedJson.emailed_to).toBe("a@example.com");
+
+    const sparkGet = await callAccount(
+      h,
+      "/api/account/spark/entries?measurement_id=7&limit=40",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(sparkGet.status).toBe(200);
+
+    const sparkPost = await callAccount(
+      h,
+      "/api/account/spark/entries",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          measurement_id: 7,
+          value: 340,
+          measurement_date: "2026-11-06",
+          force_log: true,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(sparkPost.status).toBe(200);
+
+    const inbox = await callAccount(
+      h,
+      "/api/account/inbox",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(inbox.status).toBe(200);
+    const inboxJson = (await inbox.json()) as {
+      conversations: unknown[];
+      notifications: unknown[];
+    };
+    expect(inboxJson.conversations.length).toBe(1);
+    expect(inboxJson.notifications.length).toBe(1);
+
     for (const rec of recorded) {
       assertHasBearer(rec);
-      expect(rec.url).toMatch(/\/wp-json\/metfix\/v1\//);
+      expect(rec.url).toMatch(/\/wp-json\/(metfix|bsi)\/v1\//);
     }
   });
 
