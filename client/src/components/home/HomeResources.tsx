@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { Lock } from "lucide-react";
 import type { Post } from "@shared/posts";
 import { NewsletterModal } from "@/components/NewsletterModal";
 import { fetchPostsPage } from "@/lib/fetchPostsPage";
@@ -38,7 +39,8 @@ function RailCardShell({
   dateTime,
   title,
   excerpt,
-  tags,
+  exclusive,
+  previewAvailable,
   onImageError,
 }: {
   image: string | null;
@@ -47,7 +49,8 @@ function RailCardShell({
   dateTime: string;
   title: string;
   excerpt: string;
-  tags?: string[];
+  exclusive?: boolean;
+  previewAvailable?: boolean;
   onImageError: () => void;
 }) {
   return (
@@ -72,17 +75,18 @@ function RailCardShell({
                 {fallbackLabel}
               </span>
             )}
-            {tags && tags.length > 0 ? (
-              <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-ink/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-accent-3 ring-1 ring-accent-3/40"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
+            {previewAvailable ? (
+              <span className="absolute left-3 top-3 rounded-full bg-ink/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-accent-3 ring-1 ring-accent-3/40">
+                Preview available
+              </span>
+            ) : null}
+            {exclusive ? (
+              <span
+                className="absolute right-3 top-3 z-[3] grid h-7 w-7 place-items-center rounded-full bg-ink/75 text-cream"
+                aria-label="Exclusive content"
+              >
+                <Lock size={12} strokeWidth={2.25} aria-hidden />
+              </span>
             ) : null}
           </div>
           <div className="flex flex-1 flex-col bg-ink-2 p-4">
@@ -103,13 +107,6 @@ function RailCardShell({
   );
 }
 
-function bsiAccessTags(post: Post): string[] {
-  const tags: string[] = [];
-  if (post.exclusive) tags.push("Exclusive");
-  if (post.preview_available) tags.push("Preview available");
-  return tags;
-}
-
 function BsiPostCard({ post }: { post: Post }) {
   const [failed, setFailed] = useState(false);
   const image = post.image && !failed ? post.image : null;
@@ -124,7 +121,8 @@ function BsiPostCard({ post }: { post: Post }) {
           dateTime={post.date}
           title={post.title}
           excerpt={post.excerpt}
-          tags={bsiAccessTags(post)}
+          exclusive={post.exclusive}
+          previewAvailable={post.preview_available}
           onImageError={() => setFailed(true)}
         />
       </Link>

@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { Link } from "wouter";
 import type { Post } from "@shared/posts";
 
@@ -23,20 +24,32 @@ export function PostCard({ post }: PostCardProps) {
   return (
     <Link href={`/posts/${post.id}`} className="posts-card">
       {post.image ? (
-        <img
-          className="posts-card-image"
-          src={post.image}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
+        <div className="posts-card-media">
+          <img
+            className="posts-card-image"
+            src={post.image}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+          {post.exclusive ? (
+            <span className="posts-card-lock" aria-label="Exclusive content">
+              <Lock size={12} strokeWidth={2.25} aria-hidden />
+            </span>
+          ) : null}
+        </div>
+      ) : post.exclusive ? (
+        <div className="posts-card-media posts-card-media-empty">
+          <span className="posts-card-lock" aria-label="Exclusive content">
+            <Lock size={12} strokeWidth={2.25} aria-hidden />
+          </span>
+        </div>
       ) : null}
       <div className="posts-card-body">
         <div className="posts-card-meta">
           {post.category ? (
             <span className="posts-card-category">{post.category.name}</span>
           ) : null}
-          {post.exclusive ? <span className="posts-card-tag">Exclusive</span> : null}
           {post.preview_available ? (
             <span className="posts-card-tag posts-card-tag-preview">Preview available</span>
           ) : null}

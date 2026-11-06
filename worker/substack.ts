@@ -47,9 +47,9 @@ export async function fetchSubstackArchivePosts(
   if (!response.ok) {
     throw new Error(`Substack archive responded ${response.status}`);
   }
-  const data = (await response.json()) as ArchivePost[];
-  if (!Array.isArray(data)) return [];
-  return data
+  const data: unknown = await response.json();
+  const rows = archiveRows(data);
+  return rows
     .filter((post) => post.audience === "everyone" && post.title && post.canonical_url)
     .slice(0, 6)
     .map((post) => ({
@@ -59,6 +59,15 @@ export async function fetchSubstackArchivePosts(
       date: post.post_date ?? "",
       image: post.cover_image || null,
     }));
+}
+
+/** Substack historically returned a bare array; newer responses wrap `{ posts, nextCursor }`. */
+function archiveRows(data: unknown): ArchivePost[] {
+  if (Array.isArray(data)) return data as ArchivePost[];
+  if (data && typeof data === "object" && Array.isArray((data as { posts?: unknown }).posts)) {
+    return (data as { posts: ArchivePost[] }).posts;
+  }
+  return [];
 }
 
 export async function handleSubstackArchive(

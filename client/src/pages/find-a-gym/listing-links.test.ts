@@ -16,13 +16,13 @@ const base: DirectoryListing = {
 };
 
 describe("listing-links", () => {
-  it("rewrites are not needed when profile already points at metfix.org", () => {
+  it("passes through brokenscience.org profile URLs", () => {
     expect(
       profileHref({
         ...base,
-        profileUrl: "https://metfix.org/affiliates/51/metfix-alpha",
+        profileUrl: "https://brokenscience.org/affiliates/51/metfix-alpha",
       }),
-    ).toBe("https://metfix.org/affiliates/51/metfix-alpha");
+    ).toBe("https://brokenscience.org/affiliates/51/metfix-alpha");
   });
 
   it("adds MetFix UTM params to external websites", () => {

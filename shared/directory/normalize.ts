@@ -1,7 +1,7 @@
 import type { DirectoryKind, DirectoryListing } from "./types";
 
-/** Affiliate profiles are linked on metfix.org, not brokenscience.org. */
-const METFIX_ORIGIN = "https://metfix.org";
+/** Affiliate profiles still live on BSI until metfix.org profiles ship. */
+const BSI_ORIGIN = "https://brokenscience.org";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -35,18 +35,20 @@ export function communityLabels(raw: unknown): string[] {
   return [...new Set(labels)];
 }
 
-/** Resolve affiliate/clinic profile URLs onto metfix.org. */
+/** Resolve affiliate/clinic profile URLs onto brokenscience.org. */
 export function absoluteProfile(raw: string): string | undefined {
   if (!raw) return undefined;
-  if (raw.startsWith("/")) return `${METFIX_ORIGIN}${raw}`;
+  if (raw.startsWith("/")) return `${BSI_ORIGIN}${raw}`;
   try {
     const url = new URL(raw);
     const host = url.hostname.toLowerCase();
-    if (host === "brokenscience.org" || host === "www.brokenscience.org") {
-      return `${METFIX_ORIGIN}${url.pathname}${url.search}${url.hash}`;
-    }
-    if (host === "metfix.org" || host === "www.metfix.org") {
-      return `${METFIX_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+    if (
+      host === "brokenscience.org" ||
+      host === "www.brokenscience.org" ||
+      host === "metfix.org" ||
+      host === "www.metfix.org"
+    ) {
+      return `${BSI_ORIGIN}${url.pathname}${url.search}${url.hash}`;
     }
   } catch {
     return undefined;
