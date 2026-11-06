@@ -71,7 +71,7 @@ describe("WJ-WHOP-1 / WT-J1 / WT-J5 / WT-J6 repo scans", () => {
     );
     expect(curie.length + foreignBiz.length).toBe(2);
     expect(foreignBiz).toHaveLength(1);
-    expect(BEP_WHOP_COMPANY_ID).toBe("biz_u15G8d34g9c0B0");
+    expect(BEP_WHOP_COMPANY_ID).toBe("biz_dTbmi3gF7XpN3p");
   });
 
   it("zero bare curie (case-insensitive) outside deny-guard allowlist files", () => {

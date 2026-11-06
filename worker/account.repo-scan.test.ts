@@ -173,7 +173,7 @@ describe("account.repo-scan", () => {
     const bizFailures = scanLines(files, /biz_[A-Za-z0-9]+/, {
       allow: (file, line) => {
         const rel = relative(REPO_ROOT, file);
-        if (rel === "shared/account/whop.ts" && line.includes("biz_u15G8d34g9c0B0")) return true;
+        if (rel === "shared/account/whop.ts" && line.includes("biz_dTbmi3gF7XpN3p")) return true;
         if (rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) return true;
         return false;
       },

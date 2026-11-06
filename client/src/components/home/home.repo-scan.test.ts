@@ -53,7 +53,7 @@ describe("T-E-19 home repo-scan", () => {
     const hits: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, "utf8");
-      if (/substack\.com|\/api\/substack|manus|curie\.whop|biz_(?!u15G8d34g9c0B0)/i.test(text)) {
+      if (/substack\.com|\/api\/substack|manus|curie\.whop|biz_(?!dTbmi3gF7XpN3p)/i.test(text)) {
         hits.push(file);
       }
     }
@@ -108,7 +108,7 @@ describe("T-E-NAV-10 returnPath usage", () => {
 
   it("sole biz_ literal remains in shared/account/whop.ts", () => {
     const whop = readFileSync(WHOP_FILE, "utf8");
-    expect(whop).toMatch(/biz_u15G8d34g9c0B0/);
+    expect(whop).toMatch(/biz_dTbmi3gF7XpN3p/);
     const homeBiz = walk(HOME_DIR).flatMap((f) => {
       const m = readFileSync(f, "utf8").match(/biz_[A-Za-z0-9]+/g);
       return m ?? [];

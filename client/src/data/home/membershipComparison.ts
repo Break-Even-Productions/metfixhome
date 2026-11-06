@@ -34,6 +34,11 @@ export type MembershipComparisonContent = {
    * when the Affiliate column is shown.
    */
   affiliateExtraRows: MembershipComparisonRow[];
+  /**
+   * Clinician-only rows (e.g. CME / CE). Inserted after the tools & resources row
+   * for `#for-clinicians`.
+   */
+  clinicianExtraRows?: MembershipComparisonRow[];
 };
 
 export const AFFILIATE_COMPARISON_AUDIENCES: ReadonlySet<AudienceHref> = new Set([
@@ -59,8 +64,8 @@ export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
   freeLabel: "Free",
   affiliateLabel: "Affiliate",
   affiliateSublabel: "$170/mo",
-  proCtaLabel: "Join MetFix Pro",
-  affiliateCtaLabel: "Become an Affiliate",
+  proCtaLabel: "Join MetFix Pro · $30/mo",
+  affiliateCtaLabel: "Become an Affiliate · $170/mo",
   affiliateCtaHref: "/become-an-affiliate",
   rows: [
     {
@@ -93,6 +98,24 @@ export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
       free: cross,
       affiliate: check,
     },
+    {
+      feature: "Expert-led instruction",
+      pro: check,
+      free: cross,
+      affiliate: check,
+    },
+    {
+      feature: "Nutrition and Fitness tools & resources",
+      pro: check,
+      free: cross,
+      affiliate: check,
+    },
+    {
+      feature: "Certificate of completion",
+      pro: check,
+      free: cross,
+      affiliate: check,
+    },
   ],
   affiliateExtraRows: [
     {
@@ -102,7 +125,32 @@ export const FALLBACK_MEMBERSHIP_COMPARISON: MembershipComparisonContent = {
       affiliate: check,
     },
   ],
+  clinicianExtraRows: [
+    {
+      feature: "CME / CE opportunities",
+      pro: check,
+      free: cross,
+      affiliate: check,
+    },
+  ],
 };
+
+const TOOLS_FEATURE_DEFAULT = "Nutrition and Fitness tools & resources";
+const TOOLS_FEATURE_CLINICIANS = "Clinical tools & resources";
+const TOOLS_FEATURE_COACHING = "Coaching tools";
+
+const COACHING_TOOLS_AUDIENCES: ReadonlySet<AudienceHref> = new Set([
+  "#for-coaches",
+  "#for-gym-owners",
+]);
+
+function toolsFeatureForAudience(audience: AudienceHref | string | undefined): string {
+  if (audience === "#for-clinicians") return TOOLS_FEATURE_CLINICIANS;
+  if (typeof audience === "string" && COACHING_TOOLS_AUDIENCES.has(audience as AudienceHref)) {
+    return TOOLS_FEATURE_COACHING;
+  }
+  return TOOLS_FEATURE_DEFAULT;
+}
 
 function insertIndexForAffiliateExtras(rows: MembershipComparisonRow[]): number {
   const dailyFixIdx = rows.findIndex(
@@ -112,13 +160,26 @@ function insertIndexForAffiliateExtras(rows: MembershipComparisonRow[]): number 
   return Math.min(2, rows.length);
 }
 
-export function resolveMembershipComparisonRows(
+function insertIndexForClinicianExtras(rows: MembershipComparisonRow[]): number {
+  const toolsIdx = rows.findIndex(
+    (r) =>
+      r.feature === TOOLS_FEATURE_CLINICIANS ||
+      r.feature === TOOLS_FEATURE_DEFAULT ||
+      r.feature === TOOLS_FEATURE_COACHING ||
+      /tools/i.test(r.feature),
+  );
+  if (toolsIdx >= 0) return toolsIdx + 1;
+  return rows.length;
+}
+
+function withAffiliateExtras(
   comparison: MembershipComparisonContent,
   audience: AudienceHref | string | undefined,
 ): MembershipComparisonRow[] {
   const showAffiliate = audienceShowsAffiliateColumn(audience);
-  if (!showAffiliate) return comparison.rows;
-  if (comparison.affiliateExtraRows.length === 0) return comparison.rows;
+  if (!showAffiliate || comparison.affiliateExtraRows.length === 0) {
+    return comparison.rows;
+  }
 
   const insertAt = insertIndexForAffiliateExtras(comparison.rows);
   return [
@@ -126,4 +187,30 @@ export function resolveMembershipComparisonRows(
     ...comparison.affiliateExtraRows,
     ...comparison.rows.slice(insertAt),
   ];
+}
+
+function withAudienceToolsLabel(
+  rows: MembershipComparisonRow[],
+  audience: AudienceHref | string | undefined,
+): MembershipComparisonRow[] {
+  const toolsFeature = toolsFeatureForAudience(audience);
+  if (toolsFeature === TOOLS_FEATURE_DEFAULT) return rows;
+  return rows.map((row) =>
+    row.feature === TOOLS_FEATURE_DEFAULT ? { ...row, feature: toolsFeature } : row,
+  );
+}
+
+export function resolveMembershipComparisonRows(
+  comparison: MembershipComparisonContent,
+  audience: AudienceHref | string | undefined,
+): MembershipComparisonRow[] {
+  let rows = withAudienceToolsLabel(withAffiliateExtras(comparison, audience), audience);
+
+  if (audience !== "#for-clinicians") return rows;
+
+  const clinicianExtras = comparison.clinicianExtraRows ?? [];
+  if (clinicianExtras.length === 0) return rows;
+
+  const insertAt = insertIndexForClinicianExtras(rows);
+  return [...rows.slice(0, insertAt), ...clinicianExtras, ...rows.slice(insertAt)];
 }
