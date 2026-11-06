@@ -1495,7 +1495,10 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
       {
         method: "POST",
         headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ return_path: "/checkout/complete" }),
+        body: JSON.stringify({
+          return_path: "/checkout/complete",
+          email: "signed.in@example.test",
+        }),
       },
       fetchImpl,
     );
@@ -1535,56 +1538,84 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
     expect(recorded.filter((r) => r.url.includes("/courses/20231/checkout"))).toHaveLength(1);
   });
 
-  it("guest checkout with no usable session is 401 and does not call BSI", async () => {
+  it("checkout without a session and without an email does not call BSI", async () => {
     const pre = "pre_guest_checkout_test_01";
     const csrf = await csrfForPre(h.env.CSRF_SECRET!, pre);
     const { fetchImpl, recorded } = makeFetchMock([
       async () => Response.json(CHECKOUT_OK),
     ]);
-    const cases: RequestInit[] = [
+    const noSession: Array<{ init: RequestInit; status: number; error: string }> = [
       {
-        method: "POST",
-        headers: {
-          Origin: ORIGIN,
-          "Sec-Fetch-Site": "same-origin",
-          "Content-Type": "application/json",
-          "CF-Connecting-IP": IP,
+        status: 403,
+        error: "forbidden",
+        init: {
+          method: "POST",
+          headers: {
+            Origin: ORIGIN,
+            "Sec-Fetch-Site": "same-origin",
+            "Content-Type": "application/json",
+            "CF-Connecting-IP": IP,
+          },
+          body: JSON.stringify({}),
         },
-        body: JSON.stringify({}),
       },
       {
-        method: "POST",
-        headers: {
-          Origin: ORIGIN,
-          "Sec-Fetch-Site": "same-origin",
-          "X-CSRF-Token": csrf,
-          "Content-Type": "application/json",
-          "CF-Connecting-IP": IP,
-          Cookie: `${PRE_COOKIE}=${encodeURIComponent(pre)}`,
+        status: 401,
+        error: "unauthenticated",
+        init: {
+          method: "POST",
+          headers: {
+            Origin: ORIGIN,
+            "Sec-Fetch-Site": "same-origin",
+            "X-CSRF-Token": csrf,
+            "Content-Type": "application/json",
+            "CF-Connecting-IP": IP,
+            Cookie: `${PRE_COOKIE}=${encodeURIComponent(pre)}`,
+          },
+          body: JSON.stringify({}),
         },
-        body: JSON.stringify({}),
       },
       {
-        method: "POST",
-        headers: {
-          Origin: ORIGIN,
-          "Sec-Fetch-Site": "same-origin",
-          "Content-Type": "application/json",
-          "CF-Connecting-IP": IP,
-          Cookie: `${SID_COOKIE}=${encodeURIComponent("dead-sid-not-a-session")}`,
+        status: 400,
+        error: "invalid_email",
+        init: {
+          method: "POST",
+          headers: {
+            Origin: ORIGIN,
+            "Sec-Fetch-Site": "same-origin",
+            "X-CSRF-Token": csrf,
+            "Content-Type": "application/json",
+            "CF-Connecting-IP": IP,
+            Cookie: `${PRE_COOKIE}=${encodeURIComponent(pre)}`,
+          },
+          body: JSON.stringify({ email: "not-an-email" }),
         },
-        body: JSON.stringify({}),
+      },
+      {
+        status: 403,
+        error: "forbidden",
+        init: {
+          method: "POST",
+          headers: {
+            Origin: ORIGIN,
+            "Sec-Fetch-Site": "same-origin",
+            "Content-Type": "application/json",
+            "CF-Connecting-IP": IP,
+            Cookie: `${SID_COOKIE}=${encodeURIComponent("dead-sid-not-a-session")}`,
+          },
+          body: JSON.stringify({ email: "guest.buyer@example.test" }),
+        },
       },
     ];
-    for (const init of cases) {
+    for (const item of noSession) {
       const res = await callAccount(
         h,
         "/api/account/courses/20231/purchase-checkout",
-        init,
+        item.init,
         fetchImpl,
       );
-      expect(res.status).toBe(401);
-      expect(await res.json()).toEqual({ error: "unauthenticated" });
+      expect(res.status).toBe(item.status);
+      expect(await res.json()).toEqual({ error: item.error });
     }
     const alias = await callAccount(
       h,
@@ -1597,12 +1628,58 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
           "Content-Type": "application/json",
           "CF-Connecting-IP": IP,
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ email: "guest.buyer@example.test" }),
       },
       fetchImpl,
     );
-    expect(alias.status).toBe(401);
+    expect(alias.status).toBe(403);
     expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
+  });
+
+  it("guest checkout forwards email and a stored referral with no bearer", async () => {
+    const pre = "pre_guest_checkout_email_01";
+    const csrf = await csrfForPre(h.env.CSRF_SECRET!, pre);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, headers, bodyText }) => {
+        if (path === "/wp-json/bsi/v1/courses/20231/checkout" && method === "POST") {
+          expect(headers.authorization).toBeUndefined();
+          expect(headers.cookie).toBeUndefined();
+          expect(headers["x-wp-nonce"]).toBeUndefined();
+          expect(headers["x-api-key"]).toBeUndefined();
+          expect(JSON.parse(bodyText)).toEqual({
+            bsi_ref: "cfexample9",
+            return_path: "/checkout/complete",
+            email: "guest.buyer@example.test",
+          });
+          return Response.json(CHECKOUT_OK);
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/20231/purchase-checkout",
+      {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+          "X-CSRF-Token": csrf,
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": IP,
+          Cookie: `${PRE_COOKIE}=${encodeURIComponent(pre)}`,
+        },
+        body: JSON.stringify({
+          email: "guest.buyer@example.test",
+          bsi_ref: "cfexample9",
+          return_path: "/checkout/complete",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ checkout_url: CHECKOUT_OK.checkout_url });
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(1);
   });
 });
 void NOW_ISO;

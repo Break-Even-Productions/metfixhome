@@ -1411,17 +1411,20 @@ export function loadMember(
 
 /**
  * Mint a Whop course checkout URL via BSI.
- * Requires a metfix.org session. The browser sends the sid cookie and X-CSRF-Token;
- * the Worker adds the same Bearer other account routes use. A 401 sends the user to login.
+ * Signed-in: sid cookie + X-CSRF-Token; the Worker adds the account Bearer.
+ * Guest: same cookies/CSRF, plus `email`. A stored bsi_ref is forwarded either way.
+ * A 401 (no session and no email) sends the user to login.
  */
 export async function purchaseCourseCheckout(
   courseId: string | number,
-  opts?: { bsi_ref?: string; return_path?: string },
+  opts?: { bsi_ref?: string; return_path?: string; email?: string },
 ): Promise<{ checkout_url: string }> {
   const body: Record<string, string> = {};
   const ref = opts?.bsi_ref ?? readStoredBsiRef() ?? undefined;
   if (ref) body.bsi_ref = ref;
   if (opts?.return_path) body.return_path = opts.return_path;
+  const email = opts?.email?.trim();
+  if (email) body.email = email;
   return accountMutate(`/api/account/courses/${courseId}/purchase-checkout`, {
     method: "POST",
     body,
