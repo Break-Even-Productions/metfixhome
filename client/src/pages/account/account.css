@@ -334,6 +334,10 @@
   background: transparent;
 }
 
+.account-tool-grid--bbb {
+  grid-template-columns: 1fr;
+}
+
 .account-tool {
   display: flex;
   flex-direction: column;
@@ -472,6 +476,10 @@ a.account-btn.account-btn--ghost {
 
   .account-tool-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .account-tool-grid--bbb {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -983,6 +991,256 @@ a.account-btn.account-btn--accent {
 .account-tool--locked .account-tool__action--cta {
   background: var(--color-accent);
   color: var(--color-on-accent, var(--color-ink));
+}
+
+.account-tool--pillar {
+  min-height: 12rem;
+}
+
+.account-tool__links {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.account-tool__sublink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--color-paper) 70%, transparent);
+  color: var(--color-ink);
+  text-decoration: none;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.account-tool__sublink:hover {
+  background: var(--color-cream-2);
+}
+
+.account-tool__sublink--shell,
+.account-tool__sublink--locked {
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.account-tool__sublink--locked {
+  cursor: pointer;
+}
+
+.account-tool__submeta {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Month calendar (overview) — app-style colored dots */
+.account-calendar {
+  margin-bottom: 1.5rem;
+}
+
+.account-calendar__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.account-calendar__lede {
+  margin: 0.15rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.account-calendar__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.account-calendar__nav-btn {
+  min-width: 2.25rem;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.account-calendar__month {
+  min-width: 8.5rem;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.account-calendar__error {
+  margin: 0 0 0.65rem;
+}
+
+.account-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.account-calendar__dow {
+  text-align: center;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  padding: 0.25rem 0;
+}
+
+.account-calendar__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  min-height: 3.1rem;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--color-cream) 45%, var(--color-paper));
+}
+
+.account-calendar__cell--empty {
+  border-color: transparent;
+  background: transparent;
+  min-height: 0;
+  padding: 0;
+}
+
+.account-calendar__cell--active {
+  background: color-mix(in srgb, var(--color-accent-3, #d4bc8a) 22%, var(--color-paper));
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-line));
+}
+
+.account-calendar__cell--today {
+  box-shadow: inset 0 0 0 1.5px var(--color-ink);
+}
+
+.account-calendar__cell--skel {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-cream) 70%, var(--color-paper)) 0%,
+    color-mix(in srgb, var(--color-cream-2) 80%, var(--color-paper)) 50%,
+    color-mix(in srgb, var(--color-cream) 70%, var(--color-paper)) 100%
+  );
+  background-size: 200% 100%;
+  animation: account-calendar-shimmer 1.2s ease-in-out infinite;
+  border-color: transparent;
+}
+
+@keyframes account-calendar-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.account-calendar__day {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.account-calendar__dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.18rem;
+  margin-top: auto;
+}
+
+.account-calendar__dot {
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.account-calendar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.account-calendar__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.account-spark-list,
+.account-inbox-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.account-spark-list__item,
+.account-inbox-list__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-cream) 40%, var(--color-paper));
+}
+
+.account-spark-list__title,
+.account-inbox-list__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.account-spark-list__score,
+.account-inbox-list__time {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+}
+
+.account-inbox-list__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-size: 0.7rem;
+}
+
+.account-inbox-list__item[data-read="false"] .account-inbox-list__title {
+  font-weight: 700;
 }
 
 .dash-panel {

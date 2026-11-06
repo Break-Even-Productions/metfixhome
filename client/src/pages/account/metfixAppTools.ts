@@ -1,43 +1,128 @@
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 
-export type AppTool = {
+export type AppToolLink = {
   id: string;
   title: string;
-  summary: string;
+  summary?: string;
   /** In-site route. Null when metfix.org has no page for this tool yet. */
   href: string | null;
   /** When true, link is Pro-gated (show upgrade CTA for non-Pro). */
   proOnly?: boolean;
 };
 
+export type AppTool = {
+  id: string;
+  title: string;
+  summary: string;
+  /** Primary in-site route for the card. Null → shell / available-only. */
+  href: string | null;
+  /** When true, card is Pro-gated (show upgrade CTA for non-Pro). */
+  proOnly?: boolean;
+  /** Optional nested links (Belly / Body / Brain pillars). */
+  links?: readonly AppToolLink[];
+};
+
+/**
+ * Overview tools — 3 columns × 2 rows.
+ * Row 1: Belly · Body · Brain
+ * Row 2: Daily Fix Archive · My Data / Spark · Inbox
+ */
 export const METFIX_APP_TOOLS: readonly AppTool[] = [
   {
-    id: "meal-plans",
-    title: "Meal plans",
-    summary: "Weekly metabolic meals, built around how you actually eat.",
+    id: "belly",
+    title: "Belly",
+    summary: "Meal plans and shopping cart around how you actually eat.",
     href: "/account/meals",
     proOnly: true,
+    links: [
+      {
+        id: "meal-plans",
+        title: "Meal plans + cart",
+        summary: "Plan the week and build a grocery list.",
+        href: "/account/meals",
+        proOnly: true,
+      },
+    ],
+  },
+  {
+    id: "body",
+    title: "Body",
+    summary: "PRs, workout feed, and coaching in one place.",
+    href: "/account/benchmarks",
+    proOnly: true,
+    links: [
+      {
+        id: "pr-tracking",
+        title: "PR tracking",
+        summary: "Lifts, tests, and markers.",
+        href: "/account/benchmarks",
+        proOnly: true,
+      },
+      {
+        id: "workout-feed",
+        title: "Workout feed",
+        summary: "Logged sessions and consistency.",
+        href: null,
+        proOnly: true,
+      },
+      {
+        id: "coaching",
+        title: "Coaching",
+        summary: "Coach notes and programming.",
+        href: null,
+        proOnly: true,
+      },
+    ],
+  },
+  {
+    id: "brain",
+    title: "Brain",
+    summary: "Exclusive feed, saved items, and shopping lists.",
+    href: "/the-daily-fix",
+    proOnly: true,
+    links: [
+      {
+        id: "exclusive-feed",
+        title: "Exclusive feed",
+        summary: "Daily Fix reading and archive.",
+        href: "/the-daily-fix",
+        proOnly: true,
+      },
+      {
+        id: "saved",
+        title: "Saved",
+        summary: "Articles, recipes, and workouts you kept.",
+        href: "/account/favorites",
+      },
+      {
+        id: "lists",
+        title: "Lists",
+        summary: "Shopping lists from planned meals.",
+        href: "/account/meals",
+        proOnly: true,
+      },
+    ],
   },
   {
     id: "daily-fix-archive",
     title: "Daily Fix Archive",
-    summary: "Eat. Move. Think. A new recipe, workout, and reading each day — full archive for Pro.",
+    summary:
+      "Eat. Move. Think. A new recipe, workout, and reading each day — full archive for Pro.",
     href: "/the-daily-fix",
     proOnly: true,
   },
   {
-    id: "workout-tracking",
-    title: "Workout tracking",
-    summary: "Log sessions and see recovery, load, and consistency in one place.",
-    href: null,
+    id: "spark",
+    title: "My Data / Spark",
+    summary: "Measurement history and PR overview from Spark.",
+    href: "/account/spark",
     proOnly: true,
   },
   {
-    id: "pr-benchmarks",
-    title: "PR & benchmark tracking",
-    summary: "Keep lifts, tests, and body markers without a spreadsheet.",
-    href: "/account/benchmarks",
-    proOnly: true,
+    id: "inbox",
+    title: "Inbox",
+    summary: "Conversations and in-app notifications.",
+    href: "/account/inbox",
   },
 ];
 
@@ -54,4 +139,13 @@ export function metfixToolsUnlocked(tier: CanonicalSubscriptionTier): boolean {
       return _exhaustive;
     }
   }
+}
+
+/** Whether a specific tool/link is open for this membership. */
+export function toolUnlocked(
+  tool: { proOnly?: boolean },
+  tier: CanonicalSubscriptionTier,
+): boolean {
+  if (!tool.proOnly) return true;
+  return metfixToolsUnlocked(tier);
 }

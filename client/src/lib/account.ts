@@ -55,6 +55,8 @@ export type SubscriptionItem = {
   legacy_source?: LegacySubscriptionSource;
   is_duplicate_stripe?: boolean;
   can_convert_to_whop?: boolean;
+  /** True when BSI reports a billing portal session can be opened for this row. */
+  can_open_portal?: boolean;
   status: string;
   current_period_end: string | null;
   paid_through: string | null;
@@ -116,6 +118,16 @@ export type PaymentsPage = {
   total: number;
 };
 
+export type CourseFeaturesLite = {
+  navigation?: Array<{ key?: string; label?: string; segment?: string }>;
+  counts?: Record<string, number>;
+  progress?: {
+    percentage?: number;
+    completed_items?: number;
+    total_items?: number;
+  };
+};
+
 export type CourseItem = {
   id: number | string | null;
   slug: string | null;
@@ -129,6 +141,11 @@ export type CourseItem = {
   certificate_claimed: boolean;
   certificate_claim_method: StoredClaimMethod | null;
   certificate_url: string | null;
+  /** Optional course notes when the courses payload includes them. */
+  notes?: string | null;
+  /** Optional LearnPress features summary when present on the payload. */
+  features?: CourseFeaturesLite | null;
+  image_url?: string | null;
 };
 
 export type CoursesPage = {
@@ -204,6 +221,11 @@ export type ReferralsPayload = {
     whop_affiliate_code: string;
     whop_plan_id: string;
     share_url: string;
+    /** Optional product image when upstream includes one. */
+    image_url?: string | null;
+    product_image?: string | null;
+    thumbnail_url?: string | null;
+    featured_image?: string | null;
   }>;
   /** R4-N1: required on Worker CR1/CR2 DTO — missing is a contract error. */
   course_links_dropped: number;
@@ -429,6 +451,65 @@ export type CreateSparkEntryResult = {
   auto_log_skipped?: boolean;
 };
 
+/** Day-count maps from GET /api/account/calendar/surface (BSI /metfix/v1/calendar/surface). */
+export type CalendarSurfaceCounts = Record<string, number>;
+
+export type CalendarSurface = {
+  meal_counts: CalendarSurfaceCounts;
+  logged_meal_counts?: CalendarSurfaceCounts;
+  unlogged_meal_counts?: CalendarSurfaceCounts;
+  workout_counts: CalendarSurfaceCounts;
+  planned_workout_counts?: CalendarSurfaceCounts;
+  logged_planned_workout_counts?: CalendarSurfaceCounts;
+  unlogged_planned_workout_counts?: CalendarSurfaceCounts;
+  brain_counts?: CalendarSurfaceCounts;
+  logged_brain_counts?: CalendarSurfaceCounts;
+  unlogged_brain_counts?: CalendarSurfaceCounts;
+  event_counts?: CalendarSurfaceCounts;
+  meta?: {
+    start_date?: string;
+    end_date?: string;
+    total_dates?: number;
+  };
+};
+
+export type AccountInboxConversation = {
+  id: string | number;
+  type?: "direct" | "group" | string;
+  name?: string | null;
+  last_message?: string | null;
+  lastMessage?: string | null;
+  last_message_time?: string | null;
+  lastMessageTime?: string | null;
+  unread_count?: number;
+  unreadCount?: number;
+  [key: string]: unknown;
+};
+
+export type AccountInboxNotification = {
+  id: string | number;
+  title?: string | null;
+  message?: string | null;
+  content?: string | null;
+  type?: string | null;
+  read?: boolean;
+  created_at?: string | null;
+  link?: string | null;
+  [key: string]: unknown;
+};
+
+/**
+ * GET /api/account/inbox — conversations and/or in-app notifications.
+ * Worker assumed to proxy BSI messages + notifications; client accepts either shape.
+ */
+export type AccountInbox = {
+  conversations?: AccountInboxConversation[];
+  notifications?: AccountInboxNotification[];
+  items?: AccountInboxNotification[];
+  total?: number;
+  [key: string]: unknown;
+};
+
 type CacheKey =
   | "overview"
   | "subscriptions"
@@ -441,6 +522,7 @@ type CacheKey =
   | "notifications"
   | "privacy"
   | "pr-overview"
+  | "inbox"
   | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
@@ -450,7 +532,8 @@ type CacheKey =
   | `macros:${string}`
   | "shopping-lists"
   | `shopping-list:${number}`
-  | `spark-entries:${string}`;
+  | `spark-entries:${string}`
+  | `calendar-surface:${string}`;
 
 const cache = new Map<CacheKey, unknown>();
 const inflight = new Map<CacheKey, Promise<unknown>>();
@@ -672,6 +755,38 @@ export function loadMealsWeek(
   return accountGet(`/api/account/meals${q}`, key, options);
 }
 
+/**
+ * Combined belly/body/brain/event day counts for a date range.
+ * GET /api/account/calendar/surface → BSI /metfix/v1/calendar/surface (worker proxy assumed).
+ */
+export function loadCalendarSurface(
+  startDate: string,
+  endDate: string,
+  options?: {
+    force?: boolean;
+    signal?: AbortSignal;
+    includeMeals?: boolean;
+    includeWorkouts?: boolean;
+    includeBrain?: boolean;
+    includeEvents?: boolean;
+  },
+): Promise<CalendarSurface> {
+  const includeMeals = options?.includeMeals !== false;
+  const includeWorkouts = options?.includeWorkouts !== false;
+  const includeBrain = options?.includeBrain !== false;
+  const includeEvents = options?.includeEvents !== false;
+  const key: CacheKey = `calendar-surface:${startDate}:${endDate}:${includeMeals}:${includeWorkouts}:${includeBrain}:${includeEvents}`;
+  const q = new URLSearchParams({
+    start_date: startDate,
+    end_date: endDate,
+    include_meals: includeMeals ? "1" : "0",
+    include_workouts: includeWorkouts ? "1" : "0",
+    include_brain: includeBrain ? "1" : "0",
+    include_events: includeEvents ? "1" : "0",
+  });
+  return accountGet(`/api/account/calendar/surface?${q.toString()}`, key, options);
+}
+
 export function loadMealsUpcoming(
   limit = 20,
   options?: { force?: boolean; signal?: AbortSignal },
@@ -783,15 +898,16 @@ export function loadPrOverview(options?: {
 }
 
 function sparkEntriesCacheKey(params: {
-  measurement_id: number;
+  measurement_id?: number;
   start_date?: string;
   end_date?: string;
   limit?: number;
 }): CacheKey {
+  const mid = params.measurement_id ?? "all";
   const start = params.start_date ?? "";
   const end = params.end_date ?? "";
   const limit = params.limit ?? "";
-  return `spark-entries:${params.measurement_id}:${start}:${end}:${limit}`;
+  return `spark-entries:${mid}:${start}:${end}:${limit}`;
 }
 
 function invalidateSparkEntriesCaches(measurementId?: number): void {
@@ -810,27 +926,42 @@ function invalidateSparkEntriesCaches(measurementId?: number): void {
 
 /**
  * Spark measurement history (GET /api/account/spark/entries → BSI /spark/entries).
- * Worker route assumed; client stubs the contract for dashboard charts.
+ * Worker route assumed; client stubs the contract for dashboard charts / My Data.
+ * `measurement_id` optional when listing recent entries across measurements.
  */
 export function loadSparkEntries(
   params: {
-    measurement_id: number;
+    measurement_id?: number;
     start_date?: string;
     end_date?: string;
     limit?: number;
-  },
+  } = {},
   options?: { force?: boolean; signal?: AbortSignal },
 ): Promise<SparkEntriesPage> {
   const q = new URLSearchParams();
-  q.set("measurement_id", String(params.measurement_id));
+  if (params.measurement_id != null) {
+    q.set("measurement_id", String(params.measurement_id));
+  }
   if (params.start_date) q.set("start_date", params.start_date);
   if (params.end_date) q.set("end_date", params.end_date);
   if (params.limit != null) q.set("limit", String(params.limit));
+  const qs = q.toString();
   return accountGet(
-    `/api/account/spark/entries?${q.toString()}`,
+    `/api/account/spark/entries${qs ? `?${qs}` : ""}`,
     sparkEntriesCacheKey(params),
     options,
   );
+}
+
+/**
+ * Member inbox — conversations and/or in-app notifications.
+ * GET /api/account/inbox (worker proxy to BSI messages / in-app-notifications assumed).
+ */
+export function loadInbox(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<AccountInbox> {
+  return accountGet("/api/account/inbox", "inbox", options);
 }
 
 /**

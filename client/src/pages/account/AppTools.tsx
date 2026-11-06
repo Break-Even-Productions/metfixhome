@@ -1,11 +1,188 @@
 import { Link } from "wouter";
 import { basePath } from "@/const";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
-import { METFIX_APP_TOOLS, metfixToolsUnlocked } from "./metfixAppTools";
+import {
+  METFIX_APP_TOOLS,
+  metfixToolsUnlocked,
+  toolUnlocked,
+  type AppTool,
+  type AppToolLink,
+} from "./metfixAppTools";
 
 type Props = {
   tier: CanonicalSubscriptionTier;
 };
+
+function linkHref(
+  item: { href: string | null; proOnly?: boolean },
+  unlocked: boolean,
+): string | null {
+  if (!item.href) return null;
+  if (item.proOnly && !unlocked) return "/join";
+  return item.href;
+}
+
+function ToolLinks({
+  links,
+  tier,
+}: {
+  links: readonly AppToolLink[];
+  tier: CanonicalSubscriptionTier;
+}) {
+  return (
+    <ul className="account-tool__links">
+      {links.map((link) => {
+        const open = toolUnlocked(link, tier) && link.href != null;
+        const available = toolUnlocked(link, tier) && link.href == null;
+        const href = linkHref(link, toolUnlocked(link, tier));
+        if (href) {
+          return (
+            <li key={link.id}>
+              <Link
+                href={basePath(href)}
+                className={
+                  open
+                    ? "account-tool__sublink"
+                    : "account-tool__sublink account-tool__sublink--locked"
+                }
+                data-tool={link.id}
+                data-state={open ? "open" : "locked"}
+              >
+                <span>{link.title}</span>
+                {!open ? <span className="account-tool__submeta">Pro</span> : null}
+              </Link>
+            </li>
+          );
+        }
+        return (
+          <li key={link.id}>
+            <span
+              className="account-tool__sublink account-tool__sublink--shell"
+              data-tool={link.id}
+              data-state={available ? "available" : "locked"}
+            >
+              <span>{link.title}</span>
+              <span className="account-tool__submeta">
+                {available ? "No web page yet" : "Pro"}
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function toolClassName(
+  open: boolean,
+  available: boolean,
+  unlocked: boolean,
+  hasLinks: boolean,
+): string {
+  return [
+    "account-tool",
+    open ? "account-tool--open" : null,
+    available ? "account-tool--available" : null,
+    !unlocked ? "account-tool--locked" : null,
+    hasLinks ? "account-tool--pillar" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function ToolCard({ tool, tier }: { tool: AppTool; tier: CanonicalSubscriptionTier }) {
+  const unlocked = toolUnlocked(tool, tier);
+  const open = unlocked && tool.href != null;
+  const available = unlocked && tool.href == null;
+  const state = open ? "open" : available ? "available" : "locked";
+  const status = unlocked ? "Included" : "Locked";
+  const href = linkHref(tool, unlocked);
+  const hasLinks = Array.isArray(tool.links) && tool.links.length > 0;
+  const className = toolClassName(open, available, unlocked, hasLinks);
+
+  const header = (
+    <>
+      <span className="account-tool__status">{status}</span>
+      <div className="account-tool__row">
+        <span className="account-tool__title">{tool.title}</span>
+      </div>
+      <span className="account-tool__detail">{tool.summary}</span>
+    </>
+  );
+
+  // Pillar cards host nested links — never wrap the whole card in <a>.
+  if (hasLinks) {
+    return (
+      <article className={className} data-tool={tool.id} data-state={state}>
+        {header}
+        <ToolLinks links={tool.links!} tier={tier} />
+        {href ? (
+          <Link href={basePath(href)} className="account-tool__action">
+            {unlocked ? "Open" : "Unlock with Pro"}
+          </Link>
+        ) : unlocked ? (
+          <span className="account-tool__action account-tool__action--muted">
+            No web page yet
+          </span>
+        ) : (
+          <Link
+            href={basePath("/join")}
+            className="account-tool__action account-tool__action--cta"
+          >
+            Unlock with Pro
+          </Link>
+        )}
+      </article>
+    );
+  }
+
+  const footer = open ? (
+    <span className="account-tool__action">Open</span>
+  ) : available ? (
+    <span className="account-tool__action account-tool__action--muted">
+      No web page yet
+    </span>
+  ) : (
+    <span className="account-tool__action account-tool__action--cta">
+      Unlock with Pro
+    </span>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={basePath(href)}
+        className={className}
+        data-tool={tool.id}
+        data-state={state}
+      >
+        {header}
+        {footer}
+      </Link>
+    );
+  }
+
+  if (!unlocked) {
+    return (
+      <Link
+        href={basePath("/join")}
+        className={className}
+        data-tool={tool.id}
+        data-state={state}
+      >
+        {header}
+        {footer}
+      </Link>
+    );
+  }
+
+  return (
+    <article className={className} data-tool={tool.id} data-state={state}>
+      {header}
+      {footer}
+    </article>
+  );
+}
 
 export function AppTools({ tier }: Props) {
   const unlocked = metfixToolsUnlocked(tier);
@@ -27,74 +204,10 @@ export function AppTools({ tier }: Props) {
           </Link>
         ) : null}
       </div>
-      <div className="account-tool-grid">
-        {METFIX_APP_TOOLS.map((tool) => {
-          const open = unlocked && tool.href != null;
-          const available = unlocked && tool.href == null;
-          const state = open ? "open" : available ? "available" : "locked";
-          const status = open ? "Included" : available ? "Included" : "Locked";
-          const detail = open
-            ? tool.summary
-            : available
-              ? `${tool.summary} Available with your membership.`
-              : tool.summary;
-          const body = (
-            <>
-              <span className="account-tool__status">{status}</span>
-              <div className="account-tool__row">
-                <span className="account-tool__title">{tool.title}</span>
-              </div>
-              <span className="account-tool__detail">{detail}</span>
-              {open ? (
-                <span className="account-tool__action">Open</span>
-              ) : available ? (
-                <span className="account-tool__action account-tool__action--muted">
-                  No web page yet
-                </span>
-              ) : (
-                <span className="account-tool__action account-tool__action--cta">
-                  Unlock with Pro
-                </span>
-              )}
-            </>
-          );
-          if (open && tool.href) {
-            return (
-              <Link
-                key={tool.id}
-                href={basePath(tool.href)}
-                className="account-tool account-tool--open"
-                data-tool={tool.id}
-                data-state={state}
-              >
-                {body}
-              </Link>
-            );
-          }
-          if (!unlocked) {
-            return (
-              <Link
-                key={tool.id}
-                href={basePath("/join")}
-                className="account-tool account-tool--locked"
-                data-tool={tool.id}
-                data-state={state}
-              >
-                {body}
-              </Link>
-            );
-          }
-          return (
-            <article
-              key={tool.id}
-              className="account-tool account-tool--available"
-              data-tool={tool.id}
-              data-state={state}
-            >
-              {body}
-            </article>
-          );
-        })}
+      <div className="account-tool-grid account-tool-grid--bbb">
+        {METFIX_APP_TOOLS.map((tool) => (
+          <ToolCard key={tool.id} tool={tool} tier={tier} />
+        ))}
       </div>
     </section>
   );

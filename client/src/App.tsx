@@ -28,6 +28,8 @@ import AccountPrivacy from "./pages/account/AccountPrivacy";
 import AccountOrganization from "./pages/account/AccountOrganization";
 import AccountMeals from "./pages/account/AccountMeals";
 import AccountBenchmarks from "./pages/account/AccountBenchmarks";
+import AccountSpark from "./pages/account/AccountSpark";
+import AccountInbox from "./pages/account/AccountInbox";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 import { captureBsiRef } from "./lib/referralAttribution";
@@ -147,6 +149,8 @@ function AppRoutes() {
       <Route path={"/account/meal-plans"} component={AccountMeals} />
       <Route path={"/account/benchmarks"} component={AccountBenchmarks} />
       <Route path={"/account/prs"} component={AccountBenchmarks} />
+      <Route path={"/account/spark"} component={AccountSpark} />
+      <Route path={"/account/inbox"} component={AccountInbox} />
       <Route path={"/account"} component={AccountOverview} />
       <Route path={"/members/:memberId"} component={MemberProfilePage} />
       <Route path={"/404"} component={NotFound} />

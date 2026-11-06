@@ -15,6 +15,7 @@ import DashboardLayout from "./DashboardLayout";
 import { ConversionBanner } from "./ConversionBanner";
 import { LtvVisualizer } from "./LtvVisualizer";
 import { FoundationsCoachCard } from "./FoundationsCoachCard";
+import { AccountCalendar } from "./AccountCalendar";
 import { AppTools } from "./AppTools";
 import { GreetingHero } from "./GreetingHero";
 import { ProUnlockBanner } from "./ProUnlockBanner";
@@ -105,6 +106,7 @@ export default function AccountOverview() {
         showUpgradeCta
       />
       <div className="dash-panel">
+        <AccountCalendar />
         <AppTools tier={tier} />
         <ConversionBanner conversion={subs?.conversion} />
         {ltv ? <LtvVisualizer ltv={ltv} /> : null}
