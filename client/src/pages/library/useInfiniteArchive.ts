@@ -14,7 +14,7 @@ import {
 const PAGE = 24;
 
 export type ArchiveKind =
-  | { kind: "popular" }
+  | { kind: "popular"; content_types?: string[] }
   | { kind: "archive" }
   | { kind: "search"; params: Omit<SearchParams, "limit" | "offset"> }
   | { kind: "free"; params: Omit<SearchParams, "limit" | "offset"> }
@@ -97,7 +97,11 @@ export function useInfiniteArchive(
       try {
         if (archive.kind === "popular") {
           const body = await fetchLibraryPopular(
-            { limit: PAGE, offset: 0 },
+            {
+              limit: PAGE,
+              offset: 0,
+              content_types: archive.content_types,
+            },
             signal,
           );
           if (signal.aborted) return;
@@ -154,7 +158,11 @@ export function useInfiniteArchive(
       try {
         if (arch.kind === "popular") {
           const offset = offsetRef.current;
-          const body = await fetchLibraryPopular({ limit: PAGE, offset });
+          const body = await fetchLibraryPopular({
+            limit: PAGE,
+            offset,
+            content_types: arch.content_types,
+          });
           offsetRef.current = offset + PAGE;
           const next = dedupeAppend(itemsRef.current, body.resources);
           const gained = next.length - itemsRef.current.length;
