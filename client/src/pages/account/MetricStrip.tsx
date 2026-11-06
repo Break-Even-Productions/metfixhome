@@ -10,9 +10,20 @@ type Props = {
   tier: CanonicalSubscriptionTier;
   legacySource?: LegacySubscriptionSource;
   ltv: LtvCertificates | null;
+  /** Only set when a real portal session is available — never a guessed Whop URL. */
+  onManageTier?: (() => void) | null;
+  manageBusy?: boolean;
 };
 
-export function MetricStrip({ status, nextPayment, tier, legacySource, ltv }: Props) {
+export function MetricStrip({
+  status,
+  nextPayment,
+  tier,
+  legacySource,
+  ltv,
+  onManageTier,
+  manageBusy,
+}: Props) {
   const available = ltv ? formatUsdFromCents(ltv.available_certificate_ltv_cents) : "$0.00";
   const total = ltv ? formatUsdFromCents(ltv.total_ltv_cents) : "$0.00";
   const claimed = ltv ? formatUsdFromCents(ltv.claimed_courses_value_cents) : "$0.00";
@@ -35,6 +46,17 @@ export function MetricStrip({ status, nextPayment, tier, legacySource, ltv }: Pr
         <div className="account-metric-card__value account-metric">
           {tierDisplayLabel(tier, { legacy_source: legacySource ?? null })}
         </div>
+        {onManageTier ? (
+          <button
+            type="button"
+            className="account-btn account-btn--ghost"
+            style={{ marginTop: "0.55rem" }}
+            disabled={manageBusy}
+            onClick={onManageTier}
+          >
+            Manage membership
+          </button>
+        ) : null}
       </div>
       <div className="account-metric-card">
         <div className="account-metric-card__label">Certificate LTV Available</div>

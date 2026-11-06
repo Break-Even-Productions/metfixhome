@@ -568,6 +568,7 @@ function shapeSubscriptionItem(raw: unknown): Record<string, unknown> | null {
   if (legacy) item.legacy_source = legacy;
   if (obj.is_duplicate_stripe === true) item.is_duplicate_stripe = true;
   if (obj.can_convert_to_whop === true) item.can_convert_to_whop = true;
+  if (obj.can_open_portal === true) item.can_open_portal = true;
   return item;
 }
 
@@ -903,7 +904,7 @@ function shapeCourses(raw: unknown): Record<string, unknown> | null {
   for (const row of itemsIn) {
     const r = asRecord(row);
     if (!r) continue;
-    items.push({
+    const row: Record<string, unknown> = {
       id: r.id ?? null,
       slug: strOrNull(r.slug),
       title: strOrNull(r.title),
@@ -926,7 +927,45 @@ function shapeCourses(raw: unknown): Record<string, unknown> | null {
           ? r.certificate_claim_method
           : null,
       certificate_url: typeof r.certificate_url === "string" ? r.certificate_url : null,
-    });
+    };
+    if (typeof r.notes === "string" && r.notes.trim()) {
+      row.notes = r.notes.trim().slice(0, 500);
+    }
+    if (typeof r.image_url === "string" && r.image_url.startsWith("https://")) {
+      row.image_url = r.image_url;
+    }
+    const features = asRecord(r.features);
+    if (features) {
+      const lite: Record<string, unknown> = {};
+      if (Array.isArray(features.navigation)) {
+        lite.navigation = features.navigation
+          .map((n) => {
+            const nav = asRecord(n);
+            if (!nav) return null;
+            return {
+              key: typeof nav.key === "string" ? nav.key : undefined,
+              label: typeof nav.label === "string" ? nav.label : undefined,
+              segment: typeof nav.segment === "string" ? nav.segment : undefined,
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 12);
+      }
+      if (features.counts && typeof features.counts === "object" && !Array.isArray(features.counts)) {
+        lite.counts = features.counts;
+      }
+      const progress = asRecord(features.progress);
+      if (progress) {
+        lite.progress = {
+          percentage: typeof progress.percentage === "number" ? progress.percentage : undefined,
+          completed_items:
+            typeof progress.completed_items === "number" ? progress.completed_items : undefined,
+          total_items: typeof progress.total_items === "number" ? progress.total_items : undefined,
+        };
+      }
+      if (Object.keys(lite).length > 0) row.features = lite;
+    }
+    items.push(row);
   }
   return {
     items,
