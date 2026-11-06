@@ -94,7 +94,7 @@ import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
-import { sha256Hex } from "./auth/crypto";
+import { sha256Hex, timingSafeEqualStr } from "./auth/crypto";
 import { requireCsrf } from "./auth/csrf";
 import { isAuthHost } from "./auth/host";
 import { publicDisplayName } from "./auth/public-name";
@@ -3534,7 +3534,7 @@ export async function handleAccountRoutes(
       const csrf = await requireCsrf(request, env);
       if (!csrf.ok) {
         // Normalize to accountJson (private, no-store) — authJson uses bare no-store.
-        if (csrf.response.status === 503) {
+        if (timingSafeEqualStr(String(csrf.response.status), "503")) {
           return accountJson({ error: "unavailable" }, 503, {
             "Retry-After": csrf.response.headers.get("Retry-After") ?? "300",
           });

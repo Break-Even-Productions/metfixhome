@@ -1,6 +1,8 @@
 import { Lock } from "lucide-react";
 import { Link } from "wouter";
-import type { Post } from "@shared/posts";
+import { PAGE_SIZE, type Post } from "@shared/posts";
+
+const EXCLUSIVE_LOCK_ICON_SIZE = PAGE_SIZE;
 
 function formatPostDate(iso: string): string {
   const d = new Date(iso);
@@ -34,14 +36,14 @@ export function PostCard({ post }: PostCardProps) {
           />
           {post.exclusive ? (
             <span className="posts-card-lock" aria-label="Exclusive content">
-              <Lock size={12} strokeWidth={2.25} aria-hidden />
+              <Lock size={EXCLUSIVE_LOCK_ICON_SIZE} strokeWidth={2.25} aria-hidden />
             </span>
           ) : null}
         </div>
       ) : post.exclusive ? (
         <div className="posts-card-media posts-card-media-empty">
           <span className="posts-card-lock" aria-label="Exclusive content">
-            <Lock size={12} strokeWidth={2.25} aria-hidden />
+            <Lock size={EXCLUSIVE_LOCK_ICON_SIZE} strokeWidth={2.25} aria-hidden />
           </span>
         </div>
       ) : null}
