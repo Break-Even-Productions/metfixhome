@@ -36,6 +36,10 @@ export function PostCard({ post }: PostCardProps) {
           {post.category ? (
             <span className="posts-card-category">{post.category.name}</span>
           ) : null}
+          {post.exclusive ? <span className="posts-card-tag">Exclusive</span> : null}
+          {post.preview_available ? (
+            <span className="posts-card-tag posts-card-tag-preview">Preview available</span>
+          ) : null}
           <time dateTime={post.date}>{formatPostDate(post.date)}</time>
           {post.author ? <span>{post.author}</span> : null}
         </div>

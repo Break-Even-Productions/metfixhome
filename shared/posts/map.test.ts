@@ -43,10 +43,39 @@ describe("mapListItem / field transforms (PW25)", () => {
       image: "https://brokenscience.org/wp-content/uploads/a.jpg",
       author: "A",
       category: { name: "News", slug: "news" },
+      exclusive: false,
+      preview_available: false,
     });
     expect(Object.keys(mapped!).sort()).toEqual(
-      ["author", "category", "date", "excerpt", "id", "image", "title"].sort(),
+      [
+        "author",
+        "category",
+        "date",
+        "excerpt",
+        "exclusive",
+        "id",
+        "image",
+        "preview_available",
+        "title",
+      ].sort(),
     );
+  });
+
+  it("keeps exclusive posts and tags preview when BSI reports has_preview", () => {
+    const mapped = mapListItem(
+      unlockedItem({
+        access_levels: ["members"],
+        content_access_display: {
+          has_content_access: true,
+          is_exclusive: true,
+          access: "preview",
+          has_preview: true,
+        },
+      }),
+    );
+    expect(mapped).not.toBeNull();
+    expect(mapped!.exclusive).toBe(true);
+    expect(mapped!.preview_available).toBe(true);
   });
 
   it("decodes HTML entities in excerpt exactly once after tag strip (CQ17)", () => {
@@ -217,14 +246,20 @@ describe("mapListResponse (A6 has_more / dedupe / order)", () => {
     expect(isPostListBody(body)).toBe(true);
   });
 
-  it("drops locked items and keeps order of survivors", () => {
+  it("keeps exclusive items in order and tags them", () => {
     const posts = [
       unlockedItem({ id: 9 }),
       unlockedItem({
         id: 3,
         access_levels: ["x"],
-        title: "LOCKED",
-        excerpt: "LOCKED-EXC-7f3",
+        title: "Exclusive essay",
+        excerpt: "Preview excerpt",
+        content_access_display: {
+          has_content_access: true,
+          is_exclusive: true,
+          access: "preview",
+          has_preview: true,
+        },
       }),
       unlockedItem({ id: 1 }),
     ];
@@ -232,8 +267,28 @@ describe("mapListResponse (A6 has_more / dedupe / order)", () => {
       { posts, meta: { total: 13, per_page: 10 } },
       1,
     )!;
-    expect(body.posts.map((p) => p.id)).toEqual([9, 1]);
+    expect(body.posts.map((p) => p.id)).toEqual([9, 3, 1]);
+    expect(body.posts[1]).toMatchObject({
+      exclusive: true,
+      preview_available: true,
+      title: "Exclusive essay",
+    });
     expect(body.has_more).toBe(true);
+  });
+
+  it("drops posts with malformed access shape", () => {
+    const body = mapListResponse(
+      {
+        posts: [
+          unlockedItem({ id: 9 }),
+          unlockedItem({ id: 3, content_access_display: null }),
+          unlockedItem({ id: 1, access_levels: undefined }),
+        ],
+        meta: { total: 13, per_page: 10 },
+      },
+      1,
+    )!;
+    expect(body.posts.map((p) => p.id)).toEqual([9]);
   });
 });
 
@@ -255,10 +310,12 @@ describe("mapDetailPost / mapDetailResponse", () => {
         "content_types",
         "date",
         "excerpt",
+        "exclusive",
         "id",
         "image",
         "locked",
         "permalink",
+        "preview_available",
         "title",
         "topics",
         "video",
@@ -271,10 +328,22 @@ describe("mapDetailPost / mapDetailResponse", () => {
     expect(mapped.content).toBe("");
   });
 
-  it("D8 failure → null; missing post → null", () => {
-    expect(
-      mapDetailPost(unlockedItem({ access_levels: ["members"] })),
-    ).toBeNull();
+  it("maps exclusive members posts; malformed / missing post → null", () => {
+    const exclusive = mapDetailPost(
+      unlockedItem({
+        access_levels: ["members"],
+        content_access_display: {
+          has_content_access: true,
+          is_exclusive: true,
+          access: "preview",
+          has_preview: true,
+        },
+      }),
+    );
+    expect(exclusive).not.toBeNull();
+    expect(exclusive!.exclusive).toBe(true);
+    expect(exclusive!.preview_available).toBe(true);
+    expect(mapDetailPost(unlockedItem({ content_access_display: null }))).toBeNull();
     expect(mapDetailResponse({})).toBeNull();
     expect(mapDetailResponse({ post: null })).toBeNull();
     expect(mapDetailResponse({ post: [] })).toBeNull();

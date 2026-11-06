@@ -1,0 +1,361 @@
+.find-gym {
+  min-height: 100svh;
+  padding-top: var(--global-nav-offset, 7.25rem);
+  background:
+    radial-gradient(1200px 480px at 10% -10%, rgba(196, 164, 108, 0.18), transparent 55%),
+    var(--color-cream);
+  color: var(--color-ink);
+}
+
+.find-gym__results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-height: 68svh;
+  overflow: auto;
+  padding-right: 0.25rem;
+  /* Avoid the global `.flex { min-height: 0 }` shrink trap on card children. */
+  min-height: 0;
+}
+
+.gym-map {
+  height: min(68svh, 720px);
+  min-height: 320px;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  border: 1px solid var(--color-line);
+  background: var(--color-cream-2);
+}
+
+.gym-map__canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.gym-map .maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
+
+.gym-map .maplibregl-canvas {
+  outline: none;
+}
+
+.gym-map .maplibregl-marker {
+  z-index: 1;
+}
+
+/* Fixed screen-pixel pins — do not scale with map zoom. */
+.gym-pin {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid #171512;
+  border-radius: 999px;
+  background: #c4a46c;
+  box-shadow: 0 2px 8px rgba(23, 21, 18, 0.28);
+  cursor: pointer;
+  display: block;
+  flex: none;
+}
+
+.gym-pin[data-kind="coach"] {
+  background: #171512;
+}
+
+.gym-pin[data-kind="doctor"] {
+  background: #faf7f1;
+}
+
+.gym-pin.is-selected {
+  background: #171512;
+  box-shadow: 0 0 0 3px #c4a46c, 0 2px 8px rgba(23, 21, 18, 0.28);
+}
+
+.gym-cluster {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid #171512;
+  border-radius: 999px;
+  background: #c4a46c;
+  color: #171512;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(23, 21, 18, 0.28);
+}
+
+.gym-cluster.is-sm {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+
+.gym-cluster.is-md {
+  width: 38px;
+  height: 38px;
+  font-size: 13px;
+}
+
+.gym-cluster.is-lg {
+  width: 46px;
+  height: 46px;
+  font-size: 14px;
+}
+
+.gym-cluster.is-xl {
+  width: 54px;
+  height: 54px;
+  font-size: 15px;
+}
+
+.gym-map-popup .maplibregl-popup-content {
+  padding: 0;
+  border-radius: 1rem;
+  box-shadow: 0 16px 40px rgba(23, 21, 18, 0.16);
+  border: 1px solid var(--color-line);
+  overflow: hidden;
+}
+
+.gym-map-popup .maplibregl-popup-close-button {
+  font-size: 18px;
+  padding: 4px 8px;
+  color: var(--color-ink);
+}
+
+.gym-popup {
+  padding: 0.85rem 1rem 1rem;
+  color: var(--color-ink);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.gym-popup__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-right: 1rem;
+}
+
+.gym-popup__logo {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.85rem;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--color-cream);
+}
+
+.gym-popup__logo--fallback {
+  display: grid;
+  place-items: center;
+  background: var(--color-ink);
+  color: var(--color-cream);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.gym-popup__name {
+  margin: 0;
+  font-family: var(--font-serif), ui-serif, Georgia, serif;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.gym-popup__address {
+  margin: 0.65rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.gym-popup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.gym-popup__link {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent-2);
+  text-underline-offset: 3px;
+}
+
+.gym-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-height: auto;
+  padding: 1.15rem;
+  border-radius: 1.5rem;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(23, 21, 18, 0.04);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.gym-card.is-selected {
+  border-color: var(--color-ink);
+  box-shadow: 0 16px 40px rgba(23, 21, 18, 0.1);
+}
+
+.gym-card:hover {
+  transform: translateY(-2px);
+}
+
+.gym-card__main {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  min-height: 4rem;
+}
+
+.gym-card__logo {
+  width: 4rem;
+  height: 4rem;
+  flex: 0 0 auto;
+  border-radius: 1rem;
+  object-fit: cover;
+  background: var(--color-cream);
+}
+
+.gym-card__logo--fallback {
+  display: grid;
+  place-items: center;
+  background: var(--color-ink);
+  color: var(--color-cream);
+  font-weight: 650;
+}
+
+.gym-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.gym-card__kind {
+  display: inline-flex;
+  align-self: flex-start;
+  border-radius: 999px;
+  background: var(--color-cream);
+  padding: 0.15rem 0.5rem;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(23, 21, 18, 0.7);
+}
+
+.gym-card__name {
+  font-family: var(--font-serif), ui-serif, Georgia, serif;
+  font-size: 1.3rem;
+  line-height: 1.2;
+  color: var(--color-ink);
+}
+
+.gym-card__title,
+.gym-card__place {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gym-card__title {
+  color: var(--color-muted);
+}
+
+.gym-card__place {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.gym-card__address {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.gym-card__address p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.gym-card__address a,
+.gym-card__cta a {
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent-2);
+  text-underline-offset: 4px;
+}
+
+.gym-card__works-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent-2);
+}
+
+.gym-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gym-card__tags span {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--color-cream);
+  color: rgba(23, 21, 18, 0.75);
+}
+
+.gym-card__tags span.is-active {
+  background: color-mix(in srgb, var(--color-accent) 35%, white);
+  color: var(--color-ink);
+}
+
+.gym-card__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  border-top: 1px solid var(--color-line);
+  padding-top: 0.85rem;
+}
+
+@media (max-width: 1023px) {
+  .gym-map {
+    height: 46svh;
+    min-height: 240px;
+  }
+
+  .find-gym__results {
+    max-height: none;
+  }
+}

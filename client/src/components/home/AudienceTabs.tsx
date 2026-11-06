@@ -180,7 +180,7 @@ export function AudienceTabs({
             className="inline-flex items-center rounded-full bg-white px-4 py-1.5 text-[12px] font-semibold leading-none text-ink transition-colors duration-300 ease-out hover:bg-cream md:px-5 md:text-[13px]"
             data-nav-auth="account"
           >
-            {accountName}
+            Dashboard
           </Link>
         ) : loginHref ? (
           <Link

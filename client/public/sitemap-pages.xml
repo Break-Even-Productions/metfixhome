@@ -21,6 +21,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://metfix.org/find-a-gym</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://metfix.org/llms.txt</loc>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>

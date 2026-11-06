@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Dumbbell, Library, Mail, UtensilsCrossed } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
-import { METFIX_MAP_URL } from "@/const";
+import { FIND_A_GYM_PATH } from "@/const";
 import type { AudienceHref, LandingCopy } from "@/data/home/audience";
 import { shouldSkipProRecommendation } from "@/join/membership-access";
 import { loadOverview, loadSubscriptions } from "@/lib/account";
@@ -102,11 +102,11 @@ const overlayLinks = [
     external: false,
   },
   {
-    href: METFIX_MAP_URL,
+    href: FIND_A_GYM_PATH,
     title: "Find a Gym",
     subtitle: "Local, trusted options",
     icon: Dumbbell,
-    external: true,
+    external: false,
   },
   {
     href: "/library",

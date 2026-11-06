@@ -12,7 +12,7 @@ MetFix is an education platform, not a certification body. Co-founded by Emily K
 - Affiliation: [Become an Affiliate](https://metfix.org/become-an-affiliate)
 - Courses: [Course catalog](https://metfix.org/classes)
 - Seminars: [Foundations Seminars](https://metfix.org/affiliate-seminars)
-- Find a gym: [MetFix map](https://brokenscience.org/metfix/metfix-map/)
+- Find a gym: [MetFix map](https://metfix.org/find-a-gym)
 
 ## Full AI brief
 

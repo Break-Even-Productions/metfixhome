@@ -2,7 +2,17 @@ import { isResourceVideo } from "../library/video";
 import type { ContentAccessDisplay, TermRef } from "../library/types";
 import type { DetailPost, Post, PostDetailBody, PostListBody } from "./types";
 
-const POST_KEYS = ["id", "title", "excerpt", "date", "image", "author", "category"] as const;
+const POST_KEYS = [
+  "id",
+  "title",
+  "excerpt",
+  "date",
+  "image",
+  "author",
+  "category",
+  "exclusive",
+  "preview_available",
+] as const;
 const DETAIL_POST_KEYS = [
   "id",
   "title",
@@ -11,6 +21,8 @@ const DETAIL_POST_KEYS = [
   "image",
   "author",
   "category",
+  "exclusive",
+  "preview_available",
   "content",
   "permalink",
   "video",
@@ -68,6 +80,8 @@ function isPost(value: unknown): value is Post {
   if (!(p.image === null || typeof p.image === "string")) return false;
   if (!(p.author === null || typeof p.author === "string")) return false;
   if (!(p.category === null || isCategory(p.category))) return false;
+  if (typeof p.exclusive !== "boolean") return false;
+  if (typeof p.preview_available !== "boolean") return false;
   return true;
 }
 
@@ -82,6 +96,8 @@ function isDetailPost(value: unknown): value is DetailPost {
   if (!(p.image === null || typeof p.image === "string")) return false;
   if (!(p.author === null || typeof p.author === "string")) return false;
   if (!(p.category === null || isCategory(p.category))) return false;
+  if (typeof p.exclusive !== "boolean") return false;
+  if (typeof p.preview_available !== "boolean") return false;
   if (typeof p.content !== "string") return false;
   if (!(p.permalink === null || typeof p.permalink === "string")) return false;
   if (!(p.video === null || isResourceVideo(p.video))) return false;

@@ -13,6 +13,10 @@ export type Post = {
   image: string | null;
   author: string | null;
   category: { name: string; slug: string } | null;
+  /** Professional / gated / exclusive content (IA tag). */
+  exclusive: boolean;
+  /** BSI reports a public preview for this gated post. */
+  preview_available: boolean;
 };
 
 /** Detail post shape (A7 / PL14–PL16). Exact key set. */

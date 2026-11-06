@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isUnlockedPost } from "./locked";
+import {
+  hasMappablePostAccess,
+  isUnlockedPost,
+  postListAccessFlags,
+} from "./locked";
 
 /** Plain unlocked shape (PW30 control). */
 function unlocked(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -191,5 +195,30 @@ describe("isUnlockedPost (D8 / PW30)", () => {
     expect(isUnlockedPost(null)).toBe(false);
     expect(isUnlockedPost([])).toBe(false);
     expect(isUnlockedPost("x")).toBe(false);
+  });
+});
+
+describe("hasMappablePostAccess / postListAccessFlags", () => {
+  it("allows exclusive posts with preview tags", () => {
+    const exclusive = unlocked({
+      access_levels: ["members"],
+      content_access_display: {
+        has_content_access: true,
+        is_exclusive: true,
+        access: "preview",
+        has_preview: true,
+      },
+    });
+    expect(hasMappablePostAccess(exclusive)).toBe(true);
+    expect(isUnlockedPost(exclusive)).toBe(false);
+    expect(postListAccessFlags(exclusive)).toEqual({
+      exclusive: true,
+      preview_available: true,
+    });
+  });
+
+  it("rejects malformed access shape", () => {
+    expect(hasMappablePostAccess(unlocked({ content_access_display: null }))).toBe(false);
+    expect(hasMappablePostAccess(unlocked({ access_levels: undefined }))).toBe(false);
   });
 });

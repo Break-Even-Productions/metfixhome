@@ -201,7 +201,7 @@ export function Membership({
               <button
                 type="button"
                 onClick={onJoin}
-                className="mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--join-accent)] px-6 py-3 text-sm font-semibold text-[var(--join-ink)] transition-[background-color,transform] duration-300 ease-out hover:-translate-y-px hover:bg-[var(--join-accent-2)]"
+                className="membership-cta mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--join-accent)] px-6 py-3 text-sm font-semibold text-[var(--join-ink)] transition-[background-color,transform,color] duration-300 ease-out hover:-translate-y-px hover:bg-[var(--join-accent-2)]"
               >
                 {MEMBERSHIP_HERO.cta}
               </button>
@@ -286,7 +286,7 @@ export function Membership({
               <button
                 type="button"
                 onClick={onJoin}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--join-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--join-ink)] transition-[background-color,transform] duration-300 ease-out hover:-translate-y-px hover:bg-[var(--join-accent-2)]"
+                className="membership-cta inline-flex items-center justify-center rounded-full bg-[var(--join-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--join-ink)] transition-[background-color,transform,color] duration-300 ease-out hover:-translate-y-px hover:bg-[var(--join-accent-2)]"
               >
                 {comparison.proCtaLabel}
               </button>

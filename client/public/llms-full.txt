@@ -47,7 +47,7 @@ How affiliation typically works:
 
 Affiliate application: https://metfix.fillout.com/affiliate-application
 Affiliate page: https://metfix.org/become-an-affiliate
-Gym map: https://brokenscience.org/metfix/metfix-map/
+Gym map: https://metfix.org/find-a-gym
 
 ## Education pathway
 

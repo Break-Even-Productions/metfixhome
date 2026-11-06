@@ -75,6 +75,10 @@ export type Env = {
   BSI_API_KEY?: string;
   /** Posts proxy secret — read only from worker/posts.ts (never DAILY_FIX_API_KEY). */
   BSI_POSTS_API_KEY?: string;
+  /** MapSVG affiliate map secret. Worker-only; never sent to the browser. */
+  BSI_AFFILIATES_MAP_SECRET?: string;
+  /** MapSVG coach map secret. Worker-only; never sent to the browser. */
+  BSI_COACHES_MAP_SECRET?: string;
   AUTH_SESSIONS: KVNamespace;
   SESSION: DurableObjectNamespace;
   LOGIN_THROTTLE: DurableObjectNamespace;

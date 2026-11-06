@@ -10,11 +10,13 @@ import {
   createHarness,
   csrfSid,
   hOk,
+  IP,
   ORIGIN,
   setupAuthHooks,
   type Harness,
 } from "../tools/pr2/harness/realauth-harness";
-import { SID_COOKIE } from "./auth/cookies";
+import { PRE_COOKIE, SID_COOKIE } from "./auth/cookies";
+import { csrfForPre } from "./auth/crypto";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -1470,6 +1472,66 @@ describe("CQ fill gates (T-CR6 / CR-X / DROP / CR1–CR5)", () => {
       }
     }
     spy.mockRestore();
+  });
+
+  it("CR3 guest checkout: no sid → Bearer-less BSI mint still returns checkout_url", async () => {
+    const pre = "pre_guest_checkout_test_01";
+    const csrf = await csrfForPre(h.env.CSRF_SECRET!, pre);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, headers }) => {
+        if (path.includes("/courses/28822/checkout") && method === "POST") {
+          expect(headers.authorization).toBeUndefined();
+          expect(headers["x-api-key"]).toBeUndefined();
+          return Response.json(CHECKOUT_OK);
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/28822/purchase-checkout",
+      {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+          "X-CSRF-Token": csrf,
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": IP,
+          Cookie: `${PRE_COOKIE}=${encodeURIComponent(pre)}`,
+        },
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      checkout_url: CHECKOUT_OK.checkout_url,
+    });
+    const upstream = recorded.find((r) => r.url.includes("/courses/28822/checkout"));
+    expect(upstream).toBeTruthy();
+    expect(upstream!.headers.authorization).toBeUndefined();
+  });
+
+  it("CR3 guest checkout without pre CSRF → 403 and 0 upstream", async () => {
+    const { fetchImpl, recorded } = makeFetchMock([]);
+    const res = await callAccount(
+      h,
+      "/api/account/courses/28822/purchase-checkout",
+      {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": IP,
+        },
+        body: JSON.stringify({}),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(403);
+    expect(recorded.filter((r) => r.url.includes("/wp-json/"))).toHaveLength(0);
   });
 });
 

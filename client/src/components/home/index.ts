@@ -1,5 +1,6 @@
 export { AudienceTabs } from "./AudienceTabs";
 export { HomeHero } from "./HomeHero";
+export { HomeDailyFix } from "./HomeDailyFix";
 export { HomeClasses } from "./HomeClasses";
 export { HomeFoundations } from "./HomeFoundations";
 export { HomeExperts } from "./HomeExperts";

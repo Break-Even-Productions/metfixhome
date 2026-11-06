@@ -222,6 +222,18 @@
   font-size: 0.72rem;
 }
 
+.posts-card-tag {
+  color: var(--posts-accent-text);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+}
+
+.posts-card-tag-preview {
+  color: var(--posts-muted);
+}
+
 .posts-card-title {
   font-family: var(--posts-font-serif);
   font-size: 1.35rem;

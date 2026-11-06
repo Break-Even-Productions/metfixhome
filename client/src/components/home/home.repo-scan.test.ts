@@ -241,20 +241,18 @@ describe("T-E-17 / SEC2 no wp-json in client/src", () => {
   });
 });
 
-describe("T-E-54 / NAVDATA1 METFIX_MAP_URL", () => {
-  it("METFIX_MAP_URL defined exactly once in const.ts", () => {
+describe("T-E-54 / NAVDATA1 FIND_A_GYM_PATH", () => {
+  it("FIND_A_GYM_PATH defined exactly once in const.ts", () => {
     const constSrc = readFileSync(
       fileURLToPath(new URL("../../const.ts", import.meta.url)),
       "utf8",
     );
-    expect(constSrc.match(/export const METFIX_MAP_URL/g)).toHaveLength(1);
-    expect(constSrc).toMatch(
-      /METFIX_MAP_URL\s*=\s*["']https:\/\/brokenscience\.org\/metfix\/metfix-map\/["']/,
-    );
+    expect(constSrc.match(/export const FIND_A_GYM_PATH/g)).toHaveLength(1);
+    expect(constSrc).toMatch(/FIND_A_GYM_PATH\s*=\s*["']\/find-a-gym["']/);
     const clientSrc = fileURLToPath(new URL("../..", import.meta.url));
     const defs = walk(clientSrc).flatMap((f) => {
       const text = readFileSync(f, "utf8");
-      return (text.match(/export\s+const\s+METFIX_MAP_URL\s*=/g) ?? []).map(() => f);
+      return (text.match(/export\s+const\s+FIND_A_GYM_PATH\s*=/g) ?? []).map(() => f);
     });
     expect(defs).toHaveLength(1);
   });

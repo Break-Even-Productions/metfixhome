@@ -39,6 +39,7 @@ const LibraryTaxonomyPage = lazy(
   () => import("./pages/library/LibraryTaxonomyPage"),
 );
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
+const FindAGymPage = lazy(() => import("./pages/find-a-gym/FindAGymPage"));
 
 function BsiRefCapture() {
   useEffect(() => {
@@ -74,6 +75,13 @@ function AppRoutes() {
       <Route path={"/classes"} component={Classes} />
       <Route path={"/courses"} component={Classes} />
       <Route path={"/affiliate-seminars"} component={AffiliateSeminars} />
+      <Route path={"/find-a-gym"}>
+        {() => (
+          <Suspense fallback={null}>
+            <FindAGymPage />
+          </Suspense>
+        )}
+      </Route>
       <Route path={"/the-daily-fix/:yy/:mm/:dd"} component={TheDailyFixPage} />
       <Route
         path={"/the-daily-fix/:date/:pillar"}
