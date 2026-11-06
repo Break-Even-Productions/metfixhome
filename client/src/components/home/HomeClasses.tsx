@@ -32,7 +32,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
   const image = !imageFailed ? resolveCourseImage(course.image) : null;
   const canBuy = Boolean(course.live && course.bsiPostId);
   const statusLabel = courseStatusLabel(course);
-  const { signedIn, email, setEmail, buying, error: buyError, buy } = useCoursePurchase(
+  const { signedIn, buying, error: buyError, buy, emailModal } = useCoursePurchase(
     course.bsiPostId,
   );
 
@@ -102,19 +102,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
                   onClick={(event) => event.stopPropagation()}
                   onKeyDown={(event) => event.stopPropagation()}
                 >
-                  {signedIn === false ? (
-                    <input
-                      type="email"
-                      name="email"
-                      autoComplete="email"
-                      required
-                      value={email}
-                      placeholder="Email for this purchase"
-                      aria-label="Email for this purchase"
-                      onChange={(event) => setEmail(event.target.value)}
-                      className="w-full rounded-full border border-line bg-white px-4 py-2 text-sm text-[#171512]"
-                    />
-                  ) : null}
+                  {emailModal}
                   <button
                     type="button"
                     disabled={buying || signedIn == null}

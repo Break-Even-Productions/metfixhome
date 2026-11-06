@@ -69,7 +69,7 @@ function CourseCard({
   const startLabel = course.startButtonLabel || "Start Here";
   const notifyLabel = course.notifyButtonLabel || "Notify Me";
   const tagColor = isComing ? "var(--color-muted)" : "var(--color-accent-text)";
-  const { signedIn, email, setEmail, buying, error: buyError, buy } = useCoursePurchase(
+  const { signedIn, buying, error: buyError, buy, emailModal } = useCoursePurchase(
     course.bsiPostId,
   );
 
@@ -316,28 +316,7 @@ function CourseCard({
               flexWrap: "wrap",
             }}
           >
-            {showBuy && signedIn === false && (
-              <input
-                type="email"
-                name="email"
-                autoComplete="email"
-                required
-                value={email}
-                placeholder="Email for this purchase"
-                aria-label="Email for this purchase"
-                onChange={(event) => setEmail(event.target.value)}
-                className="cls-sans"
-                style={{
-                  padding: "0.75rem 0.9rem",
-                  fontSize: "0.85rem",
-                  border: "1px solid var(--color-line)",
-                  borderRadius: "4px",
-                  minWidth: "min(100%, 16rem)",
-                  background: "var(--color-cream, #fff)",
-                  color: "var(--color-ink)",
-                }}
-              />
-            )}
+            {emailModal}
             {showBuy && (
               <button
                 type="button"

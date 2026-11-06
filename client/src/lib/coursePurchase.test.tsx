@@ -59,13 +59,23 @@ describe("guest course Buy now", () => {
 
     render(<HomeClasses onJoin={() => undefined} courses={[course]} />);
 
-    const email = await screen.findByLabelText("Email for this purchase");
-    fireEvent.click(screen.getByRole("button", { name: "Buy Now" }));
+    const buy = await screen.findByRole("button", { name: "Buy Now" });
+    await waitFor(() => expect((buy as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByLabelText("Email for this purchase")).toBeNull();
+
+    fireEvent.click(buy);
+    const dialog = await screen.findByRole("dialog", { name: "Email for this purchase" });
+    expect(purchaseCourseCheckout).not.toHaveBeenCalled();
+
+    const email = screen.getByRole("textbox", { name: "Email for this purchase" });
+    fireEvent.change(email, { target: { value: "not-an-email" } });
+    fireEvent.submit(email.closest("form")!);
     expect(purchaseCourseCheckout).not.toHaveBeenCalled();
     expect((await screen.findByRole("alert")).textContent ?? "").toContain("Enter the email");
 
     fireEvent.change(email, { target: { value: "guest.buyer@example.test" } });
-    fireEvent.click(screen.getByRole("button", { name: "Buy Now" }));
+    fireEvent.submit(dialog.querySelector("form")!);
 
     await waitFor(() => {
       expect(purchaseCourseCheckout).toHaveBeenCalledWith(20231, {
@@ -93,6 +103,7 @@ describe("guest course Buy now", () => {
     expect(screen.queryByLabelText("Email for this purchase")).toBeNull();
 
     fireEvent.click(buy);
+    expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => {
       expect(purchaseCourseCheckout).toHaveBeenCalledWith(20231, {
         return_path: "/checkout/complete",
