@@ -18,9 +18,9 @@ RECAPTCHA_SECRET=
 #   1. Set LOCAL_AUTH=1
 #   2. Fill secrets above (same API key / client id as prod or staging)
 #   3. pnpm dev + wrangler dev; open http://localhost:3000/login
-#   Note: production BSI reCAPTCHA expects hostname metfix.org, so password
-#   login against prod BSI may still fail from localhost. Use hosts+HTTPS as
-#   metfix.org, or point BSI_ORIGIN at a local BSI that accepts local tokens.
+#   Note: LOCAL_AUTH skips Google reCAPTCHA siteverify (prod keys return
+#   browser-error on localhost). Password login still needs a client token
+#   from the site key script; OAuth/BSI credentials must still be valid.
 #
 # Alternate: local MetFix → local brokenscience.org checkout
 #   LOCAL_AUTH=1

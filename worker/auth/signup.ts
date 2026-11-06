@@ -6,6 +6,7 @@ import {
   parseRetryAfter,
   requireAuthConfig,
 } from "../upstream";
+import { bypassRecaptchaSiteverify } from "../dev-auth";
 import { checkSignupLimit, checkUsernameLimit } from "./auth-rate-limit";
 import { requireCsrf } from "./csrf";
 import { isAllowedRecaptchaHostname, isAuthHost } from "./host";
@@ -91,9 +92,11 @@ export async function handleSignup(
   if (!cfg) {
     return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "60" });
   }
-  const sv = await siteverify(recaptcha, cfg.recaptchaSecret, fetchImpl, env);
-  if (sv === "fail") return authJson(BODY_TRY_AGAIN, 403);
-  if (sv === "outage") return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
+  if (!bypassRecaptchaSiteverify(env)) {
+    const sv = await siteverify(recaptcha, cfg.recaptchaSecret, fetchImpl, env);
+    if (sv === "fail") return authJson(BODY_TRY_AGAIN, 403);
+    if (sv === "outage") return authJson(BODY_UNAVAILABLE, 503, { "Retry-After": "300" });
+  }
   const upstream = await bsiRegisterDirect(
     {
       username,

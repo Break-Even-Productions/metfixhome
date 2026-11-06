@@ -143,7 +143,12 @@ export function JoinModal({
                   setError("Sign-in is unavailable right now.");
                   return;
                 }
+                await ensureRecaptchaScript();
                 const recaptcha = await getRecaptchaToken("login");
+                if (!recaptcha) {
+                  setError("Could not load the security check. Refresh and try again.");
+                  return;
+                }
                 const res = await authHttp("/api/auth/login", {
                   method: "POST",
                   credentials: "same-origin",

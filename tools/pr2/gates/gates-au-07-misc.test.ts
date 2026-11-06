@@ -907,9 +907,13 @@ describe("AU19", () => {
 
   it("AU19.5 recaptcha script lazy mount", async () => {
     const { JSDOM } = await import("jsdom");
-    const dom = new JSDOM("<!doctype html><html><head></head><body></body></html>", {
-      url: "https://metfix.org/the-daily-fix",
-    });
+    // Shell always includes /api/recaptcha-site-key.js — must not block Google api.js inject.
+    const dom = new JSDOM(
+      `<!doctype html><html><head></head><body>
+        <script src="/api/recaptcha-site-key.js"></script>
+      </body></html>`,
+      { url: "https://metfix.org/the-daily-fix" },
+    );
     const prevWindow = globalThis.window;
     const prevDocument = globalThis.document;
     // @ts-expect-error test shim
@@ -919,15 +923,17 @@ describe("AU19", () => {
     (dom.window as unknown as { __MFX_RECAPTCHA_SITE_KEY__?: string }).__MFX_RECAPTCHA_SITE_KEY__ =
       "test-site-key";
     try {
+      vi.resetModules();
       const { ensureRecaptchaScript } = await import(
         "../../../client/src/pages/the-daily-fix/recaptcha"
       );
-      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(0);
-      ensureRecaptchaScript();
-      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(1);
-      ensureRecaptchaScript();
-      expect(document.querySelectorAll('script[src*="recaptcha"]').length).toBe(1);
-      const src = document.querySelector('script[src*="recaptcha"]')?.getAttribute("src") ?? "";
+      expect(document.querySelectorAll('script[src*="google.com/recaptcha"]').length).toBe(0);
+      void ensureRecaptchaScript();
+      expect(document.querySelectorAll('script[src*="google.com/recaptcha"]').length).toBe(1);
+      void ensureRecaptchaScript();
+      expect(document.querySelectorAll('script[src*="google.com/recaptcha"]').length).toBe(1);
+      const src =
+        document.querySelector('script[src*="google.com/recaptcha"]')?.getAttribute("src") ?? "";
       expect(src).toContain("google.com");
       expect(src).toContain("recaptcha");
     } finally {
