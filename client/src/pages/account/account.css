@@ -10,6 +10,7 @@
   --color-accent-2: #b08d52;
   --color-accent-3: #d4bc8a;
   --color-accent-text: #775f37;
+  --color-on-accent: var(--color-ink);
   --color-danger-text: #9a4a2e;
   --color-line: rgba(23, 21, 18, 0.1);
   --font-display: "Playfair Display", ui-serif, Georgia, serif;
@@ -17,16 +18,54 @@
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
   box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   min-height: 100svh;
   padding-top: var(--global-nav-offset, 4.5rem);
   background: var(--color-cream);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* Home-root pattern: lock horizontal page scroll; local rails may still scroll. */
+  overflow-x: clip;
 }
 
 .account-shell * {
   box-sizing: border-box;
+}
+
+/* Home audience accent tokens — driven by data-theme from onboarding roles / entitlements. */
+.account-shell[data-theme="individual"] {
+  --color-accent: #c4a46c;
+  --color-accent-2: #b08d52;
+  --color-accent-3: #d4bc8a;
+  --color-accent-text: #775f37;
+  --color-on-accent: var(--color-ink);
+}
+
+.account-shell[data-theme="coach"],
+.account-shell[data-theme="gym"] {
+  --color-accent: #0067b2;
+  --color-accent-2: #00508a;
+  --color-accent-3: #3d8ec4;
+  --color-accent-text: #3d8ec4;
+  --color-on-accent: #fff;
+}
+
+.account-shell[data-theme="responder"] {
+  --color-accent: #091f0e;
+  --color-accent-2: #12301a;
+  --color-accent-3: #76b284;
+  --color-accent-text: #76b284;
+  --color-on-accent: #fff;
+}
+
+.account-shell[data-theme="clinician"] {
+  --color-accent: #183a34;
+  --color-accent-2: #21483f;
+  --color-accent-3: #74aa9f;
+  --color-accent-text: #74aa9f;
+  --color-on-accent: #fff;
 }
 
 .account-shell h1,
@@ -47,27 +86,50 @@
 
 .account-layout {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: calc(100svh - var(--global-nav-offset, 4.5rem));
+  /* Home .page-stack: tight outer padding, stacked section cards. */
+  padding: 0.5rem;
+  gap: 0.5rem;
 }
 
 .account-sidebar {
   display: none;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
   padding: 1.75rem 1.25rem;
   background: var(--color-paper);
   border-right: 1px solid var(--color-line);
 }
 
+.account-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .account-mobile-nav {
   display: flex;
   gap: 0.5rem;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--color-line);
+  border-radius: 1.75rem;
+  border: 1px solid var(--color-line);
   background: var(--color-paper);
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.account-mobile-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .account-mobile-nav a {
@@ -88,9 +150,18 @@
 }
 
 .account-main {
-  padding: 1.5rem 1.25rem 3rem;
-  max-width: 960px;
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
+  padding: 0.85rem 0.35rem 2.5rem;
+}
+
+/* Hero pages: stack full-bleed section cards like home (hero + panel). */
+.account-main--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0 0.5rem;
 }
 
 .account-identity {
@@ -586,17 +657,48 @@ a.account-btn.account-btn--ghost {
   margin: 0 0 0.75rem;
 }
 
+@media (min-width: 768px) {
+  .account-layout {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+
+  .account-stage {
+    gap: 0.75rem;
+  }
+
+  .account-mobile-nav {
+    border-radius: 2.5rem;
+  }
+
+  .account-main {
+    padding: 1.25rem 0.5rem 3rem;
+  }
+
+  .account-main--stack {
+    gap: 0.75rem;
+    padding: 0 0 0.75rem;
+  }
+}
+
 @media (min-width: 1024px) {
   .account-layout {
     grid-template-columns: 16.5rem minmax(0, 1fr);
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 1rem;
   }
 
   .account-sidebar {
     display: flex;
     position: sticky;
-    top: var(--global-nav-offset, 4.5rem);
+    top: calc(var(--global-nav-offset, 4.5rem) + 0.75rem);
     align-self: start;
-    min-height: calc(100svh - var(--global-nav-offset, 4.5rem));
+    min-height: calc(100svh - var(--global-nav-offset, 4.5rem) - 1.5rem);
+    min-width: 0;
+    border-right: 0;
+    border-radius: 1.5rem;
+    border: 1px solid var(--color-line);
   }
 
   .account-mobile-nav {
@@ -604,7 +706,12 @@ a.account-btn.account-btn--ghost {
   }
 
   .account-main {
-    padding: 2rem 2.25rem 4rem;
+    padding: 1.25rem 0.75rem 4rem;
+    max-width: none;
+  }
+
+  .account-main--stack {
+    padding: 0 0 1rem;
   }
 
   .account-metric-strip {
@@ -707,16 +814,17 @@ a.account-btn.account-btn--ghost {
 .account-btn--accent {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-on-accent, var(--color-ink));
 }
 
 .account-btn--accent:hover {
   background: var(--color-accent-2);
   border-color: var(--color-accent-2);
+  color: var(--color-on-accent, var(--color-ink));
 }
 
 a.account-btn.account-btn--accent {
-  color: var(--color-ink);
+  color: var(--color-on-accent, var(--color-ink));
 }
 
 .account-card {
@@ -785,16 +893,21 @@ a.account-btn.account-btn--accent {
   padding: 0.45rem 0.9rem;
   border-radius: 999px;
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-on-accent, var(--color-ink));
 }
 
 .account-tool--locked .account-tool__action--cta {
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-on-accent, var(--color-ink));
 }
 
 .dash-panel {
-  padding: 1.5rem 0 0;
+  min-width: 0;
+  max-width: 100%;
+  padding: 1.25rem 1.15rem 1.5rem;
+  border-radius: 1.75rem;
+  background: var(--color-paper);
+  border: 1px solid var(--color-line);
 }
 
 .dash-greet {
@@ -802,11 +915,15 @@ a.account-btn.account-btn--accent {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
+  isolation: isolate;
   background: var(--color-ink);
   min-height: 19rem;
-  padding: 1.75rem 1.35rem 1.35rem;
-  border-radius: 2rem;
+  padding: 1.75rem 1.15rem 1.15rem;
+  border-radius: 1.75rem;
 }
 
 .dash-greet__media {
@@ -901,7 +1018,10 @@ a.account-btn.account-btn--accent {
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin: 1.15rem 0 0;
   border-radius: 1rem;
   border: 0;
@@ -920,6 +1040,7 @@ a.account-btn.account-btn--accent {
 }
 
 .dash-greet__stat {
+  min-width: 0;
   padding: 0.85rem 1.1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
@@ -943,6 +1064,8 @@ a.account-btn.account-btn--accent {
   font-size: 1.15rem;
   line-height: 1.2;
   color: var(--color-cream);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dash-greet__stat-note {
@@ -1002,10 +1125,14 @@ a.account-btn.account-btn--accent {
 
 .dash-tool-hero {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
+  isolation: isolate;
   background: var(--color-ink);
-  padding: 1.5rem 1.25rem 1.25rem;
-  border-radius: 2rem;
+  padding: 1.5rem 1.15rem 1.15rem;
+  border-radius: 1.75rem;
   min-height: 18rem;
 }
 
@@ -1108,7 +1235,10 @@ a.account-btn.account-btn--accent {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin: 1rem 0 0;
   border-radius: 1rem;
   background: rgba(23, 21, 18, 0.55);
@@ -1125,6 +1255,7 @@ a.account-btn.account-btn--accent {
 }
 
 .dash-tool-hero__stat {
+  min-width: 0;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
@@ -1290,7 +1421,9 @@ a.account-btn.account-btn--accent {
 .dash-lift-tabs {
   display: flex;
   gap: 0.45rem;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding-bottom: 0.25rem;
   margin: 0 0 1.25rem;
   -webkit-overflow-scrolling: touch;
@@ -1654,35 +1787,25 @@ a.account-btn.account-btn--accent {
     border-radius: 0.85rem;
   }
 
-  .account-main {
-    max-width: none;
+  .dash-greet,
+  .dash-tool-hero,
+  .dash-panel {
+    border-radius: 2.5rem;
+  }
+
+  .dash-panel {
+    padding: 1.75rem 1.75rem 2rem;
   }
 
   .dash-greet,
   .dash-tool-hero {
-    border-radius: 2rem;
-  }
-
-  .dash-panel {
-    padding: 1.75rem 0 0;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
   }
 }
 
 @media (min-width: 1024px) {
   .account-layout {
     grid-template-columns: 17.5rem minmax(0, 1fr);
-    gap: 0.5rem;
-    padding: 0.35rem 0.75rem 1.5rem;
-  }
-
-  .account-sidebar {
-    border-right: 0;
-    border-radius: 1.5rem;
-    background: var(--color-paper);
-    border: 1px solid var(--color-line);
-  }
-
-  .account-main {
-    padding: 0 0 3rem;
   }
 }

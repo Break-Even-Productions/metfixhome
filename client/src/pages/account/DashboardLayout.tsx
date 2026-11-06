@@ -16,6 +16,7 @@ import {
 import { staffRoleLabels } from "./roleLabels";
 import { onboardingRoleLabel } from "./onboardingRoles";
 import { metfixToolsUnlocked } from "./metfixAppTools";
+import { resolveAccountAccentTheme } from "./accountTheme";
 import "./account.css";
 
 export const ACCOUNT_NAV = [
@@ -150,6 +151,7 @@ export default function DashboardLayout({
   }, [overview]);
 
   const displayName = overview?.display_name ?? "Member";
+  const accentTheme = useMemo(() => resolveAccountAccentTheme(overview), [overview]);
   const navItems = useMemo(
     () => ACCOUNT_NAV.filter((item) => accountNavVisible(item, overview, subs)),
     [overview, subs],
@@ -169,7 +171,7 @@ export default function DashboardLayout({
 
   return (
     <>
-      <div className="account-shell">
+      <div className="account-shell" data-theme={accentTheme}>
         <div className="account-layout">
           <aside className="account-sidebar" aria-label="Account navigation">
             <div className="account-identity">
@@ -236,7 +238,7 @@ export default function DashboardLayout({
             ) : null}
           </aside>
 
-          <div>
+          <div className="account-stage">
             <nav className="account-mobile-nav" aria-label="Account tabs">
               {navItems.map((item) => {
                 const current = isCurrent(item.href);
@@ -252,7 +254,12 @@ export default function DashboardLayout({
               })}
             </nav>
 
-            <main id="main" className="account-main">
+            <main
+              id="main"
+              className={
+                hideChromeTitle ? "account-main account-main--stack" : "account-main"
+              }
+            >
               {!hideChromeTitle ? (
                 <>
                   <h1 className="account-page-title">{title}</h1>
