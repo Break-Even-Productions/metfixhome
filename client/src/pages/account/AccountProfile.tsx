@@ -1,18 +1,25 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  loadOverview,
   loadProfile,
+  updateOnboardingRoles,
   updateProfile,
   updateProfileAttributes,
   uploadProfilePicture,
+  type AccountOverview,
   type AccountProfile as ProfileDto,
+  type RoleId,
 } from "@/lib/account";
+import { needsConditionalStep } from "@shared/join/membership-domain";
 import DashboardLayout from "./DashboardLayout";
 import { editableProfileAttributes } from "./profileAttributes";
+import { onboardingRoleOptions } from "./onboardingRoles";
 
 const EMAIL_RE = /@/;
 
 export default function AccountProfile() {
   const [profile, setProfile] = useState<ProfileDto | null>(null);
+  const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -20,6 +27,9 @@ export default function AccountProfile() {
   const [location, setLocation] = useState("");
   const [credentials, setCredentials] = useState("");
   const [communityOptIn, setCommunityOptIn] = useState(false);
+  const [onboardingRoles, setOnboardingRoles] = useState<RoleId[]>([]);
+  const [hasPhysicalGym, setHasPhysicalGym] = useState<boolean | null>(null);
+  const [hasPhysicalClinic, setHasPhysicalClinic] = useState<boolean | null>(null);
   const [attrValues, setAttrValues] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -30,9 +40,13 @@ export default function AccountProfile() {
     let cancelled = false;
     (async () => {
       try {
-        const p = await loadProfile({ signal: ac.signal });
+        const [p, ov] = await Promise.all([
+          loadProfile({ signal: ac.signal }),
+          loadOverview({ signal: ac.signal }),
+        ]);
         if (cancelled) return;
         setProfile(p);
+        setOverview(ov);
         setFirstName(String(p.first_name ?? ""));
         setLastName(String(p.last_name ?? ""));
         setDisplayName(String(p.display_name ?? ""));
@@ -40,6 +54,13 @@ export default function AccountProfile() {
         setLocation(String(p.location ?? ""));
         setCredentials(String(p.credentials ?? ""));
         setCommunityOptIn(p.community_opt_in === true);
+        setOnboardingRoles([...(ov.onboarding_roles ?? [])]);
+        setHasPhysicalGym(
+          typeof ov.has_physical_gym === "boolean" ? ov.has_physical_gym : null,
+        );
+        setHasPhysicalClinic(
+          typeof ov.has_physical_clinic === "boolean" ? ov.has_physical_clinic : null,
+        );
         const fields = editableProfileAttributes(p);
         setAttrValues(Object.fromEntries(fields.map((field) => [field.attr_id, field.value])));
       } catch (err) {
@@ -53,6 +74,17 @@ export default function AccountProfile() {
       ac.abort();
     };
   }, []);
+
+  function toggleRole(id: RoleId) {
+    setSaved(false);
+    setOnboardingRoles((current) => {
+      if (current.includes(id)) {
+        if (current.length <= 1) return current;
+        return current.filter((r) => r !== id);
+      }
+      return [...current, id];
+    });
+  }
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -70,6 +102,29 @@ export default function AccountProfile() {
         community_opt_in: communityOptIn,
       });
       setProfile(next);
+
+      if (onboardingRoles.length >= 1) {
+        const rolesBody: {
+          onboarding_roles: RoleId[];
+          has_physical_gym?: boolean;
+          has_physical_clinic?: boolean;
+        } = { onboarding_roles: onboardingRoles };
+        if (needsConditionalStep(onboardingRoles)) {
+          if (onboardingRoles.includes("gym_owner")) {
+            rolesBody.has_physical_gym = hasPhysicalGym === true;
+          }
+          if (onboardingRoles.includes("clinician")) {
+            rolesBody.has_physical_clinic = hasPhysicalClinic === true;
+          }
+        }
+        const rolesNext = await updateOnboardingRoles(rolesBody);
+        setOnboardingRoles(rolesNext.onboarding_roles);
+        setHasPhysicalGym(rolesNext.has_physical_gym);
+        setHasPhysicalClinic(rolesNext.has_physical_clinic);
+        const refreshed = await loadOverview({ force: true });
+        setOverview(refreshed);
+      }
+
       setSaved(true);
     } catch {
       setError("Save failed.");
@@ -133,6 +188,8 @@ export default function AccountProfile() {
       await uploadProfilePicture(file);
       const p = await loadProfile({ force: true });
       setProfile(p);
+      const ov = await loadOverview({ force: true });
+      setOverview(ov);
       setSaved(true);
     } catch {
       setError("Picture upload failed.");
@@ -141,6 +198,9 @@ export default function AccountProfile() {
     }
   }
 
+  const avatarSrc = overview?.avatar_url || profile?.avatar_url || null;
+  const roleOptions = onboardingRoleOptions();
+
   return (
     <DashboardLayout title="Profile" description="Edit your public profile and picture.">
       {error ? <p className="account-error">{error}</p> : null}
@@ -148,15 +208,17 @@ export default function AccountProfile() {
 
       <section className="account-card">
         <h2>Profile picture</h2>
-        {profile?.avatar_url ? (
+        {avatarSrc ? (
           <img
             className="account-avatar"
-            src={String(profile.avatar_url)}
+            src={String(avatarSrc)}
             alt=""
             width={80}
             height={80}
           />
-        ) : null}
+        ) : (
+          <p className="account-muted">No picture yet — initials show in the dashboard until you upload one.</p>
+        )}
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
@@ -192,6 +254,53 @@ export default function AccountProfile() {
             Credentials
             <input value={credentials} onChange={(e) => setCredentials(e.target.value)} />
           </label>
+          <fieldset className="account-role-fieldset">
+            <legend>How you use MetFix</legend>
+            <p className="account-muted">
+              Opt-in audience attributes for classes and tools. These are not membership
+              entitlements, Whop products, or affiliate CRM roles.
+            </p>
+            <div className="account-role-chips">
+              {roleOptions.map((role) => {
+                const pressed = onboardingRoles.includes(role.id);
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    aria-pressed={pressed}
+                    className={
+                      pressed
+                        ? "account-role-chip account-role-chip--on"
+                        : "account-role-chip"
+                    }
+                    onClick={() => toggleRole(role.id)}
+                  >
+                    {role.title}
+                  </button>
+                );
+              })}
+            </div>
+            {onboardingRoles.includes("gym_owner") ? (
+              <label className="account-inline-check">
+                <input
+                  type="checkbox"
+                  checked={hasPhysicalGym === true}
+                  onChange={(e) => setHasPhysicalGym(e.target.checked)}
+                />
+                I have a physical gym / facility
+              </label>
+            ) : null}
+            {onboardingRoles.includes("clinician") ? (
+              <label className="account-inline-check">
+                <input
+                  type="checkbox"
+                  checked={hasPhysicalClinic === true}
+                  onChange={(e) => setHasPhysicalClinic(e.target.checked)}
+                />
+                I have a physical clinic / practice
+              </label>
+            ) : null}
+          </fieldset>
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <input
               type="checkbox"

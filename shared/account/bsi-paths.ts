@@ -74,6 +74,11 @@ export function accountMeProfilePath(): string {
   return `${BSI}/me/profile`;
 }
 
+/** Opt-in onboarding audience attributes (not entitlement / WP paid roles). */
+export function accountMeCommunityChoicesPath(): string {
+  return `${BSI}/me/community-choices`;
+}
+
 export function accountProfilesMeAttributesPath(): string {
   return `${BSI}/profiles/me/attributes`;
 }

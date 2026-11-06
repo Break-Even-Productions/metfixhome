@@ -100,7 +100,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
         <AccountOverview />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByText(/Foundations Coach/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /Foundations Coach/i })).toBeTruthy(),
+    );
     expect(screen.getByText(/in-person seminar check-in/i)).toBeTruthy();
     expect(screen.getByText(/Expires/i)).toBeTruthy();
   });
@@ -221,11 +223,17 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       </Router>,
     );
     await waitFor(() => expect(screen.getByText("Next Payment")).toBeTruthy());
-    const dailyFix = screen.getByRole("link", { name: /Daily Fix/i });
+    const dailyFix = screen.getByRole("link", { name: /Daily Fix Archive/i });
     expect(dailyFix.getAttribute("href")).toBe("/the-daily-fix");
+    expect(screen.getByRole("link", { name: /Meal plans/i }).getAttribute("href")).toBe(
+      "/account/meals",
+    );
+    expect(screen.getByRole("link", { name: /PR & benchmark/i }).getAttribute("href")).toBe(
+      "/account/benchmarks",
+    );
     expect(screen.getAllByText("No web page yet").length).toBeGreaterThan(0);
     expect(screen.queryByText("MetFix Admin")).toBeNull();
-    expect(document.querySelector('[data-tool="spark"]')?.getAttribute("data-state")).toBe(
+    expect(document.querySelector('[data-tool="workout-tracking"]')?.getAttribute("data-state")).toBe(
       "available",
     );
   });
@@ -267,8 +275,13 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     );
     await waitFor(() => expect(screen.getByText("Meal plans")).toBeTruthy());
     expect(screen.queryByText("Next Payment")).toBeNull();
-    expect(screen.queryByRole("link", { name: /Daily Fix/i })).toBeNull();
-    expect(document.querySelectorAll('[data-state="locked"]').length).toBe(7);
+    // Locked tools upgrade via /join — Daily Fix Archive is not opened for free accounts.
+    expect(
+      Array.from(document.querySelectorAll('[data-tool="daily-fix-archive"]')).every(
+        (el) => el.getAttribute("href") === "/join",
+      ),
+    ).toBe(true);
+    expect(document.querySelectorAll('[data-state="locked"]').length).toBe(4);
   });
 
   it("shows Admin and MetFix Admin when the account has those roles", async () => {

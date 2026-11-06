@@ -1,3 +1,4 @@
+import { useId, useState } from "react";
 import { computeLtvBudget, formatUsdFromCents } from "@shared/account/ltv";
 import type { LtvCertificates } from "@/lib/account";
 
@@ -5,7 +6,12 @@ type Props = {
   ltv: LtvCertificates;
 };
 
+const LTV_INFO =
+  "Your certificate LTV budget grows with MetFix subscription spend. When you claim a course certificate, MetFix can allocate lifetime spend toward that course’s listed value (redeem LTV), let you prepay any shortfall, or buy the certificate outright. Claimed certificates reduce available balance. This is separate from membership tier and onboarding audience attributes.";
+
 export function LtvVisualizer({ ltv }: Props) {
+  const [open, setOpen] = useState(false);
+  const dialogId = useId();
   const budget = computeLtvBudget(ltv.total_ltv_cents, ltv.claimed_courses_value_cents);
   const allocatedPct =
     budget.total_ltv_cents > 0
@@ -21,8 +27,27 @@ export function LtvVisualizer({ ltv }: Props) {
   );
 
   return (
-    <section className="account-card" aria-labelledby="ltv-visualizer-heading">
-      <h2 id="ltv-visualizer-heading">LTV Certificate Budget</h2>
+    <section className="account-card account-ltv" aria-labelledby="ltv-visualizer-heading">
+      <div className="account-ltv__head">
+        <h2 id="ltv-visualizer-heading">LTV Certificate Budget</h2>
+        <button
+          type="button"
+          className="account-info-btn"
+          aria-expanded={open}
+          aria-controls={dialogId}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="account-info-btn__glyph" aria-hidden="true">
+            i
+          </span>
+          <span className="sr-only">How course claim and LTV works</span>
+        </button>
+      </div>
+      {open ? (
+        <p id={dialogId} className="account-ltv__info" role="note">
+          {LTV_INFO}
+        </p>
+      ) : null}
       <dl className="account-ltv-figures">
         <div>
           <dt>Total Subscription LTV</dt>

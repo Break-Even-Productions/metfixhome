@@ -6,50 +6,38 @@ export type AppTool = {
   summary: string;
   /** In-site route. Null when metfix.org has no page for this tool yet. */
   href: string | null;
+  /** When true, link is Pro-gated (show upgrade CTA for non-Pro). */
+  proOnly?: boolean;
 };
 
 export const METFIX_APP_TOOLS: readonly AppTool[] = [
   {
     id: "meal-plans",
     title: "Meal plans",
-    summary: "Build and follow meal plans from the MetFix nutrition framework.",
-    href: null,
+    summary: "Weekly metabolic meals, built around how you actually eat.",
+    href: "/account/meals",
+    proOnly: true,
   },
   {
-    id: "daily-fix",
-    title: "Daily Fix",
-    summary: "Today's recipe, workout, and reading.",
+    id: "daily-fix-archive",
+    title: "Daily Fix Archive",
+    summary: "Eat. Move. Think. A new recipe, workout, and reading each day — full archive for Pro.",
     href: "/the-daily-fix",
+    proOnly: true,
   },
   {
     id: "workout-tracking",
     title: "Workout tracking",
-    summary: "Log training sessions and review what you did.",
+    summary: "Log sessions and see recovery, load, and consistency in one place.",
     href: null,
+    proOnly: true,
   },
   {
     id: "pr-benchmarks",
     title: "PR & benchmark tracking",
-    summary: "Record personal records and benchmark workouts.",
-    href: null,
-  },
-  {
-    id: "spark",
-    title: "Spark data",
-    summary: "Class attendance and Spark athlete data.",
-    href: null,
-  },
-  {
-    id: "calendar",
-    title: "Calendar",
-    summary: "Scheduled meals, workouts, and classes.",
-    href: null,
-  },
-  {
-    id: "metrics",
-    title: "Metrics",
-    summary: "Body and performance measurements over time.",
-    href: null,
+    summary: "Keep lifts, tests, and body markers without a spreadsheet.",
+    href: "/account/benchmarks",
+    proOnly: true,
   },
 ];
 

@@ -14,9 +14,11 @@ import type {
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
+import type { RoleId } from "@shared/join/membership-domain";
 
 export { sanitizeReturnPath } from "@shared/account/returnPath";
 export type { ClaimOptionsDto, ClaimPathId };
+export type { RoleId };
 
 export type AccountOverview = {
   user_id: number | string | null;
@@ -35,8 +37,15 @@ export type AccountOverview = {
   tabs: unknown[];
   links: Record<string, unknown>;
   avatar_url?: string | null;
-  /** WordPress role slugs. Dashboard shows Admin and MetFix Admin only. */
+  /** WordPress staff role slugs. Dashboard shows Admin and MetFix Admin only. */
   roles?: string[];
+  /**
+   * Opt-in audience attributes from join/onboarding (bsi_onboarding_roles).
+   * Not entitlement / affiliate / paid WP roles.
+   */
+  onboarding_roles?: RoleId[];
+  has_physical_gym?: boolean;
+  has_physical_clinic?: boolean;
 };
 
 export type SubscriptionItem = {
@@ -616,6 +625,30 @@ export async function portalLink(body: {
     method: "POST",
     body,
   });
+}
+
+export type OnboardingRolesUpdate = {
+  onboarding_roles: RoleId[];
+  has_physical_gym?: boolean | null;
+  has_physical_clinic?: boolean | null;
+};
+
+export type OnboardingRolesPayload = {
+  onboarding_roles: RoleId[];
+  has_physical_gym: boolean;
+  has_physical_clinic: boolean;
+};
+
+/** Persist opt-in onboarding audience attributes (not paid entitlements). */
+export async function updateOnboardingRoles(
+  patch: OnboardingRolesUpdate,
+): Promise<OnboardingRolesPayload> {
+  const next = await accountMutate<OnboardingRolesPayload>("/api/account/onboarding-roles", {
+    method: "PUT",
+    body: patch,
+  });
+  invalidateKeys(["overview", "profile"]);
+  return next;
 }
 
 export async function updateProfile(patch: Record<string, unknown>): Promise<AccountProfile> {

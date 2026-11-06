@@ -332,14 +332,18 @@ export default function AccountCourses() {
               const cost = formatUsdFromCents(course.course_price_cents);
               return (
                 <article key={String(course.id)} className="account-course-card">
-                  <h2 className="account-course-card-title">{course.title ?? "Course"}</h2>
+                  <div className="account-course-card__top">
+                    <h2 className="account-course-card-title">{course.title ?? "Course"}</h2>
+                    {course.certificate_claimed ? (
+                      <span className="account-tag account-tag--claimed">Certificate claimed</span>
+                    ) : null}
+                  </div>
                   <p className="account-muted">
                     Listed value <span className="account-mono">{cost}</span>
                     {" · "}
                     {course.completed
                       ? "Completed"
                       : `${course.progress_percent}% complete`}
-                    {course.certificate_claimed ? " · Claimed" : null}
                   </p>
                   {course.certificate_claimed ? (
                     course.certificate_url ? (

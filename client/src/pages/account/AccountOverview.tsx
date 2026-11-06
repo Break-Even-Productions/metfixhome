@@ -12,11 +12,13 @@ import {
 } from "@/lib/account";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 import DashboardLayout from "./DashboardLayout";
-import { MetricStrip } from "./MetricStrip";
 import { ConversionBanner } from "./ConversionBanner";
 import { LtvVisualizer } from "./LtvVisualizer";
 import { FoundationsCoachCard } from "./FoundationsCoachCard";
 import { AppTools } from "./AppTools";
+import { GreetingHero } from "./GreetingHero";
+import { ProUnlockBanner } from "./ProUnlockBanner";
+import { metfixToolsUnlocked } from "./metfixAppTools";
 
 function greetingFor(now: Date): string {
   const hour = now.getHours();
@@ -81,28 +83,33 @@ export default function AccountOverview() {
     day: "numeric",
     year: "numeric",
   });
+  const unlocked = metfixToolsUnlocked(tier);
 
   return (
     <DashboardLayout
       title="Overview"
       description="Your membership status, certificate LTV budget, and Foundations Coach qualification."
+      hideChromeTitle
     >
-      <p className="account-kicker">{today}</p>
-      <p className="account-greeting">
-        {greetingFor(new Date())}, {firstName(displayName)}.
-      </p>
       {error ? <p className="account-error">{error}</p> : null}
-      <MetricStrip
+      <GreetingHero
+        photo="/Stills/athlete-bodyweight-sit-gym.jpg"
+        date={today}
+        greeting={`${greetingFor(new Date())}, ${firstName(displayName)}.`}
         status={status}
         nextPayment={nextPayment}
         tier={tier}
-        legacySource={legacySource}
+        legacySource={legacySource ?? undefined}
         ltv={ltv}
+        showUpgradeCta
       />
-      <AppTools tier={tier} />
-      <ConversionBanner conversion={subs?.conversion} />
-      {ltv ? <LtvVisualizer ltv={ltv} /> : null}
-      {coach ? <FoundationsCoachCard coach={coach} /> : null}
+      <div className="dash-panel">
+        <AppTools tier={tier} />
+        <ConversionBanner conversion={subs?.conversion} />
+        {ltv ? <LtvVisualizer ltv={ltv} /> : null}
+        {coach ? <FoundationsCoachCard coach={coach} /> : null}
+        {!unlocked ? <ProUnlockBanner /> : null}
+      </div>
     </DashboardLayout>
   );
 }

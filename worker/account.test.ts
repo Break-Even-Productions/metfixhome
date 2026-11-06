@@ -337,6 +337,79 @@ describe("worker/account routes", () => {
     expect(body.roles).toEqual(["administrator", "metfix_admin"]);
   });
 
+  it("overview passes through onboarding_roles + avatar_url (opt-in attrs)", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/account")) {
+          return Response.json({
+            ...OVERVIEW_FIXTURE,
+            onboarding_roles: ["coach", "gym_owner", "hacker"],
+            avatar_url: "https://cdn.example/a.jpg",
+            has_physical_gym: true,
+            roles: ["administrator"],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      onboarding_roles: string[];
+      avatar_url: string | null;
+      has_physical_gym: boolean;
+      roles: string[];
+    };
+    expect(body.onboarding_roles).toEqual(["coach", "gym_owner"]);
+    expect(body.avatar_url).toBe("https://cdn.example/a.jpg");
+    expect(body.has_physical_gym).toBe(true);
+    expect(body.roles).toEqual(["administrator"]);
+  });
+
+  it("PUT /api/account/onboarding-roles proxies community-choices", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/me/community-choices") && method === "PUT") {
+          const parsed = JSON.parse(bodyText) as { onboarding_roles: string[] };
+          expect(parsed.onboarding_roles).toEqual(["individual", "clinician"]);
+          return Response.json({
+            onboarding_roles: ["individual", "clinician"],
+            has_physical_gym: false,
+            has_physical_clinic: true,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/onboarding-roles",
+      {
+        method: "PUT",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          onboarding_roles: ["individual", "clinician"],
+          has_physical_clinic: true,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      onboarding_roles: ["individual", "clinician"],
+      has_physical_gym: false,
+      has_physical_clinic: true,
+    });
+    expect(recorded.some((r) => r.url.includes("/me/community-choices"))).toBe(true);
+  });
+
   it("DP-T-2 subscriptions strip stripe_id/cus_/sub_", async () => {
     const sess = await withSession(h);
     const { fetchImpl } = makeFetchMock([

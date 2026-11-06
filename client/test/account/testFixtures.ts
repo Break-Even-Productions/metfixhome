@@ -42,6 +42,10 @@ export const OVERVIEW_FIXTURE: AccountOverview = {
   foundations_coach: COACH_ACTIVE,
   tabs: [],
   links: {},
+  avatar_url: null,
+  onboarding_roles: ["individual", "clinician"],
+  has_physical_gym: false,
+  has_physical_clinic: true,
 };
 
 export const SUBS_ACTIVE: AccountSubscriptions = {

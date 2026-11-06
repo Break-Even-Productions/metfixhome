@@ -31,6 +31,10 @@ import {
   type CanonicalSubscriptionTier,
   type LegacySubscriptionSource,
 } from "../shared/account/tiers";
+import {
+  isOnboardingRoleId,
+  type RoleId,
+} from "../shared/join/membership-domain";
 import { isWhopCheckoutUrl, sanitizeExternalBillingUrl } from "../shared/account/url-allowlist";
 import {
   accountCancelDuplicatePath,
@@ -42,6 +46,7 @@ import {
   accountEmailPath,
   accountFavoriteItemPath,
   accountFavoritesPath,
+  accountMeCommunityChoicesPath,
   accountMePath,
   accountMeProfilePath,
   accountMemberSummaryPath,
@@ -619,6 +624,28 @@ function shapeStaffRoles(obj: Record<string, unknown>): string[] {
   return STAFF_ROLE_SLUGS.filter((slug) => found.includes(slug));
 }
 
+/** Opt-in onboarding audience slugs — never WP/entitlement staff roles. */
+function shapeOnboardingRoles(raw: unknown): RoleId[] {
+  const obj = asRecord(raw);
+  // Prefer dedicated onboarding_roles; never read staff `roles` (admin / metfix_admin).
+  const list = obj
+    ? Array.isArray(obj.onboarding_roles)
+      ? obj.onboarding_roles
+      : null
+    : Array.isArray(raw)
+      ? raw
+      : null;
+  if (!list) return [];
+  const out: RoleId[] = [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    if (!isOnboardingRoleId(item) || seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
+}
+
 function shapeOverview(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
@@ -628,12 +655,19 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
     canonical_tier: obj.canonical_tier,
     items: extractSubscriptionTierItems(obj),
   });
+  const avatarRaw = obj.avatar_url;
+  const avatar_url =
+    typeof avatarRaw === "string" && /^https?:\/\//i.test(avatarRaw.trim())
+      ? avatarRaw.trim()
+      : null;
+  const onboarding_roles = shapeOnboardingRoles(obj);
   return {
     user_id: obj.user_id ?? null,
     member_id: obj.member_id ?? null,
     display_name: publicDisplayName({ display_name: obj.display_name }),
     email: typeof obj.email === "string" ? obj.email : null,
     member_since: strOrNull(obj.member_since),
+    avatar_url,
     badges: {
       medical: badgePresent(badges.medical),
       affiliate: badgePresent(badges.affiliate),
@@ -646,7 +680,58 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
     tabs: Array.isArray(obj.tabs) ? obj.tabs : [],
     links: asRecord(obj.links) ?? {},
     roles: shapeStaffRoles(obj),
+    onboarding_roles,
+    has_physical_gym: obj.has_physical_gym === true || obj.hasPhysicalGym === true,
+    has_physical_clinic:
+      obj.has_physical_clinic === true || obj.hasPhysicalClinic === true,
   };
+}
+
+function validateOnboardingRolesBody(
+  json: unknown,
+): Response | { onboarding_roles: RoleId[]; has_physical_gym: boolean | null; has_physical_clinic: boolean | null } {
+  const obj = asRecord(json);
+  if (!obj) return accountJson({ error: "invalid_request" }, 400);
+  const rolesIn = obj.onboarding_roles ?? obj.roles;
+  if (!Array.isArray(rolesIn) || rolesIn.length < 1 || rolesIn.length > 5) {
+    return accountJson({ error: "invalid_request" }, 400);
+  }
+  const seen = new Set<RoleId>();
+  const onboarding_roles: RoleId[] = [];
+  for (const r of rolesIn) {
+    if (!isOnboardingRoleId(r)) return accountJson({ error: "invalid_request" }, 400);
+    if (seen.has(r)) continue;
+    seen.add(r);
+    onboarding_roles.push(r);
+  }
+  if (onboarding_roles.length < 1) {
+    return accountJson({ error: "invalid_request" }, 400);
+  }
+  const needsGym = onboarding_roles.includes("gym_owner");
+  const needsClinic = onboarding_roles.includes("clinician");
+  let has_physical_gym: boolean | null = null;
+  let has_physical_clinic: boolean | null = null;
+  if (needsGym) {
+    if (typeof obj.has_physical_gym !== "boolean") {
+      return accountJson({ error: "invalid_request" }, 400);
+    }
+    has_physical_gym = obj.has_physical_gym;
+  } else if (obj.has_physical_gym === true) {
+    return accountJson({ error: "invalid_request" }, 400);
+  } else if (obj.has_physical_gym === false) {
+    has_physical_gym = false;
+  }
+  if (needsClinic) {
+    if (typeof obj.has_physical_clinic !== "boolean") {
+      return accountJson({ error: "invalid_request" }, 400);
+    }
+    has_physical_clinic = obj.has_physical_clinic;
+  } else if (obj.has_physical_clinic === true) {
+    return accountJson({ error: "invalid_request" }, 400);
+  } else if (obj.has_physical_clinic === false) {
+    has_physical_clinic = false;
+  }
+  return { onboarding_roles, has_physical_gym, has_physical_clinic };
 }
 
 function shapeSubscriptions(raw: unknown): Record<string, unknown> | null {
@@ -949,6 +1034,12 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "PATCH" && rest === "profile") {
     return { id: "DP13", method: "PATCH", params: {}, limiter: "write" };
+  }
+  if (
+    method === "PUT" &&
+    (rest === "onboarding-roles" || rest === "community-choices")
+  ) {
+    return { id: "DP13b", method: "PUT", params: {}, limiter: "write" };
   }
   if (method === "POST" && rest === "profile/attributes") {
     return { id: "DP14", method: "POST", params: {}, limiter: "write" };
@@ -1585,6 +1676,47 @@ async function dispatch(
         rest.display_name = publicDisplayName({ display_name: rest.display_name });
       }
       return accountJson(rest, 200);
+    }
+    case "DP13b": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateOnboardingRolesBody(parsed.json);
+      if (body instanceof Response) return body;
+      const upstream: Record<string, unknown> = {
+        onboarding_roles: body.onboarding_roles,
+      };
+      if (typeof body.has_physical_gym === "boolean") {
+        upstream.has_physical_gym = body.has_physical_gym;
+      }
+      if (typeof body.has_physical_clinic === "boolean") {
+        upstream.has_physical_clinic = body.has_physical_clinic;
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountMeCommunityChoicesPath(),
+        {
+          body: JSON.stringify(upstream),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const flags = asRecord(mapped.json) ?? {};
+      return accountJson(
+        {
+          onboarding_roles: shapeOnboardingRoles(flags),
+          has_physical_gym:
+            flags.has_physical_gym === true || flags.hasPhysicalGym === true,
+          has_physical_clinic:
+            flags.has_physical_clinic === true || flags.hasPhysicalClinic === true,
+        },
+        200,
+      );
     }
     case "DP13": {
       const parsed = await readJsonBody(request);
