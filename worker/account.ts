@@ -131,15 +131,19 @@ const FAVORITE_SOURCE_TYPES = new Set([
 
 const FAVORITE_FILTER_TYPES = new Set(["all", "articles", "recipes", "workouts", "videos"]);
 
-const PROFILE_PATCH_FIELDS = new Set([
-  "first_name",
-  "last_name",
-  "display_name",
-  "bio",
-  "location",
-  "credentials",
-  "community_opt_in",
-]);
+/** G6 / BSI PATCH /me/profile — names only (1–60, no @). */
+const PROFILE_PATCH_FIELDS = new Set(["first_name", "last_name", "display_name"]);
+
+const PROFILE_ATTR_MEMBER_TYPES = new Set(["general", "metfix", "medical"]);
+
+const PROFILE_ATTR_SECTION_TO_TYPE: Record<string, string> = {
+  personal: "general",
+  affiliate: "metfix",
+  clinic: "medical",
+  general: "general",
+  metfix: "metfix",
+  medical: "medical",
+};
 
 const PORTAL_INTENTS = new Set(["manage", "upgrade", "cancel_duplicate"]);
 const CONVERT_TIERS = new Set(["metfix_pro", "organization_owner"]);
@@ -1381,16 +1385,34 @@ function favoriteCurrentlySet(list: unknown, sourceType: string, sourceId: strin
   return false;
 }
 
-function validateAttributesPayload(json: unknown): Response | unknown {
+type ProfileAttrWrite = {
+  member_type: "general" | "metfix" | "medical";
+  attr_id: number;
+  attr_value: string;
+};
+
+function validateAttributesPayload(json: unknown): Response | ProfileAttrWrite[] {
   const obj = asRecord(json);
   if (!obj) return accountJson({ error: "invalid_request" }, 400);
   const attrs = Array.isArray(obj.attributes) ? obj.attributes : Array.isArray(json) ? json : null;
-  if (!attrs) return accountJson({ error: "invalid_request" }, 400);
+  if (!attrs || attrs.length < 1) return accountJson({ error: "invalid_request" }, 400);
+  const out: ProfileAttrWrite[] = [];
   for (const row of attrs) {
     const r = asRecord(row);
     if (!r) return accountJson({ error: "invalid_field" }, 400);
     const id = typeof r.attr_id === "number" ? r.attr_id : typeof r.id === "number" ? r.id : null;
-    if (id == null || !EDITABLE_ATTR_IDS.has(id)) {
+    if (id == null || !Number.isInteger(id) || id <= 0) {
+      return accountJson({ error: "invalid_field" }, 400);
+    }
+    // Prefer explicit member_type; accept section aliases from MetFix.org UI.
+    const typeRaw =
+      typeof r.member_type === "string"
+        ? r.member_type
+        : typeof r.section === "string"
+          ? r.section
+          : null;
+    const mapped = typeRaw ? PROFILE_ATTR_SECTION_TO_TYPE[typeRaw] : null;
+    if (!mapped || !PROFILE_ATTR_MEMBER_TYPES.has(mapped)) {
       return accountJson({ error: "invalid_field" }, 400);
     }
     for (const key of ["key", "name", "label"] as const) {
@@ -1399,12 +1421,39 @@ function validateAttributesPayload(json: unknown): Response | unknown {
         return accountJson({ error: "invalid_field" }, 400);
       }
     }
-    const value = r.value;
-    if (typeof value === "string" && (value.includes("@") || EMAIL_VALUE_RE.test(value))) {
+    const value =
+      typeof r.attr_value === "string"
+        ? r.attr_value
+        : typeof r.value === "string"
+          ? r.value
+          : null;
+    if (value == null) return accountJson({ error: "invalid_field" }, 400);
+    if (value.includes("@") || EMAIL_VALUE_RE.test(value)) {
       return accountJson({ error: "invalid_field" }, 400);
     }
+    out.push({
+      member_type: mapped as "general" | "metfix" | "medical",
+      attr_id: id,
+      attr_value: value,
+    });
   }
-  return attrs;
+  return out;
+}
+
+/** BSI G6: trim, length 1–60, reject @ / full-width ＠. */
+function sanitizeProfileName(raw: unknown, field: string): Response | string {
+  if (typeof raw !== "string") {
+    return accountJson({ error: "invalid_field", param: field }, 400);
+  }
+  const v = raw.trim();
+  const len = [...v].length;
+  if (len < 1 || len > 60) {
+    return accountJson({ error: "invalid_field", param: field }, 400);
+  }
+  if (v.includes("@") || v.includes("＠")) {
+    return accountJson({ error: "invalid_field", param: field }, 400);
+  }
+  return v;
 }
 
 function validateProfilePatch(json: unknown): Response | Record<string, unknown> {
@@ -1413,24 +1462,112 @@ function validateProfilePatch(json: unknown): Response | Record<string, unknown>
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(obj)) {
     if (!PROFILE_PATCH_FIELDS.has(key)) {
-      return accountJson({ error: "invalid_field" }, 400);
+      return accountJson({ error: "invalid_field", param: key }, 400);
     }
   }
+  let any = false;
   for (const key of PROFILE_PATCH_FIELDS) {
     if (!(key in obj)) continue;
-    const v = obj[key];
-    if (key === "community_opt_in") {
-      if (typeof v !== "boolean") return accountJson({ error: "invalid_field" }, 400);
-      out[key] = v;
-      continue;
-    }
-    if (typeof v !== "string") return accountJson({ error: "invalid_field" }, 400);
-    const max =
-      key === "bio" ? 2000 : key === "display_name" ? 80 : key === "credentials" ? 200 : 100;
-    if ([...v].length > max) return accountJson({ error: "invalid_field" }, 400);
-    out[key] = v;
+    const sanitized = sanitizeProfileName(obj[key], key);
+    if (sanitized instanceof Response) return sanitized;
+    out[key] = sanitized;
+    any = true;
   }
+  if (!any) return accountJson({ error: "invalid_request" }, 400);
   return out;
+}
+
+function shapeEditableAttrRow(row: unknown): Record<string, unknown> | null {
+  const r = asRecord(row);
+  if (!r) return null;
+  const attrId =
+    typeof r.attr_id === "number"
+      ? r.attr_id
+      : typeof r.id === "number"
+        ? r.id
+        : null;
+  if (attrId == null || !Number.isInteger(attrId) || attrId <= 0) return null;
+  const label =
+    typeof r.label === "string"
+      ? r.label
+      : typeof r.attr_name === "string"
+        ? r.attr_name
+        : typeof r.name === "string"
+          ? r.name
+          : typeof r.key === "string"
+            ? r.key
+            : null;
+  if (!label || /email/i.test(label)) return null;
+  const formType = typeof r.form_type === "string" ? r.form_type : "text";
+  if (formType === "email" || formType === "file") return null;
+  return {
+    attr_id: attrId,
+    key: typeof r.key === "string" ? r.key : undefined,
+    label,
+    form_type: formType,
+    value: typeof r.value === "string" ? r.value : typeof r.current_value === "string" ? r.current_value : "",
+  };
+}
+
+function shapeProfileAttributes(raw: unknown): {
+  personal: Record<string, unknown>[];
+  affiliate: Record<string, unknown>[];
+  clinic: Record<string, unknown>[];
+} {
+  const empty: {
+    personal: Record<string, unknown>[];
+    affiliate: Record<string, unknown>[];
+    clinic: Record<string, unknown>[];
+  } = { personal: [], affiliate: [], clinic: [] };
+  const obj = asRecord(raw);
+  if (!obj) {
+    // Legacy flat list → personal only (allowlisted ids).
+    if (!Array.isArray(raw)) return empty;
+    for (const row of raw) {
+      const s = shapeEditableAttrRow(row);
+      if (!s) continue;
+      const id = s.attr_id as number;
+      if (!EDITABLE_ATTR_IDS.has(id)) continue;
+      empty.personal.push(s);
+    }
+    return empty;
+  }
+  const sections: Array<[keyof typeof empty, unknown]> = [
+    ["personal", obj.personal ?? obj.general],
+    ["affiliate", obj.affiliate ?? obj.metfix],
+    ["clinic", obj.clinic ?? obj.medical],
+  ];
+  for (const [section, list] of sections) {
+    if (!Array.isArray(list)) continue;
+    for (const row of list) {
+      const s = shapeEditableAttrRow(row);
+      if (s) empty[section].push(s);
+    }
+  }
+  return empty;
+}
+
+function shapeOwnProfile(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const attrsRaw = obj.attributes;
+  const attributes = shapeProfileAttributes(attrsRaw);
+  const avatarRaw = obj.avatar_url ?? obj.profile_picture_url;
+  const avatar_url =
+    typeof avatarRaw === "string" && /^https?:\/\//i.test(avatarRaw.trim())
+      ? avatarRaw.trim()
+      : null;
+  return {
+    first_name: typeof obj.first_name === "string" ? obj.first_name : "",
+    last_name: typeof obj.last_name === "string" ? obj.last_name : "",
+    display_name: publicDisplayName({
+      display_name: typeof obj.display_name === "string" ? obj.display_name : null,
+    }),
+    email: typeof obj.email === "string" ? obj.email : null,
+    avatar_url,
+    member_since: strOrNull(obj.member_since),
+    attributes,
+  };
 }
 
 async function dispatch(
@@ -1884,13 +2021,9 @@ async function dispatch(
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      const { role_badges_html: _drop, ...rest } = obj;
-      void _drop;
-      if (typeof rest.display_name === "string") {
-        rest.display_name = publicDisplayName({ display_name: rest.display_name });
-      }
-      return accountJson(rest, 200);
+      const shaped = shapeOwnProfile(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
     }
     case "DP13b": {
       const parsed = await readJsonBody(request);
@@ -1945,29 +2078,49 @@ async function dispatch(
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      const shaped = shapeOwnProfile(mapped.json) ?? {
+        first_name: typeof patch.first_name === "string" ? patch.first_name : "",
+        last_name: typeof patch.last_name === "string" ? patch.last_name : "",
+        display_name: publicDisplayName({
+          display_name: typeof patch.display_name === "string" ? patch.display_name : null,
+        }),
+        email: null,
+        avatar_url: null,
+        member_since: null,
+        attributes: { personal: [], affiliate: [], clinic: [] },
+      };
+      return accountJson(shaped, mapped.status >= 200 && mapped.status < 300 ? 200 : mapped.status);
     }
     case "DP14": {
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const attrs = validateAttributesPayload(parsed.json);
       if (attrs instanceof Response) return attrs;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountProfilesMeAttributesPath(),
-        {
-          body: JSON.stringify({ attributes: attrs }),
-          contentType: "application/json",
-        },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      // BSI accepts one attribute per POST (member_type + attr_id + attr_value).
+      const results: unknown[] = [];
+      for (const row of attrs) {
+        const ran = await runBearer(
+          ctx!,
+          env,
+          fetchImpl,
+          opts,
+          "POST",
+          accountProfilesMeAttributesPath(),
+          {
+            body: JSON.stringify({
+              member_type: row.member_type,
+              attr_id: row.attr_id,
+              attr_value: row.attr_value,
+            }),
+            contentType: "application/json",
+          },
+        );
+        if (ran instanceof Response) return mapUnauthenticated(ran);
+        const mapped = mapUpstreamResult(ran.result);
+        if (mapped instanceof Response) return mapped;
+        results.push(mapped.json ?? { ok: true });
+      }
+      return accountJson({ ok: true, updated: results.length, results }, 200);
     }
     case "DP16": {
       const ctRaw = request.headers.get("Content-Type") ?? "";

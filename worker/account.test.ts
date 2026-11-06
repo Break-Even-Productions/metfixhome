@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleAccountRoutes,
-  EDITABLE_ATTR_IDS,
   PUBLIC_MEMBER_SUMMARY_KEYS,
   parsePositiveCourseId,
 } from "./account";
@@ -765,7 +764,19 @@ describe("worker/account routes", () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path }) => {
-        if (path.endsWith("/profiles/me")) return Response.json({ display_name: "Jane", bio: "x" });
+        if (path.endsWith("/profiles/me")) {
+          return Response.json({
+            first_name: "Jane",
+            last_name: "Doe",
+            display_name: "Jane Doe",
+            email: "jane@example.com",
+            attributes: {
+              personal: [{ attr_id: 1, label: "Address", value: "NYC" }],
+              affiliate: [],
+              clinic: [],
+            },
+          });
+        }
         return new Response(null, { status: 404 });
       },
     ]);
@@ -778,34 +789,100 @@ describe("worker/account routes", () => {
     expect(res.status).toBe(200);
     expect(recorded[0]!.url).toContain("/wp-json/bsi/v1/profiles/me");
     expect(recorded[0]!.url).not.toContain("member_id");
+    const body = (await res.json()) as {
+      first_name: string;
+      attributes: { personal: Array<{ attr_id: number }> };
+      bio?: unknown;
+    };
+    expect(body.first_name).toBe("Jane");
+    expect(body.attributes.personal[0]?.attr_id).toBe(1);
+    expect(body.bio).toBeUndefined();
   });
 
-  it("DP-T-13 PATCH allowlist rejects email/role", async () => {
+  it("DP-T-13 PATCH allowlist rejects email/role/bio; accepts names only", async () => {
     const sess = await withSession(h);
-    const { fetchImpl, recorded } = makeFetchMock([]);
-    const res = await callAccount(
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/me/profile") && method === "PATCH") {
+          expect(JSON.parse(bodyText)).toEqual({
+            first_name: "Ada",
+            last_name: "Lovelace",
+            display_name: "Ada Lovelace",
+          });
+          return Response.json({
+            first_name: "Ada",
+            last_name: "Lovelace",
+            display_name: "Ada Lovelace",
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    for (const bad of [
+      { display_name: "A", email: "x@y.z" },
+      { first_name: "Ada", bio: "nope" },
+      { first_name: "" },
+      { first_name: "a@b" },
+      { first_name: "A".repeat(61) },
+    ]) {
+      recorded.length = 0;
+      const res = await callAccount(
+        h,
+        "/api/account/profile",
+        {
+          method: "PATCH",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify(bad),
+        },
+        fetchImpl,
+      );
+      expect(res.status).toBe(400);
+      expect(recorded.length).toBe(0);
+    }
+    recorded.length = 0;
+    const ok = await callAccount(
       h,
       "/api/account/profile",
       {
         method: "PATCH",
         headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ display_name: "A", email: "x@y.z" }),
+        body: JSON.stringify({
+          first_name: "Ada",
+          last_name: "Lovelace",
+          display_name: "Ada Lovelace",
+        }),
       },
       fetchImpl,
     );
-    expect(res.status).toBe(400);
-    expect(recorded.length).toBe(0);
+    expect(ok.status).toBe(200);
+    expect(recorded.length).toBe(1);
+    expect(recorded[0]!.url).toContain("/wp-json/bsi/v1/me/profile");
   });
 
-  it("DP-T-14 attributes block email keys/values + unknown attr_id", async () => {
+  it("DP-T-14 attributes require section/member_type; block email keys/values", async () => {
     const sess = await withSession(h);
-    expect(EDITABLE_ATTR_IDS.has(1)).toBe(true);
-    const { fetchImpl, recorded } = makeFetchMock([]);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.includes("/profiles/me/attributes") && method === "POST") {
+          const body = JSON.parse(bodyText) as {
+            member_type: string;
+            attr_id: number;
+            attr_value: string;
+          };
+          expect(body.member_type).toBe("general");
+          expect(body.attr_id).toBe(1);
+          expect(body.attr_value).toBe("London");
+          expect((body as { attributes?: unknown }).attributes).toBeUndefined();
+          return Response.json({ success: true });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
     for (const payload of [
-      { attributes: [{ attr_id: 99, value: "ok" }] },
-      { attributes: [{ attr_id: 1, key: "Email", value: "ok" }] },
-      { attributes: [{ attr_id: 1, name: "alt_email", value: "ok" }] },
-      { attributes: [{ attr_id: 1, value: "x@y.co" }] },
+      { attributes: [{ attr_id: 1, value: "ok" }] }, // missing section
+      { attributes: [{ attr_id: 1, section: "personal", key: "Email", value: "ok" }] },
+      { attributes: [{ attr_id: 1, section: "personal", name: "alt_email", value: "ok" }] },
+      { attributes: [{ attr_id: 1, section: "personal", value: "x@y.co" }] },
     ]) {
       recorded.length = 0;
       const res = await callAccount(
@@ -821,6 +898,21 @@ describe("worker/account routes", () => {
       expect(res.status).toBe(400);
       expect(recorded.length).toBe(0);
     }
+    recorded.length = 0;
+    const ok = await callAccount(
+      h,
+      "/api/account/profile/attributes",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          attributes: [{ attr_id: 1, section: "personal", value: "London" }],
+        }),
+      },
+      fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    expect(recorded.length).toBe(1);
   });
 
   it("DP-T-16 picture magic bytes", async () => {
@@ -1261,7 +1353,11 @@ describe("worker/account routes", () => {
         path: "/api/account/courses/1/claim",
         body: JSON.stringify({ path: "redeem_ltv" }),
       },
-      { method: "PATCH", path: "/api/account/profile", body: JSON.stringify({ bio: "x" }) },
+      {
+        method: "PATCH",
+        path: "/api/account/profile",
+        body: JSON.stringify({ first_name: "Pat", last_name: "Lee" }),
+      },
       { method: "PUT", path: "/api/account/favorites/articles/a1", body: "{}" },
       { method: "DELETE", path: "/api/account/favorites/articles/a1", body: "{}" },
     ];

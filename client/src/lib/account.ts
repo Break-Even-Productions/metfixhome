@@ -138,16 +138,30 @@ export type CoursesPage = {
   total: number;
 };
 
+export type ProfileAttrSection = "personal" | "affiliate" | "clinic";
+
+export type ProfileAttributeField = {
+  attr_id: number;
+  key?: string;
+  label?: string;
+  name?: string;
+  form_type?: string;
+  value?: string;
+};
+
 export type AccountProfile = {
   first_name?: string | null;
   last_name?: string | null;
   display_name?: string | null;
-  bio?: string | null;
-  location?: string | null;
-  credentials?: string | null;
-  community_opt_in?: boolean;
+  email?: string | null;
   avatar_url?: string | null;
-  attributes?: Array<{ attr_id: number; key?: string; name?: string; value?: string }>;
+  member_since?: string | null;
+  /** Editable attributes grouped for Personal / Affiliate / Clinic forms. */
+  attributes?: {
+    personal?: ProfileAttributeField[];
+    affiliate?: ProfileAttributeField[];
+    clinic?: ProfileAttributeField[];
+  };
   [key: string]: unknown;
 };
 
@@ -755,7 +769,11 @@ export async function updateOnboardingRoles(
   return next;
 }
 
-export async function updateProfile(patch: Record<string, unknown>): Promise<AccountProfile> {
+export async function updateProfile(patch: {
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+}): Promise<AccountProfile> {
   return accountMutate("/api/account/profile", {
     method: "PATCH",
     body: patch,
@@ -764,11 +782,21 @@ export async function updateProfile(patch: Record<string, unknown>): Promise<Acc
 }
 
 export async function updateProfileAttributes(
-  attributes: Array<{ attr_id: number; value: string }>,
+  attributes: Array<{
+    attr_id: number;
+    value: string;
+    section: ProfileAttrSection;
+  }>,
 ): Promise<unknown> {
   return accountMutate("/api/account/profile/attributes", {
     method: "POST",
-    body: { attributes },
+    body: {
+      attributes: attributes.map((a) => ({
+        attr_id: a.attr_id,
+        value: a.value,
+        section: a.section,
+      })),
+    },
     invalidate: ["profile"],
   });
 }

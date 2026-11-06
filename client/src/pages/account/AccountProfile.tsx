@@ -8,31 +8,70 @@ import {
   uploadProfilePicture,
   type AccountOverview,
   type AccountProfile as ProfileDto,
+  type ProfileAttrSection,
   type RoleId,
 } from "@/lib/account";
 import { needsConditionalStep } from "@shared/join/membership-domain";
 import DashboardLayout from "./DashboardLayout";
-import { editableProfileAttributes } from "./profileAttributes";
+import {
+  editableProfileAttributesForSection,
+  type EditableProfileAttribute,
+} from "./profileAttributes";
 import { onboardingRoleOptions } from "./onboardingRoles";
 
 const EMAIL_RE = /@/;
+
+const SECTION_META: Record<
+  ProfileAttrSection,
+  { title: string; blurb: string }
+> = {
+  personal: {
+    title: "Personal attributes",
+    blurb: "General profile fields visible on your MetFix member record.",
+  },
+  affiliate: {
+    title: "Affiliate attributes",
+    blurb: "Gym / MetFix affiliate listing fields. Separate from personal details.",
+  },
+  clinic: {
+    title: "Clinic attributes",
+    blurb: "Medical Society / clinic practice fields. Separate from personal details.",
+  },
+};
+
+function formatMemberSince(raw: string | null | undefined): string {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function mutateErrorMessage(err: unknown, fallback: string): string {
+  if (!err || typeof err !== "object") return fallback;
+  const body = (err as { body?: unknown }).body;
+  if (!body || typeof body !== "object") return fallback;
+  const rec = body as { error?: unknown; param?: unknown };
+  if (rec.error === "invalid_field") {
+    const param = typeof rec.param === "string" ? rec.param : null;
+    return param
+      ? `Invalid ${param.replace(/_/g, " ")}. Use 1–60 characters with no @.`
+      : "Invalid profile field. Names must be 1–60 characters with no @.";
+  }
+  if (rec.error === "invalid_request") return "Request was rejected. Check the highlighted fields.";
+  return fallback;
+}
 
 export default function AccountProfile() {
   const [profile, setProfile] = useState<ProfileDto | null>(null);
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [bio, setBio] = useState("");
-  const [location, setLocation] = useState("");
-  const [credentials, setCredentials] = useState("");
-  const [communityOptIn, setCommunityOptIn] = useState(false);
   const [onboardingRoles, setOnboardingRoles] = useState<RoleId[]>([]);
   const [hasPhysicalGym, setHasPhysicalGym] = useState<boolean | null>(null);
   const [hasPhysicalClinic, setHasPhysicalClinic] = useState<boolean | null>(null);
-  const [attrValues, setAttrValues] = useState<Record<number, string>>({});
+  const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -49,11 +88,6 @@ export default function AccountProfile() {
         setOverview(ov);
         setFirstName(String(p.first_name ?? ""));
         setLastName(String(p.last_name ?? ""));
-        setDisplayName(String(p.display_name ?? ""));
-        setBio(String(p.bio ?? ""));
-        setLocation(String(p.location ?? ""));
-        setCredentials(String(p.credentials ?? ""));
-        setCommunityOptIn(p.community_opt_in === true);
         setOnboardingRoles([...(ov.onboarding_roles ?? [])]);
         setHasPhysicalGym(
           typeof ov.has_physical_gym === "boolean" ? ov.has_physical_gym : null,
@@ -61,8 +95,13 @@ export default function AccountProfile() {
         setHasPhysicalClinic(
           typeof ov.has_physical_clinic === "boolean" ? ov.has_physical_clinic : null,
         );
-        const fields = editableProfileAttributes(p);
-        setAttrValues(Object.fromEntries(fields.map((field) => [field.attr_id, field.value])));
+        const nextValues: Record<string, string> = {};
+        for (const section of ["personal", "affiliate", "clinic"] as const) {
+          for (const field of editableProfileAttributesForSection(p, section)) {
+            nextValues[`${section}:${field.attr_id}`] = field.value;
+          }
+        }
+        setAttrValues(nextValues);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -76,7 +115,7 @@ export default function AccountProfile() {
   }, []);
 
   function toggleRole(id: RoleId) {
-    setSaved(false);
+    setSaved(null);
     setOnboardingRoles((current) => {
       if (current.includes(id)) {
         if (current.length <= 1) return current;
@@ -86,22 +125,18 @@ export default function AccountProfile() {
     });
   }
 
-  async function onSave(e: FormEvent) {
+  async function onSavePersonal(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    setSaved(false);
+    setSaved(null);
     try {
       const next = await updateProfile({
-        first_name: firstName,
-        last_name: lastName,
-        display_name: displayName,
-        bio,
-        location,
-        credentials,
-        community_opt_in: communityOptIn,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
       });
-      setProfile(next);
+      setProfile((prev) => ({ ...(prev ?? {}), ...next }));
 
       if (onboardingRoles.length >= 1) {
         const rolesBody: {
@@ -125,48 +160,82 @@ export default function AccountProfile() {
         setOverview(refreshed);
       }
 
-      setSaved(true);
-    } catch {
-      setError("Save failed.");
+      setSaved("Personal profile saved.");
+    } catch (err) {
+      setError(mutateErrorMessage(err, "Save failed."));
     } finally {
       setBusy(false);
     }
   }
 
-  const attributeFields = useMemo(
-    () => (profile ? editableProfileAttributes(profile) : []),
-    [profile],
-  );
+  const sectionFields = useMemo(() => {
+    const map: Record<ProfileAttrSection, EditableProfileAttribute[]> = {
+      personal: editableProfileAttributesForSection(profile, "personal"),
+      affiliate: editableProfileAttributesForSection(profile, "affiliate"),
+      clinic: editableProfileAttributesForSection(profile, "clinic"),
+    };
+    return map;
+  }, [profile]);
 
-  async function onAttr(e: FormEvent) {
+  async function onSaveSection(section: ProfileAttrSection, e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setSaved(false);
-    for (const field of attributeFields) {
-      const value = attrValues[field.attr_id] ?? "";
+    setSaved(null);
+    const fields = sectionFields[section];
+    for (const field of fields) {
+      const value = attrValues[`${section}:${field.attr_id}`] ?? "";
       if (EMAIL_RE.test(value) || /email/i.test(value)) {
         setError("Email-like attributes are not allowed.");
         return;
       }
     }
-    const changed = attributeFields.filter(
-      (field) => (attrValues[field.attr_id] ?? "") !== field.value,
+    const changed = fields.filter(
+      (field) => (attrValues[`${section}:${field.attr_id}`] ?? "") !== field.value,
     );
-    if (changed.length === 0) {
-      setSaved(true);
+
+    // Facility flags live with Affiliate / Clinic sections.
+    const rolesTouched =
+      (section === "affiliate" && onboardingRoles.includes("gym_owner")) ||
+      (section === "clinic" && onboardingRoles.includes("clinician"));
+
+    if (changed.length === 0 && !rolesTouched) {
+      setSaved(`${SECTION_META[section].title} — nothing to update.`);
       return;
     }
     setBusy(true);
     try {
-      await updateProfileAttributes(
-        changed.map((field) => ({
-          attr_id: field.attr_id,
-          value: attrValues[field.attr_id] ?? "",
-        })),
-      );
-      setSaved(true);
-    } catch {
-      setError("Attribute update failed.");
+      if (changed.length > 0) {
+        await updateProfileAttributes(
+          changed.map((field) => ({
+            attr_id: field.attr_id,
+            value: attrValues[`${section}:${field.attr_id}`] ?? "",
+            section,
+          })),
+        );
+        const refreshedProfile = await loadProfile({ force: true });
+        setProfile(refreshedProfile);
+      }
+      if (rolesTouched && onboardingRoles.length >= 1) {
+        const rolesBody: {
+          onboarding_roles: RoleId[];
+          has_physical_gym?: boolean;
+          has_physical_clinic?: boolean;
+        } = { onboarding_roles: onboardingRoles };
+        if (section === "affiliate" && onboardingRoles.includes("gym_owner")) {
+          rolesBody.has_physical_gym = hasPhysicalGym === true;
+        }
+        if (section === "clinic" && onboardingRoles.includes("clinician")) {
+          rolesBody.has_physical_clinic = hasPhysicalClinic === true;
+        }
+        const rolesNext = await updateOnboardingRoles(rolesBody);
+        setOnboardingRoles(rolesNext.onboarding_roles);
+        setHasPhysicalGym(rolesNext.has_physical_gym);
+        setHasPhysicalClinic(rolesNext.has_physical_clinic);
+        setOverview(await loadOverview({ force: true }));
+      }
+      setSaved(`${SECTION_META[section].title} saved.`);
+    } catch (err) {
+      setError(mutateErrorMessage(err, "Attribute update failed."));
     } finally {
       setBusy(false);
     }
@@ -190,7 +259,7 @@ export default function AccountProfile() {
       setProfile(p);
       const ov = await loadOverview({ force: true });
       setOverview(ov);
-      setSaved(true);
+      setSaved("Profile picture updated.");
     } catch {
       setError("Picture upload failed.");
     } finally {
@@ -200,13 +269,48 @@ export default function AccountProfile() {
 
   const avatarSrc = overview?.avatar_url || profile?.avatar_url || null;
   const roleOptions = onboardingRoleOptions();
+  const email = overview?.email || profile?.email || null;
+  const displayName =
+    overview?.display_name ||
+    [firstName, lastName].filter(Boolean).join(" ") ||
+    profile?.display_name ||
+    "—";
+  const roleLabels = onboardingRoles
+    .map((id) => roleOptions.find((r) => r.id === id)?.title ?? id)
+    .join(", ");
+  const memberSince = formatMemberSince(
+    overview?.member_since ?? profile?.member_since ?? null,
+  );
 
   return (
     <DashboardLayout title="Profile" description="Edit your public profile and picture.">
       {error ? <p className="account-error">{error}</p> : null}
-      {saved ? <p role="status">Saved.</p> : null}
+      {saved ? (
+        <p role="status" className="account-profile-saved">
+          {saved}
+        </p>
+      ) : null}
 
-      <section className="account-card">
+      <dl className="account-profile-summary">
+        <div>
+          <dt>Name</dt>
+          <dd>{displayName}</dd>
+        </div>
+        <div>
+          <dt>Email</dt>
+          <dd>{email ?? "—"}</dd>
+        </div>
+        <div>
+          <dt>Roles</dt>
+          <dd className="account-profile-summary__roles">{roleLabels || "—"}</dd>
+        </div>
+        <div>
+          <dt>Member since</dt>
+          <dd>{memberSince}</dd>
+        </div>
+      </dl>
+
+      <section className="account-card account-profile-card">
         <h2>Profile picture</h2>
         {avatarSrc ? (
           <img
@@ -217,7 +321,9 @@ export default function AccountProfile() {
             height={80}
           />
         ) : (
-          <p className="account-muted">No picture yet — initials show in the dashboard until you upload one.</p>
+          <p className="account-muted">
+            No picture yet — initials show in the dashboard until you upload one.
+          </p>
         )}
         <input
           type="file"
@@ -227,38 +333,46 @@ export default function AccountProfile() {
         />
       </section>
 
-      <section className="account-card">
-        <h2>Details</h2>
-        <form className="account-form" onSubmit={onSave}>
+      <section className="account-card account-profile-card">
+        <div className="account-profile-card__head">
+          <h2>Edit profile</h2>
+        </div>
+        <form className="account-form" onSubmit={onSavePersonal}>
+          <div className="account-form-row">
+            <label>
+              First name
+              <input
+                name="firstName"
+                autoComplete="given-name"
+                required
+                value={firstName}
+                onChange={(e) => {
+                  setSaved(null);
+                  setFirstName(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              Last name
+              <input
+                name="lastName"
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(e) => {
+                  setSaved(null);
+                  setLastName(e.target.value);
+                }}
+              />
+            </label>
+          </div>
           <label>
-            First name
-            <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-          </label>
-          <label>
-            Last name
-            <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </label>
-          <label>
-            Display name
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-          </label>
-          <label>
-            Bio
-            <textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-          </label>
-          <label>
-            Location
-            <input value={location} onChange={(e) => setLocation(e.target.value)} />
-          </label>
-          <label>
-            Credentials
-            <input value={credentials} onChange={(e) => setCredentials(e.target.value)} />
+            Email
+            <input type="email" value={email ?? ""} readOnly disabled />
           </label>
           <fieldset className="account-role-fieldset">
-            <legend>How you use MetFix</legend>
+            <legend>Roles</legend>
             <p className="account-muted">
-              Opt-in audience attributes for classes and tools. These are not membership
-              entitlements, Whop products, or affiliate CRM roles.
+              Select how you use MetFix so your classes and tools match your path.
             </p>
             <div className="account-role-chips">
               {roleOptions.map((role) => {
@@ -280,64 +394,74 @@ export default function AccountProfile() {
                 );
               })}
             </div>
-            {onboardingRoles.includes("gym_owner") ? (
-              <label className="account-inline-check">
-                <input
-                  type="checkbox"
-                  checked={hasPhysicalGym === true}
-                  onChange={(e) => setHasPhysicalGym(e.target.checked)}
-                />
-                I have a physical gym / facility
-              </label>
-            ) : null}
-            {onboardingRoles.includes("clinician") ? (
-              <label className="account-inline-check">
-                <input
-                  type="checkbox"
-                  checked={hasPhysicalClinic === true}
-                  onChange={(e) => setHasPhysicalClinic(e.target.checked)}
-                />
-                I have a physical clinic / practice
-              </label>
-            ) : null}
           </fieldset>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <input
-              type="checkbox"
-              checked={communityOptIn}
-              onChange={(e) => setCommunityOptIn(e.target.checked)}
-            />
-            Community opt-in
-          </label>
           <button type="submit" className="account-btn" disabled={busy}>
-            Save profile
+            Save changes
           </button>
         </form>
       </section>
 
-      <section className="account-card">
-        <h2>Attributes</h2>
-        {attributeFields.length === 0 ? (
-          <p className="account-muted">No editable profile fields on this account.</p>
-        ) : (
-          <form className="account-form" onSubmit={onAttr}>
-            {attributeFields.map((field) => (
-              <label key={field.attr_id}>
-                {field.label}
-                <input
-                  value={attrValues[field.attr_id] ?? ""}
-                  onChange={(e) =>
-                    setAttrValues((current) => ({ ...current, [field.attr_id]: e.target.value }))
-                  }
-                />
-              </label>
-            ))}
-            <button type="submit" className="account-btn" disabled={busy}>
-              Save attribute
-            </button>
-          </form>
-        )}
-      </section>
+      {(["personal", "affiliate", "clinic"] as const).map((section) => {
+        const fields = sectionFields[section];
+        const meta = SECTION_META[section];
+        return (
+          <section key={section} className="account-card account-profile-card">
+            <div className="account-profile-card__head">
+              <h2>{meta.title}</h2>
+            </div>
+            <p className="account-muted">{meta.blurb}</p>
+            <form className="account-form" onSubmit={(e) => void onSaveSection(section, e)}>
+              {section === "affiliate" && onboardingRoles.includes("gym_owner") ? (
+                <label className="account-inline-check">
+                  <input
+                    type="checkbox"
+                    checked={hasPhysicalGym === true}
+                    onChange={(e) => {
+                      setSaved(null);
+                      setHasPhysicalGym(e.target.checked);
+                    }}
+                  />
+                  I have a physical gym / facility
+                </label>
+              ) : null}
+              {section === "clinic" && onboardingRoles.includes("clinician") ? (
+                <label className="account-inline-check">
+                  <input
+                    type="checkbox"
+                    checked={hasPhysicalClinic === true}
+                    onChange={(e) => {
+                      setSaved(null);
+                      setHasPhysicalClinic(e.target.checked);
+                    }}
+                  />
+                  I have a physical clinic / practice
+                </label>
+              ) : null}
+              {fields.length === 0 ? (
+                <p className="account-muted">No editable {section} fields on this account.</p>
+              ) : (
+                fields.map((field) => (
+                  <label key={`${section}-${field.attr_id}`}>
+                    {field.label}
+                    <input
+                      value={attrValues[`${section}:${field.attr_id}`] ?? ""}
+                      onChange={(e) =>
+                        setAttrValues((current) => ({
+                          ...current,
+                          [`${section}:${field.attr_id}`]: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                ))
+              )}
+              <button type="submit" className="account-btn" disabled={busy}>
+                Save {meta.title.toLowerCase()}
+              </button>
+            </form>
+          </section>
+        );
+      })}
     </DashboardLayout>
   );
 }

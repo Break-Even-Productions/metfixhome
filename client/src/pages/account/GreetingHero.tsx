@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useId, useRef, useState } from "react";
 import { Link } from "wouter";
 import { basePath } from "@/const";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
@@ -8,10 +8,14 @@ import type { LtvCertificates, MembershipStatusLabel } from "@/lib/account";
 import { DashAsteriskFallback, useDashHeroGlass } from "./DashHeroGlass";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 
+const LTV_INFO =
+  "Your certificate LTV budget grows with MetFix subscription spend. When you claim a course certificate, MetFix can allocate lifetime spend toward that course’s listed value (redeem LTV), let you prepay any shortfall, or buy the certificate outright. Claimed certificates reduce available balance. This is separate from membership tier and onboarding audience attributes.";
+
 type Stat = {
   label: string;
   value: string;
   note?: string;
+  info?: boolean;
 };
 
 type Props = {
@@ -41,6 +45,8 @@ export function GreetingHero({
   const barRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const glassReady = useDashHeroGlass(rootRef, barRef, markRef, photo);
+  const [ltvOpen, setLtvOpen] = useState(false);
+  const ltvInfoId = useId();
 
   const unlocked = metfixToolsUnlocked(tier);
   const available = ltv ? formatUsdFromCents(ltv.available_certificate_ltv_cents) : "$0.00";
@@ -55,7 +61,9 @@ export function GreetingHero({
     },
     {
       label: "Certificate LTV Available",
-      value: `${available} available (${total} total LTV · ${claimed} claimed)`,
+      value: available,
+      note: `${total} total · ${claimed} claimed`,
+      info: true,
     },
   ];
   if (nextPayment) {
@@ -104,9 +112,30 @@ export function GreetingHero({
       >
         {stats.map((stat) => (
           <div key={stat.label} className="dash-greet__stat">
-            <p className="dash-greet__stat-label">{stat.label}</p>
+            <div className="dash-greet__stat-label-row">
+              <p className="dash-greet__stat-label">{stat.label}</p>
+              {stat.info ? (
+                <button
+                  type="button"
+                  className="account-info-btn account-info-btn--on-dark"
+                  aria-expanded={ltvOpen}
+                  aria-controls={ltvInfoId}
+                  onClick={() => setLtvOpen((v) => !v)}
+                >
+                  <span className="account-info-btn__glyph" aria-hidden="true">
+                    i
+                  </span>
+                  <span className="sr-only">How course claim and LTV works</span>
+                </button>
+              ) : null}
+            </div>
             <p className="dash-greet__stat-value account-metric">{stat.value}</p>
             {stat.note ? <p className="dash-greet__stat-note">{stat.note}</p> : null}
+            {stat.info && ltvOpen ? (
+              <p id={ltvInfoId} className="dash-greet__stat-info" role="note">
+                {LTV_INFO}
+              </p>
+            ) : null}
           </div>
         ))}
       </div>

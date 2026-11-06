@@ -78,9 +78,11 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     });
     expect(screen.getByText(/Membership Tier/i)).toBeTruthy();
     expect(screen.getAllByText(/MetFix Pro \(\$30\/mo\)/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$100.00").length).toBeGreaterThan(0);
+    expect(screen.getByText(/\$300\.00 total · \$200\.00 claimed/)).toBeTruthy();
     expect(
-      screen.getByText(/\$100\.00 available \(\$300\.00 total LTV · \$200\.00 claimed\)/),
-    ).toBeTruthy();
+      screen.getAllByRole("button", { name: /How course claim and LTV works/i }).length,
+    ).toBeGreaterThan(0);
 
     const mono = document.querySelectorAll(".account-metric, .account-mono");
     expect(mono.length).toBeGreaterThan(0);

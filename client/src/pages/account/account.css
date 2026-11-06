@@ -601,6 +601,17 @@ a.account-btn.account-btn--ghost {
   gap: 0.85rem;
 }
 
+.account-form-row {
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 640px) {
+  .account-form-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .account-form label {
   display: grid;
   gap: 0.35rem;
@@ -613,10 +624,83 @@ a.account-btn.account-btn--ghost {
 .account-form select {
   font: inherit;
   color: var(--color-ink);
-  background: var(--color-cream);
+  background: #fff;
   border: 1px solid var(--color-line);
-  border-radius: 0;
-  padding: 0.55rem 0.7rem;
+  border-radius: 1rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.account-form input:disabled,
+.account-form input[readonly] {
+  opacity: 0.75;
+  background: var(--color-cream);
+}
+
+.account-profile-summary {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .account-profile-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.account-profile-summary > div {
+  margin: 0;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1.3rem;
+  background: color-mix(in srgb, var(--color-cream) 55%, #fff);
+}
+
+.account-profile-summary dt {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.account-profile-summary dd {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: var(--color-ink);
+  text-transform: capitalize;
+}
+
+.account-profile-summary__roles {
+  text-transform: none;
+}
+
+.account-profile-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.account-profile-card__head h2 {
+  margin: 0;
+}
+
+.account-profile-saved {
+  display: inline-flex;
+  margin: 0 0 1rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--color-cream);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-ink);
 }
 
 .account-form textarea {
@@ -1049,6 +1133,13 @@ a.account-btn.account-btn--accent {
   border-bottom: 0;
 }
 
+.dash-greet__stat-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .dash-greet__stat-label {
   margin: 0;
   font-size: 0.65rem;
@@ -1069,9 +1160,35 @@ a.account-btn.account-btn--accent {
 }
 
 .dash-greet__stat-note {
-  margin: 0.15rem 0 0;
-  font-size: 0.7rem;
-  color: rgba(243, 238, 228, 0.7);
+  margin: 0.2rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  color: rgba(243, 238, 228, 0.55);
+}
+
+.dash-greet__stat-info {
+  margin: 0.55rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 14, 12, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: rgba(243, 238, 228, 0.82);
+}
+
+.account-info-btn--on-dark {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-cream);
+  flex-shrink: 0;
+}
+
+.account-info-btn--on-dark .account-info-btn__glyph {
+  font-size: 0.75rem;
 }
 
 .dash-unlock {
