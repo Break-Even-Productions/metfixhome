@@ -1,8 +1,30 @@
-/** Cache API keys — anonymous public; gated responses must be user-salted. */
-/** v4: longer store retention + X-Library-Fresh-Until for stale-on-timeout. */
+/** Cache API keys — anonymous public; gated responses must be session-salted. */
+/** v5: salt is user + session + entitlement, so an anon entry cannot satisfy a member. */
 
 const ANON = "anon";
-const VER = "v4";
+const VER = "v5";
+
+function cacheToken(raw: string): string {
+  return raw.replace(/[^A-Za-z0-9_-]/g, "");
+}
+
+/**
+ * Worker Cache API salt for a resolved session.
+ * Null (caller uses the anon key) only when there is no session.
+ * Session and entitlement are both in the key so a new login cannot reuse an
+ * anon entry, and a logout cannot reuse the previous member entry.
+ */
+export function libraryViewerCacheSalt(
+  input: { userId: string; sessionId: string; entitlement: string } | null,
+): string | null {
+  if (!input) return null;
+  const sessionId = cacheToken(input.sessionId.trim());
+  const entitlement = cacheToken(input.entitlement.trim());
+  if (!sessionId || !entitlement) return null;
+  const userId = cacheToken(input.userId.trim());
+  const user = userId && userId !== "0" ? `u${userId}` : "nouid";
+  return `${user}.s${sessionId}.e${entitlement}`;
+}
 
 export function librarySearchCacheKey(
   queryString: string,

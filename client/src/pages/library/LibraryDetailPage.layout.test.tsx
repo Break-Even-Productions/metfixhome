@@ -176,4 +176,69 @@ describe("LibraryDetailPage author-right (PL13)", () => {
         Boolean(keep.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
   });
+
+  it("fades a first-paragraph preview and leaves a same-body preview video unfaded", async () => {
+    const previewAccess = {
+      access: "preview" as const,
+      has_content_access: true,
+      user_has_access: false,
+      has_preview: true,
+      is_exclusive: true,
+      show_same: 3,
+      show_video_in_preview: true,
+      access_group_labels: ["Logged In"],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            resource: resource({
+              content: "<p>Opening paragraph only</p>",
+              access: previewAccess,
+              video: {
+                kind: "youtube",
+                embedUrl: "https://www.youtube.com/embed/ssx-qq29IYo",
+                url: "https://www.youtube.com/watch?v=ssx-qq29IYo",
+                videoId: "ssx-qq29IYo",
+              },
+            }),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    const faded = mountAt("/library/post/42");
+    expect(await screen.findByText("Opening paragraph only")).toBeTruthy();
+    expect(document.querySelector(".library-preview-fade")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Continue with MetFix" })).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeTruthy();
+    faded.unmount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            resource: resource({
+              content: "<p>Same exclusive body</p>",
+              access: { ...previewAccess, show_same: 2 },
+              video: {
+                kind: "youtube",
+                embedUrl: "https://www.youtube.com/embed/ssx-qq29IYo",
+                url: "https://www.youtube.com/watch?v=ssx-qq29IYo",
+                videoId: "ssx-qq29IYo",
+              },
+            }),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    mountAt("/library/post/42");
+    expect(await screen.findByText("Same exclusive body")).toBeTruthy();
+    expect(document.querySelector(".library-preview-fade")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Continue with MetFix" })).toBeNull();
+    expect(document.querySelector("iframe")).toBeTruthy();
+  });
 });

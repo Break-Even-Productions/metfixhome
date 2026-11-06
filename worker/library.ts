@@ -28,6 +28,7 @@ import {
   libraryFiltersCacheKey,
   libraryPopularCacheKey,
   librarySearchCacheKey,
+  libraryViewerCacheSalt,
   lockedDetailShell,
   mapDetailBody,
   mapFiltersPayload,
@@ -117,9 +118,10 @@ function resourcesBase(env: Env, opts?: { baseUrl?: string }): string {
 function apiOkHeaders(privateCache: boolean): HeadersInit {
   return {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": privateCache
-      ? "private, max-age=30"
-      : "public, max-age=60",
+    // Vary on Cookie so a public anon document is not reused after login,
+    // and a private member document is not reused after logout.
+    Vary: "Cookie",
+    "Cache-Control": privateCache ? "private, no-store" : "public, max-age=60",
     "X-Content-Type-Options": "nosniff",
   };
 }
@@ -266,6 +268,14 @@ async function htmlOk(
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
   }
+  // The HTML document carries the same session split as the JSON API.
+  // A shell cached for anon must not be replayed for a signed-in member.
+  headers.set("Vary", "Cookie");
+  if (parseCookies(request.headers.get("Cookie"))[SID_COOKIE]) {
+    headers.set("Cache-Control", "private, no-store");
+  } else {
+    headers.set("Cache-Control", "public, max-age=60");
+  }
   if (isHead) return new Response(null, { status: 200, headers });
   return new Response(finished.body, { status: 200, headers });
 }
@@ -302,10 +312,56 @@ async function optionalActing(
   return resolved;
 }
 
+type LibraryCachePlan = {
+  /** Null → anon key. Ignored when `bypass` is set. */
+  salt: string | null;
+  /**
+   * Session cookie is present but the session did not resolve.
+   * Do not read or write the anon entry — a new session must not receive it.
+   */
+  bypass: boolean;
+  /** Client Cache-Control: private no-store (member or unresolved session). */
+  private: boolean;
+};
+
+/** FNV-1a. Keeps the bearer token out of the Cache API key. */
+function entitlementHash(access: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < access.length; i++) {
+    h ^= access.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
 function userSalt(acting: ActingContext | null): string | null {
   if (!acting) return null;
-  const id = acting.record.bsi_user_id;
-  return id && id !== "0" ? `u${id}` : acting.hex.slice(0, 16);
+  const session = (acting.hex || acting.sid).slice(0, 16);
+  return libraryViewerCacheSalt({
+    userId: acting.record.bsi_user_id,
+    sessionId: session,
+    entitlement: entitlementHash(acting.access || ""),
+  });
+}
+
+function libraryCachePlan(
+  request: Request,
+  acting: ActingContext | null,
+): LibraryCachePlan {
+  const hasSid = Boolean(parseCookies(request.headers.get("Cookie"))[SID_COOKIE]);
+  const salt = userSalt(acting);
+  if (hasSid && salt == null) {
+    return { salt: null, bypass: true, private: true };
+  }
+  return { salt, bypass: false, private: salt != null };
+}
+
+function cacheKeyFor(
+  plan: LibraryCachePlan,
+  build: (salt: string | null) => Request,
+): Request | null {
+  if (plan.bypass) return null;
+  return build(plan.salt);
 }
 
 function bsiHeaders(
@@ -653,6 +709,7 @@ async function getSearch(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
@@ -665,10 +722,11 @@ async function getSearch(
     return { kind: "nokey" };
   }
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = librarySearchCacheKey(queryString, salt);
-  const hit = await matchSearchCache(cache, keyReq);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => librarySearchCacheKey(queryString, salt));
+  const hit = keyReq
+    ? await matchSearchCache(cache, keyReq)
+    : ({ kind: "miss" } as const);
   if (hit.kind === "fresh") {
     return {
       kind: "ok",
@@ -740,16 +798,18 @@ async function getSearch(
 
   const jsonText = JSON.stringify(mapped);
   const fresh = privateCache ? SEARCH_FRESH_USER : SEARCH_FRESH_ANON;
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    fresh,
-    SEARCH_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      fresh,
+      SEARCH_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -761,6 +821,7 @@ async function getPopular(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
@@ -773,10 +834,11 @@ async function getPopular(
     return { kind: "nokey" };
   }
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = libraryPopularCacheKey(queryString, salt);
-  const hit = await matchSearchCache(cache, keyReq);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => libraryPopularCacheKey(queryString, salt));
+  const hit = keyReq
+    ? await matchSearchCache(cache, keyReq)
+    : ({ kind: "miss" } as const);
   if (hit.kind === "fresh") {
     return {
       kind: "ok",
@@ -850,16 +912,18 @@ async function getPopular(
   // an already-expensive ranking call. Search still flags gated pages.
   const jsonText = JSON.stringify(mapped);
   const fresh = privateCache ? POPULAR_FRESH_USER : POPULAR_FRESH_ANON;
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    fresh,
-    POPULAR_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      fresh,
+      POPULAR_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -870,6 +934,7 @@ async function getFilters(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibraryFiltersBody; jsonText: string; private: boolean }
@@ -879,11 +944,10 @@ async function getFilters(
   const key = readApiKey(env);
   if (key == null) return { kind: "nokey" };
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = libraryFiltersCacheKey(salt);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => libraryFiltersCacheKey(salt));
   let stale: { body: LibraryFiltersBody; jsonText: string } | null = null;
-  const cached = await cache.match(keyReq);
+  const cached = keyReq ? await cache.match(keyReq) : undefined;
   if (cached) {
     try {
       const text = await cached.clone().text();
@@ -955,16 +1019,18 @@ async function getFilters(
     categories: parsed[2],
   });
   const jsonText = JSON.stringify(mapped);
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    FILTERS_FRESH,
-    FILTERS_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      FILTERS_FRESH,
+      FILTERS_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -977,6 +1043,7 @@ async function getDetail(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibraryDetailBody; jsonText: string; private: boolean }
@@ -1028,15 +1095,14 @@ async function getDetail(
     return { kind: "ok", body, jsonText, private: false };
   }
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = libraryDetailCacheKey(type, id, salt);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => libraryDetailCacheKey(type, id, salt));
   let stale: {
     kind: "ok" | "locked";
     body: LibraryDetailBody;
     jsonText: string;
   } | null = null;
-  const cached = await cache.match(keyReq);
+  const cached = keyReq ? await cache.match(keyReq) : undefined;
   if (cached) {
     try {
       const text = await cached.clone().text();
@@ -1113,16 +1179,18 @@ async function getDetail(
     const body: LibraryDetailBody = { resource: shell };
     const jsonText = JSON.stringify(body);
     const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
-    await storeMapped(
-      cache,
-      keyReq,
-      jsonText,
-      fresh,
-      DETAIL_STORE,
-      putMode,
-      ctx,
-      privateCache,
-    );
+    if (keyReq) {
+      await storeMapped(
+        cache,
+        keyReq,
+        jsonText,
+        fresh,
+        DETAIL_STORE,
+        putMode,
+        ctx,
+        privateCache,
+      );
+    }
     return { kind: "locked", body, jsonText, private: privateCache };
   }
 
@@ -1149,16 +1217,18 @@ async function getDetail(
       if (alt) {
         const jsonText = JSON.stringify(alt);
         const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
-        await storeMapped(
-          cache,
-          keyReq,
-          jsonText,
-          fresh,
-          DETAIL_STORE,
-          putMode,
-          ctx,
-          privateCache,
-        );
+        if (keyReq) {
+          await storeMapped(
+            cache,
+            keyReq,
+            jsonText,
+            fresh,
+            DETAIL_STORE,
+            putMode,
+            ctx,
+            privateCache,
+          );
+        }
         return {
           kind: alt.resource.locked ? "locked" : "ok",
           body: alt,
@@ -1172,16 +1242,18 @@ async function getDetail(
 
   const jsonText = JSON.stringify(mapped);
   const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    fresh,
-    DETAIL_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      fresh,
+      DETAIL_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return {
     kind: mapped.resource.locked ? "locked" : "ok",
     body: mapped,
@@ -1249,6 +1321,7 @@ async function getArchive(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
@@ -1262,12 +1335,13 @@ async function getArchive(
     ctx,
     putMode,
     acting,
+    plan,
     opts,
   );
   if (filters.kind !== "ok") return filters;
 
   const legs = archiveSearchLegs(filters.body);
-  const privateCache = userSalt(acting) != null;
+  const privateCache = plan.private;
   if (legs.length === 0) {
     const body: LibrarySearchBody = {
       resources: [],
@@ -1285,7 +1359,17 @@ async function getArchive(
     legs.map(async (leg) => {
       const qs = archiveLegQuery(limit, offset, leg);
       if (qs == null) return { kind: "unavailable" as const };
-      return getSearch(qs, env, fetchImpl, cache, ctx, putMode, acting, opts);
+      return getSearch(
+        qs,
+        env,
+        fetchImpl,
+        cache,
+        ctx,
+        putMode,
+        acting,
+        plan,
+        opts,
+      );
     }),
   );
   if (results.some((result) => result.kind !== "ok"))
@@ -1323,6 +1407,7 @@ export async function handleLibraryApi(
   const path = url.pathname;
 
   const acting = await optionalActing(request, env, fetchImpl, opts);
+  const plan = libraryCachePlan(request, acting);
 
   if (path === "/api/library/search" || path === "/api/library/search/") {
     const qs = buildSearchUpstreamQuery(url.searchParams);
@@ -1335,6 +1420,7 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
@@ -1356,6 +1442,7 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
@@ -1374,6 +1461,7 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
@@ -1396,6 +1484,7 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
@@ -1422,6 +1511,7 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok" || result.kind === "locked") {
@@ -1459,6 +1549,7 @@ export async function handleLibraryHtml(
   }
 
   const acting = await optionalActing(request, env, fetchImpl, opts);
+  const plan = libraryCachePlan(request, acting);
 
   if (path === "/library") {
     const head = buildLibraryHead({ kind: "hub" });
@@ -1505,6 +1596,7 @@ export async function handleLibraryHtml(
       ctx,
       "await",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok" || result.kind === "locked") {

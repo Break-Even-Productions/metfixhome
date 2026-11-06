@@ -30,6 +30,7 @@ export {
 
 export {
   htmlShowsMembershipGate,
+  isFirstParagraphPreview,
   isFreeOpen,
   isLockedCard,
   isProfessionalTagged,
@@ -50,6 +51,7 @@ export {
   libraryFiltersCacheKey,
   libraryPopularCacheKey,
   librarySearchCacheKey,
+  libraryViewerCacheSalt,
 } from "./cache";
 
 export {

@@ -45,6 +45,7 @@ export async function fetchLibrarySearch(
   const res = await fetch(`/api/library/search?${qs}`, {
     headers: { Accept: "application/json" },
     credentials: "same-origin",
+    cache: "no-store",
     signal,
   });
   if (!res.ok) throw new Error(`search_${res.status}`);
@@ -68,6 +69,7 @@ export async function fetchLibraryPopular(
   const res = await fetch(`/api/library/popular${qs ? `?${qs}` : ""}`, {
     headers: { Accept: "application/json" },
     credentials: "same-origin",
+    cache: "no-store",
     signal,
   });
   if (!res.ok) throw new Error(`popular_${res.status}`);
@@ -88,6 +90,7 @@ export async function fetchLibraryArchive(
   const res = await fetch(`/api/library/archive${qs ? `?${qs}` : ""}`, {
     headers: { Accept: "application/json" },
     credentials: "same-origin",
+    cache: "no-store",
     signal,
   });
   if (!res.ok) throw new Error(`archive_${res.status}`);
@@ -102,6 +105,7 @@ export async function fetchLibraryFilters(
   const res = await fetch("/api/library/filters", {
     headers: { Accept: "application/json" },
     credentials: "same-origin",
+    cache: "no-store",
     signal,
   });
   if (!res.ok) throw new Error(`filters_${res.status}`);
@@ -118,6 +122,7 @@ export async function fetchLibraryItem(
   const res = await fetch(`/api/library/item/${type}/${id}`, {
     headers: { Accept: "application/json" },
     credentials: "same-origin",
+    cache: "no-store",
     signal,
   });
   if (!res.ok) throw new Error(`item_${res.status}`);

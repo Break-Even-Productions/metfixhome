@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "wouter";
 import {
   buildLibraryHead,
+  isFirstParagraphPreview,
   isResourceType,
   joinCtaHref,
   RESOURCE_ID_MAX,
@@ -156,7 +157,10 @@ export default function LibraryDetailPage({
   }
 
   const r = state.resource;
-  const isPreview = r.access.access === "preview" && !r.locked;
+  const fadePreview =
+    r.access.access === "preview" &&
+    !r.locked &&
+    isFirstParagraphPreview(r.access.show_same);
   const model = toDetailReaderModel(r);
   const showComments = r.type === "post" || r.type === "page";
 
@@ -208,7 +212,7 @@ export default function LibraryDetailPage({
               </div>
               {/* B6: one CTA only — join/billing above; no second UpgradePrompt */}
             </div>
-          ) : isPreview ? (
+          ) : fadePreview ? (
             <div className="library-preview-wrap">
               <div className="library-reader-body">
                 <SafeHtml html={r.content} />

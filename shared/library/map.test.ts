@@ -285,3 +285,77 @@ describe("library head", () => {
     expect(detail.ogUrl).toBe("https://metfix.org/library/post/9");
   });
 });
+
+const PREVIEW_PERMALINK =
+  "https://brokenscience.org/metabolic-treatment-of-cancer-preview/";
+const FULL_PERMALINK = "https://brokenscience.org/metabolic-treatment-of-cancer/";
+const YT = {
+  type: "YouTube",
+  url: "https://www.youtube.com/watch?v=ssx-qq29IYo",
+  embed_url: "https://www.youtube.com/embed/ssx-qq29IYo",
+  video_id: "ssx-qq29IYo",
+};
+const VIMEO = {
+  type: "Vimeo",
+  url: "https://vimeo.com/987654321",
+  embed_url: "https://player.vimeo.com/video/987654321",
+  video_id: "987654321",
+};
+const STUB =
+  '<a href="https://brokenscience.org/metabolic-treatment-of-cancer/">Full Video (members only)</a>';
+const TEASER = "<p>An abbreviated version of this discussion is available here, for free.</p>";
+const MEMBER = "<p>MEMBER BODY of the exclusive discussion.</p>";
+
+function exclusiveDetail(access: "full" | "preview" | "none") {
+  return mapDetailBody(
+    {
+      id: 39096,
+      title: "Metabolic Treatment of Cancer",
+      date: "2024-01-01T00:00:00.000Z",
+      permalink: PREVIEW_PERMALINK,
+      full_permalink: FULL_PERMALINK,
+      content: access === "preview" ? TEASER : STUB,
+      full_content: MEMBER,
+      video: YT,
+      full_video: VIMEO,
+      content_access_display: {
+        access,
+        has_content_access: true,
+        user_has_access: access === "full",
+        has_preview: true,
+        is_exclusive: true,
+        show_same: 0,
+        show_video_in_preview: access !== "none",
+        access_group_labels: ["Medical Society"],
+      },
+    },
+    "post",
+  );
+}
+
+describe("exclusive full post payload", () => {
+  it("uses the exclusive Vimeo, member body, and full permalink when access is full", () => {
+    const mapped = exclusiveDetail("full");
+    expect(mapped?.resource.video).toMatchObject({ kind: "vimeo", videoId: "987654321" });
+    expect(mapped?.resource.content).toContain("MEMBER BODY");
+    expect(mapped?.resource.content).not.toContain("members only");
+    expect(mapped?.resource.permalink).toBe(FULL_PERMALINK);
+    expect(mapped?.resource.locked).toBe(false);
+  });
+
+  it("keeps the preview teaser and public YouTube when access is preview, even if full fields are present", () => {
+    const mapped = exclusiveDetail("preview");
+    expect(mapped?.resource.video).toMatchObject({ kind: "youtube", videoId: "ssx-qq29IYo" });
+    expect(mapped?.resource.content).toContain("abbreviated version");
+    expect(mapped?.resource.content).not.toContain("MEMBER BODY");
+    expect(mapped?.resource.permalink).toBe(PREVIEW_PERMALINK);
+  });
+
+  it("does not unlock a locked item from full_content or full_video", () => {
+    const mapped = exclusiveDetail("none");
+    expect(mapped?.resource.locked).toBe(true);
+    expect(mapped?.resource.content).toBe("");
+    expect(mapped?.resource.video).toBeNull();
+    expect(mapped?.resource.permalink).toBe(PREVIEW_PERMALINK);
+  });
+});
