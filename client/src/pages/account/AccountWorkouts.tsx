@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ClipboardList, Hammer, History, Zap } from "lucide-react";
 import { Link } from "wouter";
 import { basePath } from "@/const";
 import {
   createWorkoutLog,
-  deletePlannedWorkout,
-  deleteWorkoutLog,
   deriveMembershipStatus,
   loadCustomWorkout,
   loadOverview,
   loadPlannedWorkouts,
   loadSubscriptions,
-  loadWorkoutLog,
   loadWorkoutLogs,
   type AccountOverview,
   type AccountSubscriptions,
@@ -89,13 +87,19 @@ function plannedRow(row: PlannedWorkoutItem): FeedRow | null {
   };
 }
 
-function subtitle(row: FeedRow): string {
-  const bits: string[] = [];
-  if (row.meta) bits.push(row.meta);
-  if (row.minutes != null) bits.push(`${row.minutes} min`);
-  if (row.calories != null) bits.push(`${row.calories} kcal`);
-  if (row.note) bits.push(row.note);
-  return bits.join(" · ");
+function notePreview(note: string): string {
+  const text = note.replace(/\s+/g, " ").trim();
+  if (text.length <= 96) return text;
+  return `${text.slice(0, 93).trimEnd()}…`;
+}
+
+function rowHref(row: FeedRow): string {
+  if (row.logId) return basePath(`/account/workouts/${row.logId}`);
+  const q = new URLSearchParams();
+  q.set("date", row.date);
+  q.set("source", row.source === "custom" ? "custom" : "daily_fix");
+  if (row.sourceId) q.set("id", String(row.sourceId));
+  return basePath(`/account/workouts/log?${q.toString()}`);
 }
 
 export default function AccountWorkouts() {
@@ -111,10 +115,6 @@ export default function AccountWorkouts() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"past" | "upcoming">("past");
   const [reload, setReload] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [detail, setDetail] = useState<WorkoutLogItem | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [logTitle, setLogTitle] = useState("");
   const [logDate, setLogDate] = useState(today);
@@ -239,38 +239,6 @@ export default function AccountWorkouts() {
     return () => ac.abort();
   }, [gate, planned]);
 
-  const selectedLogId = rows.find((item) => item.key === selected)?.logId ?? null;
-
-  useEffect(() => {
-    if (!selectedLogId) {
-      setDetail(null);
-      setDetailLoading(false);
-      setDetailError(null);
-      return;
-    }
-    const ac = new AbortController();
-    let cancelled = false;
-    setDetailLoading(true);
-    setDetailError(null);
-    (async () => {
-      try {
-        const page = await loadWorkoutLog(selectedLogId, { signal: ac.signal, force: true });
-        if (!cancelled) setDetail(page.workout);
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setDetail(null);
-        setDetailError("Could not load this workout.");
-      } finally {
-        if (!cancelled) setDetailLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, [selectedLogId]);
-
   const byDate = useMemo(() => {
     const map = new Map<string, FeedRow[]>();
     for (const row of rows) {
@@ -285,7 +253,6 @@ export default function AccountWorkouts() {
   const firstName =
     overview?.display_name?.trim().split(/\s+/).filter(Boolean)[0] || "Member";
   const status = useMemo(() => deriveMembershipStatus(subs), [subs]);
-  const selectedRow = rows.find((row) => row.key === selected) ?? null;
 
   const nearPast = eachDay(addDays(today, -NEAR_PAST), addDays(today, -1)).reverse();
   const olderDays =
@@ -324,19 +291,6 @@ export default function AccountWorkouts() {
     }
   }
 
-  async function onRemove(row: FeedRow) {
-    const label = row.planned ? "Remove this planned workout?" : "Remove this logged workout?";
-    if (!window.confirm(label)) return;
-    try {
-      if (row.planned && row.plannedId) await deletePlannedWorkout(row.plannedId);
-      else if (row.logId) await deleteWorkoutLog(row.logId);
-      if (selected === row.key) setSelected(null);
-      setReload((n) => n + 1);
-    } catch {
-      setError("Could not remove that workout.");
-    }
-  }
-
   function renderDay(day: string, showRest: boolean) {
     const items = byDate.get(day) ?? [];
     return (
@@ -348,16 +302,25 @@ export default function AccountWorkouts() {
           <ul>
             {items.map((row) => (
               <li key={row.key}>
-                <button
-                  type="button"
-                  className={`dash-feed-row${selected === row.key ? " dash-feed-row--on" : ""}`}
-                  onClick={() => setSelected(row.key)}
+                <Link
+                  href={rowHref(row)}
+                  className={`dash-feed-row${row.planned ? " dash-feed-row--planned" : ""}`}
                 >
-                  <span className="dash-feed-row__title">{row.title}</span>
-                  {subtitle(row) ? (
-                    <span className="dash-feed-row__meta">{subtitle(row)}</span>
-                  ) : null}
-                </button>
+                  <span className="dash-feed-row__copy">
+                    <span className="dash-feed-row__title">{row.title}</span>
+                    <span className="dash-feed-row__stats">
+                      {row.meta ? <span>{row.meta}</span> : null}
+                      {row.minutes != null ? <span>{row.minutes} min</span> : null}
+                      {row.calories != null ? <span>{row.calories} kcal</span> : null}
+                    </span>
+                    {row.note ? (
+                      <span className="dash-feed-row__note">{notePreview(row.note)}</span>
+                    ) : null}
+                  </span>
+                  <span className="dash-feed-row__go" aria-hidden="true">
+                    →
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>
@@ -435,29 +398,48 @@ export default function AccountWorkouts() {
         </BodyPanel>
       ) : (
         <BodyPanel className="dash-feed">
-          <div className="dash-feed-actions">
-            <Link href={basePath("/account/workouts/log")} className="account-btn">
-              Quick log
-            </Link>
-            <Link href={basePath("/account/workouts/builder")} className="account-btn account-btn--ghost">
-              Build a workout
-            </Link>
-            <button type="button" className="account-btn account-btn--ghost" onClick={() => setLogOpen((v) => !v)}>
-              {logOpen ? "Close log" : "Log a session"}
-            </button>
+          <div className="dash-feed-actions dash-feed-actions--icons">
             <button
               type="button"
-              className="account-btn account-btn--ghost"
+              className={`account-btn account-btn--ghost account-btn--icon${logOpen ? " account-btn--accent" : ""}`}
+              onClick={() => setLogOpen((v) => !v)}
+              aria-label={logOpen ? "Close quick log" : "Quick log"}
+              title={logOpen ? "Close quick log" : "Quick log"}
+              aria-pressed={logOpen}
+            >
+              <Zap strokeWidth={2.25} aria-hidden="true" />
+            </button>
+            <Link
+              href={basePath("/account/workouts/builder")}
+              className="account-btn account-btn--ghost account-btn--icon"
+              aria-label="Build a workout"
+              title="Build a workout"
+            >
+              <Hammer strokeWidth={2.25} aria-hidden="true" />
+            </Link>
+            <Link
+              href={basePath("/account/workouts/log")}
+              className="account-btn account-btn--ghost account-btn--icon"
+              aria-label="Log workout"
+              title="Log workout"
+            >
+              <ClipboardList strokeWidth={2.25} aria-hidden="true" />
+            </Link>
+            <button
+              type="button"
+              className="account-btn account-btn--ghost account-btn--icon"
               onClick={() => setPastExtra((n) => Math.min(n + 14, 90))}
               disabled={pastExtra >= 90 || loading}
+              aria-label="Earlier sessions"
+              title="Earlier sessions"
             >
-              Earlier sessions
+              <History strokeWidth={2.25} aria-hidden="true" />
             </button>
           </div>
 
           {logOpen ? (
             <form className="account-form dash-pr-log" onSubmit={onLog}>
-              <p className="dash-kicker">Log a session</p>
+              <p className="dash-kicker">Quick log</p>
               <div className="account-form-row">
                 <label>
                   Name
@@ -502,7 +484,7 @@ export default function AccountWorkouts() {
               </label>
               {logMessage ? <p className="account-muted">{logMessage}</p> : null}
               <button type="submit" className="account-btn" disabled={logBusy}>
-                {logBusy ? "Saving…" : "Save session"}
+                {logBusy ? "Saving…" : "Save"}
               </button>
             </form>
           ) : null}
@@ -542,67 +524,6 @@ export default function AccountWorkouts() {
               )}
             </>
           )}
-
-          {selectedRow ? (
-            <aside className="dash-feed-detail" aria-label="Workout detail">
-              <h3>{detail?.workout_title || selectedRow.title}</h3>
-              <p className="account-muted">{formatDayLabel(selectedRow.date, today)}</p>
-              {detailLoading ? <FeedSkeleton label="Loading workout" /> : null}
-              {detailError ? <p className="account-error">{detailError}</p> : null}
-              {detail && !detailLoading ? (
-                <dl className="dash-feed-detail__facts">
-                  {detail.activity_minutes != null ? (
-                    <>
-                      <dt>Minutes</dt>
-                      <dd>{detail.activity_minutes}</dd>
-                    </>
-                  ) : null}
-                  {detail.calories_burned != null ? (
-                    <>
-                      <dt>Calories</dt>
-                      <dd>{detail.calories_burned}</dd>
-                    </>
-                  ) : null}
-                  {detail.score_entries.length > 0 ? (
-                    <>
-                      <dt>Scores</dt>
-                      <dd>
-                        {detail.score_entries
-                          .map((entry) =>
-                            [entry.score_value != null ? formatScoreNumber(entry.score_value) : null, entry.score_type]
-                              .filter(Boolean)
-                              .join(" "),
-                          )
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </dd>
-                    </>
-                  ) : null}
-                  {detail.workout_free_text ? (
-                    <>
-                      <dt>Notes</dt>
-                      <dd>{detail.workout_free_text}</dd>
-                    </>
-                  ) : null}
-                </dl>
-              ) : null}
-              {selectedRow.planned ? (
-                <Link
-                  href={basePath(
-                    `/account/workouts/log?date=${encodeURIComponent(selectedRow.date)}&source=${
-                      selectedRow.source === "custom" ? "custom" : "daily_fix"
-                    }&id=${selectedRow.sourceId ?? ""}`,
-                  )}
-                  className="account-btn"
-                >
-                  Quick log this workout
-                </Link>
-              ) : null}
-              <button type="button" className="account-btn account-btn--ghost" onClick={() => onRemove(selectedRow)}>
-                Remove
-              </button>
-            </aside>
-          ) : null}
         </BodyPanel>
       )}
     </DashboardLayout>

@@ -107,6 +107,8 @@ import {
   accountPtRelationshipNotesPath,
   accountPtRelationshipsPath,
   accountSparkEntriesPath,
+  accountSparkMeasurementsPath,
+  accountSparkUnitsPath,
   accountSparkUserInfoPath,
   accountSpendPath,
   accountSubscriptionsPath,
@@ -1260,21 +1262,39 @@ function shapeSparkEntries(raw: unknown): Record<string, unknown> {
     const measurement_date =
       typeof r.measurement_date === "string" ? r.measurement_date : null;
     if (!measurement_date || !Number.isFinite(value)) continue;
+    const measurementType =
+      typeof r.measurement_type === "string" ? r.measurement_type.toLowerCase() : null;
+    const subType = typeof r.sub_type === "string" ? r.sub_type.toLowerCase() : null;
+    const mid =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id);
+    const prDirectionRaw =
+      typeof r.pr_direction === "string"
+        ? r.pr_direction.toLowerCase()
+        : typeof r.scoring_direction === "string"
+          ? r.scoring_direction.toLowerCase()
+          : null;
     entries.push({
       id: r.id ?? null,
       measurement_date,
       value,
-      bsi_measurement_id:
-        typeof r.bsi_measurement_id === "number"
-          ? r.bsi_measurement_id
-          : typeof r.measurement_id === "number"
-            ? r.measurement_id
-            : undefined,
-      unit_id: typeof r.unit_id === "number" ? r.unit_id : undefined,
+      bsi_measurement_id: mid ?? undefined,
+      unit_id: parsePositiveCourseId(r.unit_id) ?? undefined,
       unit_abbreviation:
         typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
       measurement_name:
         typeof r.measurement_name === "string" ? r.measurement_name : undefined,
+      measurement_type:
+        measurementType === "health" || measurementType === "movement"
+          ? measurementType
+          : null,
+      sub_type: subType,
+      pr_direction:
+        prDirectionRaw === "higher_better" ||
+        prDirectionRaw === "lower_better" ||
+        prDirectionRaw === "closer_to_target"
+          ? prDirectionRaw
+          : null,
       type: typeof r.type === "string" ? r.type : undefined,
       status: typeof r.status === "string" ? r.status : undefined,
     });
@@ -1290,17 +1310,96 @@ function shapeSparkEntries(raw: unknown): Record<string, unknown> {
   };
 }
 
+function shapeSparkMeasurements(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.measurements)
+    ? obj.measurements
+    : Array.isArray(raw)
+      ? (raw as unknown[])
+      : [];
+  const measurements: Record<string, unknown>[] = [];
+  for (const row of list) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const id =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id) ??
+      parsePositiveCourseId(r.id);
+    if (id == null) continue;
+    const measurementType =
+      typeof r.measurement_type === "string" ? r.measurement_type.toLowerCase() : null;
+    const prRaw =
+      typeof r.pr_direction === "string" ? r.pr_direction.toLowerCase() : null;
+    const defaultUnitId =
+      parsePositiveCourseId(r.default_unit_id) ?? parsePositiveCourseId(r.unit_id);
+    measurements.push({
+      bsi_measurement_id: id,
+      name: typeof r.name === "string" ? r.name : `Metric ${id}`,
+      measurement_type:
+        measurementType === "health" || measurementType === "movement"
+          ? measurementType
+          : null,
+      sub_type: typeof r.sub_type === "string" ? r.sub_type.toLowerCase() : null,
+      pr_direction:
+        prRaw === "higher_better" ||
+        prRaw === "lower_better" ||
+        prRaw === "closer_to_target"
+          ? prRaw
+          : "higher_better",
+      default_unit_id: defaultUnitId,
+      unit_abbreviation:
+        typeof r.default_unit_abbreviation === "string"
+          ? r.default_unit_abbreviation
+          : typeof r.unit_abbreviation === "string"
+            ? r.unit_abbreviation
+            : null,
+    });
+  }
+  return { measurements, count: measurements.length };
+}
+
+function shapeSparkUnits(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.units) ? obj.units : Array.isArray(raw) ? (raw as unknown[]) : [];
+  const units: Record<string, unknown>[] = [];
+  for (const row of list) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const unit_id = parsePositiveCourseId(r.unit_id) ?? parsePositiveCourseId(r.id);
+    if (unit_id == null) continue;
+    const name = typeof r.name === "string" ? r.name : null;
+    const abbreviation = typeof r.abbreviation === "string" ? r.abbreviation : null;
+    if (!name && !abbreviation) continue;
+    units.push({
+      unit_id,
+      name: name ?? abbreviation,
+      abbreviation: abbreviation ?? name,
+    });
+  }
+  return { units, count: units.length };
+}
+
 /** BSI spark create requires Y-m-d H:i:s; dashboard date inputs send Y-m-d. */
 function normalizeSparkMeasurementDate(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   if (YMD_RE.test(s)) return `${s} 12:00:00`;
+  // datetime-local: Y-m-dTH:i (no seconds)
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(s)) {
+    return `${s.replace("T", " ")}:00`;
+  }
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
     return s.replace("T", " ");
   }
   return null;
 }
 
+/**
+ * BSI GET /spark/pr-overview returns a merged `items` list where the stable id
+ * lives on `id` (`type: "measurement"` → measurement id, `type: "workout"` →
+ * custom workout id). Older/split shapes may use `bsi_measurement_id` /
+ * `custom_workout_id` instead — accept all of them (number or digit string).
+ */
 function shapePrOverview(raw: unknown): Record<string, unknown> {
   const obj = asRecord(raw) ?? {};
   const pickRows = (...keys: string[]): unknown[] => {
@@ -1310,7 +1409,10 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
     }
     return [];
   };
-  const shapeRow = (row: unknown): Record<string, unknown> | null => {
+  const shapeRow = (
+    row: unknown,
+    kindHint?: "workout" | "movement",
+  ): Record<string, unknown> | null => {
     const r = asRecord(row);
     if (!r) return null;
     const name =
@@ -1330,30 +1432,62 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
         : typeof r.last_score === "string"
           ? Number(r.last_score)
           : null;
+    const type =
+      typeof r.type === "string"
+        ? r.type
+        : typeof r.row_kind === "string"
+          ? r.row_kind
+          : null;
+    const typeLower = (type ?? "").toLowerCase();
+    const asMovement =
+      kindHint === "movement" ||
+      typeLower.includes("measurement") ||
+      typeLower.includes("movement");
+    const asWorkout =
+      kindHint === "workout" || typeLower.includes("workout");
+    const explicitMid =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id);
+    const explicitWid =
+      parsePositiveCourseId(r.custom_workout_id) ??
+      parsePositiveCourseId(r.custom_workout_template_id);
+    const rowId = parsePositiveCourseId(r.id);
+    let measurement_id = explicitMid;
+    let custom_workout_id = explicitWid;
+    if (asMovement && measurement_id == null) measurement_id = rowId;
+    else if (asWorkout && custom_workout_id == null) custom_workout_id = rowId;
+    const totalRaw =
+      typeof r.total_entries === "number"
+        ? r.total_entries
+        : typeof r.total_entries === "string"
+          ? Number(r.total_entries)
+          : 0;
+    const scoreMode =
+      typeof r.score_mode === "string" ? r.score_mode.toLowerCase() : null;
+    const prDirection =
+      typeof r.pr_direction === "string"
+        ? r.pr_direction.toLowerCase()
+        : typeof r.scoring_direction === "string"
+          ? r.scoring_direction.toLowerCase()
+          : null;
     return {
       name,
-      type:
-        typeof r.type === "string"
-          ? r.type
-          : typeof r.row_kind === "string"
-            ? r.row_kind
-            : null,
-      custom_workout_id:
-        typeof r.custom_workout_id === "number" ? r.custom_workout_id : null,
-      measurement_id:
-        typeof r.bsi_measurement_id === "number"
-          ? r.bsi_measurement_id
-          : typeof r.measurement_id === "number"
-            ? r.measurement_id
-            : null,
+      type,
+      custom_workout_id,
+      measurement_id,
       best_score: best != null && Number.isFinite(best) ? best : null,
       last_score: last != null && Number.isFinite(last) ? last : null,
-      total_entries:
-        typeof r.total_entries === "number" ? r.total_entries : 0,
+      total_entries: Number.isFinite(totalRaw) ? totalRaw : 0,
       unit_abbreviation:
         typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
       score_unit_id:
-        typeof r.score_unit_id === "number" ? r.score_unit_id : null,
+        parsePositiveCourseId(r.score_unit_id) ??
+        parsePositiveCourseId(r.unit_id),
+      score_mode: scoreMode,
+      pr_direction:
+        prDirection === "higher_better" || prDirection === "lower_better"
+          ? prDirection
+          : null,
       benchmark_classification:
         typeof r.benchmark_classification === "string"
           ? r.benchmark_classification
@@ -1376,11 +1510,11 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
   let workouts: Record<string, unknown>[] = [];
   let movements: Record<string, unknown>[] = [];
   for (const row of workoutsIn) {
-    const s = shapeRow(row);
+    const s = shapeRow(row, "workout");
     if (s) workouts.push(s);
   }
   for (const row of movementsIn) {
-    const s = shapeRow(row);
+    const s = shapeRow(row, "movement");
     if (s) movements.push(s);
   }
   if (workouts.length === 0 && movements.length === 0) {
@@ -1593,6 +1727,12 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "GET" && rest === "spark/user-info") {
     return { id: "MF50", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "spark/measurements") {
+    return { id: "MF52", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "spark/units") {
+    return { id: "MF63", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "spark/entries") {
     return { id: "MF12", method: "GET", params: {}, limiter: "read" };
@@ -3088,6 +3228,40 @@ async function dispatch(
       );
       if (proxied instanceof Response) return proxied;
       return accountJson(shapeSparkUserInfo(proxied.json), 200);
+    }
+    case "MF52": {
+      const parts: string[] = [];
+      const mtype = url.searchParams.get("measurement_type");
+      if (mtype === "health" || mtype === "movement") {
+        parts.push(`measurement_type=${encodeURIComponent(mtype)}`);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkMeasurementsPath(),
+        { query: parts.length ? parts.join("&") : undefined },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkMeasurements(mapped.json), 200);
+    }
+    case "MF63": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkUnitsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkUnits(mapped.json), 200);
     }
     case "MF12": {
       const parts: string[] = [];

@@ -107,6 +107,48 @@ function shapeScoreEntries(raw: unknown): Record<string, unknown>[] {
   return out;
 }
 
+function shapeMovementActual(row: unknown): Record<string, unknown> | null {
+  const r = asRecord(row);
+  if (!r) return null;
+  const movementId = posInt(r.movement_id);
+  if (!movementId) return null;
+  const next: Record<string, unknown> = { movement_id: movementId };
+  const name = clip(r.movement_name, 120) ?? clip(r.name, 120) ?? clip(r.label, 120);
+  if (name) next.movement_name = name;
+  const segment = clip(r.segment_id, 40);
+  if (segment) next.segment_id = segment;
+  const order = finiteNum(r.step_order);
+  if (order != null && Number.isSafeInteger(order) && order >= 0 && order <= 500) {
+    next.step_order = order;
+  }
+  const reps = finiteNum(r.reps);
+  if (reps != null && Number.isSafeInteger(reps) && reps >= 0) next.reps = reps;
+  const weight = finiteNum(r.weight);
+  if (weight != null && weight >= 0) next.weight = weight;
+  const timeSec = finiteNum(r.time_sec);
+  if (timeSec != null && Number.isSafeInteger(timeSec) && timeSec >= 0) next.time_sec = timeSec;
+  const distance = finiteNum(r.distance_m);
+  if (distance != null && distance >= 0) next.distance_m = distance;
+  const calories = finiteNum(r.calories);
+  if (calories != null && Number.isSafeInteger(calories) && calories >= 0) next.calories = calories;
+  if (next.weight != null) {
+    const unit = posInt(r.weight_unit_id);
+    next.weight_unit_id = unit === 2 || unit === 20 ? unit : 1;
+  }
+  return next;
+}
+
+function shapeMovementActuals(raw: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Record<string, unknown>[] = [];
+  for (const row of raw) {
+    const shaped = shapeMovementActual(row);
+    if (shaped) out.push(shaped);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
 export function shapeWorkoutLog(row: unknown): Record<string, unknown> | null {
   const r = asRecord(row);
   if (!r) return null;
@@ -130,6 +172,7 @@ export function shapeWorkoutLog(row: unknown): Record<string, unknown> | null {
     workout_free_text: clip(r.workout_free_text, 2000),
     scaling_mode: scaling,
     score_entries: shapeScoreEntries(r.score_entries),
+    movement_actuals: shapeMovementActuals(r.movement_actuals),
     photo_url: httpsOrNull(r.photo_url),
   };
 }

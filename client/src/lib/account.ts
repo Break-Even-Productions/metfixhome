@@ -404,6 +404,8 @@ export type PrOverviewRow = {
   total_entries: number;
   unit_abbreviation: string | null;
   score_unit_id: number | null;
+  score_mode?: string | null;
+  pr_direction?: "higher_better" | "lower_better" | null;
   benchmark_classification: string | null;
   is_benchmark: boolean;
 };
@@ -412,6 +414,8 @@ export type PrOverview = {
   workouts: PrOverviewRow[];
   movements: PrOverviewRow[];
 };
+
+export type SparkPrDirection = "higher_better" | "lower_better" | "closer_to_target";
 
 /** BSI spark entry row — date + value are the chart contract; extras pass through. */
 export type SparkEntry = {
@@ -422,10 +426,39 @@ export type SparkEntry = {
   unit_id?: number;
   unit_abbreviation?: string | null;
   measurement_name?: string;
+  measurement_type?: "health" | "movement" | null;
+  sub_type?: string | null;
+  pr_direction?: SparkPrDirection | null;
   type?: "pending" | "accepted";
   status?: "pending" | "accepted";
   athlete_id?: number;
   class_id?: number;
+};
+
+export type SparkMeasurement = {
+  bsi_measurement_id: number;
+  name: string;
+  measurement_type: "health" | "movement" | null;
+  sub_type: string | null;
+  pr_direction: SparkPrDirection;
+  default_unit_id: number | null;
+  unit_abbreviation: string | null;
+};
+
+export type SparkMeasurementsPage = {
+  measurements: SparkMeasurement[];
+  count: number;
+};
+
+export type SparkUnit = {
+  unit_id: number;
+  name: string;
+  abbreviation: string;
+};
+
+export type SparkUnitsPage = {
+  units: SparkUnit[];
+  count: number;
 };
 
 export type SparkEntriesPage = {
@@ -517,6 +550,23 @@ export type WorkoutScoreEntry = {
   scaling_mode: string | null;
 };
 
+export type WorkoutMovementActual = {
+  movement_id: number;
+  movement_name?: string;
+  segment_id?: string;
+  step_order?: number;
+  round_index?: number;
+  weight?: number;
+  reps?: number;
+  time_sec?: number;
+  distance_m?: number;
+  calories?: number;
+  inches?: number;
+  bodyweight_adjustment?: number;
+  bodyweight_adjustment_unit_id?: number;
+  weight_unit_id?: number;
+};
+
 export type WorkoutLogItem = {
   id: number;
   workout_title: string;
@@ -528,6 +578,7 @@ export type WorkoutLogItem = {
   workout_free_text: string | null;
   scaling_mode: string | null;
   score_entries: WorkoutScoreEntry[];
+  movement_actuals?: WorkoutMovementActual[];
   photo_url: string | null;
 };
 
@@ -557,12 +608,17 @@ export type MovementActualInput = {
   movement_id: number;
   segment_id?: string;
   step_order?: number;
+  /** 1-based round when logging multi-round structure segments. */
+  round_index?: number;
   weight?: number;
   reps?: number;
   time_sec?: number;
   distance_m?: number;
   weight_unit_id?: number;
   calories?: number;
+  inches?: number;
+  bodyweight_adjustment?: number;
+  bodyweight_adjustment_unit_id?: number;
 };
 
 export type LogWorkoutInput = {
@@ -581,23 +637,39 @@ export type LogWorkoutInput = {
   measurements?: Array<{ measurement_id: number; value: number; unit_id?: number }>;
 };
 
+export type WorkoutLoggableDimension =
+  | "weight"
+  | "reps"
+  | "time"
+  | "distance"
+  | "calories"
+  | "inches"
+  | "bodyweight_adjustment";
+
+export type WorkoutStepPrescription = {
+  reps?: number;
+  weight?: number;
+  weight_unit_id?: number;
+  distance_m?: number;
+  duration_sec?: number;
+  calories?: number;
+  inches?: number;
+  bodyweight_adjustment?: number;
+  bodyweight_adjustment_unit_id?: number;
+};
+
 export type WorkoutStructureStep = {
   movement_id: number;
   order: number;
   label?: string;
   movement_name?: string;
-  prescription?: {
-    reps?: number;
-    weight?: number;
-    weight_unit_id?: number;
-    distance_m?: number;
-    duration_sec?: number;
-    calories?: number;
-  };
-  prescription_female?: {
-    reps?: number;
-    weight?: number;
-    weight_unit_id?: number;
+  prescription?: WorkoutStepPrescription;
+  prescription_female?: WorkoutStepPrescription;
+  /** Ordered Rx metrics (max 3). Present on newer templates. */
+  builder_rx_dimensions?: WorkoutLoggableDimension[];
+  loggable?: {
+    allow?: WorkoutLoggableDimension[];
+    require?: WorkoutLoggableDimension[];
   };
 };
 
@@ -813,6 +885,8 @@ type CacheKey =
   | `shopping-list:${number}`
   | `spark-entries:${string}`
   | "spark-user-info"
+  | `spark-measurements:${string}`
+  | "spark-units"
   | `calendar-surface:${string}`
   | `workouts:${string}`
   | `workouts-planned:${string}`
@@ -1249,6 +1323,33 @@ export function loadSparkUserInfo(options?: {
 }
 
 /**
+ * Spark measurement catalog (GET /api/account/spark/measurements → BSI /spark/measurements).
+ * Used for `pr_direction` when shaping health / movement bests.
+ */
+export function loadSparkMeasurements(
+  params: { measurement_type?: "health" | "movement" } = {},
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<SparkMeasurementsPage> {
+  const q = new URLSearchParams();
+  if (params.measurement_type) q.set("measurement_type", params.measurement_type);
+  const qs = q.toString();
+  const key = `spark-measurements:${params.measurement_type ?? "all"}` as const;
+  return accountGet(
+    `/api/account/spark/measurements${qs ? `?${qs}` : ""}`,
+    key,
+    options,
+  );
+}
+
+/** Spark unit catalog (GET /api/account/spark/units → BSI /spark/units). */
+export function loadSparkUnits(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<SparkUnitsPage> {
+  return accountGet("/api/account/spark/units", "spark-units", options);
+}
+
+/**
  * Spark measurement history (GET /api/account/spark/entries → BSI /spark/entries).
  * `measurement_id` optional when listing recent entries across measurements.
  */
@@ -1294,10 +1395,13 @@ export function loadInbox(options?: {
 export async function createSparkEntry(
   body: CreateSparkEntryInput,
 ): Promise<CreateSparkEntryResult> {
-  // BSI requires Y-m-d H:i:s; date inputs send Y-m-d.
-  const measurement_date = /^\d{4}-\d{2}-\d{2}$/.test(body.measurement_date.trim())
-    ? `${body.measurement_date.trim()} 12:00:00`
-    : body.measurement_date.trim();
+  // BSI requires Y-m-d H:i:s; date → noon, datetime-local → append seconds.
+  const rawDate = body.measurement_date.trim();
+  const measurement_date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+    ? `${rawDate} 12:00:00`
+    : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(rawDate)
+      ? `${rawDate.replace("T", " ")}:00`
+      : rawDate.replace("T", " ");
   const result = await accountMutate<CreateSparkEntryResult>(
     "/api/account/spark/entries",
     {
@@ -1359,10 +1463,12 @@ export function loadCustomWorkout(
 export function loadMyCustomWorkouts(options?: {
   force?: boolean;
   signal?: AbortSignal;
+  limit?: number;
 }): Promise<{ workouts: CustomWorkoutSummary[] }> {
+  const limit = options?.limit != null && options.limit > 0 ? Math.min(options.limit, 100) : 30;
   return accountGet(
-    "/api/account/custom-workouts?owner_id=me&limit=30&offset=0",
-    "custom-workouts",
+    `/api/account/custom-workouts?owner_id=me&limit=${limit}&offset=0`,
+    `custom-workouts:${limit}`,
     options,
   );
 }

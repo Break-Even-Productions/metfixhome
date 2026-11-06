@@ -1141,30 +1141,31 @@ describe("worker/account routes", () => {
           });
         }
         if (path.includes("/spark/pr-overview")) {
+          // Mirror live BSI: merged `items` with stable id on `id` + `title`.
           return Response.json({
-            workout_benchmarks: [
+            items: [
               {
-                name: "Fran",
+                title: "Fran",
                 type: "workout",
-                custom_workout_id: 44,
+                id: 44,
                 best_score: 194,
                 last_score: 210,
                 total_entries: 3,
-                is_benchmark: true,
+                is_benchmark: 1,
+                benchmark_classification: "girl",
               },
-            ],
-            movement_benchmarks: [
               {
-                name: "Back Squat",
-                type: "movement",
-                bsi_measurement_id: 7,
+                title: "Back Squat",
+                type: "measurement",
+                id: 7,
                 best_score: 335,
                 last_score: 325,
                 total_entries: 6,
                 unit_abbreviation: "lb",
-                score_unit_id: 1,
+                unit_id: 1,
               },
             ],
+            meta: { workout_count: 1, measurement_count: 1 },
           });
         }
         if (path.includes("/messages/conversations")) {
@@ -1228,11 +1229,23 @@ describe("worker/account routes", () => {
     );
     expect(pr.status).toBe(200);
     const prJson = (await pr.json()) as {
-      workouts: Array<{ name: string; best_score: number }>;
-      movements: Array<{ name: string; best_score: number }>;
+      workouts: Array<{
+        name: string;
+        best_score: number;
+        custom_workout_id: number | null;
+      }>;
+      movements: Array<{
+        name: string;
+        best_score: number;
+        measurement_id: number | null;
+        score_unit_id: number | null;
+      }>;
     };
     expect(prJson.workouts[0]?.name).toBe("Fran");
+    expect(prJson.workouts[0]?.custom_workout_id).toBe(44);
     expect(prJson.movements[0]?.best_score).toBe(335);
+    expect(prJson.movements[0]?.measurement_id).toBe(7);
+    expect(prJson.movements[0]?.score_unit_id).toBe(1);
 
     const surface = await callAccount(
       h,

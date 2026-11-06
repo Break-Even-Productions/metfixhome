@@ -42,6 +42,13 @@ export function eachDay(start: string, end: string): string[] {
   return out;
 }
 
+/** MetFix Daily Fix archive stamp (`YYMMDD`) from an ISO date. */
+export function formatYymmdd(ymd: string): string {
+  const [y, m, d] = ymd.split("-");
+  if (!y || !m || !d || y.length < 4) return ymd;
+  return `${y.slice(2)}${m}${d}`;
+}
+
 export function formatDayLabel(ymd: string, today: string): string {
   if (ymd === today) return "Today";
   if (ymd === addDays(today, -1)) return "Yesterday";

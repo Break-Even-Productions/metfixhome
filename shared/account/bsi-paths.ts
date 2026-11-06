@@ -194,6 +194,16 @@ export function accountSparkEntriesPath(): string {
   return `${METFIX}/spark/entries`;
 }
 
+/** Spark measurement catalog (health / movement). */
+export function accountSparkMeasurementsPath(): string {
+  return `${METFIX}/spark/measurements`;
+}
+
+/** Spark unit catalog. */
+export function accountSparkUnitsPath(): string {
+  return `${METFIX}/spark/units`;
+}
+
 /** Logged workouts for a date range — mobile calendar feed. */
 export function accountCalendarWorkoutsPath(): string {
   return `${METFIX}/calendar/workouts`;

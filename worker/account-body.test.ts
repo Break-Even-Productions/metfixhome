@@ -28,6 +28,9 @@ describe("account body shapers", () => {
           workout_source: "custom",
           workout_source_id: 8,
           score_entries: [{ score_type: "load", score_value: 225, scaling_mode: "rx" }],
+          movement_actuals: [
+            { movement_id: 12, movement_name: "Back Squat", reps: 5, weight: 225, weight_unit_id: 1 },
+          ],
           photo_url: "http://insecure.example/a.jpg",
         },
       ],
@@ -36,6 +39,9 @@ describe("account body shapers", () => {
     expect(row.workout_title).toBe("Back Squat");
     expect(row.activity_minutes).toBe(40);
     expect(row.photo_url).toBeNull();
+    expect(row.movement_actuals).toEqual([
+      { movement_id: 12, movement_name: "Back Squat", reps: 5, weight: 225, weight_unit_id: 1 },
+    ]);
     expect(row).not.toHaveProperty("user_id");
     expect(JSON.stringify(shaped)).not.toContain("99");
   });

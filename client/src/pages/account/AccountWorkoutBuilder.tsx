@@ -316,7 +316,7 @@ export default function AccountWorkoutBuilder() {
             Workout feed
           </Link>
           <Link href={basePath("/account/workouts/log")} className="account-btn account-btn--ghost">
-            Quick log
+            Log workout
           </Link>
         </div>
         <h2 className="dash-section-title">{editing ? "Edit workout" : "Build a workout"}</h2>

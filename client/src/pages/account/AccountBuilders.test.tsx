@@ -163,9 +163,9 @@ describe("workout and plan builders", () => {
       </Router>,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "My workout" }));
-    await waitFor(() => expect(screen.getByLabelText("Workout")).toBeTruthy());
-    fireEvent.change(screen.getByLabelText("Workout"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: /My workout/i }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "My workouts" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Fran" }));
     await waitFor(() => expect(screen.getByLabelText(/Time/)).toBeTruthy());
     fireEvent.change(screen.getByLabelText(/Time/), { target: { value: "3:00" } });
     fireEvent.change(screen.getByLabelText("Reps"), { target: { value: "21" } });

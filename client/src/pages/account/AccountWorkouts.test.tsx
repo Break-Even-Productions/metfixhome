@@ -128,13 +128,19 @@ describe("AccountWorkouts", () => {
     expect(screen.queryByText("Fran")).toBeNull();
     expect(screen.queryByText("Hidden Planned")).toBeNull();
     expect(document.querySelector(".dash-panel--body .account-body-watermark")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Back Squat/i }).getAttribute("href")).toContain(
+      "/account/workouts/4",
+    );
 
     fireEvent.click(screen.getByRole("tab", { name: "Upcoming" }));
     await waitFor(() => expect(screen.getByText("Daily Engine")).toBeTruthy());
+    expect(screen.getByRole("link", { name: /Daily Engine/i }).getAttribute("href")).toContain(
+      "/account/workouts/log",
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "Log a session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quick log" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Easy row" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByText("Session logged.")).toBeTruthy());
     const post = fetchImpl.mock.calls.find((call) => {
       const method = ((call[1] as RequestInit | undefined)?.method ?? "GET").toUpperCase();

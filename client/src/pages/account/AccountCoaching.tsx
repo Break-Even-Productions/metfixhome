@@ -91,20 +91,26 @@ function RelationshipList({
     }
   }
 
-  if (rows.length === 0) return <p className="account-muted">{empty}</p>;
+  if (rows.length === 0) return <p className="dash-coach-empty">{empty}</p>;
 
   return (
     <ul className="dash-coach-list">
       {rows.map((row) => (
-        <li key={row.id} className={selectedId === row.id ? "dash-coach-list__on" : ""}>
-          <button type="button" className="dash-feed-row" onClick={() => onSelect(row)}>
-            <span className="dash-feed-row__title">{personName(row)}</span>
-            <span className="dash-feed-row__meta">
+        <li
+          key={row.id}
+          className={`dash-coach-card${selectedId === row.id ? " dash-coach-card--on" : ""}`}
+        >
+          <button type="button" className="dash-coach-card__main" onClick={() => onSelect(row)}>
+            <span className="dash-coach-card__eyebrow">
+              {row.viewer_is_coach ? "Client" : "Coach"}
+              {row.status === "pending" ? " · Pending" : row.status === "active" ? " · Active" : ""}
+            </span>
+            <span className="dash-coach-card__title">{personName(row)}</span>
+            <span className="dash-coach-card__meta">
               {row.status === "pending" ? "Pending approval" : row.status}
-              {row.viewer_is_coach ? " · Client" : " · Coach"}
             </span>
           </button>
-          <div className="dash-coach-list__actions">
+          <div className="dash-coach-card__actions">
             {canAccept(row) ? (
               <button type="button" className="account-btn" disabled={busy === row.id} onClick={() => act(row, "accept")}>
                 Accept
@@ -139,13 +145,14 @@ function RelationshipList({
 }
 
 function GymList({ rows, empty }: { rows: CoachingAffiliate[]; empty: string }) {
-  if (rows.length === 0) return <p className="account-muted">{empty}</p>;
+  if (rows.length === 0) return <p className="dash-coach-empty">{empty}</p>;
   return (
     <ul className="dash-coach-list">
       {rows.map((row) => (
-        <li key={row.affiliate_id}>
-          <p className="dash-feed-row__title">{row.name}</p>
-          <p className="dash-feed-row__meta">
+        <li key={row.affiliate_id} className="dash-coach-card dash-coach-card--static">
+          <span className="dash-coach-card__eyebrow">Gym hub</span>
+          <p className="dash-coach-card__title">{row.name}</p>
+          <p className="dash-coach-card__meta">
             {row.member_count != null ? `${row.member_count} members · ` : ""}
             Team chat stays in the MetFix app.
           </p>
@@ -482,8 +489,8 @@ export default function AccountCoaching() {
           {gate === "locked" ? <ProUnlockBanner /> : null}
         </BodyPanel>
       ) : (
-        <BodyPanel>
-          <div className="dash-segment" role="tablist" aria-label="Coaching">
+        <BodyPanel className="dash-coach">
+          <div className="dash-segment dash-coach__tabs" role="tablist" aria-label="Coaching">
             {(
               [
                 ["coach", "My coach"],
@@ -510,23 +517,29 @@ export default function AccountCoaching() {
           ) : null}
 
           {tab === "coach" && !loading ? (
-            <>
-              <h2 className="dash-section-title">My gym</h2>
-              <GymList rows={clientHub?.affiliates ?? []} empty="No gym coaching hub yet." />
-              <h2 className="dash-section-title">Virtual coaches</h2>
-              <RelationshipList
-                rows={clientHub?.coaches ?? []}
-                empty="No coaches yet. Use Find a coach to send a request."
-                onChange={() => setReload((n) => n + 1)}
-                onSelect={setSelected}
-                selectedId={selected?.id ?? null}
-              />
-            </>
+            <div className="dash-coach__stack">
+              <section className="dash-coach-block">
+                <p className="dash-kicker">Affiliate</p>
+                <h2 className="dash-section-title">My gym</h2>
+                <GymList rows={clientHub?.affiliates ?? []} empty="No gym coaching hub yet." />
+              </section>
+              <section className="dash-coach-block">
+                <p className="dash-kicker">1:1</p>
+                <h2 className="dash-section-title">Virtual coaches</h2>
+                <RelationshipList
+                  rows={clientHub?.coaches ?? []}
+                  empty="No coaches yet. Use Find a coach to send a request."
+                  onChange={() => setReload((n) => n + 1)}
+                  onSelect={setSelected}
+                  selectedId={selected?.id ?? null}
+                />
+              </section>
+            </div>
           ) : null}
 
           {tab === "clients" && !loading ? (
-            <>
-              <label className="account-inline-check">
+            <div className="dash-coach__stack">
+              <label className="account-inline-check dash-coach-check">
                 <input
                   type="checkbox"
                   checked={profile?.directory_visible === true}
@@ -535,39 +548,46 @@ export default function AccountCoaching() {
                 />
                 List me in the coach directory
               </label>
-              <h2 className="dash-section-title">My gyms</h2>
-              <GymList rows={coachHub?.affiliates ?? []} empty="No gyms where you coach." />
-              <h2 className="dash-section-title">Virtual clients</h2>
-              <RelationshipList
-                rows={coachHub?.clients ?? []}
-                empty="No 1:1 clients yet. Invite codes and QR join stay in the MetFix app."
-                onChange={() => setReload((n) => n + 1)}
-                onSelect={setSelected}
-                selectedId={selected?.id ?? null}
-              />
-            </>
+              <section className="dash-coach-block">
+                <p className="dash-kicker">Affiliate</p>
+                <h2 className="dash-section-title">My gyms</h2>
+                <GymList rows={coachHub?.affiliates ?? []} empty="No gyms where you coach." />
+              </section>
+              <section className="dash-coach-block">
+                <p className="dash-kicker">1:1</p>
+                <h2 className="dash-section-title">Virtual clients</h2>
+                <RelationshipList
+                  rows={coachHub?.clients ?? []}
+                  empty="No 1:1 clients yet. Invite codes and QR join stay in the MetFix app."
+                  onChange={() => setReload((n) => n + 1)}
+                  onSelect={setSelected}
+                  selectedId={selected?.id ?? null}
+                />
+              </section>
+            </div>
           ) : null}
 
           {selected && selected.status === "active" ? (
-            <section className="dash-coach-notes" aria-label="Coach notes">
+            <section className="dash-coach-block dash-coach-notes" aria-label="Coach notes">
+              <p className="dash-kicker">Shared notes</p>
               <h2 className="dash-section-title">Notes · {personName(selected)}</h2>
               {notesLoading ? <FeedSkeleton label="Loading notes" /> : null}
               {notesError ? <p className="account-error">{notesError}</p> : null}
               {!notesLoading && notes.length === 0 && !notesError ? (
-                <p className="account-muted">No notes yet.</p>
+                <p className="dash-coach-empty">No notes yet.</p>
               ) : (
                 <ul className="dash-coach-list">
                   {notes.map((note) => (
-                    <li key={note.id}>
-                      <p>{note.body}</p>
+                    <li key={note.id} className="dash-coach-card dash-coach-card--static">
+                      <p className="dash-coach-card__body">{note.body}</p>
                       {note.created_at ? (
-                        <p className="dash-feed-row__meta">{formatStamp(note.created_at)}</p>
+                        <p className="dash-coach-card__meta">{formatStamp(note.created_at)}</p>
                       ) : null}
                     </li>
                   ))}
                 </ul>
               )}
-              <form className="account-form" onSubmit={onNote}>
+              <form className="account-form dash-coach-note-form" onSubmit={onNote}>
                 <label>
                   Add a note
                   <textarea
@@ -588,164 +608,192 @@ export default function AccountCoaching() {
             progLoading ? (
               <FeedSkeleton label="Loading programming" />
             ) : (
-              <>
+              <div className="dash-coach__stack">
                 {progError ? <p className="account-error">{progError}</p> : null}
-                <h2 className="dash-section-title">Subscriptions</h2>
-                {subscriptions.length === 0 ? (
-                  <p className="account-muted">No programming subscriptions yet.</p>
-                ) : (
-                  <ul className="dash-coach-list">
-                    {subscriptions.map((sub) => (
-                      <li key={sub.id}>
-                        <p className="dash-feed-row__title">
-                          {sub.series_title || `Series ${sub.series_id}`}
-                        </p>
-                        <p className="dash-feed-row__meta">
-                          {sub.status ?? "active"}
-                          {sub.calendar_sync_enabled ? " · on your calendar" : ""}
-                        </p>
-                        <div className="dash-coach-list__actions">
-                          <button type="button" className="account-btn account-btn--ghost" onClick={() => openDays(sub.series_id)}>
-                            Show days
-                          </button>
-                          {sub.source !== "marketplace" && sub.status === "active" ? (
-                            <button type="button" className="account-btn account-btn--ghost" onClick={() => onCancelSub(sub.id)}>
-                              Stop
+                <section className="dash-coach-block">
+                  <p className="dash-kicker">Active</p>
+                  <h2 className="dash-section-title">Subscriptions</h2>
+                  {subscriptions.length === 0 ? (
+                    <p className="dash-coach-empty">No programming subscriptions yet.</p>
+                  ) : (
+                    <ul className="dash-coach-list">
+                      {subscriptions.map((sub) => (
+                        <li key={sub.id} className="dash-coach-card dash-coach-card--static">
+                          <p className="dash-coach-card__title">
+                            {sub.series_title || `Series ${sub.series_id}`}
+                          </p>
+                          <p className="dash-coach-card__meta">
+                            {sub.status ?? "active"}
+                            {sub.calendar_sync_enabled ? " · on your calendar" : ""}
+                          </p>
+                          <div className="dash-coach-card__actions">
+                            <button type="button" className="account-btn account-btn--ghost" onClick={() => openDays(sub.series_id)}>
+                              Show days
                             </button>
-                          ) : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <h2 className="dash-section-title">Published series</h2>
-                {series.length === 0 ? (
-                  <p className="account-muted">No published series returned.</p>
-                ) : (
-                  <ul className="dash-coach-list">
-                    {series.map((item) => (
-                      <li key={item.id}>
-                        <p className="dash-feed-row__title">{item.title}</p>
-                        <p className="dash-feed-row__meta">
-                          {item.access_mode ?? "series"}
-                          {item.status ? ` · ${item.status}` : ""}
-                        </p>
-                        {item.description ? <p className="account-muted">{item.description}</p> : null}
-                        <div className="dash-coach-list__actions">
-                          <button type="button" className="account-btn account-btn--ghost" onClick={() => openDays(item.id)}>
-                            Show days
-                          </button>
-                          {item.is_subscribed ? (
-                            <span className="account-muted">Subscribed</span>
-                          ) : (
-                            <button type="button" className="account-btn" onClick={() => onSubscribe(item.id)}>
-                              Subscribe
+                            {sub.source !== "marketplace" && sub.status === "active" ? (
+                              <button type="button" className="account-btn account-btn--ghost" onClick={() => onCancelSub(sub.id)}>
+                                Stop
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+                <section className="dash-coach-block">
+                  <p className="dash-kicker">Catalog</p>
+                  <h2 className="dash-section-title">Published series</h2>
+                  {series.length === 0 ? (
+                    <p className="dash-coach-empty">No published series returned.</p>
+                  ) : (
+                    <ul className="dash-coach-list">
+                      {series.map((item) => (
+                        <li key={item.id} className="dash-coach-card dash-coach-card--static">
+                          <p className="dash-coach-card__title">{item.title}</p>
+                          <p className="dash-coach-card__meta">
+                            {item.access_mode ?? "series"}
+                            {item.status ? ` · ${item.status}` : ""}
+                          </p>
+                          {item.description ? <p className="dash-coach-card__body">{item.description}</p> : null}
+                          <div className="dash-coach-card__actions">
+                            <button type="button" className="account-btn account-btn--ghost" onClick={() => openDays(item.id)}>
+                              Show days
                             </button>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                            {item.is_subscribed ? (
+                              <span className="dash-coach-card__badge">Subscribed</span>
+                            ) : (
+                              <button type="button" className="account-btn" onClick={() => onSubscribe(item.id)}>
+                                Subscribe
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
                 {daysFor != null ? (
-                  <section aria-label="Programming days">
+                  <section className="dash-coach-block" aria-label="Programming days">
+                    <p className="dash-kicker">Schedule</p>
                     <h2 className="dash-section-title">Days</h2>
                     {daysLoading ? <FeedSkeleton label="Loading days" /> : null}
                     {!daysLoading && days.length === 0 ? (
-                      <p className="account-muted">No days in this window.</p>
+                      <p className="dash-coach-empty">No days in this window.</p>
                     ) : (
                       <ul className="dash-coach-list">
                         {days.map((day) => (
-                          <li key={day.id}>
-                            <p className="dash-feed-row__title">
+                          <li key={day.id} className="dash-coach-card dash-coach-card--static">
+                            <p className="dash-coach-card__title">
                               {formatDayLabel(day.calendar_date, today)}
                             </p>
-                            <p className="dash-feed-row__meta">
+                            <p className="dash-coach-card__meta">
                               {day.items.map((item) => item.label || item.item_type || "Item").join(" · ") ||
                                 "No items"}
                             </p>
-                            {day.notes ? <p className="account-muted">{day.notes}</p> : null}
+                            {day.notes ? <p className="dash-coach-card__body">{day.notes}</p> : null}
                           </li>
                         ))}
                       </ul>
                     )}
                   </section>
                 ) : null}
-                <h2 className="dash-section-title">Plans</h2>
-                <Link href={basePath("/account/plans/new")} className="account-btn">
-                  Build a plan
-                </Link>
-                {plans.length === 0 ? (
-                  <p className="account-muted">No plans in your library yet.</p>
-                ) : (
-                  <ul className="dash-coach-list">
-                    {plans.map((plan) => (
-                      <li key={plan.id}>
-                        <Link href={basePath(`/account/plans/${plan.id}`)} className="dash-feed-row">
-                          <span className="dash-feed-row__title">{plan.title}</span>
-                          <span className="dash-feed-row__meta">
-                            {plan.duration_days != null ? `${plan.duration_days} days` : "Plan"}
-                            {plan.status ? ` · ${plan.status}` : ""}
-                            {plan.usage_status === "used" ? " · in use" : ""}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
+                <section className="dash-coach-block">
+                  <p className="dash-kicker">Library</p>
+                  <div className="dash-coach-block__head">
+                    <h2 className="dash-section-title">Plans</h2>
+                    <Link href={basePath("/account/plans/new")} className="account-btn">
+                      Build a plan
+                    </Link>
+                  </div>
+                  {plans.length === 0 ? (
+                    <p className="dash-coach-empty">No plans in your library yet.</p>
+                  ) : (
+                    <ul className="dash-coach-list">
+                      {plans.map((plan) => (
+                        <li key={plan.id}>
+                          <Link href={basePath(`/account/plans/${plan.id}`)} className="dash-coach-card dash-coach-card--link">
+                            <span className="dash-coach-card__copy">
+                              <span className="dash-coach-card__title">{plan.title}</span>
+                              <span className="dash-coach-card__meta">
+                                {plan.duration_days != null ? `${plan.duration_days} days` : "Plan"}
+                                {plan.status ? ` · ${plan.status}` : ""}
+                                {plan.usage_status === "used" ? " · in use" : ""}
+                              </span>
+                            </span>
+                            <span className="dash-coach-card__go" aria-hidden="true">
+                              →
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
             )
           ) : null}
 
           {tab === "find" ? (
-            <>
-              <form className="account-form dash-pr-log" onSubmit={onDirectory}>
-                <label>
-                  Search coaches
-                  <input
-                  value={draftQuery}
-                  onChange={(ev) => setDraftQuery(ev.target.value)}
-                  placeholder="Name"
-                  />
-                </label>
-                <button type="submit" className="account-btn">
-                  Search
-                </button>
-              </form>
+            <div className="dash-coach__stack">
+              <section className="dash-coach-block">
+                <p className="dash-kicker">Directory</p>
+                <h2 className="dash-section-title">Find a coach</h2>
+                <form className="account-form dash-coach-search" onSubmit={onDirectory}>
+                  <label>
+                    Search coaches
+                    <input
+                      value={draftQuery}
+                      onChange={(ev) => setDraftQuery(ev.target.value)}
+                      placeholder="Name"
+                    />
+                  </label>
+                  <button type="submit" className="account-btn">
+                    Search
+                  </button>
+                </form>
+              </section>
               {findError ? <p className="account-error">{findError}</p> : null}
               {findLoading ? <FeedSkeleton label="Loading coaches" /> : null}
-              {!findLoading && directory.length === 0 ? (
-                <p className="account-muted">No coaches match.</p>
-              ) : (
-                <ul className="dash-coach-list">
-                  {directory.map((entry) => {
-                    const name = entry.display_name || entry.name || "Coach";
-                    return (
-                      <li key={entry.user_id}>
-                        <p className="dash-feed-row__title">{name}</p>
-                        <p className="dash-feed-row__meta">
-                          {entry.completed_courses_count != null
-                            ? `${entry.completed_courses_count} courses`
-                            : "Coach"}
-                        </p>
-                        {entry.search_excerpt || entry.bio ? (
-                          <p className="account-muted">{entry.search_excerpt || entry.bio}</p>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="account-btn"
-                          disabled={requested[entry.user_id] === true}
-                          onClick={() => onRequest(entry)}
-                        >
-                          {requested[entry.user_id] ? "Request sent" : "Request coach"}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <p className="account-muted">QR scan and invite codes stay in the MetFix app.</p>
-            </>
+              {!findLoading ? (
+                <section className="dash-coach-block">
+                  {directory.length === 0 ? (
+                    <p className="dash-coach-empty">No coaches match.</p>
+                  ) : (
+                    <ul className="dash-coach-list">
+                      {directory.map((entry) => {
+                        const name = entry.display_name || entry.name || "Coach";
+                        return (
+                          <li key={entry.user_id} className="dash-coach-card dash-coach-card--static">
+                            <span className="dash-coach-card__eyebrow">Coach</span>
+                            <p className="dash-coach-card__title">{name}</p>
+                            <p className="dash-coach-card__meta">
+                              {entry.completed_courses_count != null
+                                ? `${entry.completed_courses_count} courses`
+                                : "Coach"}
+                            </p>
+                            {entry.search_excerpt || entry.bio ? (
+                              <p className="dash-coach-card__body">{entry.search_excerpt || entry.bio}</p>
+                            ) : null}
+                            <div className="dash-coach-card__actions">
+                              <button
+                                type="button"
+                                className="account-btn"
+                                disabled={requested[entry.user_id] === true}
+                                onClick={() => onRequest(entry)}
+                              >
+                                {requested[entry.user_id] ? "Request sent" : "Request coach"}
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <p className="dash-coach-footnote">QR scan and invite codes stay in the MetFix app.</p>
+                </section>
+              ) : null}
+            </div>
           ) : null}
         </BodyPanel>
       )}
