@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  listItemWasOmitted,
   parseAddListItemBody,
   parseCreateListBody,
+  parseInviteSubscriberBody,
   shapeListItem,
   shapeListsPayload,
 } from "./userLists";
@@ -65,5 +67,10 @@ describe("user lists allowlist", () => {
     expect(parseCreateListBody({ title: "Warmup", visibility: "unlisted" }).ok).toBe(true);
     expect(parseAddListItemBody({ source_type: "evil", source_id: 1 }).ok).toBe(false);
     expect(parseAddListItemBody({ source_type: "post", source_id: 12 }).ok).toBe(true);
+    expect(parseAddListItemBody({ source_type: "custom_workout", source_id: 3 }).ok).toBe(true);
+    expect(parseInviteSubscriberBody({ user_id: 15 }).value).toEqual({ user_id: 15 });
+    expect(parseInviteSubscriberBody({ user_id: 0 }).ok).toBe(false);
+    expect(listItemWasOmitted({ list_item: null })).toBe(true);
+    expect(listItemWasOmitted({ list_item: { id: 1 } })).toBe(false);
   });
 });

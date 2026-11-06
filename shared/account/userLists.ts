@@ -306,6 +306,21 @@ export function shapeListItemEnvelope(json: unknown): { list_item: UserListItemD
   return { list_item: row };
 }
 
+/** Add succeeded, but BSI omitted the row because it has no content payload. */
+export function listItemWasOmitted(json: unknown): boolean {
+  const obj = asRecord(json);
+  if (!obj || !("list_item" in obj)) return false;
+  return obj.list_item == null;
+}
+
+export function parseInviteSubscriberBody(json: unknown): Ok<Record<string, unknown>> | Fail {
+  const obj = asRecord(json);
+  if (!obj) return { ok: false };
+  const userId = positiveInt(obj.user_id);
+  if (userId == null) return { ok: false };
+  return { ok: true, value: { user_id: userId } };
+}
+
 function visibilityOf(v: unknown): ListVisibility | null {
   if (typeof v !== "string") return null;
   if (!(LIST_VISIBILITIES as readonly string[]).includes(v)) return null;

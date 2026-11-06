@@ -263,7 +263,7 @@ export default function LibraryTaxonomyPage({ taxonomyKind }: LibraryTaxonomyPag
           <div className="taxonomy-grid">
             {archiveState.items.map((resource) => (
               <ResourceCard
-                key={`${resource.type}:${resource.id}`}
+                key={`${resource.type}:${resource.daily_fix_pillar ?? ""}:${resource.id}`}
                 resource={resource}
                 from={fromParam}
                 onOpenLocked={() => setJoinResource({ title: resource.title })}

@@ -16,6 +16,12 @@ import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
 import type { RoleId } from "@shared/join/membership-domain";
+import type { CatalogHit } from "@shared/account/listCatalog";
+import type {
+  ContentReportReason,
+  ContentReportReceipt,
+  ContentReportType,
+} from "@shared/account/contentReports";
 import type {
   ListSourceType,
   ListVisibility,
@@ -544,6 +550,8 @@ type CacheKey =
   | `user-list:${number}`
   | `user-list-items:${number}`
   | `user-list-share:${string}`
+  | "custom-recipes"
+  | "custom-workouts"
   | `spark-entries:${string}`
   | `calendar-surface:${string}`
   | "plans-library"
@@ -1890,13 +1898,74 @@ export async function deleteUserList(id: number): Promise<{ success: boolean }> 
 export async function addUserListItem(
   id: number,
   body: { source_type: ListSourceType | string; source_id: number; note?: string },
-): Promise<{ list_item: UserListItem }> {
-  const res = await accountMutate<{ list_item: UserListItem }>(
-    `/api/account/lists/${id}/items`,
-    { method: "POST", body },
+): Promise<{ list_item?: UserListItem; listed?: boolean; saved?: boolean }> {
+  const res = await accountMutate<{
+    list_item?: UserListItem;
+    listed?: boolean;
+    saved?: boolean;
+  }>(`/api/account/lists/${id}/items`, { method: "POST", body });
+  dropUserListCaches();
+  return res;
+}
+
+export function loadCustomRecipes(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ items: CatalogHit[] }> {
+  return accountGet("/api/account/custom-recipes?limit=50&offset=0", "custom-recipes", options);
+}
+
+export function loadOwnedCustomWorkouts(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ items: CatalogHit[] }> {
+  return accountGet(
+    "/api/account/custom-workouts?limit=50&offset=0",
+    "custom-workouts",
+    options,
+  );
+}
+
+export async function inviteListSubscriber(
+  id: number,
+  userId: number,
+): Promise<{ list: UserList }> {
+  const res = await accountMutate<{ list: UserList }>(
+    `/api/account/lists/${id}/subscribers`,
+    { method: "POST", body: { user_id: userId } },
   );
   dropUserListCaches();
   return res;
+}
+
+export async function removeListSubscriber(
+  id: number,
+  userId: number,
+): Promise<{ success: boolean }> {
+  const res = await accountMutate<{ success: boolean }>(
+    `/api/account/lists/${id}/subscribers/${userId}`,
+    { method: "DELETE" },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function submitContentReport(body: {
+  content_type: ContentReportType;
+  content_id: number;
+  reason_code: ContentReportReason;
+  note?: string;
+}): Promise<ContentReportReceipt> {
+  const note = body.note?.trim();
+  return accountMutate<ContentReportReceipt>("/api/account/content-reports", {
+    method: "POST",
+    body: {
+      content_type: body.content_type,
+      content_id: body.content_id,
+      reason_code: body.reason_code,
+      ...(note ? { note } : {}),
+    },
+  });
 }
 
 export async function removeUserListItem(

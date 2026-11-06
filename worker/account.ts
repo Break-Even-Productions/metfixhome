@@ -56,7 +56,12 @@ import {
   accountListReorderPath,
   accountListSharePath,
   accountListSubscribePath,
+  accountListSubscriberPath,
+  accountListSubscribersPath,
   accountListsPath,
+  accountContentReportsPath,
+  accountCustomRecipesPath,
+  accountCustomWorkoutsPath,
   accountListsPublicPath,
   accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
@@ -109,8 +114,10 @@ import {
 } from "./belly-coaching";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import {
+  listItemWasOmitted,
   parseAddListItemBody,
   parseCreateListBody,
+  parseInviteSubscriberBody,
   parseItemUpdateBody,
   parseListIndexQuery,
   parseReorderBody,
@@ -123,6 +130,11 @@ import {
   shapeListPaymentRequired,
   shapeListsPayload,
 } from "../shared/account/userLists";
+import { parseCatalogQuery, shapeCatalog } from "../shared/account/listCatalog";
+import {
+  parseContentReportBody,
+  shapeContentReport,
+} from "../shared/account/contentReports";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
 import { getSid } from "./auth/cookies";
@@ -1743,6 +1755,26 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       limiter: "write",
     };
   }
+  const listSubscriber = rest.match(
+    /^lists\/([1-9][0-9]{0,9})\/subscribers\/([1-9][0-9]{0,9})$/,
+  );
+  if (method === "DELETE" && listSubscriber) {
+    return {
+      id: "LS16",
+      method: "DELETE",
+      params: { id: listSubscriber[1]!, userId: listSubscriber[2]! },
+      limiter: "write",
+    };
+  }
+  const listSubscribers = rest.match(/^lists\/([1-9][0-9]{0,9})\/subscribers$/);
+  if (method === "POST" && listSubscribers) {
+    return {
+      id: "LS15",
+      method: "POST",
+      params: { id: listSubscribers[1]! },
+      limiter: "write",
+    };
+  }
   const listOne = rest.match(/^lists\/([1-9][0-9]{0,9})$/);
   if (method === "GET" && listOne) {
     return {
@@ -1770,6 +1802,15 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       params: { id: listOne[1]! },
       limiter: "write",
     };
+  }
+  if (method === "GET" && rest === "custom-recipes") {
+    return { id: "LS17", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "custom-workouts") {
+    return { id: "LS18", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "POST" && rest === "content-reports") {
+    return { id: "LS19", method: "POST", params: {}, limiter: "write" };
   }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
@@ -3954,7 +3995,12 @@ async function dispatch(
       );
       if (ran instanceof Response) return ran;
       const shaped = shapeListItemEnvelope(ran.json);
-      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      if (!shaped) {
+        if (listItemWasOmitted(ran.json)) {
+          return accountJson({ saved: true, listed: false }, 201);
+        }
+        return accountJson({ error: "unavailable" }, 502);
+      }
       return accountJson(shaped, ran.status);
     }
     case "LS6": {
@@ -4104,6 +4150,114 @@ async function dispatch(
       );
       if (ran instanceof Response) return ran;
       return accountJson({ success: true }, 200);
+    }
+    case "LS15": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseInviteSubscriberBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountListSubscribersPath(match.params.id!),
+        { body: body.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeListEnvelope(ran.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, ran.status);
+    }
+    case "LS16": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountListSubscriberPath(match.params.id!, match.params.userId!),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const result = ran.result;
+      if (result.kind === "ok" || (result.kind === "bad_json" && result.status === 204)) {
+        return accountJson({ success: true }, 200);
+      }
+      if (result.kind === "http") {
+        return accountJson(mapUpstreamErrorBody(result.json, result.status), result.status);
+      }
+      return accountJson({ error: "unavailable" }, result.kind === "timeout" ? 503 : 502);
+    }
+    case "LS17": {
+      const query = parseCatalogQuery(url.searchParams);
+      if (!query.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomRecipesPath(),
+        { query: query.value },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeCatalog(ran.json, "recipes");
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS18": {
+      const query = parseCatalogQuery(url.searchParams);
+      if (!query.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await callList(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomWorkoutsPath(),
+        { query: `${query.value}&owner_id=me` },
+      );
+      if (ran instanceof Response) return ran;
+      const shaped = shapeCatalog(ran.json, "workouts");
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "LS19": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = parseContentReportBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountContentReportsPath(),
+        {
+          body: JSON.stringify(body.value),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const result = ran.result;
+      if (result.kind === "ok") {
+        const shaped = shapeContentReport(result.json);
+        if (!shaped) return accountJson({ error: "unavailable" }, 502);
+        return accountJson(shaped, result.status);
+      }
+      if (result.kind === "http") {
+        const code = upstreamErrorCode(result.json);
+        if (result.status === 409 || code === "duplicate_report") {
+          return accountJson({ error: "duplicate_report" }, 409);
+        }
+        if (result.status === 403) return accountJson({ error: "forbidden" }, 403);
+        if (result.status === 400) return accountJson({ error: "invalid_request" }, 400);
+        if (result.status === 404) return accountJson({ error: "not_found" }, 404);
+        return accountJson({ error: "upstream_error" }, 502);
+      }
+      return accountJson({ error: "unavailable" }, result.kind === "timeout" ? 503 : 502);
     }
     default:
       return accountJson({ error: "not_found" }, 404);
