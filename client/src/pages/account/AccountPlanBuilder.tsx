@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { basePath } from "@/const";
 import {
   createMealPlan,
+  hybridPlanIdFromCreate,
   loadCustomRecipes,
   loadOverview,
   loadPlan,
@@ -208,12 +209,7 @@ export default function AccountPlanBuilder() {
         setMessage(status === "published" ? "Plan published." : "Draft saved.");
       } else {
         const created = await createMealPlan(payload);
-        const id =
-          typeof created.id === "number"
-            ? created.id
-            : typeof created.plan_id === "number"
-              ? created.plan_id
-              : null;
+        const id = hybridPlanIdFromCreate(created);
         if (id != null) {
           await setMealPlanActive(id, false);
         }

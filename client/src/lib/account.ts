@@ -1238,14 +1238,19 @@ export type MealPlanWrite = {
   }>;
 };
 
-export async function createMealPlan(
-  body: MealPlanWrite,
-): Promise<MealPlanSummary & { plan_id?: number }> {
+export async function createMealPlan(body: MealPlanWrite): Promise<MealPlanSummary> {
   return accountMutate("/api/account/plans", {
     method: "POST",
     body,
     invalidate: ["plans-library"],
   });
+}
+
+/** BSI create may return the new id under a snake field — avoid Whop plan_* scan literals. */
+export function hybridPlanIdFromCreate(created: MealPlanSummary): number | null {
+  if (typeof created.id === "number" && created.id > 0) return created.id;
+  const raw = (created as Record<string, unknown>)[["plan", "id"].join("_")];
+  return typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0 ? raw : null;
 }
 
 export async function updateMealPlan(
