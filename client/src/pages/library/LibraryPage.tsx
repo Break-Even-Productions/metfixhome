@@ -51,7 +51,7 @@ type SectionSlug = "featured" | "free" | "gated" | "archives";
 const TOP_LIMIT = 3;
 const COURSE_DISPLAY_LIMIT = 6;
 const SECTION_LIMIT = 3;
-const ARCHIVE_RAIL_LIMIT = 9;
+const ARCHIVE_RAIL_LIMIT = 3;
 
 /**
  * Popular ranks posts, events, and courses. BSI has no exclude flag;
@@ -798,7 +798,8 @@ export default function LibraryPage() {
             <Rail
               label="Archives"
               title="Glassman & Book Library"
-              state={archivesRail}
+              state={capRail(archivesRail, ARCHIVE_RAIL_LIMIT)}
+              skeletonCount={ARCHIVE_RAIL_LIMIT}
               onLocked={setLocked}
               emptyHint="Glassman Archive and Book Library items will show up here."
               onBrowseAll={() => openArchive({ section: "archives" })}

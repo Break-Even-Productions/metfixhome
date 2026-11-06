@@ -110,10 +110,9 @@ describe("library hub sections", () => {
     const bsi = Array.from({ length: 5 }, (_, i) =>
       resource(500 + i, `BSI resource ${i + 1}`, OPEN_ACCESS),
     );
-    const archives = [
-      resource(600, "Glassman note", OPEN_ACCESS),
-      resource(601, "Book note", OPEN_ACCESS),
-    ];
+    const archives = Array.from({ length: 6 }, (_, i) =>
+      resource(600 + i, `Glassman note ${i + 1}`, OPEN_ACCESS),
+    );
 
     vi.stubGlobal(
       "fetch",
@@ -220,6 +219,7 @@ describe("library hub sections", () => {
       expect(cardCount("MetFix")).toBe(3);
       expect(cardCount("Free / open")).toBe(3);
       expect(cardCount("BSI")).toBe(3);
+      expect(cardCount("Glassman & Book Library")).toBe(3);
     });
 
     expect(
@@ -271,6 +271,10 @@ describe("library hub sections", () => {
     );
     expect(metfix?.params.get("limit")).toBe("3");
     expect(bsi?.params.get("limit")).toBe("3");
+    const archive = fetchLog.find(
+      (entry) => entry.path === "/api/library/archive",
+    );
+    expect(archive?.params.get("limit")).toBe("3");
   });
 
   it("opens the existing filtered views for Pro library and top resources", async () => {
