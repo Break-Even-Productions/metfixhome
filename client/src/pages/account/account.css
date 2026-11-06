@@ -1180,12 +1180,12 @@ a.account-btn.account-btn--accent {
   color: var(--color-cream);
 }
 
-.account-inline-check {
-  display: flex !important;
-  flex-direction: row !important;
+.account-form .account-inline-check {
+  display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 0.5rem;
-  color: var(--color-ink) !important;
+  color: var(--color-ink);
 }
 
 @media (min-width: 640px) {
