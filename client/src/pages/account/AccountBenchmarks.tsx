@@ -18,6 +18,8 @@ import DashboardLayout from "./DashboardLayout";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
 import { ToolHero } from "./ToolHero";
+import { BodyNav, BodyPanel } from "./BodyWatermark";
+import { WorkoutPrAttempts } from "./WorkoutPrAttempts";
 
 const CHART_W = 720;
 const CHART_H = 280;
@@ -357,6 +359,7 @@ export default function AccountBenchmarks() {
   const [logMessage, setLogMessage] = useState<string | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
   const [entriesTick, setEntriesTick] = useState(0);
+  const [workoutFocusId, setWorkoutFocusId] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -600,11 +603,12 @@ export default function AccountBenchmarks() {
         }
         stats={heroStats}
       />
+      <BodyNav current="prs" />
 
       {error ? <p className="account-error">{error}</p> : null}
 
       {!pro ? (
-        <div className="dash-panel dash-bench">
+        <BodyPanel className="dash-bench">
           <section className="dash-locked-panel" aria-labelledby="bench-locked-strength">
             <div className="dash-locked-head">
               <div>
@@ -711,9 +715,9 @@ export default function AccountBenchmarks() {
           </section>
 
           <ProUnlockBanner />
-        </div>
+        </BodyPanel>
       ) : (
-        <div className="dash-panel dash-bench">
+        <BodyPanel className="dash-bench">
           {loading ? (
             <section className="dash-bench-section" aria-busy="true">
               <div className="dash-bench-head">
@@ -882,8 +886,15 @@ export default function AccountBenchmarks() {
                   <div className="dash-bench-grid">
                     {conditioning.slice(0, 8).map((row) => {
                       const id = rowKey(row);
+                      const on = id === workoutFocusId;
                       return (
-                        <article key={id} className="dash-bench-card">
+                        <button
+                          key={id}
+                          type="button"
+                          className={`dash-bench-card${on ? " dash-bench-card--on" : ""}`}
+                          aria-pressed={on}
+                          onClick={() => setWorkoutFocusId(id)}
+                        >
                           <h3 className="dash-meal-card__title">{row.name}</h3>
                           <p className="dash-lift-max dash-lift-max--sm">{formatScore(row)}</p>
                           <p className="account-muted">
@@ -893,11 +904,28 @@ export default function AccountBenchmarks() {
                               ? ` · ${row.benchmark_classification}`
                               : ""}
                           </p>
-                        </article>
+                        </button>
                       );
                     })}
                   </div>
                 )}
+                {(() => {
+                  const focus = conditioning.find((row) => rowKey(row) === workoutFocusId);
+                  if (!focus) return null;
+                  if (focus.custom_workout_id == null) {
+                    return (
+                      <p className="account-muted">
+                        {focus.name} has no workout id, so attempt history stays in the MetFix app.
+                      </p>
+                    );
+                  }
+                  return (
+                    <WorkoutPrAttempts
+                      customWorkoutId={focus.custom_workout_id}
+                      name={focus.name}
+                    />
+                  );
+                })()}
               </section>
 
               <section className="dash-bench-section" aria-labelledby="mark-heading">
@@ -933,7 +961,7 @@ export default function AccountBenchmarks() {
               </section>
             </>
           )}
-        </div>
+        </BodyPanel>
       )}
     </DashboardLayout>
   );

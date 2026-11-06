@@ -252,16 +252,26 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(screen.getByRole("link", { name: /PR tracking/i }).getAttribute("href")).toBe(
       "/account/benchmarks",
     );
+    expect(screen.getByRole("link", { name: /Workout feed/i }).getAttribute("href")).toBe(
+      "/account/workouts",
+    );
+    expect(screen.getByRole("link", { name: /Coaching/i }).getAttribute("href")).toBe(
+      "/account/coaching",
+    );
+    expect(document.querySelector('[data-tool="body"] .account-body-watermark')).toBeTruthy();
     expect(screen.getByRole("link", { name: /My Data \/ Spark/i }).getAttribute("href")).toBe(
       "/account/spark",
     );
     expect(screen.getByRole("link", { name: /Inbox/i }).getAttribute("href")).toBe(
       "/account/inbox",
     );
-    expect(screen.getAllByText("No web page yet").length).toBeGreaterThan(0);
+    expect(screen.queryByText("No web page yet")).toBeNull();
     expect(screen.queryByText("MetFix Admin")).toBeNull();
     expect(document.querySelector('[data-tool="workout-feed"]')?.getAttribute("data-state")).toBe(
-      "available",
+      "open",
+    );
+    expect(document.querySelector('[data-tool="coaching"]')?.getAttribute("data-state")).toBe(
+      "open",
     );
     expect(document.querySelector('[data-tool="belly"]')).toBeTruthy();
     expect(document.querySelector('[data-tool="body"]')).toBeTruthy();

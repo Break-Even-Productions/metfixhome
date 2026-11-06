@@ -32,6 +32,11 @@ import AccountShoppingCart from "./pages/account/AccountShoppingCart";
 import AccountMyMeals from "./pages/account/AccountMyMeals";
 import AccountRecipeBuilder from "./pages/account/AccountRecipeBuilder";
 import AccountBenchmarks from "./pages/account/AccountBenchmarks";
+import AccountWorkouts from "./pages/account/AccountWorkouts";
+import AccountWorkoutBuilder from "./pages/account/AccountWorkoutBuilder";
+import AccountQuickLog from "./pages/account/AccountQuickLog";
+import AccountTrainingPlanBuilder from "./pages/account/AccountTrainingPlanBuilder";
+import AccountCoaching from "./pages/account/AccountCoaching";
 import AccountSpark from "./pages/account/AccountSpark";
 import AccountInbox from "./pages/account/AccountInbox";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
@@ -166,6 +171,12 @@ function AppRoutes() {
       <Route path={"/account/my-meals"} component={AccountMyMeals} />
       <Route path={"/account/benchmarks"} component={AccountBenchmarks} />
       <Route path={"/account/prs"} component={AccountBenchmarks} />
+      <Route path={"/account/workouts/builder/:id"} component={AccountWorkoutBuilder} />
+      <Route path={"/account/workouts/builder"} component={AccountWorkoutBuilder} />
+      <Route path={"/account/workouts/log"} component={AccountQuickLog} />
+      <Route path={"/account/workouts"} component={AccountWorkouts} />
+      <Route path={"/account/plans/:planId"} component={AccountTrainingPlanBuilder} />
+      <Route path={"/account/coaching"} component={AccountCoaching} />
       <Route path={"/account/spark"} component={AccountSpark} />
       <Route path={"/account/inbox"} component={AccountInbox} />
       <Route path={"/account"} component={AccountOverview} />

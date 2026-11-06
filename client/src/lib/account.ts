@@ -511,6 +511,284 @@ export type AccountInbox = {
   [key: string]: unknown;
 };
 
+export type WorkoutScoreEntry = {
+  score_type: string | null;
+  score_value: number | null;
+  scaling_mode: string | null;
+};
+
+export type WorkoutLogItem = {
+  id: number;
+  workout_title: string;
+  date_time: string;
+  calories_burned: number | null;
+  activity_minutes: number | null;
+  workout_source: string | null;
+  workout_source_id: number | null;
+  workout_free_text: string | null;
+  scaling_mode: string | null;
+  score_entries: WorkoutScoreEntry[];
+  photo_url: string | null;
+};
+
+export type WorkoutLogsPage = { workouts: WorkoutLogItem[] };
+
+export type PlannedWorkoutItem = {
+  id: number;
+  plan_date: string;
+  workout_source: string;
+  workout_source_id: number | null;
+  logged: number;
+  sort_order: number | null;
+  title: string | null;
+};
+
+export type PlannedWorkoutsPage = { planned_workouts: PlannedWorkoutItem[] };
+
+export type WorkoutLogScoreInput = {
+  score_type: string;
+  score_value: number;
+  workout_item_id?: number;
+  scoring_direction?: "higher_better" | "lower_better";
+  score_unit_id?: number;
+};
+
+export type MovementActualInput = {
+  movement_id: number;
+  segment_id?: string;
+  step_order?: number;
+  weight?: number;
+  reps?: number;
+  time_sec?: number;
+  distance_m?: number;
+  weight_unit_id?: number;
+  calories?: number;
+};
+
+export type LogWorkoutInput = {
+  workout_title: string;
+  date_time: string;
+  workout_free_text?: string;
+  activity_minutes?: number;
+  calories_burned?: number;
+  workout_source?: "daily_fix" | "custom" | "favorite" | "affiliate";
+  workout_source_id?: number;
+  daily_fix_date?: string;
+  scaling_mode?: "rx" | "scaled";
+  occurrence_id?: number;
+  scores?: WorkoutLogScoreInput[];
+  movement_actuals?: MovementActualInput[];
+  measurements?: Array<{ measurement_id: number; value: number; unit_id?: number }>;
+};
+
+export type WorkoutStructureStep = {
+  movement_id: number;
+  order: number;
+  label?: string;
+  movement_name?: string;
+  prescription?: {
+    reps?: number;
+    weight?: number;
+    weight_unit_id?: number;
+    distance_m?: number;
+    duration_sec?: number;
+    calories?: number;
+  };
+  prescription_female?: {
+    reps?: number;
+    weight?: number;
+    weight_unit_id?: number;
+  };
+};
+
+export type WorkoutStructureSegment = {
+  id: string;
+  preset: string;
+  params?: Record<string, number>;
+  steps: WorkoutStructureStep[];
+};
+
+export type WorkoutStructure = {
+  version: 1;
+  segments: WorkoutStructureSegment[];
+};
+
+export type WorkoutItemScore = {
+  workout_item_id: number;
+  logging_type: string | null;
+  scoring_direction: "higher_better" | "lower_better" | null;
+  scoring_field: string;
+  title: string | null;
+  mirror_measurement_id: number | null;
+};
+
+export type CustomWorkoutSummary = {
+  id: number;
+  title: string;
+  photo_url: string | null;
+  excerpt?: string;
+  logging_type?: string;
+  structure?: WorkoutStructure | null;
+  workout_items?: WorkoutItemScore[];
+};
+
+export type MovementRow = { id: number; name: string; category: string | null };
+
+export type CustomWorkoutWrite = {
+  title: string;
+  excerpt?: string;
+  body?: string;
+  logging_type: string;
+  structure: WorkoutStructure;
+};
+
+export type PlanWriteItem = {
+  item_type: "meal" | "workout" | "brain";
+  sort_order?: number;
+  label?: string;
+  relative_to_schedule_date?: boolean;
+  workout_source?: "daily_fix" | "custom";
+  workout_source_id?: number;
+  recipe_source_type?: "daily_mod" | "custom_recipe";
+  recipe_source_id?: number;
+  servings?: number;
+  brain_source_type?: "daily_article" | "wp_post" | "course";
+  brain_source_id?: number;
+};
+
+export type PlanWriteDay = {
+  day_index: number;
+  notes?: string;
+  items: PlanWriteItem[];
+};
+
+export type PlanDetail = {
+  id: number;
+  title: string;
+  description: string | null;
+  duration_days: number | null;
+  visibility: string;
+  status: string | null;
+  is_active: boolean;
+  can_edit: boolean;
+  days: Array<{
+    id?: number;
+    day_index: number;
+    notes: string | null;
+    items: PlanWriteItem[];
+  }>;
+};
+
+export type DailyFixWorkoutRef = {
+  date: string | null;
+  title: string | null;
+  workout_id: number | null;
+  custom_workout_id: number | null;
+};
+
+export type CoachingPerson = {
+  user_id: string;
+  name: string | null;
+  display_name: string | null;
+};
+
+export type CoachingRelationship = {
+  id: number;
+  status: string;
+  invited_by: "coach" | "client" | null;
+  viewer_is_coach: boolean;
+  counterparty: CoachingPerson;
+};
+
+export type CoachingAffiliate = {
+  affiliate_id: number;
+  name: string;
+  role?: string | null;
+  logo: string | null;
+  member_count: number | null;
+  group_conversation_id: number | null;
+};
+
+export type CoachingClientOverview = {
+  affiliates: CoachingAffiliate[];
+  coaches: CoachingRelationship[];
+};
+
+export type CoachingCoachOverview = {
+  affiliates: CoachingAffiliate[];
+  clients: CoachingRelationship[];
+};
+
+export type CoachDirectoryEntry = {
+  user_id: string;
+  name: string | null;
+  display_name: string | null;
+  bio: string | null;
+  search_excerpt: string | null;
+  avatar: string | null;
+  completed_courses: string[];
+  completed_courses_count: number | null;
+};
+
+export type CoachDirectoryPage = { trainers: CoachDirectoryEntry[] };
+
+export type CoachNote = {
+  id: number;
+  body: string;
+  created_at: string | null;
+};
+
+export type CoachNotesPage = { notes: CoachNote[] };
+
+export type CoachProfile = {
+  directory_visible: boolean;
+  bio: string | null;
+};
+
+export type ProgrammingSeriesItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  status: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  access_mode: string | null;
+  is_subscribed: boolean | null;
+};
+
+export type ProgrammingSubscriptionItem = {
+  id: number;
+  series_id: number;
+  status: string | null;
+  source: string | null;
+  series_title: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  calendar_sync_enabled: boolean;
+};
+
+export type ProgrammingDayItem = {
+  id: number;
+  calendar_date: string;
+  notes: string | null;
+  status: string | null;
+  items: Array<{ id: number; item_type: string | null; label: string | null }>;
+};
+
+export type PlanLibraryItem = {
+  id: number;
+  title: string;
+  duration_days: number | null;
+  status: string | null;
+  is_active: boolean;
+  usage_status: string | null;
+};
+
+export type PlanLibraryPage = {
+  active: PlanLibraryItem[];
+  inactive: PlanLibraryItem[];
+};
+
 type CacheKey =
   | "overview"
   | "subscriptions"
@@ -534,12 +812,29 @@ type CacheKey =
   | "shopping-lists"
   | `shopping-list:${number}`
   | `spark-entries:${string}`
+  | "spark-user-info"
   | `calendar-surface:${string}`
-  | "plans-library"
+  | `workouts:${string}`
+  | `workouts-planned:${string}`
+  | `workout:${number}`
+  | `custom-workout:${number}`
+  | "custom-workouts"
+  | `movements:${string}`
+  | "plans"
   | `plan:${number}`
+  | `daily-fix-workout:${string}`
+  | "coaching-client"
+  | "coaching-coach"
+  | `coaching-directory:${string}`
+  | `coaching-notes:${number}`
+  | "coaching-profile"
+  | "programming-subs"
+  | "programming-series"
+  | `programming-days:${string}`
+  | "coaching-plans"
+  | "plans-library"
   | "custom-recipes"
   | `custom-recipe:${number}`
-  | "coaching-coach"
   | `macros-range:${string}`
   | `shopping-generated-dates:${string}`;
 
@@ -593,6 +888,15 @@ function invalidateKeys(keys: CacheKey[]): void {
   for (const key of keys) {
     cache.delete(key);
     inflight.delete(key);
+  }
+}
+
+function dropCachePrefix(prefix: string): void {
+  for (const key of [...cache.keys()]) {
+    if (String(key).startsWith(prefix)) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
   }
 }
 
@@ -932,9 +1236,20 @@ function invalidateSparkEntriesCaches(measurementId?: number): void {
   }
 }
 
+export type SparkUserInfo = {
+  training_gender: "male" | "female" | null;
+  weight_display_unit: "lb" | "kg" | null;
+};
+
+export function loadSparkUserInfo(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<SparkUserInfo> {
+  return accountGet("/api/account/spark/user-info", "spark-user-info", options);
+}
+
 /**
  * Spark measurement history (GET /api/account/spark/entries → BSI /spark/entries).
- * Worker route assumed; client stubs the contract for dashboard charts / My Data.
  * `measurement_id` optional when listing recent entries across measurements.
  */
 export function loadSparkEntries(
@@ -999,6 +1314,105 @@ export async function createSparkEntry(
   );
   invalidateSparkEntriesCaches(body.measurement_id);
   return result;
+}
+
+export function loadWorkoutLogs(
+  start: string,
+  end: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<WorkoutLogsPage> {
+  const q = `start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
+  return accountGet(`/api/account/workouts?${q}`, `workouts:${start}:${end}`, options);
+}
+
+export function loadPlannedWorkouts(
+  start: string,
+  end: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<PlannedWorkoutsPage> {
+  const q = `start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
+  return accountGet(
+    `/api/account/workouts/planned?${q}`,
+    `workouts-planned:${start}:${end}`,
+    options,
+  );
+}
+
+export function loadWorkoutLog(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ workout: WorkoutLogItem }> {
+  return accountGet(`/api/account/workouts/${id}`, `workout:${id}`, options);
+}
+
+export function loadCustomWorkout(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<CustomWorkoutSummary> {
+  return accountGet(
+    `/api/account/custom-workouts/${id}?include_movement_names=1`,
+    `custom-workout:${id}`,
+    options,
+  );
+}
+
+export function loadMyCustomWorkouts(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ workouts: CustomWorkoutSummary[] }> {
+  return accountGet(
+    "/api/account/custom-workouts?owner_id=me&limit=30&offset=0",
+    "custom-workouts",
+    options,
+  );
+}
+
+export async function saveCustomWorkout(
+  body: CustomWorkoutWrite,
+  id?: number,
+): Promise<CustomWorkoutSummary> {
+  const result = await accountMutate<CustomWorkoutSummary>(
+    id ? `/api/account/custom-workouts/${id}` : "/api/account/custom-workouts",
+    { method: id ? "PUT" : "POST", body },
+  );
+  cache.delete("custom-workouts");
+  if (id) {
+    cache.delete(`custom-workout:${id}`);
+    inflight.delete(`custom-workout:${id}`);
+  }
+  return result;
+}
+
+export async function deleteCustomWorkout(id: number): Promise<void> {
+  await accountMutate(`/api/account/custom-workouts/${id}`, { method: "DELETE" });
+  cache.delete("custom-workouts");
+  cache.delete(`custom-workout:${id}`);
+}
+
+export function searchMovements(
+  search: string,
+  options?: { signal?: AbortSignal },
+): Promise<{ movements: MovementRow[] }> {
+  const q = new URLSearchParams({ search, limit: "20", offset: "0" });
+  return accountGet(`/api/account/movements?${q.toString()}`, `movements:${q.toString()}`, options);
+}
+
+export function loadDailyFixWorkout(
+  date: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<DailyFixWorkoutRef> {
+  return accountGet(
+    `/api/account/daily-fix?date=${encodeURIComponent(date)}`,
+    `daily-fix-workout:${date}`,
+    options,
+  );
+}
+
+export function loadPlans(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ plans: PlanDetail[] }> {
+  return accountGet("/api/account/plans", "plans", options);
 }
 
 /* ——— Belly: meal plans / custom recipes / macros range ——— */
@@ -1085,6 +1499,73 @@ export function loadPlan(
   options?: { force?: boolean; signal?: AbortSignal },
 ): Promise<MealPlanSummary> {
   return accountGet(`/api/account/plans/${id}?include_days=1`, `plan:${id}`, options);
+}
+
+export async function savePlan(
+  body: {
+    title: string;
+    description?: string;
+    duration_days: number;
+    visibility: string;
+    status?: string;
+    replace_days?: boolean;
+    days: PlanWriteDay[];
+  },
+  id?: number,
+): Promise<{ plan: PlanDetail }> {
+  const result = await accountMutate<{ plan: PlanDetail }>(
+    id ? `/api/account/plans/${id}` : "/api/account/plans",
+    { method: id ? "PUT" : "POST", body },
+  );
+  cache.delete("plans");
+  cache.delete("plans-library");
+  if (id) cache.delete(`plan:${id}`);
+  return result;
+}
+
+export async function publishPlan(id: number): Promise<void> {
+  await accountMutate(`/api/account/plans/${id}/publish`, { method: "POST", body: {} });
+  cache.delete("plans");
+  cache.delete("plans-library");
+  cache.delete(`plan:${id}`);
+}
+
+export async function schedulePlan(id: number, startDate: string): Promise<void> {
+  await accountMutate(`/api/account/plans/${id}/schedule?start_date=${encodeURIComponent(startDate)}`, {
+    method: "POST",
+  });
+  dropCachePrefix("workouts");
+  cache.delete("plans");
+}
+
+export async function createWorkoutLog(body: LogWorkoutInput): Promise<{ workout: WorkoutLogItem | null }> {
+  const result = await accountMutate<{ workout: WorkoutLogItem | null }>(
+    "/api/account/workouts",
+    { method: "POST", body },
+  );
+  dropCachePrefix("workouts:");
+  dropCachePrefix("workouts-planned:");
+  return result;
+}
+
+export async function deleteWorkoutLog(id: number): Promise<void> {
+  await accountMutate(`/api/account/workouts/${id}`, { method: "DELETE" });
+  dropCachePrefix("workouts:");
+  cache.delete(`workout:${id}`);
+  inflight.delete(`workout:${id}`);
+}
+
+export async function deletePlannedWorkout(id: number): Promise<void> {
+  await accountMutate(`/api/account/workouts/planned/${id}`, { method: "DELETE" });
+  dropCachePrefix("workouts-planned:");
+  dropCachePrefix("workouts:");
+}
+
+export function loadCoachingClient(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<CoachingClientOverview> {
+  return accountGet("/api/account/coaching/client", "coaching-client", options);
 }
 
 export async function setMealPlanActive(
@@ -1299,36 +1780,145 @@ export async function scheduleMealPlanForClient(
   });
 }
 
-export type CoachingRelationship = {
-  id: number;
-  status: string;
-  invited_by?: string | null;
-  viewer_is_coach?: boolean;
-  counterparty: {
-    user_id: string;
-    name: string | null;
-    display_name: string | null;
-  };
-};
-
-export type CoachingAffiliate = {
-  affiliate_id: number;
-  name: string;
-  role?: string | null;
-  logo?: string | null;
-  member_count?: number | null;
-};
-
-export type CoachingCoachOverview = {
-  affiliates: CoachingAffiliate[];
-  clients: CoachingRelationship[];
-};
-
 export function loadCoachingCoach(options?: {
   force?: boolean;
   signal?: AbortSignal;
 }): Promise<CoachingCoachOverview> {
   return accountGet("/api/account/coaching/coach", "coaching-coach", options);
+}
+
+export function loadCoachDirectory(
+  params: { name?: string; sort_by?: string; sort_order?: string } = {},
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<CoachDirectoryPage> {
+  const q = new URLSearchParams();
+  if (params.name) q.set("name", params.name);
+  if (params.sort_by) q.set("sort_by", params.sort_by);
+  if (params.sort_order) q.set("sort_order", params.sort_order);
+  q.set("limit", "20");
+  const qs = q.toString();
+  return accountGet(`/api/account/coaching/directory?${qs}`, `coaching-directory:${qs}`, options);
+}
+
+export function loadCoachNotes(
+  relationshipId: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<CoachNotesPage> {
+  return accountGet(
+    `/api/account/coaching/relationships/${relationshipId}/notes`,
+    `coaching-notes:${relationshipId}`,
+    options,
+  );
+}
+
+export async function createCoachNote(relationshipId: number, body: string): Promise<void> {
+  await accountMutate(`/api/account/coaching/relationships/${relationshipId}/notes`, {
+    method: "POST",
+    body: { body },
+  });
+  cache.delete(`coaching-notes:${relationshipId}`);
+  inflight.delete(`coaching-notes:${relationshipId}`);
+}
+
+export async function coachingRelationshipAction(
+  id: number,
+  action: "accept" | "decline" | "end",
+): Promise<void> {
+  await accountMutate(`/api/account/coaching/relationships/${id}/${action}`, {
+    method: "POST",
+    body: {},
+  });
+  cache.delete("coaching-client");
+  cache.delete("coaching-coach");
+  inflight.delete("coaching-client");
+  inflight.delete("coaching-coach");
+}
+
+export async function requestCoach(userId: string): Promise<void> {
+  await accountMutate("/api/account/coaching/relationships", {
+    method: "POST",
+    body: { counterparty_user_id: Number(userId), role: "client_request" },
+  });
+  cache.delete("coaching-client");
+  inflight.delete("coaching-client");
+}
+
+export function loadCoachProfile(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<CoachProfile> {
+  return accountGet("/api/account/coaching/profile", "coaching-profile", options);
+}
+
+export async function saveCoachProfile(body: {
+  directory_visible?: boolean;
+  bio?: string;
+}): Promise<CoachProfile> {
+  const result = await accountMutate<CoachProfile>("/api/account/coaching/profile", {
+    method: "PUT",
+    body,
+  });
+  cache.delete("coaching-profile");
+  inflight.delete("coaching-profile");
+  return result;
+}
+
+export function loadProgrammingSubscriptions(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ subscriptions: ProgrammingSubscriptionItem[] }> {
+  return accountGet(
+    "/api/account/coaching/programming/subscriptions",
+    "programming-subs",
+    options,
+  );
+}
+
+export function loadProgrammingSeries(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ series: ProgrammingSeriesItem[] }> {
+  return accountGet("/api/account/coaching/programming/series", "programming-series", options);
+}
+
+export function loadProgrammingDays(
+  seriesId: number,
+  start: string,
+  end: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ days: ProgrammingDayItem[] }> {
+  const q = `start_date=${encodeURIComponent(start)}&end_date=${encodeURIComponent(end)}`;
+  return accountGet(
+    `/api/account/coaching/programming/series/${seriesId}/days?${q}`,
+    `programming-days:${seriesId}:${start}:${end}`,
+    options,
+  );
+}
+
+export async function subscribeProgrammingSeries(seriesId: number): Promise<void> {
+  await accountMutate(`/api/account/coaching/programming/series/${seriesId}/subscribe`, {
+    method: "POST",
+    body: {},
+  });
+  cache.delete("programming-subs");
+  cache.delete("programming-series");
+  inflight.delete("programming-subs");
+  inflight.delete("programming-series");
+}
+
+export async function cancelProgrammingSubscription(id: number): Promise<void> {
+  await accountMutate(`/api/account/coaching/programming/subscriptions/${id}`, {
+    method: "DELETE",
+  });
+  cache.delete("programming-subs");
+  inflight.delete("programming-subs");
+}
+
+export function loadCoachingPlanLibrary(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<PlanLibraryPage> {
+  return accountGet("/api/account/coaching/plans", "coaching-plans", options);
 }
 
 export function loadMacrosRange(

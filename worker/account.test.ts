@@ -3671,4 +3671,173 @@ describe("worker/account routes", () => {
       }
     });
   });
+
+  it("MF body routes shape workouts and coaching and reject a bad range", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, url }) => {
+        if (path.includes("/calendar/workouts") && !path.includes("planned") && method === "GET") {
+          expect(url).toContain("start_date=2026-11-01");
+          expect(url).toContain("end_date=2026-11-06");
+          return Response.json({
+            workouts: [
+              {
+                id: 4,
+                user_id: 99,
+                workout_title: "Back Squat",
+                date_time: "2026-11-06 09:00:00",
+              },
+            ],
+          });
+        }
+        if (path.includes("/pt/client/coaches") && method === "GET") {
+          return Response.json({
+            coaches: [
+              {
+                id: 3,
+                status: "pending",
+                invited_by: "coach",
+                coach: { user_id: 12, display_name: "Ada Coach" },
+              },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected", path, method }, { status: 500 });
+      },
+    ]);
+
+    const workouts = await callAccount(
+      h,
+      "/api/account/workouts?start_date=2026-11-01&end_date=2026-11-06",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(workouts.status).toBe(200);
+    const body = (await workouts.json()) as { workouts: Array<{ workout_title: string }> };
+    expect(body.workouts[0]?.workout_title).toBe("Back Squat");
+    expect(JSON.stringify(body)).not.toContain("99");
+    expect(recorded.some((row) => row.url.includes("/calendar/workouts"))).toBe(true);
+    assertHasBearer(recorded[0]!);
+
+    recorded.length = 0;
+    const bad = await callAccount(
+      h,
+      "/api/account/workouts?start_date=2026-11-06&end_date=2026-11-01",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const coaching = await callAccount(
+      h,
+      "/api/account/coaching/client",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(coaching.status).toBe(200);
+    const hub = (await coaching.json()) as {
+      coaches: Array<{ counterparty: { display_name: string } }>;
+    };
+    expect(hub.coaches[0]?.counterparty.display_name).toBe("Ada Coach");
+
+    const beforePosts = recorded.length;
+    const missingTitle = await callAccount(
+      h,
+      "/api/account/workouts",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ date_time: "2026-11-06" }),
+      },
+      fetchImpl,
+    );
+    expect(missingTitle.status).toBe(400);
+    expect(recorded).toHaveLength(beforePosts);
+  });
+
+  it("saves a custom workout and posts an Rx log with scores", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/custom-workouts") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { title: string; structure: { version: number } };
+          expect(sent.title).toBe("Fran");
+          expect(sent.structure.version).toBe(1);
+          expect(bodyText).not.toContain("user_id");
+          return Response.json({
+            id: 8,
+            title: sent.title,
+            user_id: 99,
+            logging_type: "time",
+            structure: sent.structure,
+          });
+        }
+        if (path.endsWith("/workouts") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { scaling_mode: string; scores: unknown[] };
+          expect(sent.scaling_mode).toBe("rx");
+          expect(sent.scores).toHaveLength(1);
+          return Response.json({
+            id: 15,
+            workout_title: "Fran",
+            date_time: "2026-11-06 12:00:00",
+            user_id: 99,
+          });
+        }
+        return Response.json({ error: "unexpected", path, method }, { status: 500 });
+      },
+    ]);
+
+    const created = await callAccount(
+      h,
+      "/api/account/custom-workouts",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          title: "Fran",
+          logging_type: "time",
+          structure: {
+            version: 1,
+            segments: [
+              {
+                id: "seg-1",
+                preset: "straight",
+                steps: [{ movement_id: 12, order: 0, prescription: { reps: 21 } }],
+              },
+            ],
+          },
+        }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(200);
+    const workout = (await created.json()) as { id: number; title: string };
+    expect(workout).toMatchObject({ id: 8, title: "Fran", logging_type: "time" });
+    expect(JSON.stringify(workout)).not.toContain("99");
+    assertHasBearer(recorded[0]!);
+
+    const logged = await callAccount(
+      h,
+      "/api/account/workouts",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          workout_title: "Fran",
+          date_time: "2026-11-06 12:00:00",
+          workout_source: "custom",
+          workout_source_id: 8,
+          scaling_mode: "rx",
+          scores: [{ score_type: "time", score_value: 180, workout_item_id: 3 }],
+          movement_actuals: [{ movement_id: 12, segment_id: "seg-1", step_order: 0, reps: 21 }],
+        }),
+      },
+      fetchImpl,
+    );
+    expect(logged.status).toBe(200);
+    const logBody = (await logged.json()) as { workout: { workout_title: string } | null };
+    expect(logBody.workout?.workout_title).toBe("Fran");
+    expect(JSON.stringify(logBody)).not.toContain("99");
+  });
 });
