@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { type ReferralsDto } from "@shared/account/courseReferrals";
 import { formatUsdFromCents } from "@shared/account/ltv";
 import {
+  assignBillingUrl,
   loadCourseGifts,
   loadReferrals,
+  loadSubscriptions,
+  portalLink,
   referralCodeAction,
+  type AccountSubscriptions,
   type CourseGiftsPayload,
   type ReferralsPayload,
 } from "@/lib/account";
@@ -18,6 +22,29 @@ type Props = {
 
 function commissionBadge(percent: number): string {
   return `${percent}% referral commission`;
+}
+
+function courseLinkImage(link: ReferralsDto["course_links"][number]): string | null {
+  const raw =
+    ("image_url" in link && typeof link.image_url === "string" && link.image_url) ||
+    ("product_image" in link &&
+      typeof (link as { product_image?: unknown }).product_image === "string" &&
+      (link as { product_image: string }).product_image) ||
+    ("thumbnail_url" in link &&
+      typeof (link as { thumbnail_url?: unknown }).thumbnail_url === "string" &&
+      (link as { thumbnail_url: string }).thumbnail_url) ||
+    ("featured_image" in link &&
+      typeof (link as { featured_image?: unknown }).featured_image === "string" &&
+      (link as { featured_image: string }).featured_image) ||
+    null;
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -64,24 +91,44 @@ function asDto(payload: ReferralsPayload): ReferralsDto {
   };
 }
 
+function CopyLinkBox(props: { url: string; onCopy: (text: string) => void }) {
+  const { url, onCopy } = props;
+  return (
+    <div className="account-copy-box">
+      <code className="account-copy-box__url account-mono">{url}</code>
+      <button
+        type="button"
+        className="account-btn account-btn--ghost account-mono"
+        onClick={() => void onCopy(url)}
+      >
+        Copy Referral Link
+      </button>
+    </div>
+  );
+}
+
 export default function AccountReferrals(_props: Props) {
   const [data, setData] = useState<ReferralsDto | null>(null);
   const [gifts, setGifts] = useState<CourseGiftsPayload | null>(null);
+  const [subs, setSubs] = useState<AccountSubscriptions | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
     (async () => {
       try {
-        const [r, g] = await Promise.all([
+        const [r, g, s] = await Promise.all([
           loadReferrals({ signal: ac.signal }),
           loadCourseGifts({ signal: ac.signal }),
+          loadSubscriptions({ signal: ac.signal }).catch(() => null),
         ]);
         if (cancelled) return;
         setData(asDto(r));
         setGifts(g);
+        setSubs(s);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -119,6 +166,28 @@ export default function AccountReferrals(_props: Props) {
     }
   }
 
+  const portalSub =
+    (subs?.items ?? []).find((i) => i.can_open_portal === true) ?? null;
+
+  async function onManageWhop() {
+    if (!portalSub || portalBusy) return;
+    setPortalBusy(true);
+    setError(null);
+    try {
+      const res = await portalLink({
+        sub_ref: portalSub.sub_ref,
+        intent: "manage",
+      });
+      if (!assignBillingUrl(res.url, "billing_portal")) {
+        setError("Whop portal is unavailable right now.");
+      }
+    } catch {
+      setError("Whop portal is unavailable right now.");
+    } finally {
+      setPortalBusy(false);
+    }
+  }
+
   // R3-N1: Worker `eligible` is authoritative — no client canGenerate re-check.
   const eligible = data?.eligible === true;
   const showMutedNotice = Boolean(
@@ -137,6 +206,24 @@ export default function AccountReferrals(_props: Props) {
       description="Share course referral links with your stored commission rate."
     >
       {error ? <p className="account-error">{error}</p> : null}
+
+      {portalSub ? (
+        <section className="account-card">
+          <h2>Whop affiliate tools</h2>
+          <p className="account-muted">
+            Open your Whop portal for product links, referral stats, and payouts. Pending
+            commissions stay on Whop — this page does not rebuild that UI.
+          </p>
+          <button
+            type="button"
+            className="account-btn"
+            disabled={portalBusy}
+            onClick={() => void onManageWhop()}
+          >
+            Manage on Whop
+          </button>
+        </section>
+      ) : null}
 
       {data && !eligible ? (
         <section className="account-card">
@@ -208,13 +295,7 @@ export default function AccountReferrals(_props: Props) {
                 {commissionBadge(data.join_code.commission_percent)}
               </p>
               {data.join_code.join_url ? (
-                <button
-                  type="button"
-                  className="account-btn account-btn--ghost account-mono"
-                  onClick={() => void copy(data.join_code!.join_url!)}
-                >
-                  Copy Referral Link
-                </button>
+                <CopyLinkBox url={data.join_code.join_url} onCopy={copy} />
               ) : null}
               <div className="account-course-card__actions" style={{ marginTop: "0.75rem" }}>
                 <button
@@ -256,27 +337,32 @@ export default function AccountReferrals(_props: Props) {
           {data.course_links.length > 0 ? (
             <section className="account-card">
               <h2>Course referral links</h2>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.75rem" }}>
-                {data.course_links.map((link) => (
-                  <li key={link.course_id} className="account-course-card">
-                    <div className="account-course-card__title">{link.course_title}</div>
-                    <div className="account-mono">
-                      {formatUsdFromCents(link.course_price_cents)} ·{" "}
-                      {commissionBadge(link.commission_percent)} · est.{" "}
-                      {formatUsdFromCents(link.estimated_commission_cents)}
-                    </div>
-                    <p className="account-mono">
-                      {link.share_url}
-                    </p>
-                    <button
-                      type="button"
-                      className="account-btn account-btn--ghost account-mono"
-                      onClick={() => void copy(link.share_url)}
-                    >
-                      Copy Referral Link
-                    </button>
-                  </li>
-                ))}
+              <ul className="account-referral-list">
+                {data.course_links.map((link) => {
+                  const image = courseLinkImage(link);
+                  return (
+                    <li key={link.course_id} className="account-course-card account-referral-card">
+                      {image ? (
+                        <img
+                          className="account-referral-card__image"
+                          src={image}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : null}
+                      <div className="account-referral-card__body">
+                        <div className="account-course-card__title">{link.course_title}</div>
+                        <div className="account-mono">
+                          {formatUsdFromCents(link.course_price_cents)} ·{" "}
+                          {commissionBadge(link.commission_percent)} · est.{" "}
+                          {formatUsdFromCents(link.estimated_commission_cents)}
+                        </div>
+                        <CopyLinkBox url={link.share_url} onCopy={copy} />
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ) : null}

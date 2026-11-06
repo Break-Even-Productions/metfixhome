@@ -11,6 +11,22 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function SeminarBadges({ coach }: { coach: FoundationsCoachStatus }) {
+  return (
+    <div className="account-course-badges" aria-label="Seminar and Essentials status">
+      {coach.seminar_checked_in ? (
+        <span className="account-tag account-tag--seminar">Seminar checked in</span>
+      ) : null}
+      {coach.metfix_essentials_completed ? (
+        <span className="account-tag account-tag--seminar">Essentials completed</span>
+      ) : null}
+      {coach.metfix_essentials_certificate_claimed ? (
+        <span className="account-tag account-tag--claimed">Essentials certificate claimed</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function FoundationsCoachCard({ coach }: Props) {
   const expired =
     !coach.active &&
@@ -24,6 +40,7 @@ export function FoundationsCoachCard({ coach }: Props) {
       {coach.active ? (
         <>
           <span className="account-pill account-pill--accent">Foundations Coach · Active</span>
+          <SeminarBadges coach={coach} />
           <p style={{ marginTop: "0.75rem" }}>
             Granted via{" "}
             {coach.grant_reason === "in_person_seminar"
@@ -37,6 +54,7 @@ export function FoundationsCoachCard({ coach }: Props) {
         </>
       ) : expired ? (
         <>
+          <SeminarBadges coach={coach} />
           <p role="status">
             Foundations Coach expired on{" "}
             <span className="account-mono">
@@ -47,6 +65,7 @@ export function FoundationsCoachCard({ coach }: Props) {
         </>
       ) : (
         <>
+          <SeminarBadges coach={coach} />
           <p className="account-muted">Qualify through either path:</p>
           <ul className="account-checklist">
             <li data-done={coach.seminar_checked_in ? "true" : "false"}>

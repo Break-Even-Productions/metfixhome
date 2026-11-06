@@ -254,7 +254,7 @@ describe("AccountBilling (P-DB-4, P-DB-5, P-DB-6)", () => {
     await waitFor(() => expect(screen.getByText("$12.34")).toBeTruthy());
   });
 
-  it("active Whop subscription shows Manage in billing portal", async () => {
+  it("active Whop subscription shows Manage in billing portal when can_open_portal", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = (init?.method ?? "GET").toUpperCase();
@@ -278,6 +278,7 @@ describe("AccountBilling (P-DB-4, P-DB-5, P-DB-6)", () => {
     );
     const manage = await screen.findAllByRole("button", { name: /Manage in billing portal/i });
     expect(manage.length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Manage membership/i })).toBeTruthy();
     fireEvent.click(manage[0]!);
     await waitFor(() => {
       const posts = fetchImpl.mock.calls.filter(
@@ -289,6 +290,64 @@ describe("AccountBilling (P-DB-4, P-DB-5, P-DB-6)", () => {
         sub_ref: "ref_pro_1",
       });
     });
+  });
+
+  it("hides Manage links when can_open_portal is absent — never invents a URL", async () => {
+    installFetch({
+      canonical_tier: "metfix_pro",
+      items: [
+        {
+          sub_ref: "ref_pro_no_portal",
+          provider: "whop",
+          tier: "metfix_pro",
+          status: "active",
+          current_period_end: "2026-12-01T00:00:00.000Z",
+          paid_through: "2026-12-01T00:00:00.000Z",
+          cancel_at_period_end: false,
+          card: null,
+        },
+      ],
+    });
+    render(
+      <Router>
+        <AccountBilling />
+      </Router>,
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText(/Payment History/i).length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByRole("button", { name: /Manage in billing portal/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Manage membership/i })).toBeNull();
+  });
+
+  it("payment history loads via GET /api/account/payments", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+      if (url.includes("/api/account/overview")) return jsonResponse(OVERVIEW_FIXTURE);
+      if (url.includes("/api/account/subscriptions") && method === "GET") {
+        return jsonResponse(SUBS_ACTIVE);
+      }
+      if (url.includes("/api/account/ltv-certificates")) return jsonResponse(LTV300_AC);
+      if (url.includes("/api/account/payments") && method === "GET") {
+        return jsonResponse(PAYMENTS_PAGE1);
+      }
+      return jsonResponse({ error: "not_found" }, 404);
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    render(
+      <Router>
+        <AccountBilling />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("$12.34")).toBeTruthy());
+    const paymentsGets = fetchImpl.mock.calls.filter(
+      (c) =>
+        String(c[0]).includes("/api/account/payments") &&
+        ((c[1] as RequestInit | undefined)?.method ?? "GET").toUpperCase() === "GET",
+    );
+    expect(paymentsGets.length).toBeGreaterThanOrEqual(1);
   });
 
   it("canonical tier labels only use the 4 tiers", async () => {

@@ -20,7 +20,7 @@
       "page": "affiliate-seminars",
       "viewport": "390",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/affiliate-seminars-390-visual-linux.png",
-      "sha256": "33249f4f150fdec04c1d5849dfe8aa67755e9fd7655a025353dda4eb0d101304",
+      "sha256": "776c0f28ef2eb5e57d5137d049be892e8b792f5e86b20cf9d46b260f79b1620b",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     },
@@ -36,7 +36,7 @@
       "page": "become-an-affiliate",
       "viewport": "390",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/become-an-affiliate-390-visual-linux.png",
-      "sha256": "32c964a56cd726ac7e7781ae7f268fdfbe16289fb3f7bf57096e36637f7ef2b5",
+      "sha256": "5e8dc1237f04ec7e997ae2395eb4697351de17edd21bf6bcbe53063381992b1a",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     },
@@ -52,7 +52,7 @@
       "page": "the-daily-fix",
       "viewport": "390",
       "file": "tests/visual/f1.visual.spec.ts-snapshots/the-daily-fix-390-visual-linux.png",
-      "sha256": "3c9bed053d5e9f323a4257184b1456bd637539347f23cc259f02456617471c0b",
+      "sha256": "7c9ee0a1e331f39be6963960ec8311db3357b98fe07c61d04c4977679c4669ee",
       "betaSha": "95f67814edd3e16d4fb3ba0f32de5d7f49111380",
       "playwright": "1.56.1"
     }

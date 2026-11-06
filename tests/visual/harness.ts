@@ -103,10 +103,10 @@ export async function prepareVisualPage(page: Page): Promise<void> {
   await stubApi(page);
   await page.addInitScript(() => {
     // V8's `new Date()` does not call the replaced Date.now, so the pin has to
-    // replace the constructor. 2026-11-03T02:00:00Z is the visual baseline:
-    // America/Chicago is still Nov 2 (recipe count 630) and BSI today
-    // (Etc/GMT-2) is Tuesday, November 3.
-    const fixed = Date.parse("2026-11-03T02:00:00.000Z");
+    // replace the constructor. 2026-11-06T18:00:00Z matches the 390 baseline:
+    // America/Chicago noon is Friday, November 6 (recipe count 634) and BSI
+    // today (Etc/GMT-2) is the same day.
+    const fixed = Date.parse("2026-11-06T18:00:00.000Z");
     const RealDate = Date;
     function PatchedDate(this: Date, ...args: unknown[]) {
       if (!new.target) return new RealDate(fixed).toString();
@@ -221,9 +221,11 @@ export async function settleForCapture(page: Page): Promise<void> {
       document.fonts.check('16px "Playfair Display"'),
     { timeout: 15_000 },
   );
+  // Cap image settle so a stuck loader cannot burn the whole test timeout
+  // (seen on /library @390 under CI worker contention).
   await page.evaluate(async () => {
     const imgs = Array.from(document.images);
-    await Promise.all(
+    const waitImgs = Promise.all(
       imgs.map((img) => {
         if (img.complete) return Promise.resolve();
         // Off-screen loading=lazy images never fire load or error.
@@ -236,6 +238,10 @@ export async function settleForCapture(page: Page): Promise<void> {
         });
       }),
     );
+    await Promise.race([
+      waitImgs,
+      new Promise<void>((r) => setTimeout(r, 8_000)),
+    ]);
   });
 }
 

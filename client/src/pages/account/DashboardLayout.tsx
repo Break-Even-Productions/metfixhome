@@ -14,6 +14,9 @@ import {
   type AccountSubscriptions,
 } from "@/lib/account";
 import { staffRoleLabels } from "./roleLabels";
+import { onboardingRoleLabel } from "./onboardingRoles";
+import { metfixToolsUnlocked } from "./metfixAppTools";
+import { resolveAccountAccentTheme } from "./accountTheme";
 import "./account.css";
 
 export const ACCOUNT_NAV = [
@@ -70,12 +73,15 @@ type Props = {
   title: string;
   description?: string;
   children: ReactNode;
+  /** When true, skip the default h1/lede (page provides its own hero). */
+  hideChromeTitle?: boolean;
 };
 
 export default function DashboardLayout({
   title,
   description,
   children,
+  hideChromeTitle = false,
 }: Props) {
   const [location] = useLocation();
   const [overview, setOverview] = useState<AccountOverview | null>(null);
@@ -125,6 +131,8 @@ export default function DashboardLayout({
   }, []);
 
   const status = useMemo(() => deriveMembershipStatus(subs), [subs]);
+  const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
+  const unlocked = metfixToolsUnlocked(tier);
   const pills = useMemo(() => {
     if (!overview) return [] as string[];
     const out: string[] = ["MetFix Member"];
@@ -134,31 +142,58 @@ export default function DashboardLayout({
     }
     if (overview.badges.affiliate) out.push("Affiliate");
     if (overview.badges.medical) out.push("Medical Society");
+    for (const role of overview.onboarding_roles ?? []) {
+      const label = onboardingRoleLabel(role);
+      if (!out.includes(label)) out.push(label);
+    }
     out.push(...staffRoleLabels(overview.roles));
     return out;
   }, [overview]);
 
   const displayName = overview?.display_name ?? "Member";
+  const accentTheme = useMemo(() => resolveAccountAccentTheme(overview), [overview]);
   const navItems = useMemo(
     () => ACCOUNT_NAV.filter((item) => accountNavVisible(item, overview, subs)),
     [overview, subs],
   );
 
+  const isCurrent = (href: string) => {
+    if (href === "/account") {
+      return (
+        location === "/account" ||
+        location === "/account/" ||
+        location.startsWith("/account/meals") ||
+        location.startsWith("/account/meal-plans") ||
+        location.startsWith("/account/shopping-cart") ||
+        location.startsWith("/account/my-meals") ||
+        location.startsWith("/account/benchmarks") ||
+        location.startsWith("/account/coaching")
+      );
+    }
+    return location === href || location.startsWith(`${href}/`);
+  };
+
   return (
     <>
-      <div className="account-shell">
+      <div className="account-shell" data-theme={accentTheme}>
         <div className="account-layout">
           <aside className="account-sidebar" aria-label="Account navigation">
-            <p className="account-wordmark">MetFix</p>
             <div className="account-identity">
-              <div className="account-avatar" aria-hidden="true">
-                {overview?.avatar_url ? (
-                  <img src={overview.avatar_url} alt="" />
-                ) : (
-                  initials(displayName)
-                )}
+              <div className="account-identity__row">
+                <div className="account-avatar" aria-hidden="true">
+                  {overview?.avatar_url ? (
+                    <img src={overview.avatar_url} alt="" />
+                  ) : (
+                    initials(displayName)
+                  )}
+                </div>
+                <div className="account-identity__text">
+                  <p className="account-identity-name">{displayName}</p>
+                  {overview?.email ? (
+                    <p className="account-identity-email">{overview.email}</p>
+                  ) : null}
+                </div>
               </div>
-              <p className="account-identity-name">{displayName}</p>
               <ul className="account-pills" aria-label="Roles">
                 {pills.map((p) => (
                   <li key={p}>
@@ -175,18 +210,14 @@ export default function DashboardLayout({
                     </span>
                   </li>
                 ))}
+                <li>
+                  <span className="account-pill account-pill--tier">{status}</span>
+                </li>
               </ul>
-              <div className="account-status-badge" role="status">
-                {status}
-              </div>
             </div>
             <nav className="account-nav">
               {navItems.map((item) => {
-                const current =
-                  item.href === "/account"
-                    ? location === "/account" || location === "/account/"
-                    : location === item.href ||
-                      location.startsWith(`${item.href}/`);
+                const current = isCurrent(item.href);
                 return (
                   <Link
                     key={item.href}
@@ -198,16 +229,23 @@ export default function DashboardLayout({
                 );
               })}
             </nav>
+            {!unlocked ? (
+              <div className="account-sidebar-unlock">
+                <p className="account-sidebar-unlock__title">Unlock MetFix Pro</p>
+                <p className="account-sidebar-unlock__copy">
+                  Tools, tracking &amp; classes. First month free.
+                </p>
+                <Link href={basePath("/join")} className="account-btn account-btn--accent">
+                  Start my free month
+                </Link>
+              </div>
+            ) : null}
           </aside>
 
-          <div>
+          <div className="account-stage">
             <nav className="account-mobile-nav" aria-label="Account tabs">
               {navItems.map((item) => {
-                const current =
-                  item.href === "/account"
-                    ? location === "/account" || location === "/account/"
-                    : location === item.href ||
-                      location.startsWith(`${item.href}/`);
+                const current = isCurrent(item.href);
                 return (
                   <Link
                     key={item.href}
@@ -220,10 +258,19 @@ export default function DashboardLayout({
               })}
             </nav>
 
-            <main id="main" className="account-main">
-              <h1 className="account-page-title">{title}</h1>
-              {description ? (
-                <p className="account-page-lede">{description}</p>
+            <main
+              id="main"
+              className={
+                hideChromeTitle ? "account-main account-main--stack" : "account-main"
+              }
+            >
+              {!hideChromeTitle ? (
+                <>
+                  <h1 className="account-page-title">{title}</h1>
+                  {description ? (
+                    <p className="account-page-lede">{description}</p>
+                  ) : null}
+                </>
               ) : null}
               {error ? <p className="account-error">{error}</p> : null}
               {children}

@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleAccountRoutes,
-  EDITABLE_ATTR_IDS,
   PUBLIC_MEMBER_SUMMARY_KEYS,
   parsePositiveCourseId,
 } from "./account";
@@ -335,6 +334,79 @@ describe("worker/account routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { roles: string[] };
     expect(body.roles).toEqual(["administrator", "metfix_admin"]);
+  });
+
+  it("overview passes through onboarding_roles + avatar_url (opt-in attrs)", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/account")) {
+          return Response.json({
+            ...OVERVIEW_FIXTURE,
+            onboarding_roles: ["coach", "gym_owner", "hacker"],
+            avatar_url: "https://cdn.example/a.jpg",
+            has_physical_gym: true,
+            roles: ["administrator"],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      onboarding_roles: string[];
+      avatar_url: string | null;
+      has_physical_gym: boolean;
+      roles: string[];
+    };
+    expect(body.onboarding_roles).toEqual(["coach", "gym_owner"]);
+    expect(body.avatar_url).toBe("https://cdn.example/a.jpg");
+    expect(body.has_physical_gym).toBe(true);
+    expect(body.roles).toEqual(["administrator"]);
+  });
+
+  it("PUT /api/account/onboarding-roles proxies community-choices", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/me/community-choices") && method === "PUT") {
+          const parsed = JSON.parse(bodyText) as { onboarding_roles: string[] };
+          expect(parsed.onboarding_roles).toEqual(["individual", "clinician"]);
+          return Response.json({
+            onboarding_roles: ["individual", "clinician"],
+            has_physical_gym: false,
+            has_physical_clinic: true,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/onboarding-roles",
+      {
+        method: "PUT",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          onboarding_roles: ["individual", "clinician"],
+          has_physical_clinic: true,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      onboarding_roles: ["individual", "clinician"],
+      has_physical_gym: false,
+      has_physical_clinic: true,
+    });
+    expect(recorded.some((r) => r.url.includes("/me/community-choices"))).toBe(true);
   });
 
   it("DP-T-2 subscriptions strip stripe_id/cus_/sub_", async () => {
@@ -692,7 +764,19 @@ describe("worker/account routes", () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path }) => {
-        if (path.endsWith("/profiles/me")) return Response.json({ display_name: "Jane", bio: "x" });
+        if (path.endsWith("/profiles/me")) {
+          return Response.json({
+            first_name: "Jane",
+            last_name: "Doe",
+            display_name: "Jane Doe",
+            email: "jane@example.com",
+            attributes: {
+              personal: [{ attr_id: 1, label: "Address", value: "NYC" }],
+              affiliate: [],
+              clinic: [],
+            },
+          });
+        }
         return new Response(null, { status: 404 });
       },
     ]);
@@ -705,34 +789,100 @@ describe("worker/account routes", () => {
     expect(res.status).toBe(200);
     expect(recorded[0]!.url).toContain("/wp-json/bsi/v1/profiles/me");
     expect(recorded[0]!.url).not.toContain("member_id");
+    const body = (await res.json()) as {
+      first_name: string;
+      attributes: { personal: Array<{ attr_id: number }> };
+      bio?: unknown;
+    };
+    expect(body.first_name).toBe("Jane");
+    expect(body.attributes.personal[0]?.attr_id).toBe(1);
+    expect(body.bio).toBeUndefined();
   });
 
-  it("DP-T-13 PATCH allowlist rejects email/role", async () => {
+  it("DP-T-13 PATCH allowlist rejects email/role/bio; accepts names only", async () => {
     const sess = await withSession(h);
-    const { fetchImpl, recorded } = makeFetchMock([]);
-    const res = await callAccount(
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/me/profile") && method === "PATCH") {
+          expect(JSON.parse(bodyText)).toEqual({
+            first_name: "Ada",
+            last_name: "Lovelace",
+            display_name: "Ada Lovelace",
+          });
+          return Response.json({
+            first_name: "Ada",
+            last_name: "Lovelace",
+            display_name: "Ada Lovelace",
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    for (const bad of [
+      { display_name: "A", email: "x@y.z" },
+      { first_name: "Ada", bio: "nope" },
+      { first_name: "" },
+      { first_name: "a@b" },
+      { first_name: "A".repeat(61) },
+    ]) {
+      recorded.length = 0;
+      const res = await callAccount(
+        h,
+        "/api/account/profile",
+        {
+          method: "PATCH",
+          headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+          body: JSON.stringify(bad),
+        },
+        fetchImpl,
+      );
+      expect(res.status).toBe(400);
+      expect(recorded.length).toBe(0);
+    }
+    recorded.length = 0;
+    const ok = await callAccount(
       h,
       "/api/account/profile",
       {
         method: "PATCH",
         headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
-        body: JSON.stringify({ display_name: "A", email: "x@y.z" }),
+        body: JSON.stringify({
+          first_name: "Ada",
+          last_name: "Lovelace",
+          display_name: "Ada Lovelace",
+        }),
       },
       fetchImpl,
     );
-    expect(res.status).toBe(400);
-    expect(recorded.length).toBe(0);
+    expect(ok.status).toBe(200);
+    expect(recorded.length).toBe(1);
+    expect(recorded[0]!.url).toContain("/wp-json/bsi/v1/me/profile");
   });
 
-  it("DP-T-14 attributes block email keys/values + unknown attr_id", async () => {
+  it("DP-T-14 attributes require section/member_type; block email keys/values", async () => {
     const sess = await withSession(h);
-    expect(EDITABLE_ATTR_IDS.has(1)).toBe(true);
-    const { fetchImpl, recorded } = makeFetchMock([]);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.includes("/profiles/me/attributes") && method === "POST") {
+          const body = JSON.parse(bodyText) as {
+            member_type: string;
+            attr_id: number;
+            attr_value: string;
+          };
+          expect(body.member_type).toBe("general");
+          expect(body.attr_id).toBe(1);
+          expect(body.attr_value).toBe("London");
+          expect((body as { attributes?: unknown }).attributes).toBeUndefined();
+          return Response.json({ success: true });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
     for (const payload of [
-      { attributes: [{ attr_id: 99, value: "ok" }] },
-      { attributes: [{ attr_id: 1, key: "Email", value: "ok" }] },
-      { attributes: [{ attr_id: 1, name: "alt_email", value: "ok" }] },
-      { attributes: [{ attr_id: 1, value: "x@y.co" }] },
+      { attributes: [{ attr_id: 1, value: "ok" }] }, // missing section
+      { attributes: [{ attr_id: 1, section: "personal", key: "Email", value: "ok" }] },
+      { attributes: [{ attr_id: 1, section: "personal", name: "alt_email", value: "ok" }] },
+      { attributes: [{ attr_id: 1, section: "personal", value: "x@y.co" }] },
     ]) {
       recorded.length = 0;
       const res = await callAccount(
@@ -748,6 +898,21 @@ describe("worker/account routes", () => {
       expect(res.status).toBe(400);
       expect(recorded.length).toBe(0);
     }
+    recorded.length = 0;
+    const ok = await callAccount(
+      h,
+      "/api/account/profile/attributes",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          attributes: [{ attr_id: 1, section: "personal", value: "London" }],
+        }),
+      },
+      fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    expect(recorded.length).toBe(1);
   });
 
   it("DP-T-16 picture magic bytes", async () => {
@@ -845,6 +1010,347 @@ describe("worker/account routes", () => {
     );
     expect(bad.status).toBe(400);
     expect(recorded.length).toBe(0);
+  });
+
+  it("MF meals + macros + pr-overview proxy live BSI metfix/v1 routes", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, url, method, bodyText }) => {
+        if (path.includes("/calendar/meals/upcoming")) {
+          return Response.json({
+            meals: [
+              {
+                id: 9,
+                date: "2026-11-07",
+                slot_index: 1,
+                recipe_source_type: "daily_mod",
+                recipe_source_id: 3,
+                label: "Eggs",
+                recipe_preview: {
+                  title: "Eggs",
+                  photo_url: null,
+                  macros: { protein: 30, fat: 20, carbs: 2 },
+                },
+              },
+            ],
+            meta: { count: 1, total: 1, limit: 20, offset: 0, has_more: false },
+          });
+        }
+        if (path.includes("/calendar/surface")) {
+          expect(url).toContain("start_date=2026-11-01");
+          return Response.json({
+            meal_counts: { "2026-11-03": 2 },
+            workout_counts: { "2026-11-04": 1 },
+            brain_counts: {},
+            event_counts: {},
+            meta: { start_date: "2026-11-01", end_date: "2026-11-30", total_dates: 30 },
+          });
+        }
+        if (path.includes("/calendar/days/2026-11-03/meals") && method === "POST") {
+          const parsed = JSON.parse(bodyText || "{}") as {
+            recipe_source_id: number;
+            slot_index: number;
+          };
+          expect(parsed.recipe_source_id).toBe(2);
+          return Response.json({
+            id: 88,
+            date: "2026-11-03",
+            slot_index: parsed.slot_index ?? 1,
+            recipe_source_type: "daily_mod",
+            recipe_source_id: 2,
+            label: "Steak",
+          });
+        }
+        if (path.includes("/calendar/meals")) {
+          expect(url).toContain("start_date=2026-11-03");
+          expect(url).toContain("end_date=2026-11-09");
+          return Response.json({
+            meals: [
+              {
+                id: 1,
+                date: "2026-11-03",
+                slot_index: 1,
+                recipe_source_type: "daily_mod",
+                recipe_source_id: 2,
+                recipe_preview: {
+                  title: "Steak",
+                  photo_url: "https://cdn.example/steak.jpg",
+                  macros: { protein: 40, fat: 22, carbs: 0 },
+                },
+              },
+            ],
+          });
+        }
+        if (path.includes("/macros/daily/2026-11-06")) {
+          return Response.json({
+            date: "2026-11-06",
+            totals: { protein: 120, fat: 80, carbs: 30, calories: 1320 },
+            goals: { protein: 165, fat: 115, carbs: 24 },
+          });
+        }
+        if (path.includes("/shopping-lists/9/email") && method === "POST") {
+          return Response.json({ success: true, emailed_to: "a@example.com" });
+        }
+        if (path.includes("/shopping-lists/9/generate") && method === "POST") {
+          return Response.json({
+            success: true,
+            list: {
+              id: 9,
+              status: "generated",
+              items_by_category: {
+                Produce: [{ id: 1, item_name: "Spinach", quantity: "1 bag", sort_order: 0 }],
+              },
+            },
+          });
+        }
+        if (path.endsWith("/shopping-lists") && method === "POST") {
+          return Response.json(
+            { id: 9, title: "Week", status: "created", dates: ["2026-11-03"], meals: [], items: [] },
+            { status: 201 },
+          );
+        }
+        if (path.includes("/spark/entries") && method === "POST") {
+          const parsed = JSON.parse(bodyText || "{}") as {
+            measurement_date: string;
+            force_log: boolean;
+          };
+          expect(parsed.measurement_date).toBe("2026-11-06 12:00:00");
+          expect(parsed.force_log).toBe(true);
+          return Response.json({
+            entry: {
+              id: "e1",
+              measurement_date: "2026-11-06 12:00:00",
+              value: 340,
+              bsi_measurement_id: 7,
+            },
+          });
+        }
+        if (path.includes("/spark/entries")) {
+          expect(url).toContain("measurement_id=7");
+          return Response.json({
+            entries: [
+              {
+                id: "e0",
+                measurement_date: "2026-10-01 12:00:00",
+                value: 315,
+                bsi_measurement_id: 7,
+                unit_abbreviation: "lb",
+              },
+            ],
+            meta: { count: 1, limit: 40, offset: 0 },
+          });
+        }
+        if (path.includes("/spark/pr-overview")) {
+          return Response.json({
+            workout_benchmarks: [
+              {
+                name: "Fran",
+                type: "workout",
+                custom_workout_id: 44,
+                best_score: 194,
+                last_score: 210,
+                total_entries: 3,
+                is_benchmark: true,
+              },
+            ],
+            movement_benchmarks: [
+              {
+                name: "Back Squat",
+                type: "movement",
+                bsi_measurement_id: 7,
+                best_score: 335,
+                last_score: 325,
+                total_entries: 6,
+                unit_abbreviation: "lb",
+                score_unit_id: 1,
+              },
+            ],
+          });
+        }
+        if (path.includes("/messages/conversations")) {
+          return Response.json({ conversations: [{ id: 1, name: "Coach" }] });
+        }
+        if (path.includes("/in-app-notifications")) {
+          return Response.json({
+            notifications: [{ id: 2, title: "Welcome", message: "Hi", created_at: "2026-11-01" }],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const meals = await callAccount(
+      h,
+      "/api/account/meals?start_date=2026-11-03&end_date=2026-11-09",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(meals.status).toBe(200);
+    const mealsJson = (await meals.json()) as {
+      meals: Array<{ id: number; recipe_preview: { title: string } | null }>;
+      grouped_by_date: Record<string, unknown[]>;
+    };
+    expect(mealsJson.meals[0]?.recipe_preview?.title).toBe("Steak");
+    expect(mealsJson.grouped_by_date["2026-11-03"]?.length).toBe(1);
+
+    const badRange = await callAccount(
+      h,
+      "/api/account/meals?start_date=nope&end_date=2026-11-09",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(badRange.status).toBe(400);
+
+    const upcoming = await callAccount(
+      h,
+      "/api/account/meals/upcoming?limit=20",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(upcoming.status).toBe(200);
+
+    const macros = await callAccount(
+      h,
+      "/api/account/macros/daily/2026-11-06",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(macros.status).toBe(200);
+    const macrosJson = (await macros.json()) as { protein: number; goal_protein: number };
+    expect(macrosJson.protein).toBe(120);
+    expect(macrosJson.goal_protein).toBe(165);
+
+    const pr = await callAccount(
+      h,
+      "/api/account/pr-overview",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(pr.status).toBe(200);
+    const prJson = (await pr.json()) as {
+      workouts: Array<{ name: string; best_score: number }>;
+      movements: Array<{ name: string; best_score: number }>;
+    };
+    expect(prJson.workouts[0]?.name).toBe("Fran");
+    expect(prJson.movements[0]?.best_score).toBe(335);
+
+    const surface = await callAccount(
+      h,
+      "/api/account/calendar/surface?start_date=2026-11-01&end_date=2026-11-30",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(surface.status).toBe(200);
+    const surfaceJson = (await surface.json()) as { meal_counts: Record<string, number> };
+    expect(surfaceJson.meal_counts["2026-11-03"]).toBe(2);
+
+    const writeHeaders = {
+      ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+      "Content-Type": "application/json",
+    };
+
+    const planned = await callAccount(
+      h,
+      "/api/account/meals/days/2026-11-03",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          recipe_source_type: "daily_mod",
+          recipe_source_id: 2,
+          slot_index: 1,
+          label: "Steak",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(planned.status).toBe(200);
+
+    const createdList = await callAccount(
+      h,
+      "/api/account/shopping-lists",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          title: "Week",
+          dates: ["2026-11-03"],
+          meals: [{ planned_meal_id: 1, servings: 1 }],
+        }),
+      },
+      fetchImpl,
+    );
+    expect(createdList.status).toBe(201);
+
+    const generated = await callAccount(
+      h,
+      "/api/account/shopping-lists/9/generate",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: "{}",
+      },
+      fetchImpl,
+    );
+    expect(generated.status).toBe(200);
+
+    const emailed = await callAccount(
+      h,
+      "/api/account/shopping-lists/9/email",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: "{}",
+      },
+      fetchImpl,
+    );
+    expect(emailed.status).toBe(200);
+    const emailedJson = (await emailed.json()) as { emailed_to: string };
+    expect(emailedJson.emailed_to).toBe("a@example.com");
+
+    const sparkGet = await callAccount(
+      h,
+      "/api/account/spark/entries?measurement_id=7&limit=40",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(sparkGet.status).toBe(200);
+
+    const sparkPost = await callAccount(
+      h,
+      "/api/account/spark/entries",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({
+          measurement_id: 7,
+          value: 340,
+          measurement_date: "2026-11-06",
+          force_log: true,
+        }),
+      },
+      fetchImpl,
+    );
+    expect(sparkPost.status).toBe(200);
+
+    const inbox = await callAccount(
+      h,
+      "/api/account/inbox",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(inbox.status).toBe(200);
+    const inboxJson = (await inbox.json()) as {
+      conversations: unknown[];
+      notifications: unknown[];
+    };
+    expect(inboxJson.conversations.length).toBe(1);
+    expect(inboxJson.notifications.length).toBe(1);
+
+    for (const rec of recorded) {
+      assertHasBearer(rec);
+      expect(rec.url).toMatch(/\/wp-json\/(metfix|bsi)\/v1\//);
+    }
   });
 
   it("DP-T-24/25/26/28/29/30 referrals gifts notifications privacy password email", async () => {
@@ -1045,7 +1551,11 @@ describe("worker/account routes", () => {
         path: "/api/account/courses/1/claim",
         body: JSON.stringify({ path: "redeem_ltv" }),
       },
-      { method: "PATCH", path: "/api/account/profile", body: JSON.stringify({ bio: "x" }) },
+      {
+        method: "PATCH",
+        path: "/api/account/profile",
+        body: JSON.stringify({ first_name: "Pat", last_name: "Lee" }),
+      },
       { method: "PUT", path: "/api/account/favorites/articles/a1", body: "{}" },
       { method: "DELETE", path: "/api/account/favorites/articles/a1", body: "{}" },
     ];

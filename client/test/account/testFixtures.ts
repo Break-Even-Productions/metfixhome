@@ -42,6 +42,10 @@ export const OVERVIEW_FIXTURE: AccountOverview = {
   foundations_coach: COACH_ACTIVE,
   tabs: [],
   links: {},
+  avatar_url: null,
+  onboarding_roles: ["individual", "clinician"],
+  has_physical_gym: false,
+  has_physical_clinic: true,
 };
 
 export const SUBS_ACTIVE: AccountSubscriptions = {
@@ -55,6 +59,7 @@ export const SUBS_ACTIVE: AccountSubscriptions = {
       current_period_end: "2026-11-15T00:00:00.000Z",
       paid_through: "2026-11-15T00:00:00.000Z",
       cancel_at_period_end: false,
+      can_open_portal: true,
       card: { brand: "visa", last4: "4242" },
     },
   ],

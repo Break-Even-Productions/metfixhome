@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearCsrfCache } from "@/lib/authRequest";
 import * as session from "@/lib/session";
 import { JoinModal } from "./JoinModal";
@@ -26,6 +26,27 @@ function mockAuthFetch() {
     return new Response("{}", { status: 404 });
   });
 }
+
+function stubRecaptcha(token = "recaptcha-ok") {
+  (
+    window as unknown as { __MFX_RECAPTCHA_SITE_KEY__: string }
+  ).__MFX_RECAPTCHA_SITE_KEY__ = "test-site-key";
+  (
+    window as unknown as {
+      grecaptcha: {
+        ready: (cb: () => void) => void;
+        execute: (siteKey: string, opts: { action: string }) => Promise<string>;
+      };
+    }
+  ).grecaptcha = {
+    ready: (cb) => cb(),
+    execute: async () => token,
+  };
+}
+
+beforeEach(() => {
+  stubRecaptcha();
+});
 
 afterEach(() => {
   cleanup();

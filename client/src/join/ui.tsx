@@ -178,14 +178,17 @@ export function GoldButton({
 export function GhostButton({
   children,
   onClick,
+  "aria-label": ariaLabel,
 }: {
   children: ReactNode;
   onClick?: () => void;
+  "aria-label"?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={ariaLabel}
       className="flex w-full items-center justify-center gap-2.5 rounded-full border border-[var(--join-line)] bg-[var(--join-paper)] py-3.5 text-sm font-medium text-[var(--join-ink)] transition-colors duration-300 ease-out hover:bg-[var(--join-cream-2)]"
     >
       {children}

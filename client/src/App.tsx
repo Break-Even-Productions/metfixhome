@@ -26,6 +26,14 @@ import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
 import AccountPrivacy from "./pages/account/AccountPrivacy";
 import AccountOrganization from "./pages/account/AccountOrganization";
+import AccountMealPlans from "./pages/account/AccountMealPlans";
+import AccountPlanBuilder from "./pages/account/AccountPlanBuilder";
+import AccountShoppingCart from "./pages/account/AccountShoppingCart";
+import AccountMyMeals from "./pages/account/AccountMyMeals";
+import AccountRecipeBuilder from "./pages/account/AccountRecipeBuilder";
+import AccountBenchmarks from "./pages/account/AccountBenchmarks";
+import AccountSpark from "./pages/account/AccountSpark";
+import AccountInbox from "./pages/account/AccountInbox";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 import { captureBsiRef } from "./lib/referralAttribution";
@@ -148,6 +156,18 @@ function AppRoutes() {
       <Route path={"/account/referrals"} component={AccountReferrals} />
       <Route path={"/account/notifications"} component={AccountNotifications} />
       <Route path={"/account/privacy"} component={AccountPrivacy} />
+      <Route path={"/account/meals"} component={AccountMyMeals} />
+      <Route path={"/account/meal-plans/new"} component={AccountPlanBuilder} />
+      <Route path={"/account/meal-plans/:id/edit"} component={AccountPlanBuilder} />
+      <Route path={"/account/meal-plans"} component={AccountMealPlans} />
+      <Route path={"/account/shopping-cart"} component={AccountShoppingCart} />
+      <Route path={"/account/my-meals/recipes/new"} component={AccountRecipeBuilder} />
+      <Route path={"/account/my-meals/recipes/:id/edit"} component={AccountRecipeBuilder} />
+      <Route path={"/account/my-meals"} component={AccountMyMeals} />
+      <Route path={"/account/benchmarks"} component={AccountBenchmarks} />
+      <Route path={"/account/prs"} component={AccountBenchmarks} />
+      <Route path={"/account/spark"} component={AccountSpark} />
+      <Route path={"/account/inbox"} component={AccountInbox} />
       <Route path={"/account"} component={AccountOverview} />
       <Route path={"/members/:memberId"} component={MemberProfilePage} />
       <Route path={"/404"} component={NotFound} />
