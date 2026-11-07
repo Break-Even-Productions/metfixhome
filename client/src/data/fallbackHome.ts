@@ -317,7 +317,7 @@ export const FALLBACK_HOME_COURSES: HomeCourseCard[] = [
     notify: false,
     bsiPostId: 22006,
     price: "$150",
-    image: "/Stills/athlete-bodyweight-action-gym.jpg",
+    image: "https://brokenscience.org/wp-content/uploads/2025/11/Math-Thumbnail-1.png",
   },
   {
     id: "medical-nutrition",

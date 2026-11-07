@@ -4,9 +4,10 @@
  * same-origin Worker (/api/auth/*). No third-party telemetry.
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useSearch } from "wouter";
 import { assetUrl, basePath } from "@/const";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { sanitizeReturnPath } from "@shared/account/returnPath";
 import { buildLoginBody, buildSignupBody } from "@shared/join";
 import { fetchCsrf, getRecaptchaToken } from "@/lib/authRequest";
 import { refreshMeAfterAuthChange } from "@/lib/session";
@@ -15,6 +16,8 @@ import { ensureRecaptchaScript } from "@/pages/the-daily-fix/recaptcha";
 import "./login.css";
 
 type Mode = "signin" | "signup" | "forgot";
+
+const DEFAULT_NEXT_PATH = "/the-daily-fix";
 
 const TICKER_ITEMS = [
   "Global affiliate network — gyms on every continent",
@@ -47,10 +50,14 @@ function GoogleLogo({ className }: { className?: string }) {
   );
 }
 
-function safeNextPath(raw: string | null): string {
-  if (!raw) return "/the-daily-fix";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/the-daily-fix";
-  return raw;
+/** Resolve `?next=` with the shared allowlist; default to Daily Fix. */
+function resolveNextPath(raw: string | null): string {
+  return sanitizeReturnPath(raw) ?? DEFAULT_NEXT_PATH;
+}
+
+function googleStartUrl(nextPath: string): string {
+  const params = new URLSearchParams({ return: nextPath });
+  return `/api/auth/google/start?${params.toString()}`;
 }
 
 function playShake(element: HTMLElement | null) {
@@ -67,11 +74,10 @@ export default function Login() {
       "Sign in to access your MetFix courses, affiliate dashboard, and the Daily Fix.",
   });
 
-  const [, setLocation] = useLocation();
   const search = useSearch();
   const nextPath = useMemo(() => {
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-    return safeNextPath(params.get("next"));
+    return resolveNextPath(params.get("next"));
   }, [search]);
 
   const [mode, setMode] = useState<Mode>("signin");
@@ -177,7 +183,9 @@ export default function Login() {
         return;
       }
       await refreshMeAfterAuthChange();
-      setLocation(basePath(nextPath));
+      // Hard navigation so destination remounts with the new session (SPA
+      // setLocation can leave gated pages on a stale logged-out view).
+      window.location.assign(basePath(nextPath));
     } catch {
       setError("Sign-in is unavailable right now.");
     } finally {
@@ -322,7 +330,7 @@ export default function Login() {
                 type="button"
                 className="login-btn login-btn-google"
                 onClick={() => {
-                  window.location.assign("/api/auth/google/start");
+                  window.location.assign(googleStartUrl(nextPath));
                 }}
               >
                 <GoogleLogo className="login-google-logo" />

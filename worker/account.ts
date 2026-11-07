@@ -81,24 +81,79 @@ import {
   accountPlanPublishPath,
   accountPlanSchedulePath,
   accountPlansLibraryPath,
-  accountPlansPath,
   accountPtCoachClientsPath,
   accountShoppingListEmailPath,
   accountShoppingListGeneratePath,
   accountShoppingListGeneratedDatesPath,
   accountShoppingListPath,
   accountShoppingListsPath,
+  accountCalendarPlannedWorkoutsPath,
+  accountCalendarWorkoutsPath,
+  accountCustomWorkoutPath,
+  accountCustomWorkoutsPath,
+  accountDailyFixWorkoutPath,
+  accountMovementsPath,
+  accountPlansCollectionPath,
+  accountPlannedWorkoutPath,
+  accountProgrammingSeriesDaysPath,
+  accountProgrammingSeriesPath,
+  accountProgrammingSubscribePath,
+  accountProgrammingSubscriptionPath,
+  accountProgrammingSubscriptionsPath,
+  accountPtClientCoachesPath,
+  accountPtCoachProfilePath,
+  accountPtDirectoryPath,
+  accountPtRelationshipActionPath,
+  accountPtRelationshipNotesPath,
+  accountPtRelationshipsPath,
   accountSparkEntriesPath,
+  accountSparkMeasurementsPath,
+  accountSparkUnitsPath,
+  accountSparkUserInfoPath,
   accountSpendPath,
   accountSubscriptionsPath,
+  accountWorkoutLogPath,
+  accountWorkoutsCollectionPath,
   certificateClaimOptionsPath,
   certificatePrepayCheckoutPath,
 } from "../shared/account/bsi-paths";
 import {
-  shapeBellyCoachingCoach,
-  validateCustomRecipeBody,
+  directoryQuery,
+  parseRouteId,
+  parseYmdRange,
+  shapeCoachNote,
+  shapeCoachNotes,
+  shapeCoachProfile,
+  shapeCoachingClient,
+  shapeCoachingCoach,
+  customWorkoutListQuery,
+  dailyFixQuery,
+  movementQuery,
+  planScheduleQuery,
+  shapeCustomWorkout,
+  shapeCustomWorkoutList,
+  shapeDailyFixWorkout,
+  shapeMovementList,
+  shapePlanDetail,
+  shapePlanList,
+  shapeSparkUserInfo,
+  validateCustomWorkoutBody,
+  validatePlanActiveBody,
   validatePlanWriteBody,
-} from "./belly-coaching";
+  shapeDirectory,
+  shapePlanLibrary,
+  shapePlannedWorkouts,
+  shapeProgrammingDays,
+  shapeProgrammingSeriesList,
+  shapeProgrammingSubscriptions,
+  shapeWorkoutLog,
+  shapeWorkoutLogs,
+  validateCoachNoteBody,
+  validateCoachProfileBody,
+  validateLogWorkoutBody,
+  validatePtInviteBody,
+} from "./account-body";
+import { validateCustomRecipeBody } from "./belly-coaching";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import { resolveActingSession, runUserBsiCall, type ActingContext } from "./auth/acting";
 import { accountRateLimitKey as accountRateLimitKeyImpl } from "./auth/account-rate-limit";
@@ -1216,21 +1271,39 @@ function shapeSparkEntries(raw: unknown): Record<string, unknown> {
     const measurement_date =
       typeof r.measurement_date === "string" ? r.measurement_date : null;
     if (!measurement_date || !Number.isFinite(value)) continue;
+    const measurementType =
+      typeof r.measurement_type === "string" ? r.measurement_type.toLowerCase() : null;
+    const subType = typeof r.sub_type === "string" ? r.sub_type.toLowerCase() : null;
+    const mid =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id);
+    const prDirectionRaw =
+      typeof r.pr_direction === "string"
+        ? r.pr_direction.toLowerCase()
+        : typeof r.scoring_direction === "string"
+          ? r.scoring_direction.toLowerCase()
+          : null;
     entries.push({
       id: r.id ?? null,
       measurement_date,
       value,
-      bsi_measurement_id:
-        typeof r.bsi_measurement_id === "number"
-          ? r.bsi_measurement_id
-          : typeof r.measurement_id === "number"
-            ? r.measurement_id
-            : undefined,
-      unit_id: typeof r.unit_id === "number" ? r.unit_id : undefined,
+      bsi_measurement_id: mid ?? undefined,
+      unit_id: parsePositiveCourseId(r.unit_id) ?? undefined,
       unit_abbreviation:
         typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
       measurement_name:
         typeof r.measurement_name === "string" ? r.measurement_name : undefined,
+      measurement_type:
+        measurementType === "health" || measurementType === "movement"
+          ? measurementType
+          : null,
+      sub_type: subType,
+      pr_direction:
+        prDirectionRaw === "higher_better" ||
+        prDirectionRaw === "lower_better" ||
+        prDirectionRaw === "closer_to_target"
+          ? prDirectionRaw
+          : null,
       type: typeof r.type === "string" ? r.type : undefined,
       status: typeof r.status === "string" ? r.status : undefined,
     });
@@ -1246,17 +1319,96 @@ function shapeSparkEntries(raw: unknown): Record<string, unknown> {
   };
 }
 
+function shapeSparkMeasurements(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.measurements)
+    ? obj.measurements
+    : Array.isArray(raw)
+      ? (raw as unknown[])
+      : [];
+  const measurements: Record<string, unknown>[] = [];
+  for (const row of list) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const id =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id) ??
+      parsePositiveCourseId(r.id);
+    if (id == null) continue;
+    const measurementType =
+      typeof r.measurement_type === "string" ? r.measurement_type.toLowerCase() : null;
+    const prRaw =
+      typeof r.pr_direction === "string" ? r.pr_direction.toLowerCase() : null;
+    const defaultUnitId =
+      parsePositiveCourseId(r.default_unit_id) ?? parsePositiveCourseId(r.unit_id);
+    measurements.push({
+      bsi_measurement_id: id,
+      name: typeof r.name === "string" ? r.name : `Metric ${id}`,
+      measurement_type:
+        measurementType === "health" || measurementType === "movement"
+          ? measurementType
+          : null,
+      sub_type: typeof r.sub_type === "string" ? r.sub_type.toLowerCase() : null,
+      pr_direction:
+        prRaw === "higher_better" ||
+        prRaw === "lower_better" ||
+        prRaw === "closer_to_target"
+          ? prRaw
+          : "higher_better",
+      default_unit_id: defaultUnitId,
+      unit_abbreviation:
+        typeof r.default_unit_abbreviation === "string"
+          ? r.default_unit_abbreviation
+          : typeof r.unit_abbreviation === "string"
+            ? r.unit_abbreviation
+            : null,
+    });
+  }
+  return { measurements, count: measurements.length };
+}
+
+function shapeSparkUnits(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.units) ? obj.units : Array.isArray(raw) ? (raw as unknown[]) : [];
+  const units: Record<string, unknown>[] = [];
+  for (const row of list) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const unit_id = parsePositiveCourseId(r.unit_id) ?? parsePositiveCourseId(r.id);
+    if (unit_id == null) continue;
+    const name = typeof r.name === "string" ? r.name : null;
+    const abbreviation = typeof r.abbreviation === "string" ? r.abbreviation : null;
+    if (!name && !abbreviation) continue;
+    units.push({
+      unit_id,
+      name: name ?? abbreviation,
+      abbreviation: abbreviation ?? name,
+    });
+  }
+  return { units, count: units.length };
+}
+
 /** BSI spark create requires Y-m-d H:i:s; dashboard date inputs send Y-m-d. */
 function normalizeSparkMeasurementDate(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   if (YMD_RE.test(s)) return `${s} 12:00:00`;
+  // datetime-local: Y-m-dTH:i (no seconds)
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(s)) {
+    return `${s.replace("T", " ")}:00`;
+  }
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
     return s.replace("T", " ");
   }
   return null;
 }
 
+/**
+ * BSI GET /spark/pr-overview returns a merged `items` list where the stable id
+ * lives on `id` (`type: "measurement"` → measurement id, `type: "workout"` →
+ * custom workout id). Older/split shapes may use `bsi_measurement_id` /
+ * `custom_workout_id` instead — accept all of them (number or digit string).
+ */
 function shapePrOverview(raw: unknown): Record<string, unknown> {
   const obj = asRecord(raw) ?? {};
   const pickRows = (...keys: string[]): unknown[] => {
@@ -1266,7 +1418,10 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
     }
     return [];
   };
-  const shapeRow = (row: unknown): Record<string, unknown> | null => {
+  const shapeRow = (
+    row: unknown,
+    kindHint?: "workout" | "movement",
+  ): Record<string, unknown> | null => {
     const r = asRecord(row);
     if (!r) return null;
     const name =
@@ -1286,30 +1441,62 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
         : typeof r.last_score === "string"
           ? Number(r.last_score)
           : null;
+    const type =
+      typeof r.type === "string"
+        ? r.type
+        : typeof r.row_kind === "string"
+          ? r.row_kind
+          : null;
+    const typeLower = (type ?? "").toLowerCase();
+    const asMovement =
+      kindHint === "movement" ||
+      typeLower.includes("measurement") ||
+      typeLower.includes("movement");
+    const asWorkout =
+      kindHint === "workout" || typeLower.includes("workout");
+    const explicitMid =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id);
+    const explicitWid =
+      parsePositiveCourseId(r.custom_workout_id) ??
+      parsePositiveCourseId(r.custom_workout_template_id);
+    const rowId = parsePositiveCourseId(r.id);
+    let measurement_id = explicitMid;
+    let custom_workout_id = explicitWid;
+    if (asMovement && measurement_id == null) measurement_id = rowId;
+    else if (asWorkout && custom_workout_id == null) custom_workout_id = rowId;
+    const totalRaw =
+      typeof r.total_entries === "number"
+        ? r.total_entries
+        : typeof r.total_entries === "string"
+          ? Number(r.total_entries)
+          : 0;
+    const scoreMode =
+      typeof r.score_mode === "string" ? r.score_mode.toLowerCase() : null;
+    const prDirection =
+      typeof r.pr_direction === "string"
+        ? r.pr_direction.toLowerCase()
+        : typeof r.scoring_direction === "string"
+          ? r.scoring_direction.toLowerCase()
+          : null;
     return {
       name,
-      type:
-        typeof r.type === "string"
-          ? r.type
-          : typeof r.row_kind === "string"
-            ? r.row_kind
-            : null,
-      custom_workout_id:
-        typeof r.custom_workout_id === "number" ? r.custom_workout_id : null,
-      measurement_id:
-        typeof r.bsi_measurement_id === "number"
-          ? r.bsi_measurement_id
-          : typeof r.measurement_id === "number"
-            ? r.measurement_id
-            : null,
+      type,
+      custom_workout_id,
+      measurement_id,
       best_score: best != null && Number.isFinite(best) ? best : null,
       last_score: last != null && Number.isFinite(last) ? last : null,
-      total_entries:
-        typeof r.total_entries === "number" ? r.total_entries : 0,
+      total_entries: Number.isFinite(totalRaw) ? totalRaw : 0,
       unit_abbreviation:
         typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
       score_unit_id:
-        typeof r.score_unit_id === "number" ? r.score_unit_id : null,
+        parsePositiveCourseId(r.score_unit_id) ??
+        parsePositiveCourseId(r.unit_id),
+      score_mode: scoreMode,
+      pr_direction:
+        prDirection === "higher_better" || prDirection === "lower_better"
+          ? prDirection
+          : null,
       benchmark_classification:
         typeof r.benchmark_classification === "string"
           ? r.benchmark_classification
@@ -1332,11 +1519,11 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
   let workouts: Record<string, unknown>[] = [];
   let movements: Record<string, unknown>[] = [];
   for (const row of workoutsIn) {
-    const s = shapeRow(row);
+    const s = shapeRow(row, "workout");
     if (s) workouts.push(s);
   }
   for (const row of movementsIn) {
-    const s = shapeRow(row);
+    const s = shapeRow(row, "movement");
     if (s) movements.push(s);
   }
   if (workouts.length === 0 && movements.length === 0) {
@@ -1547,6 +1734,15 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       limiter: "write",
     };
   }
+  if (method === "GET" && rest === "spark/user-info") {
+    return { id: "MF50", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "spark/measurements") {
+    return { id: "MF52", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "spark/units") {
+    return { id: "MF63", method: "GET", params: {}, limiter: "read" };
+  }
   if (method === "GET" && rest === "spark/entries") {
     return { id: "MF12", method: "GET", params: {}, limiter: "read" };
   }
@@ -1556,70 +1752,213 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "inbox") {
     return { id: "MF14", method: "GET", params: {}, limiter: "read" };
   }
-  if (method === "GET" && rest === "plans/library") {
+  if (method === "GET" && rest === "workouts/planned") {
+    return { id: "MF16", method: "GET", params: {}, limiter: "read" };
+  }
+  const plannedWorkout = rest.match(/^workouts\/planned\/([1-9][0-9]*)$/);
+  if (method === "DELETE" && plannedWorkout) {
+    return {
+      id: "MF19",
+      method: "DELETE",
+      params: { id: plannedWorkout[1]! },
+      limiter: "write",
+    };
+  }
+  const customWorkout = rest.match(/^custom-workouts\/([1-9][0-9]*)$/);
+  if (customWorkout && (method === "GET" || method === "PUT" || method === "DELETE")) {
+    return {
+      id: method === "GET" ? "MF21" : method === "PUT" ? "MF38" : "MF39",
+      method,
+      params: { id: customWorkout[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if ((method === "GET" || method === "POST") && rest === "custom-workouts") {
+    return {
+      id: method === "GET" ? "MF37" : "MF37w",
+      method,
+      params: {},
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if (method === "GET" && rest === "movements") {
+    return { id: "MF40", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "daily-fix") {
+    return { id: "MF49", method: "GET", params: {}, limiter: "read" };
+  }
+  const planPublish = rest.match(/^plans\/([1-9][0-9]*)\/publish$/);
+  if (method === "POST" && planPublish) {
+    return {
+      id: "MF46",
+      method: "POST",
+      params: { id: planPublish[1]! },
+      limiter: "write",
+    };
+  }
+  const planSchedule = rest.match(/^plans\/([1-9][0-9]*)\/schedule$/);
+  if (method === "POST" && planSchedule) {
+    return {
+      id: "MF47",
+      method: "POST",
+      params: { id: planSchedule[1]! },
+      limiter: "write",
+    };
+  }
+  const planActive = rest.match(/^plans\/([1-9][0-9]*)\/active$/);
+  if (method === "PATCH" && planActive) {
+    return {
+      id: "MF48",
+      method: "PATCH",
+      params: { id: planActive[1]! },
+      limiter: "write",
+    };
+  }
+  const planOne = rest.match(/^plans\/([1-9][0-9]*)$/);
+  if (planOne && (method === "GET" || method === "PUT" || method === "DELETE")) {
+    return {
+      id: method === "GET" ? "MF43" : method === "PUT" ? "MF44" : "MF45",
+      method,
+      params: { id: planOne[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if ((method === "GET" || method === "POST") && rest === "plans") {
+    return {
+      id: method === "GET" ? "MF41" : "MF42",
+      method,
+      params: {},
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  const workoutOne = rest.match(/^workouts\/([1-9][0-9]*)$/);
+  if (workoutOne && (method === "GET" || method === "DELETE")) {
+    return {
+      id: method === "GET" ? "MF17" : "MF18",
+      method,
+      params: { id: workoutOne[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if (method === "POST" && rest === "workouts") {
+    return { id: "MF20", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "workouts") {
     return { id: "MF15", method: "GET", params: {}, limiter: "read" };
   }
-  const planOne = rest.match(/^plans\/(\d+)$/);
-  if (method === "GET" && planOne) {
-    return { id: "MF16", method: "GET", params: { id: planOne[1]! }, limiter: "read" };
+  if (method === "GET" && rest === "coaching/client") {
+    return { id: "MF22", method: "GET", params: {}, limiter: "read" };
   }
-  const planActive = rest.match(/^plans\/(\d+)\/active$/);
-  if (method === "PATCH" && planActive) {
-    return { id: "MF17", method: "PATCH", params: { id: planActive[1]! }, limiter: "write" };
-  }
-  const planPublish = rest.match(/^plans\/(\d+)\/publish$/);
-  if (method === "POST" && planPublish) {
-    return { id: "MF18", method: "POST", params: { id: planPublish[1]! }, limiter: "write" };
-  }
-  const planSchedule = rest.match(/^plans\/(\d+)\/schedule$/);
-  if (method === "POST" && planSchedule) {
-    return { id: "MF19", method: "POST", params: { id: planSchedule[1]! }, limiter: "write" };
-  }
-  if (method === "GET" && rest === "custom-recipes") {
-    return { id: "MF20", method: "GET", params: {}, limiter: "read" };
-  }
-  if (method === "GET" && rest === "macros/range") {
-    return { id: "MF21", method: "GET", params: {}, limiter: "read" };
-  }
-  const mealDelete = rest.match(/^meals\/(\d+)$/);
-  if (method === "DELETE" && mealDelete) {
-    return { id: "MF22", method: "DELETE", params: { id: mealDelete[1]! }, limiter: "write" };
-  }
-  if (method === "GET" && rest === "shopping-lists/generated-dates") {
+  if (method === "GET" && rest === "coaching/coach") {
     return { id: "MF23", method: "GET", params: {}, limiter: "read" };
   }
-  /* Belly writes + coaching (MF37+ — Body #41 owns MF24–MF36 on its branch). */
-  if (method === "GET" && rest === "coaching/coach") {
-    return { id: "MF37", method: "GET", params: {}, limiter: "read" };
+  if (method === "GET" && rest === "coaching/directory") {
+    return { id: "MF24", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "coaching/profile") {
+    return { id: "MF35", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "PUT" && rest === "coaching/profile") {
+    return { id: "MF36", method: "PUT", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "coaching/plans") {
+    return { id: "MF34", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "coaching/programming/subscriptions") {
+    return { id: "MF29", method: "GET", params: {}, limiter: "read" };
+  }
+  const programmingSub = rest.match(/^coaching\/programming\/subscriptions\/([1-9][0-9]*)$/);
+  if (method === "DELETE" && programmingSub) {
+    return {
+      id: "MF33",
+      method: "DELETE",
+      params: { id: programmingSub[1]! },
+      limiter: "write",
+    };
+  }
+  const programmingDays = rest.match(
+    /^coaching\/programming\/series\/([1-9][0-9]*)\/days$/,
+  );
+  if (method === "GET" && programmingDays) {
+    return {
+      id: "MF31",
+      method: "GET",
+      params: { id: programmingDays[1]! },
+      limiter: "read",
+    };
+  }
+  const programmingSubscribe = rest.match(
+    /^coaching\/programming\/series\/([1-9][0-9]*)\/subscribe$/,
+  );
+  if (method === "POST" && programmingSubscribe) {
+    return {
+      id: "MF32",
+      method: "POST",
+      params: { id: programmingSubscribe[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "GET" && rest === "coaching/programming/series") {
+    return { id: "MF30", method: "GET", params: {}, limiter: "read" };
+  }
+  const coachNotes = rest.match(/^coaching\/relationships\/([1-9][0-9]*)\/notes$/);
+  if (coachNotes && (method === "GET" || method === "POST")) {
+    return {
+      id: method === "GET" ? "MF27" : "MF28",
+      method,
+      params: { id: coachNotes[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  const coachAction = rest.match(
+    /^coaching\/relationships\/([1-9][0-9]*)\/(accept|decline|end)$/,
+  );
+  if (method === "POST" && coachAction) {
+    return {
+      id: "MF26",
+      method: "POST",
+      params: { id: coachAction[1]!, action: coachAction[2]! },
+      limiter: "write",
+    };
+  }
+  if (method === "POST" && rest === "coaching/relationships") {
+    return { id: "MF25", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "plans/library") {
+    return { id: "MF51", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "custom-recipes") {
+    return { id: "MF53", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "POST" && rest === "custom-recipes") {
-    return { id: "MF38", method: "POST", params: {}, limiter: "write" };
+    return { id: "MF54", method: "POST", params: {}, limiter: "write" };
   }
   const recipeOne = rest.match(/^custom-recipes\/(\d+)$/);
   if (recipeOne && method === "GET") {
-    return { id: "MF39", method: "GET", params: { id: recipeOne[1]! }, limiter: "read" };
+    return { id: "MF55", method: "GET", params: { id: recipeOne[1]! }, limiter: "read" };
   }
   if (recipeOne && method === "PUT") {
-    return { id: "MF40", method: "PUT", params: { id: recipeOne[1]! }, limiter: "write" };
+    return { id: "MF56", method: "PUT", params: { id: recipeOne[1]! }, limiter: "write" };
   }
   if (recipeOne && method === "DELETE") {
-    return { id: "MF41", method: "DELETE", params: { id: recipeOne[1]! }, limiter: "write" };
+    return { id: "MF57", method: "DELETE", params: { id: recipeOne[1]! }, limiter: "write" };
   }
-  if (method === "POST" && rest === "plans") {
-    return { id: "MF42", method: "POST", params: {}, limiter: "write" };
+  if (method === "GET" && rest === "macros/range") {
+    return { id: "MF58", method: "GET", params: {}, limiter: "read" };
   }
-  if (planOne && method === "PUT") {
-    return { id: "MF43", method: "PUT", params: { id: planOne[1]! }, limiter: "write" };
+  const mealDelete = rest.match(/^meals\/(\d+)$/);
+  if (method === "DELETE" && mealDelete) {
+    return { id: "MF59", method: "DELETE", params: { id: mealDelete[1]! }, limiter: "write" };
   }
-  if (planOne && method === "DELETE") {
-    return { id: "MF44", method: "DELETE", params: { id: planOne[1]! }, limiter: "write" };
+  if (method === "GET" && rest === "shopping-lists/generated-dates") {
+    return { id: "MF60", method: "GET", params: {}, limiter: "read" };
   }
   const planAcl = rest.match(/^plans\/(\d+)\/acl$/);
   if (planAcl && method === "GET") {
-    return { id: "MF45", method: "GET", params: { id: planAcl[1]! }, limiter: "read" };
+    return { id: "MF61", method: "GET", params: { id: planAcl[1]! }, limiter: "read" };
   }
   if (planAcl && method === "POST") {
-    return { id: "MF46", method: "POST", params: { id: planAcl[1]! }, limiter: "write" };
+    return { id: "MF62", method: "POST", params: { id: planAcl[1]! }, limiter: "write" };
   }
   if (method === "GET" && rest === "favorites") {
     return { id: "DP21", method: "GET", params: {}, limiter: "read" };
@@ -1920,6 +2259,25 @@ function shapeOwnProfile(raw: unknown): Record<string, unknown> | null {
     member_since: strOrNull(obj.member_since),
     attributes,
   };
+}
+
+async function accountProxy(
+  ctx: ActingContext,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts: { baseUrl?: string } | undefined,
+  method: string,
+  path: string,
+  init?: { query?: string; jsonBody?: unknown },
+): Promise<Response | { json: unknown; status: number }> {
+  const ran = await runBearer(ctx, env, fetchImpl, opts, method, path, {
+    query: init?.query,
+    ...(init?.jsonBody !== undefined
+      ? { body: JSON.stringify(init.jsonBody), contentType: "application/json" }
+      : {}),
+  });
+  if (ran instanceof Response) return mapUnauthenticated(ran);
+  return mapUpstreamResult(ran.result);
 }
 
 async function dispatch(
@@ -2878,6 +3236,52 @@ async function dispatch(
         200,
       );
     }
+    case "MF50": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkUserInfoPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeSparkUserInfo(proxied.json), 200);
+    }
+    case "MF52": {
+      const parts: string[] = [];
+      const mtype = url.searchParams.get("measurement_type");
+      if (mtype === "health" || mtype === "movement") {
+        parts.push(`measurement_type=${encodeURIComponent(mtype)}`);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkMeasurementsPath(),
+        { query: parts.length ? parts.join("&") : undefined },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkMeasurements(mapped.json), 200);
+    }
+    case "MF63": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkUnitsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkUnits(mapped.json), 200);
+    }
     case "MF12": {
       const parts: string[] = [];
       const mid = url.searchParams.get("measurement_id");
@@ -3008,7 +3412,7 @@ async function dispatch(
       }
       return accountJson({ conversations, notifications, items: notifications }, 200);
     }
-    case "MF15": {
+    case "MF51": {
       const ran = await runBearer(
         ctx!,
         env,
@@ -3022,99 +3426,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { active: {}, inactive: {} }, 200);
     }
-    case "MF16": {
-      const id = match.params.id!;
-      const includeDays = url.searchParams.get("include_days");
-      const q =
-        includeDays === "0" || includeDays === "false"
-          ? undefined
-          : "include_days=1";
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountPlanPath(id),
-        { query: q },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF17": {
-      const id = match.params.id!;
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const body = asRecord(parsed.json) ?? {};
-      const is_active = body.is_active === true || body.is_active === 1;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "PATCH",
-        accountPlanActivePath(id),
-        {
-          body: JSON.stringify({ is_active }),
-          contentType: "application/json",
-        },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF18": {
-      const id = match.params.id!;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountPlanPublishPath(id),
-        { body: "{}", contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF19": {
-      const id = match.params.id!;
-      const start = url.searchParams.get("start_date") ?? "";
-      if (!YMD_RE.test(start)) return accountJson({ error: "invalid_request" }, 400);
-      const parts = [`start_date=${encodeURIComponent(start)}`];
-      const end = url.searchParams.get("end_date");
-      if (end && YMD_RE.test(end)) parts.push(`end_date=${encodeURIComponent(end)}`);
-      const target = url.searchParams.get("target_user_id");
-      if (target && /^[1-9][0-9]{0,9}$/.test(target)) {
-        parts.push(`target_user_id=${encodeURIComponent(target)}`);
-      }
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountPlanSchedulePath(id),
-        {
-          query: parts.join("&"),
-          body: "{}",
-          contentType: "application/json",
-        },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
-    }
-    case "MF20": {
+    case "MF53": {
       const limitRaw = url.searchParams.get("limit") ?? "50";
       const limit = /^[1-9][0-9]*$/.test(limitRaw) ? Math.min(Number(limitRaw), 100) : 50;
       const ran = await runBearer(
@@ -3137,7 +3449,7 @@ async function dispatch(
           : [];
       return accountJson({ recipes, meta: asRecord(obj.meta) ?? {} }, 200);
     }
-    case "MF21": {
+    case "MF58": {
       const start = url.searchParams.get("start_date") ?? "";
       const end = url.searchParams.get("end_date") ?? "";
       if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
@@ -3161,7 +3473,7 @@ async function dispatch(
       const entries = Array.isArray(obj.entries) ? obj.entries : [];
       return accountJson({ entries }, 200);
     }
-    case "MF22": {
+    case "MF59": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3176,21 +3488,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
     }
-    case "MF37": {
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountPtCoachClientsPath(),
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(shapeBellyCoachingCoach(mapped.json), 200);
-    }
-    case "MF38": {
+    case "MF54": {
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const validated = validateCustomRecipeBody(parsed.json);
@@ -3210,7 +3508,7 @@ async function dispatch(
       const obj = asRecord(mapped.json) ?? {};
       return accountJson(obj.recipe ?? mapped.json, mapped.status === 201 ? 201 : mapped.status);
     }
-    case "MF39": {
+    case "MF55": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3226,7 +3524,7 @@ async function dispatch(
       const obj = asRecord(mapped.json) ?? {};
       return accountJson(obj.recipe ?? mapped.json, 200);
     }
-    case "MF40": {
+    case "MF56": {
       const id = match.params.id!;
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
@@ -3247,7 +3545,7 @@ async function dispatch(
       const obj = asRecord(mapped.json) ?? {};
       return accountJson(obj.recipe ?? mapped.json, 200);
     }
-    case "MF41": {
+    case "MF57": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3262,63 +3560,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
     }
-    case "MF42": {
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const validated = validatePlanWriteBody(parsed.json);
-      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountPlansPath(),
-        { body: JSON.stringify(validated.body), contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, mapped.status === 201 ? 201 : mapped.status);
-    }
-    case "MF43": {
-      const id = match.params.id!;
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const validated = validatePlanWriteBody(parsed.json);
-      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "PUT",
-        accountPlanPath(id),
-        { body: JSON.stringify(validated.body), contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF44": {
-      const id = match.params.id!;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "DELETE",
-        accountPlanPath(id),
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
-    }
-    case "MF45": {
+    case "MF61": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3333,7 +3575,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { entries: [] }, 200);
     }
-    case "MF46": {
+    case "MF62": {
       const id = match.params.id!;
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
@@ -3364,7 +3606,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
-    case "MF23": {
+    case "MF60": {
       const start = url.searchParams.get("start_date") ?? "";
       const end = url.searchParams.get("end_date") ?? "";
       if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
@@ -3732,6 +3974,595 @@ async function dispatch(
       const shaped = shapeMemberSummary(mapped.json);
       if (!shaped) return accountJson({ error: "unavailable" }, 502);
       return accountJson(shaped, 200);
+    }
+    case "MF15": {
+      const range = parseYmdRange(
+        url.searchParams.get("start_date"),
+        url.searchParams.get("end_date"),
+      );
+      if (!range) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarWorkoutsPath(),
+        { query: `start_date=${range.start}&end_date=${range.end}` },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeWorkoutLogs(proxied.json), 200);
+    }
+    case "MF16": {
+      const range = parseYmdRange(
+        url.searchParams.get("start_date"),
+        url.searchParams.get("end_date"),
+      );
+      if (!range) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarPlannedWorkoutsPath(),
+        { query: `start_date=${range.start}&end_date=${range.end}` },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapePlannedWorkouts(proxied.json), 200);
+    }
+    case "MF17": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountWorkoutLogPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeWorkoutLog(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ workout: shaped }, 200);
+    }
+    case "MF18": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountWorkoutLogPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF19": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountPlannedWorkoutPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF20": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateLogWorkoutBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountWorkoutsCollectionPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped =
+        shapeWorkoutLog(proxied.json) ?? shapeWorkoutLog(asRecord(proxied.json)?.workout);
+      return accountJson({ ok: true, workout: shaped }, 200);
+    }
+    case "MF21": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const names = url.searchParams.get("include_movement_names") === "1";
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomWorkoutPath(String(id)),
+        names ? { query: "include_movement_names=1" } : undefined,
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeCustomWorkout(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF37": {
+      const query = customWorkoutListQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomWorkoutsPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCustomWorkoutList(proxied.json), 200);
+    }
+    case "MF37w": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCustomWorkoutBody(parsed.json, "create");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountCustomWorkoutsPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeCustomWorkout(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF38": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCustomWorkoutBody(parsed.json, "update");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountCustomWorkoutPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeCustomWorkout(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF39": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountCustomWorkoutPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF40": {
+      const query = movementQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMovementsPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeMovementList(proxied.json), 200);
+    }
+    case "MF49": {
+      const query = dailyFixQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountDailyFixWorkoutPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeDailyFixWorkout(proxied.json), 200);
+    }
+    case "MF41": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlansCollectionPath(),
+        { query: "limit=30&offset=0" },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapePlanList(proxied.json), 200);
+    }
+    case "MF42": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePlanWriteBody(parsed.json, "create");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlansCollectionPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped =
+        shapePlanDetail(proxied.json) ?? shapePlanDetail(asRecord(proxied.json)?.plan);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ ...shaped, plan: shaped }, 200);
+    }
+    case "MF43": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlanPath(String(id)),
+        { query: "include_days=1" },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapePlanDetail(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ ...shaped, plan: shaped }, 200);
+    }
+    case "MF44": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePlanWriteBody(parsed.json, "update");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountPlanPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapePlanDetail(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ ...shaped, plan: shaped }, 200);
+    }
+    case "MF45": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountPlanPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF46": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanPublishPath(String(id)),
+        { jsonBody: {} },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapePlanDetail(proxied.json);
+      return accountJson({ ok: true, plan: shaped }, 200);
+    }
+    case "MF47": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const query = planScheduleQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanSchedulePath(String(id)),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF48": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePlanActiveBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PATCH",
+        accountPlanActivePath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF22": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtClientCoachesPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachingClient(proxied.json), 200);
+    }
+    case "MF23": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtCoachClientsPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachingCoach(proxied.json), 200);
+    }
+    case "MF24": {
+      const query = directoryQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtDirectoryPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeDirectory(proxied.json), 200);
+    }
+    case "MF25": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePtInviteBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPtRelationshipsPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF26": {
+      const id = parseRouteId(match.params.id);
+      const action = match.params.action;
+      if (!id || (action !== "accept" && action !== "decline" && action !== "end")) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPtRelationshipActionPath(String(id), action),
+        { jsonBody: {} },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF27": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtRelationshipNotesPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachNotes(proxied.json), 200);
+    }
+    case "MF28": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCoachNoteBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPtRelationshipNotesPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const note =
+        shapeCoachNote(proxied.json) ?? shapeCoachNote(asRecord(proxied.json)?.note);
+      return accountJson({ ok: true, note }, 200);
+    }
+    case "MF29": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountProgrammingSubscriptionsPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeProgrammingSubscriptions(proxied.json), 200);
+    }
+    case "MF30": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountProgrammingSeriesPath(),
+        { query: "limit=30&offset=0" },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeProgrammingSeriesList(proxied.json), 200);
+    }
+    case "MF31": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const range = parseYmdRange(
+        url.searchParams.get("start_date"),
+        url.searchParams.get("end_date"),
+        120,
+      );
+      const query = range ? `start_date=${range.start}&end_date=${range.end}` : undefined;
+      if (
+        (url.searchParams.get("start_date") || url.searchParams.get("end_date")) &&
+        !range
+      ) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountProgrammingSeriesDaysPath(String(id)),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeProgrammingDays(proxied.json), 200);
+    }
+    case "MF32": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountProgrammingSubscribePath(String(id)),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "http" && ran.result.status === 402) {
+        return accountJson({ error: "payment_required" }, 402);
+      }
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF33": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountProgrammingSubscriptionPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF34": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlansLibraryPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapePlanLibrary(proxied.json), 200);
+    }
+    case "MF35": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtCoachProfilePath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachProfile(proxied.json), 200);
+    }
+    case "MF36": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCoachProfileBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountPtCoachProfilePath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachProfile(proxied.json), 200);
     }
     default:
       return accountJson({ error: "not_found" }, 404);

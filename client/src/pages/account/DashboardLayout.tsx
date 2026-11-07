@@ -167,6 +167,9 @@ export default function DashboardLayout({
         location.startsWith("/account/shopping-cart") ||
         location.startsWith("/account/my-meals") ||
         location.startsWith("/account/benchmarks") ||
+        location.startsWith("/account/prs") ||
+        location.startsWith("/account/workouts") ||
+        location.startsWith("/account/plans") ||
         location.startsWith("/account/coaching")
       );
     }

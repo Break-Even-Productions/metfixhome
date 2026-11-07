@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { basePath } from "@/const";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
+import { BodyWatermark } from "./BodyWatermark";
 import {
   METFIX_APP_TOOLS,
   metfixToolsUnlocked,
@@ -121,6 +122,7 @@ function ToolCard({ tool, tier }: { tool: AppTool; tier: CanonicalSubscriptionTi
   const hasLinks = Array.isArray(tool.links) && tool.links.length > 0;
   const className = [
     toolClassName(open, available, unlocked, hasLinks),
+    tool.id === "body" ? "account-tool--body" : null,
     tool.id === "belly" ? "account-tool--belly" : null,
   ]
     .filter(Boolean)
@@ -141,6 +143,7 @@ function ToolCard({ tool, tier }: { tool: AppTool; tier: CanonicalSubscriptionTi
   if (hasLinks) {
     return (
       <article className={className} data-tool={tool.id} data-state={state}>
+        {tool.id === "body" ? <BodyWatermark /> : null}
         {header}
         <ToolLinks links={tool.links!} tier={tier} />
         {href ? (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { basePath } from "@/const";
 import {
   createSparkEntry,
@@ -7,31 +7,30 @@ import {
   loadOverview,
   loadPrOverview,
   loadSparkEntries,
+  loadSparkMeasurements,
   loadSubscriptions,
   type AccountOverview,
   type AccountSubscriptions,
   type PrOverview,
   type PrOverviewRow,
   type SparkEntry,
+  type SparkPrDirection,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
 import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
 import { ToolHero } from "./ToolHero";
-
-const CHART_W = 720;
-const CHART_H = 280;
-const CHART_PAD = { top: 28, right: 18, bottom: 44, left: 52 };
-
-/** One decimal without `.toFixed` (CL-T21 money-scan forbids it in account/). */
-function formatScoreNumber(n: number): string {
-  if (Number.isInteger(n)) return String(n);
-  const tenths = Math.round(n * 10) / 10;
-  if (Number.isInteger(tenths)) return String(tenths);
-  const whole = Math.trunc(tenths);
-  const frac = Math.abs(Math.round((tenths - whole) * 10));
-  return `${whole}.${frac}`;
-}
+import { BodyNav, BodyPanel } from "./BodyWatermark";
+import { formatStamp } from "./bodyDates";
+import { WorkoutPrAttempts } from "./WorkoutPrAttempts";
+import { HealthLogModal } from "./HealthLogModal";
+import {
+  buildChartSeries,
+  formatScoreNumber,
+  formatValue,
+  PrChartSkeleton,
+  PrProgressChart,
+} from "./PrProgressChart";
 
 function formatScore(row: PrOverviewRow): string {
   if (row.best_score == null) return "—";
@@ -50,13 +49,6 @@ function formatScore(row: PrOverviewRow): string {
   return formatScoreNumber(n);
 }
 
-function formatValue(n: number, unit: string | null | undefined): string {
-  const u = unit?.trim();
-  if (u === "lb" || u === "lbs") return `${Math.round(n)} ${u}`;
-  if (u) return `${formatScoreNumber(n)} ${u}`;
-  return formatScoreNumber(n);
-}
-
 function workingPercents(oneRm: number): Array<{ pct: number; reps: string; load: number }> {
   return [
     { pct: 95, reps: "2 RM", load: Math.round(oneRm * 0.95) },
@@ -70,6 +62,8 @@ function workingPercents(oneRm: number): Array<{ pct: number; reps: string; load
 
 function isStrengthMovement(row: PrOverviewRow): boolean {
   const u = (row.unit_abbreviation ?? "").toLowerCase();
+  const mode = (row.score_mode ?? "").toLowerCase();
+  if (mode === "weight") return true;
   return row.score_unit_id === 1 || u === "lb" || u === "lbs" || u === "kg";
 }
 
@@ -79,10 +73,70 @@ function rowKey(row: PrOverviewRow): string {
   return row.name;
 }
 
-function parseEntryDate(raw: string): Date | null {
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const d = new Date(normalized);
-  return Number.isFinite(d.getTime()) ? d : null;
+const RM_NAME = /^(.+?)\s+(\d+)\s*RM$/i;
+
+/** Split "Bench Press 5RM" into a shared base + rep scheme. Non-RM names stay solo. */
+function parseRmScheme(name: string): { base: string; reps: number } | null {
+  const match = RM_NAME.exec(name.trim());
+  if (!match) return null;
+  const base = match[1]?.trim() ?? "";
+  const reps = Number(match[2]);
+  if (!base || !Number.isSafeInteger(reps) || reps <= 0) return null;
+  return { base, reps };
+}
+
+type LiftScheme = {
+  row: PrOverviewRow;
+  reps: number | null;
+};
+
+type LiftGroup = {
+  key: string;
+  base: string;
+  schemes: LiftScheme[];
+};
+
+function preferredScheme(group: LiftGroup): LiftScheme {
+  return group.schemes.find((scheme) => scheme.reps === 1) ?? group.schemes[0]!;
+}
+
+/** Outer tab score: 1RM when present, else the selected scheme, else the best score. */
+function groupScoreRow(group: LiftGroup, activeId: string | null): PrOverviewRow {
+  const oneRm = group.schemes.find((scheme) => scheme.reps === 1);
+  if (oneRm) return oneRm.row;
+  const selected = group.schemes.find((scheme) => rowKey(scheme.row) === activeId);
+  if (selected) return selected.row;
+  return group.schemes.reduce((best, scheme) =>
+    (scheme.row.best_score ?? Number.NEGATIVE_INFINITY) >
+    (best.row.best_score ?? Number.NEGATIVE_INFINITY)
+      ? scheme
+      : best,
+  ).row;
+}
+
+function groupPrRows(rows: PrOverviewRow[]): LiftGroup[] {
+  const map = new Map<string, LiftGroup>();
+  const groups: LiftGroup[] = [];
+  for (const row of rows) {
+    const parsed = parseRmScheme(row.name);
+    const key = parsed ? parsed.base.toLowerCase() : `solo:${rowKey(row)}`;
+    let group = map.get(key);
+    if (!group) {
+      group = { key, base: parsed?.base ?? row.name, schemes: [] };
+      map.set(key, group);
+      groups.push(group);
+    }
+    group.schemes.push({ row, reps: parsed?.reps ?? null });
+  }
+  for (const group of groups) {
+    group.schemes.sort((a, b) => {
+      if (a.reps == null && b.reps == null) return a.row.name.localeCompare(b.row.name);
+      if (a.reps == null) return 1;
+      if (b.reps == null) return -1;
+      return a.reps - b.reps;
+    });
+  }
+  return groups.sort((a, b) => a.base.localeCompare(b.base));
 }
 
 function ymdToday(): string {
@@ -93,254 +147,152 @@ function ymdToday(): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatTickDate(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function matchesQuery(name: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return name.toLowerCase().includes(q);
 }
 
-type ChartPoint = {
-  date: Date;
-  last: number;
-  best: number;
-  label: string;
+type HealthCatalogMeta = {
+  pr_direction: SparkPrDirection;
+  default_unit_id: number | null;
+  unit_abbreviation: string | null;
 };
 
-function buildChartSeries(entries: SparkEntry[], higherIsBetter: boolean): ChartPoint[] {
-  const sorted = [...entries]
-    .map((e) => ({ entry: e, date: parseEntryDate(e.measurement_date) }))
-    .filter((x): x is { entry: SparkEntry; date: Date } => x.date != null)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
+type HealthMarker = {
+  measurement_id: number;
+  name: string;
+  best_score: number;
+  last_score: number;
+  total_entries: number;
+  unit_abbreviation: string | null;
+  sub_type: string | null;
+  pr_direction: SparkPrDirection;
+  default_unit_id: number | null;
+};
 
-  let best = higherIsBetter ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
-  const points: ChartPoint[] = [];
-  for (const { entry, date } of sorted) {
-    const last = Number(entry.value);
-    if (!Number.isFinite(last)) continue;
-    if (higherIsBetter) best = Math.max(best, last);
-    else best = Math.min(best, last);
-    points.push({
-      date,
-      last,
-      best,
-      label: formatTickDate(date),
+function higherIsBetterDirection(direction: SparkPrDirection | null | undefined): boolean {
+  return direction !== "lower_better";
+}
+
+function pickBestScore(values: number[], direction: SparkPrDirection): number {
+  return higherIsBetterDirection(direction) ? Math.max(...values) : Math.min(...values);
+}
+
+/** Aggregate spark entries into health markers (`measurement_type === "health"` only). */
+function healthMarkersFromEntries(
+  entries: SparkEntry[],
+  metaById: Map<number, HealthCatalogMeta>,
+): HealthMarker[] {
+  const byId = new Map<
+    number,
+    {
+      name: string;
+      values: number[];
+      last: number;
+      lastTs: string;
+      unit: string | null;
+      sub_type: string | null;
+      pr_direction: SparkPrDirection;
+      default_unit_id: number | null;
+    }
+  >();
+
+  for (const entry of entries) {
+    if (entry.measurement_type !== "health") continue;
+    const mid = entry.bsi_measurement_id;
+    if (mid == null || !Number.isFinite(mid) || mid <= 0) continue;
+    const value = Number(entry.value);
+    if (!Number.isFinite(value)) continue;
+    const date = entry.measurement_date;
+    const meta = metaById.get(mid);
+    const fromEntry =
+      entry.pr_direction === "higher_better" ||
+      entry.pr_direction === "lower_better" ||
+      entry.pr_direction === "closer_to_target"
+        ? entry.pr_direction
+        : null;
+    const pr_direction = fromEntry ?? meta?.pr_direction ?? "higher_better";
+    const existing = byId.get(mid);
+    if (!existing) {
+      byId.set(mid, {
+        name: entry.measurement_name?.trim() || `Metric ${mid}`,
+        values: [value],
+        last: value,
+        lastTs: date,
+        unit: entry.unit_abbreviation ?? meta?.unit_abbreviation ?? null,
+        sub_type: entry.sub_type ?? null,
+        pr_direction,
+        default_unit_id: meta?.default_unit_id ?? entry.unit_id ?? null,
+      });
+      continue;
+    }
+    existing.values.push(value);
+    if (date >= existing.lastTs) {
+      existing.last = value;
+      existing.lastTs = date;
+    }
+    if (!existing.unit && entry.unit_abbreviation) {
+      existing.unit = entry.unit_abbreviation;
+    }
+    if (!existing.name && entry.measurement_name) {
+      existing.name = entry.measurement_name.trim();
+    }
+    if (fromEntry) existing.pr_direction = fromEntry;
+    else if (meta?.pr_direction) existing.pr_direction = meta.pr_direction;
+    if (existing.default_unit_id == null && meta?.default_unit_id != null) {
+      existing.default_unit_id = meta.default_unit_id;
+    }
+  }
+
+  const rows: HealthMarker[] = [];
+  for (const [measurement_id, row] of byId) {
+    rows.push({
+      measurement_id,
+      name: row.name,
+      best_score: pickBestScore(row.values, row.pr_direction),
+      last_score: row.last,
+      total_entries: row.values.length,
+      unit_abbreviation: row.unit,
+      sub_type: row.sub_type,
+      pr_direction: row.pr_direction,
+      default_unit_id: row.default_unit_id,
     });
   }
-  return points;
+  return rows.sort((a, b) => b.total_entries - a.total_entries || a.name.localeCompare(b.name));
 }
 
-function chartGeometry(points: ChartPoint[]) {
-  const innerW = CHART_W - CHART_PAD.left - CHART_PAD.right;
-  const innerH = CHART_H - CHART_PAD.top - CHART_PAD.bottom;
-  const values = points.flatMap((p) => [p.last, p.best]);
-  let minV = Math.min(...values);
-  let maxV = Math.max(...values);
-  if (!Number.isFinite(minV) || !Number.isFinite(maxV)) {
-    minV = 0;
-    maxV = 1;
-  }
-  if (minV === maxV) {
-    minV = minV * 0.9;
-    maxV = maxV * 1.1 || 1;
-  }
-  const pad = (maxV - minV) * 0.08;
-  minV -= pad;
-  maxV += pad;
-  const xAt = (i: number) =>
-    CHART_PAD.left + (points.length <= 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
-  const yAt = (v: number) =>
-    CHART_PAD.top + ((maxV - v) / (maxV - minV || 1)) * innerH;
-  return { innerW, innerH, minV, maxV, xAt, yAt };
-}
-
-function linePath(
-  points: ChartPoint[],
-  pick: "last" | "best",
-  xAt: (i: number) => number,
-  yAt: (v: number) => number,
-): string {
-  return points
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i)} ${yAt(p[pick])}`)
-    .join(" ");
-}
-
-function PrProgressChart({
-  points,
-  unit,
-  hoverIndex,
-  onHover,
+function ExploreSearch({
+  value,
+  onChange,
+  placeholder,
+  label,
 }: {
-  points: ChartPoint[];
-  unit: string | null;
-  hoverIndex: number | null;
-  onHover: (index: number | null) => void;
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+  label: string;
 }) {
-  const { minV, maxV, xAt, yAt } = chartGeometry(points);
-  const yTicks = 5;
-  const yLabels = Array.from({ length: yTicks }, (_, i) => {
-    const t = i / (yTicks - 1);
-    return minV + (maxV - minV) * (1 - t);
-  });
-  // Dense date labels vs mobile — aim for ~8 ticks, always include ends.
-  const maxDateTicks = Math.min(points.length, 8);
-  const dateIndexes =
-    points.length <= maxDateTicks
-      ? points.map((_, i) => i)
-      : Array.from({ length: maxDateTicks }, (_, i) =>
-          Math.round((i / (maxDateTicks - 1)) * (points.length - 1)),
-        );
-
-  const hover = hoverIndex != null ? points[hoverIndex] : null;
-
   return (
-    <div className="dash-pr-chart">
-      <div className="dash-pr-chart__legend" aria-hidden="true">
-        <span className="dash-pr-chart__swatch dash-pr-chart__swatch--best">Best</span>
-        <span className="dash-pr-chart__swatch dash-pr-chart__swatch--last">Last</span>
-        {unit ? <span className="dash-pr-chart__unit">{unit}</span> : null}
-      </div>
-      <svg
-        className="dash-pr-chart__svg"
-        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-        role="img"
-        aria-label={`Best and last ${unit ?? "score"} over time`}
-        onMouseLeave={() => onHover(null)}
-      >
-        {yLabels.map((v, i) => {
-          const y = yAt(v);
-          return (
-            <g key={`y-${i}`}>
-              <line
-                className="dash-pr-chart__grid"
-                x1={CHART_PAD.left}
-                x2={CHART_W - CHART_PAD.right}
-                y1={y}
-                y2={y}
-              />
-              <text className="dash-pr-chart__tick" x={CHART_PAD.left - 8} y={y + 3} textAnchor="end">
-                {formatScoreNumber(v)}
-              </text>
-            </g>
-          );
-        })}
-        {dateIndexes.map((i) => (
-          <text
-            key={`x-${i}`}
-            className="dash-pr-chart__tick dash-pr-chart__tick--x"
-            x={xAt(i)}
-            y={CHART_H - 12}
-            textAnchor="middle"
-          >
-            {points[i]!.label}
-          </text>
-        ))}
-        <path
-          className="dash-pr-chart__line dash-pr-chart__line--best"
-          d={linePath(points, "best", xAt, yAt)}
-          fill="none"
-        />
-        <path
-          className="dash-pr-chart__line dash-pr-chart__line--last"
-          d={linePath(points, "last", xAt, yAt)}
-          fill="none"
-        />
-        {points.map((p, i) => (
-          <g key={`pt-${i}`}>
-            <circle
-              className="dash-pr-chart__hit"
-              cx={xAt(i)}
-              cy={yAt(p.last)}
-              r={14}
-              onMouseEnter={() => onHover(i)}
-              onFocus={() => onHover(i)}
-            />
-            <circle
-              className="dash-pr-chart__dot dash-pr-chart__dot--last"
-              cx={xAt(i)}
-              cy={yAt(p.last)}
-              r={hoverIndex === i ? 5 : 3.5}
-            />
-            <circle
-              className="dash-pr-chart__dot dash-pr-chart__dot--best"
-              cx={xAt(i)}
-              cy={yAt(p.best)}
-              r={hoverIndex === i ? 4.5 : 3}
-            />
-          </g>
-        ))}
-        {hover && hoverIndex != null ? (
-          <g className="dash-pr-chart__tooltip">
-            <rect
-              x={Math.min(xAt(hoverIndex) + 10, CHART_W - 150)}
-              y={Math.max(yAt(hover.last) - 48, 4)}
-              width={140}
-              height={42}
-              rx={6}
-            />
-            <text
-              x={Math.min(xAt(hoverIndex) + 18, CHART_W - 142)}
-              y={Math.max(yAt(hover.last) - 30, 20)}
-            >
-              {hover.label}
-            </text>
-            <text
-              x={Math.min(xAt(hoverIndex) + 18, CHART_W - 142)}
-              y={Math.max(yAt(hover.last) - 14, 36)}
-            >
-              {`Best ${formatValue(hover.best, unit)} · Last ${formatValue(hover.last, unit)}`}
-            </text>
-          </g>
-        ) : null}
-      </svg>
-    </div>
-  );
-}
-
-function PrChartSkeleton() {
-  return (
-    <div className="dash-pr-chart dash-pr-chart--skeleton" aria-busy="true" aria-label="Loading chart">
-      <div className="dash-pr-chart__legend" aria-hidden="true">
-        <span className="dash-pr-chart__swatch dash-pr-chart__swatch--best">Best</span>
-        <span className="dash-pr-chart__swatch dash-pr-chart__swatch--last">Last</span>
-      </div>
-      <svg className="dash-pr-chart__svg" viewBox={`0 0 ${CHART_W} ${CHART_H}`} aria-hidden="true">
-        {Array.from({ length: 5 }, (_, i) => {
-          const y = CHART_PAD.top + (i / 4) * (CHART_H - CHART_PAD.top - CHART_PAD.bottom);
-          return (
-            <line
-              key={i}
-              className="dash-pr-chart__grid dash-pr-chart__grid--skel"
-              x1={CHART_PAD.left}
-              x2={CHART_W - CHART_PAD.right}
-              y1={y}
-              y2={y}
-            />
-          );
-        })}
-        <path
-          className="dash-pr-chart__skel-line"
-          d={`M ${CHART_PAD.left} ${CHART_H * 0.62} L ${CHART_W * 0.28} ${CHART_H * 0.55} L ${CHART_W * 0.48} ${CHART_H * 0.48} L ${CHART_W * 0.68} ${CHART_H * 0.42} L ${CHART_W - CHART_PAD.right} ${CHART_H * 0.36}`}
-          fill="none"
-        />
-        {[0.18, 0.34, 0.5, 0.66, 0.82].map((t, i) => {
-          const x = CHART_PAD.left + t * (CHART_W - CHART_PAD.left - CHART_PAD.right);
-          const h = 28 + ((i * 17) % 40);
-          return (
-            <rect
-              key={t}
-              className="dash-pr-chart__skel-bar"
-              x={x - 6}
-              y={CHART_H - CHART_PAD.bottom - h}
-              width={12}
-              height={h}
-              rx={3}
-            />
-          );
-        })}
-      </svg>
-    </div>
+    <label className="dash-bench-explore">
+      <span className="sr-only">{label}</span>
+      <input
+        type="search"
+        value={value}
+        onChange={(ev) => onChange(ev.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+      />
+    </label>
   );
 }
 
 export default function AccountBenchmarks() {
+  const search = useSearch();
+  const requestedLift = useMemo(() => {
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    return params.get("lift");
+  }, [search]);
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [subs, setSubs] = useState<AccountSubscriptions | null>(null);
   const [prs, setPrs] = useState<PrOverview | null>(null);
@@ -357,6 +309,19 @@ export default function AccountBenchmarks() {
   const [logMessage, setLogMessage] = useState<string | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
   const [entriesTick, setEntriesTick] = useState(0);
+  const [workoutFocusId, setWorkoutFocusId] = useState<string | null>(null);
+  const [healthFocusId, setHealthFocusId] = useState<number | null>(null);
+  const [healthCatalog, setHealthCatalog] = useState<HealthMarker[]>([]);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [prQuery, setPrQuery] = useState("");
+  const [prFilter, setPrFilter] = useState<"strength" | "all">("strength");
+  const [condQuery, setCondQuery] = useState("");
+  const [healthQuery, setHealthQuery] = useState("");
+  const [healthEntries, setHealthEntries] = useState<SparkEntry[]>([]);
+  const [healthEntriesLoading, setHealthEntriesLoading] = useState(false);
+  const [healthHover, setHealthHover] = useState<number | null>(null);
+  const [healthListOpen, setHealthListOpen] = useState(false);
+  const [healthLogOpen, setHealthLogOpen] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -375,10 +340,23 @@ export default function AccountBenchmarks() {
         const firstLift =
           overviewPr.movements.find((m) => m.best_score != null && isStrengthMovement(m)) ??
           overviewPr.movements.find((m) => m.best_score != null) ??
-          overviewPr.workouts.find((w) => w.best_score != null) ??
           null;
-        if (firstLift) {
+        const requestedMove = requestedLift
+          ? overviewPr.movements.find((row) => rowKey(row) === requestedLift)
+          : null;
+        const requestedWorkout = requestedLift
+          ? overviewPr.workouts.find((row) => rowKey(row) === requestedLift)
+          : null;
+        if (requestedMove) {
+          setActiveId(rowKey(requestedMove));
+          if (!isStrengthMovement(requestedMove)) setPrFilter("all");
+        } else if (firstLift) {
           setActiveId(rowKey(firstLift));
+        }
+        if (requestedWorkout) setWorkoutFocusId(rowKey(requestedWorkout));
+        else {
+          const firstWorkout = overviewPr.workouts.find((w) => w.best_score != null) ?? null;
+          if (firstWorkout) setWorkoutFocusId(rowKey(firstWorkout));
         }
       } catch (err) {
         if (cancelled) return;
@@ -407,23 +385,100 @@ export default function AccountBenchmarks() {
     return [...rows].sort((a, b) => (b.best_score ?? 0) - (a.best_score ?? 0));
   }, [prs]);
 
+  const movementPrs = useMemo(() => {
+    const rows = (prs?.movements ?? []).filter((m) => m.best_score != null);
+    return [...rows].sort((a, b) => (b.total_entries ?? 0) - (a.total_entries ?? 0));
+  }, [prs]);
+
   const conditioning = useMemo(() => {
     const rows = (prs?.workouts ?? []).filter((w) => w.best_score != null);
     return [...rows].sort((a, b) => (b.total_entries ?? 0) - (a.total_entries ?? 0));
   }, [prs]);
 
-  const markers = useMemo(() => {
-    const rows = (prs?.movements ?? []).filter(
-      (m) => m.best_score != null && !isStrengthMovement(m),
-    );
-    return rows.slice(0, 8);
-  }, [prs]);
+  const exploredPrs = useMemo(() => {
+    const base = prFilter === "strength" ? strength : movementPrs;
+    return base.filter((row) => matchesQuery(row.name, prQuery));
+  }, [prFilter, strength, movementPrs, prQuery]);
+
+  const liftGroups = useMemo(() => groupPrRows(exploredPrs), [exploredPrs]);
+  const activeGroup =
+    liftGroups.find((group) => group.schemes.some((scheme) => rowKey(scheme.row) === activeId)) ??
+    null;
+
+  const exploredConditioning = useMemo(
+    () => conditioning.filter((row) => matchesQuery(row.name, condQuery)),
+    [conditioning, condQuery],
+  );
+
+  const exploredHealth = useMemo(
+    () => healthCatalog.filter((row) => matchesQuery(row.name, healthQuery)),
+    [healthCatalog, healthQuery],
+  );
+
+  // Load health-type spark entries + catalog directions for best/last charts.
+  useEffect(() => {
+    if (!pro) {
+      setHealthCatalog([]);
+      return;
+    }
+    const ac = new AbortController();
+    let cancelled = false;
+    setHealthLoading(true);
+    (async () => {
+      try {
+        const [page, catalog] = await Promise.all([
+          loadSparkEntries(
+            { limit: 500 },
+            { signal: ac.signal, force: entriesTick > 0 },
+          ),
+          loadSparkMeasurements(
+            { measurement_type: "health" },
+            { signal: ac.signal, force: entriesTick > 0 },
+          ),
+        ]);
+        if (cancelled) return;
+        const metaById = new Map<number, HealthCatalogMeta>();
+        for (const m of catalog.measurements ?? []) {
+          metaById.set(m.bsi_measurement_id, {
+            pr_direction: m.pr_direction,
+            default_unit_id: m.default_unit_id,
+            unit_abbreviation: m.unit_abbreviation,
+          });
+        }
+        const markers = healthMarkersFromEntries(
+          Array.isArray(page.entries) ? page.entries : [],
+          metaById,
+        );
+        setHealthCatalog(markers);
+        setHealthFocusId((prev) => {
+          if (prev != null && markers.some((m) => m.measurement_id === prev)) return prev;
+          return markers[0]?.measurement_id ?? null;
+        });
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setHealthCatalog([]);
+      } finally {
+        if (!cancelled) setHealthLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [pro, entriesTick]);
 
   const activeRow: PrOverviewRow | null = useMemo(() => {
     if (!activeId || !prs) return null;
-    const all = [...prs.movements, ...prs.workouts];
-    return all.find((r) => rowKey(r) === activeId) ?? null;
+    return prs.movements.find((r) => rowKey(r) === activeId) ?? null;
   }, [activeId, prs]);
+
+  const activeScheme = parseRmScheme(activeRow?.name ?? "");
+  const showWorkingPercents =
+    activeRow != null &&
+    isStrengthMovement(activeRow) &&
+    activeRow.best_score != null &&
+    (activeScheme == null || activeScheme.reps === 1);
 
   const measurementId = activeRow?.measurement_id ?? null;
 
@@ -462,14 +517,64 @@ export default function AccountBenchmarks() {
     };
   }, [pro, measurementId, entriesTick]);
 
+  useEffect(() => {
+    if (!pro || healthFocusId == null) {
+      setHealthEntries([]);
+      setHealthEntriesLoading(false);
+      return;
+    }
+    const ac = new AbortController();
+    let cancelled = false;
+    setHealthEntriesLoading(true);
+    setHealthHover(null);
+    setHealthListOpen(false);
+    (async () => {
+      try {
+        const page = await loadSparkEntries(
+          { measurement_id: healthFocusId, limit: 200 },
+          { signal: ac.signal, force: entriesTick > 0 },
+        );
+        if (cancelled) return;
+        setHealthEntries(Array.isArray(page.entries) ? page.entries : []);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setHealthEntries([]);
+      } finally {
+        if (!cancelled) setHealthEntriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [pro, healthFocusId, entriesTick]);
+
   const higherIsBetter = useMemo(() => {
     if (!activeRow) return true;
+    if (activeRow.pr_direction === "lower_better") return false;
+    if (activeRow.pr_direction === "higher_better") return true;
     return isStrengthMovement(activeRow);
   }, [activeRow]);
 
   const chartPoints = useMemo(
     () => buildChartSeries(entries, higherIsBetter),
     [entries, higherIsBetter],
+  );
+
+  const activeHealth = useMemo(
+    () => healthCatalog.find((m) => m.measurement_id === healthFocusId) ?? null,
+    [healthCatalog, healthFocusId],
+  );
+
+  const healthHigherIsBetter = useMemo(
+    () => higherIsBetterDirection(activeHealth?.pr_direction),
+    [activeHealth?.pr_direction],
+  );
+
+  const healthChartPoints = useMemo(
+    () => buildChartSeries(healthEntries, healthHigherIsBetter),
+    [healthEntries, healthHigherIsBetter],
   );
 
   const unitLabel =
@@ -508,9 +613,12 @@ export default function AccountBenchmarks() {
           note: "From spark/pr-overview workouts",
         },
         {
-          label: "Metabolic markers",
-          value: markers.length > 0 ? `${markers.length} markers` : "Log labs in the app",
-          note: "Non-weight movement measurements",
+          label: "Health markers",
+          value:
+            healthCatalog.length > 0
+              ? `${healthCatalog.length} marker${healthCatalog.length === 1 ? "" : "s"}`
+              : "Log labs in the app",
+          note: "Health-type spark measurements only",
         },
       ]
     : [
@@ -525,9 +633,9 @@ export default function AccountBenchmarks() {
           note: "🔒 Compare repeat dates with Pro",
         },
         {
-          label: "Metabolic markers",
+          label: "Health markers",
           value: "Locked",
-          note: "🔒 Lab & body marker log with Pro",
+          note: "🔒 Lab & metabolic log with Pro",
         },
       ];
 
@@ -571,8 +679,8 @@ export default function AccountBenchmarks() {
 
   return (
     <DashboardLayout
-      title={`${firstName}’s PRs, benchmarks & body markers`}
-      description="Keep 1RM lifts, Daily Fix benchmark times, and metabolic markers in one place."
+      title={`${firstName}’s PRs, benchmarks & health markers`}
+      description="Keep 1RM lifts, Daily Fix benchmark times, and metabolic health markers in one place."
       hideChromeTitle
     >
       <ToolHero
@@ -589,8 +697,8 @@ export default function AccountBenchmarks() {
             )}
           </>
         }
-        title={`${firstName}’s PRs, benchmarks & body markers.`}
-        lede="Keep your 1RM lifts, repeat Daily Fix benchmark times, and metabolic markers in one place — with live working-set percentages from your logged PRs."
+        title={`${firstName}’s PRs, benchmarks & health markers.`}
+        lede="Keep your 1RM lifts, repeat Daily Fix benchmark times, and metabolic health markers in one place — with live working-set percentages from your logged PRs."
         cta={
           !pro ? (
             <Link href={basePath("/join")} className="account-btn account-btn--accent">
@@ -600,11 +708,12 @@ export default function AccountBenchmarks() {
         }
         stats={heroStats}
       />
+      <BodyNav current="prs" />
 
       {error ? <p className="account-error">{error}</p> : null}
 
       {!pro ? (
-        <div className="dash-panel dash-bench">
+        <BodyPanel className="dash-bench">
           <section className="dash-locked-panel" aria-labelledby="bench-locked-strength">
             <div className="dash-locked-head">
               <div>
@@ -695,25 +804,25 @@ export default function AccountBenchmarks() {
               <div>
                 <p className="dash-kicker">Pro health log</p>
                 <h2 id="bench-locked-markers" className="dash-section-title">
-                  Metabolic &amp; body markers
+                  Metabolic health markers
                 </h2>
               </div>
               <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                Unlock lab &amp; body tracker
+                Unlock lab tracker
               </Link>
             </div>
             <div className="dash-lock-pills" aria-hidden="true">
               <span className="dash-lock-pill">TG:HDL ratio</span>
               <span className="dash-lock-pill">Fasting insulin</span>
-              <span className="dash-lock-pill">Waist-to-height</span>
               <span className="dash-lock-pill">HbA1c</span>
+              <span className="dash-lock-pill">Resting HR</span>
             </div>
           </section>
 
           <ProUnlockBanner />
-        </div>
+        </BodyPanel>
       ) : (
-        <div className="dash-panel dash-bench">
+        <BodyPanel className="dash-bench">
           {loading ? (
             <section className="dash-bench-section" aria-busy="true">
               <div className="dash-bench-head">
@@ -734,12 +843,20 @@ export default function AccountBenchmarks() {
                       Strength & working percentages
                     </h2>
                   </div>
-                  <span className="dash-chip">
-                    {strength.length} lift{strength.length === 1 ? "" : "s"}
-                  </span>
+                  <div className="dash-bench-head__aside">
+                    <span className="dash-chip">
+                      {movementPrs.length} logged · {strength.length} strength
+                    </span>
+                    <Link
+                      href={basePath("/account/benchmarks/all")}
+                      className="account-btn account-btn--ghost dash-bench-viewall"
+                    >
+                      View all PR types
+                    </Link>
+                  </div>
                 </div>
 
-                {strength.length === 0 ? (
+                {movementPrs.length === 0 ? (
                   <div className="dash-empty">
                     <p className="account-muted">
                       No strength PRs yet. Log a movement below once it appears in your overview,
@@ -748,30 +865,103 @@ export default function AccountBenchmarks() {
                   </div>
                 ) : (
                   <>
-                    <div className="dash-lift-tabs" role="tablist" aria-label="Lifts">
-                      {strength.slice(0, 12).map((row) => {
-                        const id = rowKey(row);
-                        const on = id === activeId;
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            role="tab"
-                            aria-selected={on}
-                            className={`dash-lift-tab${on ? " dash-lift-tab--on" : ""}`}
-                            onClick={() => setActiveId(id)}
-                          >
-                            {row.name}
-                            <span className="dash-lift-tab__score">{formatScore(row)}</span>
-                          </button>
-                        );
-                      })}
+                    <div className="dash-bench-explore-row">
+                      <ExploreSearch
+                        value={prQuery}
+                        onChange={setPrQuery}
+                        placeholder="Search lifts & movements…"
+                        label="Search PRs"
+                      />
+                      <div className="dash-segment" role="tablist" aria-label="PR filter">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={prFilter === "strength"}
+                          className={prFilter === "strength" ? "dash-segment__on" : ""}
+                          onClick={() => setPrFilter("strength")}
+                        >
+                          Strength
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={prFilter === "all"}
+                          className={prFilter === "all" ? "dash-segment__on" : ""}
+                          onClick={() => setPrFilter("all")}
+                        >
+                          All movements
+                        </button>
+                      </div>
                     </div>
 
-                    {activeRow && isStrengthMovement(activeRow) ? (
-                      <div className="dash-lift-detail dash-lift-detail--chart">
+                    {liftGroups.length === 0 ? (
+                      <p className="account-muted">No movements match that search.</p>
+                    ) : (
+                      <>
+                        <div className="dash-lift-tabs" role="tablist" aria-label="Lifts">
+                          {liftGroups.map((group) => {
+                            const preferred = preferredScheme(group);
+                            const on = group.schemes.some((scheme) => rowKey(scheme.row) === activeId);
+                            const scoreRow = groupScoreRow(group, activeId);
+                            return (
+                              <button
+                                key={group.key}
+                                type="button"
+                                role="tab"
+                                aria-selected={on}
+                                className={`dash-lift-tab${on ? " dash-lift-tab--on" : ""}`}
+                                onClick={() => {
+                                  if (on) return;
+                                  setActiveId(rowKey(preferred.row));
+                                }}
+                              >
+                                {group.base}
+                                <span className="dash-lift-tab__score">{formatScore(scoreRow)}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {activeGroup && activeGroup.schemes.length > 1 ? (
+                          <div
+                            className="dash-segment dash-lift-schemes"
+                            role="tablist"
+                            aria-label={`${activeGroup.base} rep schemes`}
+                          >
+                            {activeGroup.schemes.map((scheme) => {
+                              const id = rowKey(scheme.row);
+                              const on = id === activeId;
+                              const label =
+                                scheme.reps != null ? `${scheme.reps}RM` : scheme.row.name;
+                              return (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={on}
+                                  className={on ? "dash-segment__on" : ""}
+                                  onClick={() => setActiveId(id)}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+
+                    {activeRow ? (
+                      <div
+                        className={`dash-lift-detail${
+                          isStrengthMovement(activeRow) ? " dash-lift-detail--chart" : ""
+                        }`}
+                      >
                         <div>
-                          <p className="dash-kicker">{activeRow.name} · 1-rep max curve</p>
+                          <p className="dash-kicker">
+                            {activeScheme
+                              ? `${activeScheme.base} · ${activeScheme.reps}RM curve`
+                              : `${activeRow.name} · progress`}
+                          </p>
                           <p className="dash-lift-max">
                             {activeRow.best_score != null ? formatScore(activeRow) : "—"}
                           </p>
@@ -790,7 +980,7 @@ export default function AccountBenchmarks() {
                           ) : chartPoints.length === 0 ? (
                             <div className="dash-empty dash-empty--chart">
                               <p className="account-muted">
-                                No entry history for this lift yet. Log a PR to start the curve.
+                                No entry history for this movement yet. Log a PR to start the curve.
                               </p>
                             </div>
                           ) : (
@@ -842,7 +1032,7 @@ export default function AccountBenchmarks() {
                             </p>
                           )}
                         </div>
-                        {activeRow.best_score != null ? (
+                        {showWorkingPercents && activeRow.best_score != null ? (
                           <div className="dash-pct-table">
                             <p className="dash-kicker">Working-set percentages</p>
                             <p className="account-muted">
@@ -875,29 +1065,70 @@ export default function AccountBenchmarks() {
                       Benchmark conditioning times
                     </h2>
                   </div>
+                  <span className="dash-chip">
+                    {conditioning.length} benchmark{conditioning.length === 1 ? "" : "s"}
+                  </span>
                 </div>
                 {conditioning.length === 0 ? (
                   <p className="account-muted">No workout benchmarks logged yet.</p>
                 ) : (
-                  <div className="dash-bench-grid">
-                    {conditioning.slice(0, 8).map((row) => {
-                      const id = rowKey(row);
-                      return (
-                        <article key={id} className="dash-bench-card">
-                          <h3 className="dash-meal-card__title">{row.name}</h3>
-                          <p className="dash-lift-max dash-lift-max--sm">{formatScore(row)}</p>
-                          <p className="account-muted">
-                            Best · {row.total_entries} attempt
-                            {row.total_entries === 1 ? "" : "s"}
-                            {row.benchmark_classification
-                              ? ` · ${row.benchmark_classification}`
-                              : ""}
-                          </p>
-                        </article>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <ExploreSearch
+                      value={condQuery}
+                      onChange={setCondQuery}
+                      placeholder="Search benchmarks…"
+                      label="Search benchmarks"
+                    />
+                    {exploredConditioning.length === 0 ? (
+                      <p className="account-muted">No benchmarks match that search.</p>
+                    ) : (
+                      <div className="dash-bench-grid">
+                        {exploredConditioning.map((row) => {
+                          const id = rowKey(row);
+                          const on = id === workoutFocusId;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              className={`dash-bench-card${on ? " dash-bench-card--on" : ""}`}
+                              aria-pressed={on}
+                              onClick={() => setWorkoutFocusId(id)}
+                            >
+                              <h3 className="dash-meal-card__title">{row.name}</h3>
+                              <p className="dash-lift-max dash-lift-max--sm">{formatScore(row)}</p>
+                              <p className="account-muted">
+                                Best · {row.total_entries} attempt
+                                {row.total_entries === 1 ? "" : "s"}
+                                {row.benchmark_classification
+                                  ? ` · ${row.benchmark_classification}`
+                                  : ""}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
+                {(() => {
+                  const focus = conditioning.find((row) => rowKey(row) === workoutFocusId);
+                  if (!focus) return null;
+                  if (focus.custom_workout_id == null) {
+                    return (
+                      <p className="account-muted">
+                        {focus.name} has no workout id, so attempt history stays in the MetFix app.
+                      </p>
+                    );
+                  }
+                  return (
+                    <WorkoutPrAttempts
+                      customWorkoutId={focus.custom_workout_id}
+                      name={focus.name}
+                      showChart
+                      lowerIsBetter={focus.pr_direction !== "higher_better"}
+                    />
+                  );
+                })()}
               </section>
 
               <section className="dash-bench-section" aria-labelledby="mark-heading">
@@ -905,35 +1136,172 @@ export default function AccountBenchmarks() {
                   <div>
                     <p className="dash-kicker">Pro health log</p>
                     <h2 id="mark-heading" className="dash-section-title">
-                      Metabolic & body markers
+                      Metabolic health markers
                     </h2>
                   </div>
+                  <span className="dash-chip">
+                    {healthCatalog.length} marker{healthCatalog.length === 1 ? "" : "s"}
+                  </span>
                 </div>
-                {markers.length === 0 ? (
+                {healthLoading ? (
+                  <PrChartSkeleton />
+                ) : healthCatalog.length === 0 ? (
                   <p className="account-muted">
-                    No lab / body markers in your PR overview yet.
+                    No health markers logged yet. Health-type metrics from the MetFix app (weight,
+                    labs, vitals, and more) appear here — movement PRs stay in Strength above.
                   </p>
                 ) : (
-                  <div className="dash-bench-grid">
-                    {markers.map((row) => {
-                      const id = rowKey(row);
-                      return (
-                        <article key={id} className="dash-bench-card">
-                          <h3 className="dash-meal-card__title">{row.name}</h3>
-                          <p className="dash-lift-max dash-lift-max--sm">{formatScore(row)}</p>
-                          <p className="account-muted">
-                            {row.total_entries} entr
-                            {row.total_entries === 1 ? "y" : "ies"}
-                          </p>
-                        </article>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <ExploreSearch
+                      value={healthQuery}
+                      onChange={setHealthQuery}
+                      placeholder="Search health markers…"
+                      label="Search health markers"
+                    />
+                    {exploredHealth.length === 0 ? (
+                      <p className="account-muted">No health markers match that search.</p>
+                    ) : (
+                      <div className="dash-lift-tabs" role="tablist" aria-label="Health markers">
+                        {exploredHealth.map((row) => {
+                          const on = row.measurement_id === healthFocusId;
+                          return (
+                            <button
+                              key={row.measurement_id}
+                              type="button"
+                              role="tab"
+                              aria-selected={on}
+                              className={`dash-lift-tab${on ? " dash-lift-tab--on" : ""}`}
+                              onClick={() => setHealthFocusId(row.measurement_id)}
+                            >
+                              {row.name}
+                              <span className="dash-lift-tab__score">
+                                {formatValue(row.best_score, row.unit_abbreviation)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {activeHealth ? (
+                      <div className="dash-lift-detail">
+                        <div>
+                          <div className="dash-health-detail-head">
+                            <div>
+                              <p className="dash-kicker">{activeHealth.name} · trend</p>
+                              <p className="dash-lift-max">
+                                {formatValue(
+                                  activeHealth.best_score,
+                                  activeHealth.unit_abbreviation,
+                                )}
+                              </p>
+                              <p className="account-muted">
+                                {activeHealth.total_entries} entr
+                                {activeHealth.total_entries === 1 ? "y" : "ies"}
+                                {` · last ${formatValue(activeHealth.last_score, activeHealth.unit_abbreviation)}`}
+                                {activeHealth.sub_type ? ` · ${activeHealth.sub_type}` : ""}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="dash-health-add"
+                              aria-label={`Log new ${activeHealth.name} entry`}
+                              onClick={() => setHealthLogOpen(true)}
+                            >
+                              <svg
+                                aria-hidden="true"
+                                viewBox="0 0 16 16"
+                                width="14"
+                                height="14"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                              >
+                                <path d="M8 2.5v11M2.5 8h11" />
+                              </svg>
+                            </button>
+                          </div>
+                          {healthEntriesLoading ? (
+                            <PrChartSkeleton />
+                          ) : healthChartPoints.length === 0 ? (
+                            <p className="account-muted">No chart history for this marker yet.</p>
+                          ) : (
+                            <PrProgressChart
+                              points={healthChartPoints}
+                              unit={activeHealth.unit_abbreviation}
+                              hoverIndex={healthHover}
+                              onHover={setHealthHover}
+                            />
+                          )}
+
+                          <button
+                            type="button"
+                            className="dash-health-entries-toggle"
+                            aria-expanded={healthListOpen}
+                            onClick={() => setHealthListOpen((v) => !v)}
+                          >
+                            <span>
+                              {healthListOpen ? "Hide" : "Show"} entries
+                              {healthEntries.length > 0 ? ` (${healthEntries.length})` : ""}
+                            </span>
+                            <span aria-hidden="true">{healthListOpen ? "▴" : "▾"}</span>
+                          </button>
+                          {healthListOpen ? (
+                            healthEntries.length === 0 ? (
+                              <p className="account-muted">No entries for this marker yet.</p>
+                            ) : (
+                              <ol className="dash-attempt-list">
+                                {[...healthEntries]
+                                  .sort((a, b) =>
+                                    b.measurement_date.localeCompare(a.measurement_date),
+                                  )
+                                  .map((entry, i) => {
+                                    const label = formatStamp(entry.measurement_date);
+                                    return (
+                                      <li
+                                        key={
+                                          entry.id != null
+                                            ? String(entry.id)
+                                            : `${entry.measurement_date}-${entry.value}-${i}`
+                                        }
+                                      >
+                                        <span>{label}</span>
+                                        <span>
+                                          {formatValue(
+                                            entry.value,
+                                            entry.unit_abbreviation ??
+                                              activeHealth.unit_abbreviation,
+                                          )}
+                                        </span>
+                                      </li>
+                                    );
+                                  })}
+                              </ol>
+                            )
+                          ) : null}
+
+                          <HealthLogModal
+                            open={healthLogOpen}
+                            onOpenChange={setHealthLogOpen}
+                            measurementId={activeHealth.measurement_id}
+                            measurementName={activeHealth.name}
+                            defaultUnitId={activeHealth.default_unit_id}
+                            defaultUnitAbbreviation={activeHealth.unit_abbreviation}
+                            historyUnitIds={healthEntries
+                              .map((e) => e.unit_id)
+                              .filter((id): id is number => id != null && id > 0)}
+                            onLogged={() => setEntriesTick((n) => n + 1)}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </section>
             </>
           )}
-        </div>
+        </BodyPanel>
       )}
     </DashboardLayout>
   );
