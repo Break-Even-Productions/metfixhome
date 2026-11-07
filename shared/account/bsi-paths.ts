@@ -327,6 +327,11 @@ export function accountInAppNotificationsPath(): string {
   return `${BSI}/in-app-notifications`;
 }
 
+/** Combined site/personal list; includes `unread_count` for the header bell. */
+export function accountNotificationsListPath(): string {
+  return `${BSI}/notifications`;
+}
+
 /** Hybrid meal/workout plans collection (create). */
 export function accountPlansPath(): string {
   return `${METFIX}/plans`;

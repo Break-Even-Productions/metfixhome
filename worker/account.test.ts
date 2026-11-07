@@ -1173,7 +1173,27 @@ describe("worker/account routes", () => {
         }
         if (path.includes("/in-app-notifications")) {
           return Response.json({
-            notifications: [{ id: 2, title: "Welcome", message: "Hi", created_at: "2026-11-01" }],
+            notifications: [
+              {
+                id: 2,
+                type: "messaging",
+                title: "Welcome",
+                content: "Hi",
+                created_at: "2026-11-01",
+                read_at: null,
+                link: "/messages/9",
+                post_id: 9,
+                source: "personal",
+              },
+            ],
+          });
+        }
+        if (path.includes("/bsi/v1/notifications") && !path.includes("preferences")) {
+          return Response.json({
+            site_notifications: [],
+            personal_notifications: [],
+            total_count: 1,
+            unread_count: 1,
           });
         }
         return Response.json({ error: "unexpected" }, 500);
@@ -1355,10 +1375,25 @@ describe("worker/account routes", () => {
     expect(inbox.status).toBe(200);
     const inboxJson = (await inbox.json()) as {
       conversations: unknown[];
-      notifications: unknown[];
+      notifications: Array<{ href?: string; type?: string; read?: boolean }>;
+      unread_count?: number;
     };
     expect(inboxJson.conversations.length).toBe(1);
     expect(inboxJson.notifications.length).toBe(1);
+    expect(inboxJson.notifications[0]?.href).toBe("/account/messages/9");
+    expect(inboxJson.notifications[0]?.type).toBe("messaging");
+    expect(inboxJson.notifications[0]?.read).toBe(false);
+    expect(inboxJson.unread_count).toBe(1);
+
+    const unread = await callAccount(
+      h,
+      "/api/account/notifications/unread-count",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(unread.status).toBe(200);
+    const unreadJson = (await unread.json()) as { unread_count: number };
+    expect(unreadJson.unread_count).toBe(1);
 
     for (const rec of recorded) {
       assertHasBearer(rec);

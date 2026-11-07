@@ -317,8 +317,26 @@
   color: var(--gn-fg-muted);
   cursor: pointer;
   text-decoration: none;
+  position: relative;
 }
 .global-nav__icon-btn:hover { color: var(--gn-ink); }
+
+.global-nav__bell-badge {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.2rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  background: var(--gn-ink);
+  color: var(--gn-paper);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.05rem;
+  text-align: center;
+  pointer-events: none;
+}
 
 .global-nav__join {
   display: none;

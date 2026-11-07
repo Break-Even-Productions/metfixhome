@@ -34,10 +34,18 @@ import { DEFAULT_NAV_LINKS, type NavLink } from "@/lib/contentTypes";
 import { expectedSearchHrefFromApp } from "@/style-parity/searchHref";
 import { loadMe } from "@/lib/session";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
-import { ChevronDown, Menu, Search, X } from "lucide-react";
+import { shouldSkipProRecommendation } from "@/join/membership-access";
+import {
+  loadOverview,
+  loadSubscriptions,
+  loadUnreadNotificationCount,
+} from "@/lib/account";
+import { Bell, ChevronDown, Menu, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import "./global-nav.css";
+
+const NOTIF_POLL_MS = 60_000;
 
 const ALLOWED_EXTERNAL_HOSTS = ["whatis.metfix.org", "brokenscience.org"] as const;
 
@@ -145,17 +153,90 @@ export default function GlobalNav() {
   const mobilePanelRef = useRef<HTMLElement>(null);
   const onHome = location === "/" || location === "";
   const [accountName, setAccountName] = useState<string | null>(null);
+  const [showNotifBell, setShowNotifBell] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    void loadMe().then((me) => {
+    void (async () => {
+      const me = await loadMe();
       if (cancelled) return;
-      setAccountName(me.status === "signed_in" ? me.public_name : null);
-    });
+      if (me.status !== "signed_in") {
+        setAccountName(null);
+        setShowNotifBell(false);
+        setUnreadCount(0);
+        return;
+      }
+      setAccountName(me.public_name);
+      try {
+        const [overview, subscriptions] = await Promise.all([
+          loadOverview().catch(() => null),
+          loadSubscriptions().catch(() => null),
+        ]);
+        if (cancelled) return;
+        setShowNotifBell(shouldSkipProRecommendation(subscriptions, overview));
+      } catch {
+        if (!cancelled) setShowNotifBell(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, [location]);
+
+  useEffect(() => {
+    if (!showNotifBell) {
+      setUnreadCount(0);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const payload = await loadUnreadNotificationCount({ force: true });
+        if (!cancelled) {
+          const n = payload.unread_count;
+          setUnreadCount(typeof n === "number" && Number.isFinite(n) ? Math.max(0, n) : 0);
+        }
+      } catch {
+        /* keep last known count */
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, NOTIF_POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [showNotifBell, location]);
+
+  const notifBellLabel =
+    unreadCount > 0
+      ? `Notifications, ${unreadCount > 99 ? "99+" : unreadCount} unread`
+      : "Notifications";
+
+  const renderNotifBell = (className: string, onNavigate?: () => void) => (
+    <Link
+      href="/account/notifications"
+      className={className}
+      aria-label={notifBellLabel}
+      data-nav-auth="notifications"
+      onClick={onNavigate}
+    >
+      <Bell size={18} aria-hidden="true" />
+      {unreadCount > 0 ? (
+        <span className="global-nav__bell-badge" aria-hidden="true">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      ) : null}
+    </Link>
+  );
 
   useBodyScrollLock(mobileOpen);
 
@@ -447,9 +528,13 @@ export default function GlobalNav() {
                 </Link>
               )
             ) : null}
-            <button type="button" className="global-nav__join" onClick={openJoin}>
-              Join Today — 1 Month Free
-            </button>
+            {showNotifBell ? (
+              renderNotifBell("global-nav__icon-btn global-nav__bell")
+            ) : (
+              <button type="button" className="global-nav__join" onClick={openJoin}>
+                Join Today — 1 Month Free
+              </button>
+            )}
             <button
               ref={toggleRef}
               type="button"
@@ -545,9 +630,15 @@ export default function GlobalNav() {
                 >
                   {accountName ? "Dashboard" : "Sign in"}
                 </Link>
-                <button type="button" className="global-nav__join" onClick={openJoin}>
-                  Join Today — 1 Month Free
-                </button>
+                {showNotifBell ? (
+                  renderNotifBell("global-nav__icon-btn global-nav__bell", () =>
+                    setMobileOpen(false),
+                  )
+                ) : (
+                  <button type="button" className="global-nav__join" onClick={openJoin}>
+                    Join Today — 1 Month Free
+                  </button>
+                )}
                 <button
                   type="button"
                   className="global-nav__icon-btn"

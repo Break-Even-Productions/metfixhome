@@ -22,6 +22,7 @@ import {
 } from "../shared/account/claimOptions";
 import { emitStrayFieldLogs, stripStrayFields } from "./stripStrayFields";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
+import { resolveNotificationHref } from "../shared/account/notificationDeepLinks";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
@@ -50,6 +51,7 @@ import {
   accountFavoriteItemPath,
   accountFavoritesPath,
   accountInAppNotificationsPath,
+  accountNotificationsListPath,
   accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
   accountMePath,
@@ -1388,6 +1390,50 @@ function shapeSparkUnits(raw: unknown): Record<string, unknown> {
   return { units, count: units.length };
 }
 
+/** Shape BSI in-app notification rows for the web inbox / notifications page. */
+function shapeInboxNotification(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = obj.id;
+  if (id == null || id === "") return null;
+  const type = typeof obj.type === "string" ? obj.type : null;
+  const link = typeof obj.link === "string" ? obj.link : null;
+  const postId =
+    typeof obj.post_id === "number" || typeof obj.post_id === "string" ? obj.post_id : null;
+  const readAt = typeof obj.read_at === "string" ? obj.read_at : null;
+  const href = resolveNotificationHref({ type, link, post_id: postId });
+  const title = typeof obj.title === "string" ? obj.title : null;
+  const content =
+    typeof obj.content === "string"
+      ? obj.content
+      : typeof obj.message === "string"
+        ? obj.message
+        : null;
+  return {
+    id,
+    type,
+    title,
+    content,
+    message: content,
+    created_at: typeof obj.created_at === "string" ? obj.created_at : null,
+    read_at: readAt,
+    read: Boolean(readAt),
+    source: typeof obj.source === "string" ? obj.source : null,
+    post_id: postId,
+    link,
+    href,
+  };
+}
+
+function unreadCountFromPayload(raw: unknown): number | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const n = obj.unread_count;
+  if (typeof n === "number" && Number.isFinite(n) && n >= 0) return Math.floor(n);
+  if (typeof n === "string" && /^\d+$/.test(n)) return Number.parseInt(n, 10);
+  return null;
+}
+
 /** BSI spark create requires Y-m-d H:i:s; dashboard date inputs send Y-m-d. */
 function normalizeSparkMeasurementDate(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -1982,6 +2028,9 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "GET" && rest === "course-gifts") {
     return { id: "DP25", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "notifications/unread-count") {
+    return { id: "MF14u", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "notifications") {
     return { id: "DP26", method: "GET", params: {}, limiter: "read" };
@@ -3371,14 +3420,22 @@ async function dispatch(
       return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
     case "MF14": {
-      const [convRan, notifRan] = await Promise.all([
+      const [convRan, notifRan, unreadRan] = await Promise.all([
         runBearer(ctx!, env, fetchImpl, opts, "GET", accountMessagesConversationsPath()),
         runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath()),
+        runBearer(
+          ctx!,
+          env,
+          fetchImpl,
+          opts,
+          "GET",
+          `${accountNotificationsListPath()}?limit=1&offset=0`,
+        ),
       ]);
       if (convRan instanceof Response) return mapUnauthenticated(convRan);
       if (notifRan instanceof Response) return mapUnauthenticated(notifRan);
       const conversations: unknown[] = [];
-      const notifications: unknown[] = [];
+      const notifications: Record<string, unknown>[] = [];
       if (convRan.result.kind === "ok") {
         const cobj = asRecord(convRan.result.json) ?? {};
         const list = Array.isArray(cobj.conversations)
@@ -3399,7 +3456,22 @@ async function dispatch(
           : Array.isArray(nobj.items)
             ? nobj.items
             : [];
-        notifications.push(...list);
+        for (const row of list) {
+          const shaped = shapeInboxNotification(row);
+          if (shaped) notifications.push(shaped);
+        }
+      }
+      let unread_count =
+        unreadRan instanceof Response
+          ? null
+          : unreadRan.result.kind === "ok"
+            ? unreadCountFromPayload(unreadRan.result.json)
+            : null;
+      if (unread_count == null) {
+        unread_count = notifications.reduce(
+          (sum, n) => sum + (n.read === true ? 0 : 1),
+          0,
+        );
       }
       // If both upstreams failed hard, surface unavailable.
       if (
@@ -3410,7 +3482,31 @@ async function dispatch(
       ) {
         return accountJson({ error: "unavailable" }, 502);
       }
-      return accountJson({ conversations, notifications, items: notifications }, 200);
+      return accountJson(
+        { conversations, notifications, items: notifications, unread_count },
+        200,
+      );
+    }
+    case "MF14u": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        `${accountNotificationsListPath()}?limit=1&offset=0`,
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "ok") {
+        const count = unreadCountFromPayload(ran.result.json) ?? 0;
+        return accountJson({ unread_count: count }, 200);
+      }
+      if (ran.result.kind === "http" && ran.result.status === 404) {
+        return accountJson({ unread_count: 0 }, 200);
+      }
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ unread_count: 0 }, 200);
     }
     case "MF51": {
       const ran = await runBearer(
