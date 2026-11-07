@@ -238,6 +238,26 @@ export function accountMovementsPath(): string {
   return `${METFIX}/movements`;
 }
 
+export function accountMovementPath(id: string): string {
+  return `${METFIX}/movements/${encodeURIComponent(id)}`;
+}
+
+export function accountMovementVideosPath(movementId: string): string {
+  return `${METFIX}/movements/${encodeURIComponent(movementId)}/videos`;
+}
+
+export function accountMovementVideoPath(movementId: string, videoId: string): string {
+  return `${METFIX}/movements/${encodeURIComponent(movementId)}/videos/${encodeURIComponent(videoId)}`;
+}
+
+export function accountMovementVideoPreferPath(movementId: string, videoId: string): string {
+  return `${METFIX}/movements/${encodeURIComponent(movementId)}/videos/${encodeURIComponent(videoId)}/prefer`;
+}
+
+export function accountMeMovementVideosPath(): string {
+  return `${METFIX}/me/movement-videos`;
+}
+
 export function accountPlansCollectionPath(): string {
   return `${METFIX}/plans`;
 }

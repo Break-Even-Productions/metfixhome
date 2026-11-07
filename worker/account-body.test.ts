@@ -140,6 +140,14 @@ describe("account body shapers", () => {
                   label: "Thruster",
                   prescription: { reps: 21, weight: 95, weight_unit_id: 1 },
                   prescription_female: { weight: 65, weight_unit_id: 1 },
+                  videos: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", type: "youtube" }],
+                  demo_video: {
+                    type: "youtube",
+                    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                    source: "workout",
+                    provider_id: "dQw4w9WgXcQ",
+                    title: null,
+                  },
                 },
               ],
             },
@@ -152,9 +160,17 @@ describe("account body shapers", () => {
     if (!saved.ok) return;
     expect(saved.body).not.toHaveProperty("user_id");
     const structure = saved.body.structure as {
-      segments: Array<{ steps: Array<{ prescription_female: { weight: number } }> }>;
+      segments: Array<{
+        steps: Array<{
+          prescription_female: { weight: number };
+          videos?: Array<{ url: string }>;
+          demo_video?: unknown;
+        }>;
+      }>;
     };
     expect(structure.segments[0]?.steps[0]?.prescription_female.weight).toBe(65);
+    expect(structure.segments[0]?.steps[0]?.videos?.[0]?.url).toContain("youtube.com");
+    expect(structure.segments[0]?.steps[0]).not.toHaveProperty("demo_video");
 
     const echoed = shapeCustomWorkout({
       id: 8,
