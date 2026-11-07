@@ -646,8 +646,13 @@ a.df-btn {
 
 .df-tabs {
   display: grid;
+  /* minmax(0, …) so nowrap excerpts cannot blow the track past the pad. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   margin-top: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 @media (min-width: 768px) {
@@ -657,6 +662,9 @@ a.df-btn {
 }
 
 .df-tab {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border-radius: 1.25rem;
   padding: 1rem;
   text-align: left;
