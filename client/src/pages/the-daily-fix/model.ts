@@ -17,12 +17,15 @@ import {
 } from "@shared/daily-fix";
 import {
   extractYoutubeId,
+  mapDailyFixCompareTo,
   mapDailyFixDay,
   mapHttpsPhotoUrl,
   type DailyFixBelly,
   type DailyFixBody,
   type DailyFixBrain,
+  type DailyFixCompareTo,
   type DailyFixDay,
+  type DailyFixPriorLog,
   type RecipeIngredient,
   type RecipeStep,
 } from "@shared/daily-fix/mapper";
@@ -36,6 +39,7 @@ export {
   isoFromYymmdd,
   isIsoDate,
   isValidCalendarDay,
+  mapDailyFixCompareTo,
   mapDailyFixDay,
   mapHttpsPhotoUrl,
   missingIsoFromSearch,
@@ -49,7 +53,9 @@ export type {
   DailyFixBelly,
   DailyFixBody,
   DailyFixBrain,
+  DailyFixCompareTo,
   DailyFixDay,
+  DailyFixPriorLog,
   DailyFixTab,
   RecipeIngredient,
   RecipeStep,

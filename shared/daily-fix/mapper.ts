@@ -62,12 +62,35 @@ export type DailyFixBrain = {
   hasContent: boolean;
 };
 
+export type DailyFixPriorLog = {
+  id: number;
+  date: string | null;
+  date_time: string;
+  workout_title: string;
+  workout_source: string;
+  workout_source_id: number;
+  custom_workout_id: number | null;
+  scaling_mode: string;
+  scores: Record<string, number | string | null>;
+  match_reason: string;
+};
+
+export type DailyFixCompareTo = {
+  /** Admin-attached or derived prior day (Y-m-d). */
+  date: string | null;
+  urls: { view: string; body: string } | null;
+  /** Present only on authenticated compare-to fetches — never from the public day cache. */
+  my_prior_log: DailyFixPriorLog | null;
+};
+
 export type DailyFixDay = {
   date: string;
   requested_date?: string | null;
   belly: DailyFixBelly;
   body: DailyFixBody;
   brain: DailyFixBrain;
+  /** Public compare-to day metadata (no per-user prior log). */
+  compare_to: DailyFixCompareTo | null;
 };
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -237,6 +260,26 @@ function mapBrain(value: unknown): DailyFixBrain | null {
   };
 }
 
+function mapCompareToPublic(value: unknown): DailyFixCompareTo | null {
+  if (!isRecord(value)) return null;
+  const compareDate = asString(value.date);
+  const date = compareDate && isIsoDate(compareDate) ? compareDate : null;
+  const urlsRaw = isRecord(value.urls) ? value.urls : null;
+  const view = urlsRaw ? asString(urlsRaw.view) : null;
+  const bodyUrl = urlsRaw ? asString(urlsRaw.body) : null;
+  const urls =
+    view && bodyUrl
+      ? { view, body: bodyUrl }
+      : null;
+  if (!date && !urls) return null;
+  return {
+    date,
+    urls,
+    // Never trust my_prior_log from the shared API-key / edge-cached day payload.
+    my_prior_log: null,
+  };
+}
+
 /**
  * Map a Worker JSON body onto DailyFixDay, or null when unusable.
  * Requires a valid top-level ISO `date`. Drops `comment_counts`.
@@ -251,5 +294,48 @@ export function mapDailyFixDay(payload: unknown, _requestedIso?: string): DailyF
   const body = mapBody(payload.body);
   const brain = mapBrain(payload.brain);
   if (!belly || !body || !brain) return null;
-  return { date, belly, body, brain };
+  return { date, belly, body, brain, compare_to: mapCompareToPublic(payload.compare_to) };
+}
+
+/**
+ * Map authenticated compare-to payload (`{ compare_to: … }` or a full day with prior log).
+ */
+export function mapDailyFixCompareTo(payload: unknown): DailyFixCompareTo | null {
+  if (!isRecord(payload)) return null;
+  const root = isRecord(payload.compare_to) ? payload.compare_to : payload;
+  if (!isRecord(root)) return null;
+  const publicPart = mapCompareToPublic(root);
+  const priorRaw = isRecord(root.my_prior_log) ? root.my_prior_log : null;
+  let my_prior_log: DailyFixPriorLog | null = null;
+  if (priorRaw) {
+    const id = priorRaw.id;
+    if (typeof id === "number" && Number.isFinite(id) && id > 0) {
+      const scoresRaw = isRecord(priorRaw.scores) ? priorRaw.scores : {};
+      const scores: Record<string, number | string | null> = {};
+      for (const [k, v] of Object.entries(scoresRaw)) {
+        if (typeof v === "number" || typeof v === "string" || v === null) scores[k] = v;
+      }
+      const priorDate = asString(priorRaw.date);
+      my_prior_log = {
+        id,
+        date: priorDate && isIsoDate(priorDate) ? priorDate : null,
+        date_time: asString(priorRaw.date_time) ?? "",
+        workout_title: asString(priorRaw.workout_title) ?? "",
+        workout_source: asString(priorRaw.workout_source) ?? "",
+        workout_source_id:
+          typeof priorRaw.workout_source_id === "number" ? priorRaw.workout_source_id : 0,
+        custom_workout_id:
+          typeof priorRaw.custom_workout_id === "number" ? priorRaw.custom_workout_id : null,
+        scaling_mode: asString(priorRaw.scaling_mode) ?? "rx",
+        scores,
+        match_reason: asString(priorRaw.match_reason) ?? "",
+      };
+    }
+  }
+  if (!publicPart && !my_prior_log) return null;
+  return {
+    date: publicPart?.date ?? my_prior_log?.date ?? null,
+    urls: publicPart?.urls ?? null,
+    my_prior_log,
+  };
 }
