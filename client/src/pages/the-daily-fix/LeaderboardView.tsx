@@ -128,7 +128,11 @@ export function Leaderboard({
             >
               <span className="df-leaderboard-rank">{row.rank}</span>
               <span className="df-leaderboard-name">{row.public_name}</span>
-              <span className="df-leaderboard-score">{row.score_value ?? ""}</span>
+              <span className="df-leaderboard-score">
+                {row.score_value == null || row.score_value === ""
+                  ? "DNF"
+                  : row.score_value}
+              </span>
             </li>
           ))}
         </ol>
