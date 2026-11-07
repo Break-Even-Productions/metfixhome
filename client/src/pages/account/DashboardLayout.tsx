@@ -41,6 +41,7 @@ export const ACCOUNT_NAV = [
     always: false,
     referrals: true,
   },
+  { href: "/account/messages", label: "Messages", always: true },
   { href: "/account/notifications", label: "Notifications", always: true },
   { href: "/account/privacy", label: "Privacy & Security", always: true },
 ] as const;
@@ -171,6 +172,14 @@ export default function DashboardLayout({
         location.startsWith("/account/workouts") ||
         location.startsWith("/account/plans") ||
         location.startsWith("/account/coaching")
+      );
+    }
+    if (href === "/account/messages") {
+      return (
+        location === "/account/messages" ||
+        location.startsWith("/account/messages/") ||
+        location === "/account/chat" ||
+        location.startsWith("/account/chat/")
       );
     }
     return location === href || location.startsWith(`${href}/`);

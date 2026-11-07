@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
+import { basePath } from "@/const";
 import {
   loadInbox,
   type AccountInbox,
@@ -140,7 +142,9 @@ export default function AccountInbox() {
                 <li key={String(c.id)} className="account-inbox-list__item">
                   <div>
                     <div className="account-inbox-list__title">
-                      {conversationTitle(c)}
+                      <Link href={basePath(`/account/messages/${c.id}`)}>
+                        {conversationTitle(c)}
+                      </Link>
                       {unread > 0 ? (
                         <span className="account-inbox-list__badge account-mono">
                           {unread}

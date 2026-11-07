@@ -21,6 +21,8 @@ vi.mock("@/pages/account/AccountFavorites", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountReferrals", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountNotifications", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountPrivacy", () => ({ default: () => null }));
+vi.mock("@/pages/account/AccountMessages", () => ({ default: () => null }));
+vi.mock("@/pages/account/AccountInbox", () => ({ default: () => null }));
 vi.mock("@/pages/members/MemberProfilePage", () => ({ default: () => null }));
 vi.mock("@/pages/NotFound", () => ({ default: () => null }));
 vi.mock("@/components/ui/sonner", () => ({ Toaster: () => null }));

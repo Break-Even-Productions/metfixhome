@@ -134,9 +134,9 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
   },
   {
     id: "inbox",
-    title: "Inbox",
-    summary: "Conversations and in-app notifications.",
-    href: "/account/inbox",
+    title: "Messages",
+    summary: "Chat with members and staff.",
+    href: "/account/messages",
   },
 ];
 
