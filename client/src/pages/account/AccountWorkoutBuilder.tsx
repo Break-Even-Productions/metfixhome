@@ -6,12 +6,36 @@ import {
   loadCustomWorkout,
   loadMyCustomWorkouts,
   saveCustomWorkout,
+  savePreferredMovementVideo,
   searchMovements,
   type CustomWorkoutSummary,
   type MovementRow,
   type WorkoutStructure,
   type WorkoutStructureSegment,
 } from "@/lib/account";
+
+function youtubeOrVimeoUrl(raw: string): string | null {
+  const url = raw.trim();
+  if (!url) return null;
+  try {
+    const host = new URL(url.startsWith("http") ? url : `https://${url}`).hostname
+      .replace(/^www\./i, "")
+      .toLowerCase();
+    if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "youtu.be" ||
+      host === "youtube-nocookie.com" ||
+      host === "vimeo.com" ||
+      host === "player.vimeo.com"
+    ) {
+      return url.startsWith("http") ? url : `https://${url}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 import DashboardLayout from "./DashboardLayout";
 import { BodyNav, BodyPanel, FeedSkeleton } from "./BodyWatermark";
 
@@ -233,33 +257,55 @@ export default function AccountWorkoutBuilder() {
     const segments = structure.segments.map((seg) => ({
       ...seg,
       params: segmentParams(seg),
-      steps: seg.steps.map((step, order) => ({
-        movement_id: step.movement_id,
-        order,
-        ...(step.movement_name ? { label: step.movement_name } : {}),
-        prescription: {
-          ...(step.prescription?.reps != null ? { reps: step.prescription.reps } : {}),
-          ...(step.prescription?.weight != null
-            ? { weight: step.prescription.weight, weight_unit_id: step.prescription.weight_unit_id ?? 1 }
+      steps: seg.steps.map((step, order) => {
+        const attachUrl = step.videos?.[0]?.url ? youtubeOrVimeoUrl(step.videos[0].url) : null;
+        return {
+          movement_id: step.movement_id,
+          order,
+          ...(step.movement_name ? { label: step.movement_name } : {}),
+          prescription: {
+            ...(step.prescription?.reps != null ? { reps: step.prescription.reps } : {}),
+            ...(step.prescription?.weight != null
+              ? { weight: step.prescription.weight, weight_unit_id: step.prescription.weight_unit_id ?? 1 }
+              : {}),
+            ...(step.prescription?.distance_m != null ? { distance_m: step.prescription.distance_m } : {}),
+            ...(step.prescription?.duration_sec != null
+              ? { duration_sec: step.prescription.duration_sec }
+              : {}),
+          },
+          ...(step.prescription_female?.weight != null
+            ? {
+                prescription_female: {
+                  weight: step.prescription_female.weight,
+                  weight_unit_id: step.prescription_female.weight_unit_id ?? 1,
+                },
+              }
             : {}),
-          ...(step.prescription?.distance_m != null ? { distance_m: step.prescription.distance_m } : {}),
-          ...(step.prescription?.duration_sec != null
-            ? { duration_sec: step.prescription.duration_sec }
+          ...(attachUrl
+            ? {
+                videos: [
+                  {
+                    url: attachUrl,
+                    ...(step.videos?.[0]?.title ? { title: step.videos[0].title } : {}),
+                  },
+                ],
+              }
             : {}),
-        },
-        ...(step.prescription_female?.weight != null
-          ? {
-              prescription_female: {
-                weight: step.prescription_female.weight,
-                weight_unit_id: step.prescription_female.weight_unit_id ?? 1,
-              },
-            }
-          : {}),
-      })),
+        };
+      }),
     }));
     if (segments.some((seg) => seg.steps.length === 0)) {
       setMessage("Add a movement to each segment.");
       return;
+    }
+    for (const seg of segments) {
+      for (const step of seg.steps) {
+        const raw = (step as { videos?: Array<{ url?: string }> }).videos?.[0]?.url;
+        if (raw && !youtubeOrVimeoUrl(raw)) {
+          setMessage("Workout demo videos must be YouTube or Vimeo links.");
+          return;
+        }
+      }
     }
     if (segments.some((seg) => seg.params == null && seg.preset !== "straight" && seg.preset !== "chipper")) {
       setMessage("Fill in the segment timing before saving.");
@@ -647,6 +693,63 @@ export default function AccountWorkoutBuilder() {
                           />
                         </label>
                       </div>
+                      <label className="dash-wb__param">
+                        Workout demo video (optional)
+                        <input
+                          type="url"
+                          placeholder="YouTube or Vimeo URL for this shared workout"
+                          value={step.videos?.[0]?.url ?? ""}
+                          onChange={(ev) => {
+                            const value = ev.target.value;
+                            setStructure((prev) => ({
+                              ...prev,
+                              segments: prev.segments.map((row, i) => {
+                                if (i !== segIndex) return row;
+                                return {
+                                  ...row,
+                                  steps: row.steps.map((item, j) => {
+                                    if (j !== stepIndex) return item;
+                                    if (!value.trim()) return { ...item, videos: undefined };
+                                    return {
+                                      ...item,
+                                      videos: [{ url: value, title: item.videos?.[0]?.title }],
+                                    };
+                                  }),
+                                };
+                              }),
+                            }));
+                          }}
+                        />
+                      </label>
+                      {step.demo_video?.url ? (
+                        <p className="dash-wb__hint">
+                          Resolved demo ({step.demo_video.source}):{" "}
+                          <a href={step.demo_video.url} target="_blank" rel="noreferrer">
+                            open video
+                          </a>
+                        </p>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="dash-wb__text-btn"
+                        onClick={() => {
+                          const url = youtubeOrVimeoUrl(step.videos?.[0]?.url ?? "");
+                          if (!url) {
+                            setMessage("Enter a YouTube or Vimeo URL on this step first, then save as preferred.");
+                            return;
+                          }
+                          void (async () => {
+                            try {
+                              await savePreferredMovementVideo(step.movement_id, url);
+                              setMessage(`Saved preferred demo for ${step.movement_name || "movement"}.`);
+                            } catch {
+                              setError("Could not save preferred movement video.");
+                            }
+                          })();
+                        }}
+                      >
+                        Save URL as my preferred for this movement
+                      </button>
                     </li>
                   ))}
                 </ul>

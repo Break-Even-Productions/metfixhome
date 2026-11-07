@@ -872,6 +872,74 @@ function sanitizeSegmentParams(
   return { work_seconds: work, rest_seconds: rest, interval_rounds: rounds };
 }
 
+const VIDEO_PROVIDERS = new Set(["youtube", "vimeo", "instagram", "tiktok"]);
+const DEMO_SOURCES = new Set(["workout", "personal", "sitewide"]);
+
+function looksLikeYoutubeOrVimeo(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+    return (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "youtu.be" ||
+      host === "youtube-nocookie.com" ||
+      host === "vimeo.com" ||
+      host === "player.vimeo.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Workout step video snapshots (coach attach) + optional read-only demo_video. */
+function sanitizeStepVideos(raw: unknown): Record<string, unknown>[] | null {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) return null;
+  if (raw.length > 8) return null;
+  const out: Record<string, unknown>[] = [];
+  for (const item of raw) {
+    const row = asRecord(item);
+    if (!row) return null;
+    const url = clip(row.url, 512);
+    if (!url || !/^https?:\/\//i.test(url)) return null;
+    if (!looksLikeYoutubeOrVimeo(url)) return null;
+    const next: Record<string, unknown> = { url };
+    const typeRaw = typeof row.type === "string" ? row.type.toLowerCase() : "";
+    if (typeRaw) {
+      if (!VIDEO_PROVIDERS.has(typeRaw)) return null;
+      next.type = typeRaw;
+    }
+    const title = clip(row.title, 200);
+    if (title) next.title = title;
+    const providerId = clip(row.provider_id, 128);
+    if (providerId) next.provider_id = providerId;
+    const libraryId = posInt(row.library_video_id);
+    if (libraryId) next.library_video_id = libraryId;
+    out.push(next);
+  }
+  return out;
+}
+
+function sanitizeDemoVideo(raw: unknown): Record<string, unknown> | null | undefined {
+  if (raw == null) return undefined;
+  const row = asRecord(raw);
+  if (!row) return null;
+  const url = clip(row.url, 512);
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  const source = typeof row.source === "string" ? row.source : "";
+  if (!DEMO_SOURCES.has(source)) return null;
+  const typeRaw = typeof row.type === "string" ? row.type.toLowerCase() : "";
+  if (!typeRaw || !VIDEO_PROVIDERS.has(typeRaw)) return null;
+  const out: Record<string, unknown> = { type: typeRaw, url, source };
+  const providerId = clip(row.provider_id, 128);
+  out.provider_id = providerId ?? null;
+  const title = clip(row.title, 200);
+  out.title = title ?? null;
+  const libraryId = posInt(row.library_video_id);
+  if (libraryId) out.library_video_id = libraryId;
+  return out;
+}
+
 function sanitizeWorkoutStructure(raw: unknown): Record<string, unknown> | null {
   const r = asRecord(raw);
   if (!r || r.version !== 1 || !Array.isArray(r.segments) || r.segments.length === 0) return null;
@@ -898,6 +966,10 @@ function sanitizeWorkoutStructure(raw: unknown): Record<string, unknown> | null 
       const female = sanitizePrescription(step.prescription_female);
       const loggable = sanitizeLoggable(step.loggable);
       if (prescription === null || female === null || loggable === null) return null;
+      const videos = sanitizeStepVideos(step.videos);
+      if (videos === null) return null;
+      const demo = sanitizeDemoVideo(step.demo_video);
+      if (demo === null) return null;
       const next: Record<string, unknown> = { movement_id: movementId, order };
       const label = clip(step.label, 120);
       if (label) next.label = label;
@@ -910,6 +982,8 @@ function sanitizeWorkoutStructure(raw: unknown): Record<string, unknown> | null 
         const ids = step.scaling_movement_ids.map(posInt).filter((n): n is number => n != null);
         if (ids.length > 0) next.scaling_movement_ids = [...new Set(ids)].slice(0, 8);
       }
+      if (videos.length > 0) next.videos = videos;
+      if (demo) next.demo_video = demo;
       steps.push(next);
     }
     segments.push({ id, preset, ...(params ? { params } : {}), steps });
@@ -1095,6 +1169,16 @@ export function validateCustomWorkoutBody(
   if (obj.structure != null) {
     const structure = sanitizeWorkoutStructure(obj.structure);
     if (!structure) return { ok: false };
+    // demo_video is read-only hydration — never write it upstream.
+    const segments = Array.isArray(structure.segments) ? structure.segments : [];
+    for (const seg of segments) {
+      const s = asRecord(seg);
+      if (!s || !Array.isArray(s.steps)) continue;
+      for (const step of s.steps) {
+        const st = asRecord(step);
+        if (st) delete st.demo_video;
+      }
+    }
     body.structure = structure;
   } else if (mode === "create") {
     return { ok: false };
@@ -1136,14 +1220,65 @@ export function shapeMovementList(raw: unknown): Record<string, unknown> {
     const id = posInt(r.id);
     const name = clip(r.name, 120);
     if (!id || !name) continue;
-    movements.push({
+    const next: Record<string, unknown> = {
       id,
       name,
       category: clip(r.category, 40),
-    });
+    };
+    const videoUrl = clip(r.video_url, 512);
+    if (videoUrl && /^https?:\/\//i.test(videoUrl)) next.video_url = videoUrl;
+    const demo = sanitizeDemoVideo(r.demo_video);
+    if (demo) next.demo_video = demo;
+    movements.push(next);
     if (movements.length >= 40) break;
   }
   return { movements };
+}
+
+export function shapeMovementVideo(raw: unknown): Record<string, unknown> | null {
+  const r = asRecord(raw);
+  if (!r) return null;
+  const id = posInt(r.id);
+  const movementId = posInt(r.movement_id);
+  const url = clip(r.url, 512);
+  const type = typeof r.type === "string" ? r.type.toLowerCase() : "";
+  if (!id || !movementId || !url || !VIDEO_PROVIDERS.has(type)) return null;
+  return {
+    id,
+    movement_id: movementId,
+    type,
+    url,
+    provider_id: clip(r.provider_id, 128),
+    title: clip(r.title, 200),
+    sort_order: boundedNum(r.sort_order, 0, 9999, true) ?? 0,
+    is_preferred: Boolean(r.is_preferred),
+  };
+}
+
+export function validateMovementVideoBody(
+  raw: unknown,
+): { ok: true; body: Record<string, unknown> } | { ok: false } {
+  const obj = asRecord(raw);
+  if (!obj) return { ok: false };
+  const url = clip(obj.url, 512);
+  if (!url || !/^https?:\/\//i.test(url) || !looksLikeYoutubeOrVimeo(url)) return { ok: false };
+  const body: Record<string, unknown> = { url };
+  const title = clip(obj.title, 200);
+  if (title) body.title = title;
+  const type = typeof obj.type === "string" ? obj.type.toLowerCase() : "";
+  if (type) {
+    if (type !== "youtube" && type !== "vimeo") return { ok: false };
+    body.type = type;
+  }
+  if (obj.sort_order != null && obj.sort_order !== "") {
+    const sort = boundedNum(obj.sort_order, 0, 9999, true);
+    if (sort == null) return { ok: false };
+    body.sort_order = sort;
+  }
+  if (obj.is_preferred != null && obj.is_preferred !== "") {
+    body.is_preferred = Boolean(obj.is_preferred);
+  }
+  return { ok: true, body };
 }
 
 const PLAN_VISIBILITY = new Set(["public", "unlisted", "invite_only"]);
