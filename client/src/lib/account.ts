@@ -527,8 +527,13 @@ export type AccountInboxNotification = {
   content?: string | null;
   type?: string | null;
   read?: boolean;
+  read_at?: string | null;
   created_at?: string | null;
   link?: string | null;
+  /** MetFix.org deep link shaped by the account worker. */
+  href?: string | null;
+  post_id?: number | string | null;
+  source?: string | null;
   [key: string]: unknown;
 };
 
@@ -540,8 +545,13 @@ export type AccountInbox = {
   conversations?: AccountInboxConversation[];
   notifications?: AccountInboxNotification[];
   items?: AccountInboxNotification[];
+  unread_count?: number;
   total?: number;
   [key: string]: unknown;
+};
+
+export type UnreadNotificationCount = {
+  unread_count: number;
 };
 
 export type WorkoutScoreEntry = {
@@ -871,6 +881,7 @@ type CacheKey =
   | "referrals"
   | "gifts"
   | "notifications"
+  | "notifications-unread"
   | "privacy"
   | "pr-overview"
   | "inbox"
@@ -1387,6 +1398,18 @@ export function loadInbox(options?: {
   signal?: AbortSignal;
 }): Promise<AccountInbox> {
   return accountGet("/api/account/inbox", "inbox", options);
+}
+
+/** Live unread badge for the site header bell. */
+export function loadUnreadNotificationCount(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<UnreadNotificationCount> {
+  return accountGet(
+    "/api/account/notifications/unread-count",
+    "notifications-unread",
+    options,
+  );
 }
 
 /**

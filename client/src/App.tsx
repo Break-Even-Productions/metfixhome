@@ -41,6 +41,7 @@ import AccountTrainingPlanBuilder from "./pages/account/AccountTrainingPlanBuild
 import AccountCoaching from "./pages/account/AccountCoaching";
 import AccountSpark from "./pages/account/AccountSpark";
 import AccountInbox from "./pages/account/AccountInbox";
+import AccountMessages from "./pages/account/AccountMessages";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 import { captureBsiRef } from "./lib/referralAttribution";
@@ -183,6 +184,9 @@ function AppRoutes() {
       <Route path={"/account/coaching"} component={AccountCoaching} />
       <Route path={"/account/spark"} component={AccountSpark} />
       <Route path={"/account/inbox"} component={AccountInbox} />
+      <Route path={"/account/messages/:conversationId"} component={AccountMessages} />
+      <Route path={"/account/messages"} component={AccountMessages} />
+      <Route path={"/account/chat"} component={AccountMessages} />
       <Route path={"/account"} component={AccountOverview} />
       <Route path={"/members/:memberId"} component={MemberProfilePage} />
       <Route path={"/404"} component={NotFound} />

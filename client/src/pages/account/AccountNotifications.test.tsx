@@ -28,6 +28,45 @@ beforeEach(() => {
       const url = String(input);
       const method = (init?.method ?? "GET").toUpperCase();
       if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+      if (url.includes("/api/account/inbox")) {
+        return jsonResponse({
+          conversations: [],
+          notifications: [
+            {
+              id: 1,
+              type: "messaging",
+              title: "New message",
+              content: "Hey there",
+              created_at: "2026-11-06 10:00:00",
+              read_at: null,
+              link: "/messages/42",
+              post_id: 42,
+              href: "/account/messages/42",
+            },
+            {
+              id: 2,
+              type: "dfx_daily",
+              title: "Daily Fix",
+              content: "New Daily Fix is available",
+              created_at: "2026-11-06 08:00:00",
+              read_at: "2026-11-06 09:00:00",
+              link: "/fix/25/11/06",
+              href: "/the-daily-fix/25/11/06",
+            },
+            {
+              id: 3,
+              type: "new_post",
+              title: "New post",
+              content: "A new essay",
+              created_at: "2026-11-05 12:00:00",
+              read_at: null,
+              post_id: 88,
+              href: "/posts/88",
+            },
+          ],
+          unread_count: 2,
+        });
+      }
       if (url.includes("/api/account/notifications") && method === "GET") {
         return jsonResponse({
           preferences: { email_digest: true, product_updates: false },
@@ -68,7 +107,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("AccountNotifications (P-DB-12)", () => {
+describe("AccountNotifications", () => {
+  it("renders clickable notification deep links by type", async () => {
+    render(
+      <Router>
+        <AccountNotifications />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("New message")).toBeTruthy());
+    const links = screen.getAllByRole("link").map((el) => el.getAttribute("href"));
+    expect(links).toContain("/account/messages/42");
+    expect(links).toContain("/the-daily-fix/25/11/06");
+    expect(links).toContain("/posts/88");
+  });
+
   it("toggles notification + newsletter preferences with CSRF", async () => {
     render(
       <Router>
