@@ -1366,6 +1366,244 @@ describe("worker/account routes", () => {
     }
   });
 
+  it("MF64–MF71 messages chat proxies (list, thread, send, direct, search)", async () => {
+    const sess = await withSession(h);
+    installAccountLimiters(h.env);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText, url }) => {
+        if (path.endsWith("/messages/conversations") && method === "GET") {
+          return Response.json({
+            conversations: [
+              {
+                id: "9",
+                type: "direct",
+                name: "Coach Ada",
+                lastMessage: "See you at 6",
+                lastMessageTime: "2026-11-06T18:00:00Z",
+                unreadCount: 2,
+                currentUserId: "42",
+                ownerId: "42",
+                isOwner: true,
+                canAddMembers: false,
+                canRemoveMembers: false,
+                members: [
+                  {
+                    id: "42",
+                    name: "Jane",
+                    isOwner: true,
+                    isAdmin: true,
+                    canAddMembers: true,
+                    canRemoveMembers: true,
+                  },
+                  {
+                    id: "7",
+                    name: "Coach Ada",
+                    isOwner: false,
+                    isAdmin: false,
+                    canAddMembers: false,
+                    canRemoveMembers: false,
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        if (path.endsWith("/messages/conversations/9") && method === "GET") {
+          return Response.json({
+            conversation: {
+              id: "9",
+              type: "direct",
+              name: "Coach Ada",
+              lastMessage: "See you at 6",
+              lastMessageTime: "2026-11-06T18:00:00Z",
+              unreadCount: 0,
+              currentUserId: "42",
+              ownerId: "42",
+              isOwner: true,
+              canAddMembers: false,
+              canRemoveMembers: false,
+              members: [],
+            },
+          });
+        }
+        if (path.endsWith("/messages/conversations/9/messages") && method === "GET") {
+          expect(url).toContain("limit=");
+          return Response.json({
+            messages: [
+              {
+                id: "100",
+                conversationId: "9",
+                senderId: "7",
+                senderName: "Coach Ada",
+                content: "See you at 6",
+                timestamp: "2026-11-06T18:00:00Z",
+                isRead: true,
+              },
+            ],
+            has_more: false,
+          });
+        }
+        if (path.endsWith("/messages/conversations/9/messages") && method === "POST") {
+          const body = JSON.parse(bodyText) as { content?: string };
+          expect(body.content).toBe("On my way");
+          return Response.json(
+            {
+              message: {
+                id: "101",
+                conversationId: "9",
+                senderId: "42",
+                senderName: "Jane",
+                content: "On my way",
+                timestamp: "2026-11-06T18:01:00Z",
+                isRead: true,
+              },
+            },
+            { status: 201 },
+          );
+        }
+        if (path.endsWith("/messages/conversations/9/read") && method === "POST") {
+          return Response.json({ success: true });
+        }
+        if (path.endsWith("/messages/conversations/direct") && method === "POST") {
+          const body = JSON.parse(bodyText) as { recipient_id?: number; message?: string };
+          expect(body.recipient_id).toBe(7);
+          expect(body.message).toBe("Hello");
+          return Response.json({
+            conversation: {
+              id: "11",
+              type: "direct",
+              name: "Coach Ada",
+              lastMessage: "Hello",
+              lastMessageTime: "2026-11-06T19:00:00Z",
+              unreadCount: 0,
+              currentUserId: "42",
+              ownerId: "42",
+              isOwner: true,
+              canAddMembers: false,
+              canRemoveMembers: false,
+              members: [],
+            },
+          });
+        }
+        if (path.endsWith("/messages/users") && method === "GET") {
+          return Response.json({
+            users: [{ id: "7", name: "Coach Ada", secondary_text: "Staff" }],
+          });
+        }
+        if (path.endsWith("/messages/users/search") && method === "GET") {
+          expect(url).toContain("q=Ada");
+          return Response.json({
+            users: [{ id: "7", name: "Coach Ada", secondary_text: "Staff" }],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const list = await callAccount(
+      h,
+      "/api/account/messages/conversations",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(list.status).toBe(200);
+    const listJson = (await list.json()) as {
+      conversations: Array<{ id: string; name: string | null; unreadCount: number }>;
+    };
+    expect(listJson.conversations[0]?.id).toBe("9");
+    expect(listJson.conversations[0]?.name).toBe("Coach Ada");
+    expect(listJson.conversations[0]?.unreadCount).toBe(2);
+
+    const detail = await callAccount(
+      h,
+      "/api/account/messages/conversations/9",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(detail.status).toBe(200);
+
+    const thread = await callAccount(
+      h,
+      "/api/account/messages/conversations/9/messages?limit=50&offset=0",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(thread.status).toBe(200);
+    const threadJson = (await thread.json()) as { messages: Array<{ content: string }> };
+    expect(threadJson.messages[0]?.content).toBe("See you at 6");
+
+    const writeHeaders = {
+      ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+      "Content-Type": "application/json",
+    };
+
+    const send = await callAccount(
+      h,
+      "/api/account/messages/conversations/9/messages",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({ content: "On my way" }),
+      },
+      fetchImpl,
+    );
+    expect(send.status).toBe(201);
+
+    const read = await callAccount(
+      h,
+      "/api/account/messages/conversations/9/read",
+      { method: "POST", headers: writeHeaders, body: "{}" },
+      fetchImpl,
+    );
+    expect(read.status).toBe(200);
+
+    const direct = await callAccount(
+      h,
+      "/api/account/messages/conversations/direct",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({ recipient_id: 7, message: "Hello" }),
+      },
+      fetchImpl,
+    );
+    expect(direct.status).toBe(200);
+    const directJson = (await direct.json()) as { conversation: { id: string } };
+    expect(directJson.conversation.id).toBe("11");
+
+    const users = await callAccount(
+      h,
+      "/api/account/messages/users",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(users.status).toBe(200);
+
+    const search = await callAccount(
+      h,
+      "/api/account/messages/users/search?q=Ada",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(search.status).toBe(200);
+    const searchJson = (await search.json()) as { users: Array<{ name: string }> };
+    expect(searchJson.users[0]?.name).toBe("Coach Ada");
+
+    const shortSearch = await callAccount(
+      h,
+      "/api/account/messages/users/search?q=Ad",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(shortSearch.status).toBe(200);
+    expect(((await shortSearch.json()) as { users: unknown[] }).users).toEqual([]);
+
+    for (const rec of recorded) {
+      assertHasBearer(rec);
+      expect(rec.url).toMatch(/\/wp-json\/bsi\/v1\/messages\//);
+    }
+  });
+
   it("DP-T-24/25/26/28/29/30 referrals gifts notifications privacy password email", async () => {
     const sess = await withSession(h);
     const referralsDto = {
