@@ -30,6 +30,7 @@ export {
 
 export {
   htmlShowsMembershipGate,
+  isDailyFixResource,
   isFirstParagraphPreview,
   isFreeOpen,
   isLockedCard,

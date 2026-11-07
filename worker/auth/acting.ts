@@ -8,6 +8,7 @@ import { jsonNoStore, unavailable } from "./http";
 import {
   destroySession,
   ensureActingAccess,
+  loadActingAccess,
   SessionUnavailableError,
   type MeCache,
 } from "./session";
@@ -22,8 +23,19 @@ export type ActingContext = {
   record: SessionRecord;
 };
 
-function signedOut(): Response {
-  return jsonNoStore({ error: "signed_out" }, 401, { "Set-Cookie": sidCookieClear() });
+const invalidGrantSignOuts = new WeakSet<Response>();
+
+function signedOut(reason?: "invalid_grant"): Response {
+  const res = jsonNoStore({ error: "signed_out" }, 401, {
+    "Set-Cookie": sidCookieClear(),
+  });
+  if (reason === "invalid_grant") invalidGrantSignOuts.add(res);
+  return res;
+}
+
+/** True only when the refresh grant itself was invalid_grant. */
+export function isInvalidGrantSignOut(res: Response): boolean {
+  return invalidGrantSignOuts.has(res);
 }
 
 async function sessionExpired(env: Env, sid: string): Promise<Response> {
@@ -45,9 +57,9 @@ export async function resolveActingSession(
   const sid = cookies[SID_COOKIE];
   if (!sid) return signedOut();
 
-  let loaded: Awaited<ReturnType<typeof ensureActingAccess>>;
+  let loaded: Awaited<ReturnType<typeof loadActingAccess>>;
   try {
-    loaded = await ensureActingAccess(env, sid, { baseUrl: opts?.baseUrl });
+    loaded = await loadActingAccess(env, sid, { baseUrl: opts?.baseUrl });
   } catch (e) {
     // Forward DO Retry-After (AU27.3 non-grant → 60; 429/5xx clamp).
     if (e instanceof SessionUnavailableError && e.retryAfter != null) {
@@ -55,7 +67,9 @@ export async function resolveActingSession(
     }
     return unavailable();
   }
-  if (!loaded) return signedOut();
+  if (!loaded.ok) {
+    return signedOut(loaded.reason === "invalid_grant" ? "invalid_grant" : undefined);
+  }
 
   const now = Date.now();
   if (now - loaded.record.created >= NINETY_DAYS_MS) {

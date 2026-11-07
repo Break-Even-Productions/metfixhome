@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  isDailyFixResource,
   isFreeOpen,
   isProfessionalTagged,
   type LibraryResource,
@@ -54,6 +55,14 @@ function filterPage(
   return rows;
 }
 
+function omitDailyFix(
+  rows: LibraryResource[],
+  excludeDailyFix: boolean,
+): LibraryResource[] {
+  if (!excludeDailyFix) return rows;
+  return rows.filter((row) => !isDailyFixResource(row));
+}
+
 /**
  * Infinite archive for Browse all.
  * popular + search use limit/offset; free/gated paginate search and keep matches.
@@ -63,6 +72,7 @@ export function useInfiniteArchive(
   active: boolean,
   archive: ArchiveKind | null,
   resetKey: string,
+  excludeDailyFix = false,
 ): InfiniteArchiveState {
   const [status, setStatus] = useState<"loading" | "error" | "data">("loading");
   const [items, setItems] = useState<LibraryResource[]>([]);
@@ -73,7 +83,9 @@ export function useInfiniteArchive(
   const itemsRef = useRef<LibraryResource[]>([]);
   const busyRef = useRef(false);
   const archiveRef = useRef(archive);
+  const excludeRef = useRef(excludeDailyFix);
   archiveRef.current = archive;
+  excludeRef.current = excludeDailyFix;
   itemsRef.current = items;
 
   useEffect(() => {
@@ -105,7 +117,7 @@ export function useInfiniteArchive(
             signal,
           );
           if (signal.aborted) return;
-          setItems(body.resources);
+          setItems(omitDailyFix(body.resources, excludeDailyFix));
           setTotal(body.meta.total);
           offsetRef.current = PAGE;
           setHasMore(body.meta.has_more);
@@ -119,7 +131,7 @@ export function useInfiniteArchive(
             signal,
           );
           if (signal.aborted) return;
-          setItems(body.resources);
+          setItems(omitDailyFix(body.resources, excludeDailyFix));
           setTotal(body.meta.total);
           offsetRef.current = PAGE;
           setHasMore(body.meta.has_more);
@@ -132,7 +144,9 @@ export function useInfiniteArchive(
           signal,
         );
         if (signal.aborted) return;
-        setItems(filterPage(archive.kind, body.resources));
+        setItems(
+          omitDailyFix(filterPage(archive.kind, body.resources), excludeDailyFix),
+        );
         setTotal(body.meta.total);
         offsetRef.current = PAGE;
         setHasMore(body.meta.has_more);
@@ -146,7 +160,7 @@ export function useInfiniteArchive(
     })();
 
     return () => controller.abort();
-  }, [active, archive, resetKey]);
+  }, [active, archive, resetKey, excludeDailyFix]);
 
   const loadMore = useCallback(() => {
     const arch = archiveRef.current;
@@ -164,7 +178,10 @@ export function useInfiniteArchive(
             content_types: arch.content_types,
           });
           offsetRef.current = offset + PAGE;
-          const next = dedupeAppend(itemsRef.current, body.resources);
+          const next = dedupeAppend(
+            itemsRef.current,
+            omitDailyFix(body.resources, excludeRef.current),
+          );
           const gained = next.length - itemsRef.current.length;
           itemsRef.current = next;
           setItems(next);
@@ -177,7 +194,10 @@ export function useInfiniteArchive(
           const offset = offsetRef.current;
           const body = await fetchLibraryArchive({ limit: PAGE, offset });
           offsetRef.current = offset + PAGE;
-          const next = dedupeAppend(itemsRef.current, body.resources);
+          const next = dedupeAppend(
+            itemsRef.current,
+            omitDailyFix(body.resources, excludeRef.current),
+          );
           const gained = next.length - itemsRef.current.length;
           itemsRef.current = next;
           setItems(next);
@@ -193,7 +213,9 @@ export function useInfiniteArchive(
             offset,
           });
           offsetRef.current = offset + PAGE;
-          setItems((prev) => dedupeAppend(prev, body.resources));
+          setItems((prev) =>
+            dedupeAppend(prev, omitDailyFix(body.resources, excludeRef.current)),
+          );
           setHasMore(body.meta.has_more);
           return;
         }
@@ -212,7 +234,10 @@ export function useInfiniteArchive(
           });
           offset += PAGE;
           more = body.meta.has_more;
-          const rows = filterPage(arch.kind, body.resources);
+          const rows = omitDailyFix(
+            filterPage(arch.kind, body.resources),
+            excludeRef.current,
+          );
           if (rows.length) {
             setItems((prev) => dedupeAppend(prev, rows));
             gained = rows.length;

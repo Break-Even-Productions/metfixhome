@@ -93,6 +93,13 @@ export function isFreeOpen(r: LibraryResource): boolean {
   return r.access.access === "full" && !r.access.is_exclusive && !r.access.has_content_access;
 }
 
+/** Daily Fix rows belong on /the-daily-fix, not the Resource Library rails. */
+export function isDailyFixResource(
+  r: Pick<LibraryResource, "type"> & { daily_fix_date?: string | null },
+): boolean {
+  return r.type === "daily_fix" || Boolean(r.daily_fix_date);
+}
+
 export function joinCtaHref(): string {
   return "/login?next=/library";
 }

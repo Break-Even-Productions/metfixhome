@@ -224,9 +224,10 @@ export class SessionDO {
       { baseUrl: opts.baseUrl, timeoutMs: 5000 },
     );
     // Map on code + grant type (§0v.3): refresh invalid_grant → end session (any status).
+    // `invalid_grant` is the only refresh failure that should clear the browser cookie.
     if (upstream.kind === "http" && upstream.code === "invalid_grant") {
       await this.state.storage.deleteAll();
-      return json({ status: "expired" }, 401);
+      return json({ status: "invalid_grant" }, 401);
     }
     if (upstream.kind !== "ok") {
       // §0v.3: only 429/5xx use parseRetryAfter; non-grant 4xx → fixed 60.
