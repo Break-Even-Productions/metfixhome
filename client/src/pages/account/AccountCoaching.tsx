@@ -486,7 +486,7 @@ export default function AccountCoaching() {
       {gate !== "open" ? (
         <BodyPanel>
           <FeedSkeleton label="Coaching tools locked" />
-          {gate === "locked" ? <ProUnlockBanner /> : null}
+          {gate === "locked" ? <ProUnlockBanner introOffer={overview} /> : null}
         </BodyPanel>
       ) : (
         <BodyPanel className="dash-coach">

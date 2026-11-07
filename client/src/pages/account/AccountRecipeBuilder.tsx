@@ -269,7 +269,7 @@ export default function AccountRecipeBuilder() {
           { label: "Ingredients", value: String(ingredientLines().length) },
         ]}
       />
-      {!unlocked ? <ProUnlockBanner /> : null}
+      {!unlocked ? <ProUnlockBanner introOffer={overview} /> : null}
       {loading ? <p className="account-muted">Loading…</p> : null}
       {error ? <p className="account-error">{error}</p> : null}
       {message ? <p className="account-muted">{message}</p> : null}

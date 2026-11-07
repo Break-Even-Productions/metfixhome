@@ -819,7 +819,7 @@ export default function AccountBenchmarks() {
             </div>
           </section>
 
-          <ProUnlockBanner />
+          <ProUnlockBanner introOffer={overview} />
         </BodyPanel>
       ) : (
         <BodyPanel className="dash-bench">
