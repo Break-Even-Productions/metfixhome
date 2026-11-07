@@ -54,6 +54,7 @@ vi.mock("@/pages/the-daily-fix/data", async () => {
           button_text: "Read",
           hasContent: true,
         },
+        compare_to: null,
       },
     }),
   };

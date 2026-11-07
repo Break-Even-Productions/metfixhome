@@ -22,6 +22,7 @@ import { buildFullHead, rewriteHtml, type HeadMode } from "./head";
 import { handleAuth } from "./auth";
 import { parseStagingAuthHosts } from "./auth/host";
 import { handleCommentsRoutes } from "./comments";
+import { handleCompareToRoute } from "./compare-to";
 import { handleLeaderboard } from "./leaderboard";
 import { LoginThrottleDO } from "./do/login-throttle";
 import { OauthStateDO } from "./do/oauth-state";
@@ -124,6 +125,10 @@ export async function handleRequest(
   }
   if (path === "/api/daily-fix/leaderboard") {
     return handleLeaderboard(request, env, fetchImpl, { baseUrl: bsiBaseUrl });
+  }
+  if (path === "/api/daily-fix/compare-to" || path === "/api/daily-fix/compare-to/") {
+    const compareRes = await handleCompareToRoute(request, env, { fetchImpl, bsiBaseUrl });
+    if (compareRes) return compareRes;
   }
   // Comments collection + :id + :id/like (W1: trailing slash → 404 inside handler).
   if (path === "/api/daily-fix/comments" || path.startsWith("/api/daily-fix/comments/")) {

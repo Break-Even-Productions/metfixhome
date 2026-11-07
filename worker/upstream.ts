@@ -605,7 +605,7 @@ export async function fetchDailyFixDay(
   iso: string,
   env: Env,
   fetchImpl: FetchImpl,
-  opts?: { baseUrl?: string },
+  opts?: { baseUrl?: string; accessToken?: string },
 ): Promise<UpstreamOutcome> {
   if (!env.DAILY_FIX_API_KEY) {
     return { kind: "nokey" };
@@ -620,9 +620,12 @@ export async function fetchDailyFixDay(
   }
 
   try {
+    const headers = opts?.accessToken
+      ? bsiBearerHeaders(env.DAILY_FIX_API_KEY, opts.accessToken)
+      : bsiGetHeaders(env.DAILY_FIX_API_KEY);
     const response = await fetchImpl(url, {
       method: "GET",
-      headers: bsiGetHeaders(env.DAILY_FIX_API_KEY),
+      headers,
       signal: AbortSignal.timeout(3000),
     });
 

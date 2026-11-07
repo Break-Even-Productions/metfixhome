@@ -1,5 +1,6 @@
 import { ArrowUpRight, Play } from "lucide-react";
 import { useCallback, useState } from "react";
+import { CompareToPrior } from "./CompareToPrior";
 import { MealPhoto } from "./MealPhoto";
 import { ShareMenu } from "./ShareMenu";
 import {
@@ -110,6 +111,7 @@ function BodyContent({ day }: { day: DailyFixDay }) {
       <h3 className="df-heading">{body.title}</h3>
       <div className="df-chrome">
         <ShareMenu dateIso={day.date} pillar="body" title={body.title} />
+        <CompareToPrior day={day} />
       </div>
       {prescription ? <HtmlBlock html={prescription} /> : null}
       <HtmlBlock html={body.html} />
