@@ -3,7 +3,13 @@
  * GET /api/profiles/metfix/:id
  * GET /api/profiles/affiliates/:id
  * GET /api/profiles/clinics/:id
+ * Upstream paths live in shared/profiles/bsi-paths (AU26.8).
  */
+import {
+  publicAffiliateProfilePath,
+  publicClinicProfilePath,
+  publicMetfixProfilePath,
+} from "../shared/profiles/bsi-paths";
 import {
   assertBsiHost,
   resolveBsiOrigin,
@@ -205,8 +211,10 @@ export async function handlePublicProfileRoutes(
   const origin = resolveBsiOrigin(env, deps.bsiBaseUrl ? { baseUrl: deps.bsiBaseUrl } : undefined);
   const path =
     kind === "metfix"
-      ? `/wp-json/bsi/v1/profiles/public/metfix/${id}`
-      : `/wp-json/bsi/v1/profiles/public/${kind === "clinic" ? "clinics" : "affiliates"}/${id}`;
+      ? publicMetfixProfilePath(id)
+      : kind === "clinic"
+        ? publicClinicProfilePath(id)
+        : publicAffiliateProfilePath(id);
   const upstream = `${origin}${path}`;
   try {
     assertBsiHost(upstream, env);
