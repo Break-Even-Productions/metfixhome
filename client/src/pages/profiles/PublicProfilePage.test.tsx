@@ -121,6 +121,7 @@ describe("public profile skin", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Avery Coach" })).toBeTruthy());
     expect(screen.getByText("Foundations Coach")).toBeTruthy();
     expect(screen.getByText("MetFix Profile")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Link in bio" }).getAttribute("href")).toBe("/metfix-profile/11/links");
     cleanup();
     stubFetch();
     renderAt("/metfix-profile/12");

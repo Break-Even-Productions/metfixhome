@@ -88,6 +88,10 @@ function portraitOf(profile: PublicProfile): string | null {
   return profile.profile_kind === "metfix" ? profile.profile_picture_url : profile.logo_url;
 }
 
+function linksPath(profile: PublicProfile): string {
+  return `${profile.profile_kind === "metfix" ? profile.profile_url : profile.url}/links`;
+}
+
 export default function PublicProfilePage() {
   const [metfixMatch, metfixParams] = useRoute("/metfix-profile/:memberId");
   const [affMatch, affParams] = useRoute("/affiliates/:id/:slug");
@@ -246,6 +250,9 @@ function ProfileBody({ profile }: { profile: PublicProfile }) {
                 </a>
               </li>
             ))}
+            <li>
+              <Link href={linksPath(profile)}>Link in bio</Link>
+            </li>
           </ul>
         </div>
       </header>

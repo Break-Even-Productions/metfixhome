@@ -1,0 +1,278 @@
+/*
+ * MetFix asterisk → fork and knife → barbell → book.
+ * Line geometry matches the menu mark (vite/asterisk-glass.ts, HeroGlass AsteriskFallback):
+ * three bars through the center, a short downward stem, and a detached pill.
+ * The viewBox is 0–100 so CSS x/y/width/height percentages stay in that same geometry
+ * and stay sharp at any size. The pill is the blue stroke in every pose.
+ */
+
+.logo-morph {
+  display: block;
+  width: min(16rem, 78vw);
+  aspect-ratio: 1;
+  overflow: visible;
+}
+
+.logo-morph__line,
+.logo-morph__pill {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-duration: 16s;
+  animation-timing-function: cubic-bezier(0.45, 0.02, 0.25, 1);
+  animation-iteration-count: infinite;
+}
+
+.logo-morph__line {
+  fill: #171512;
+}
+
+.logo-morph__pill {
+  fill: #0067b2;
+}
+
+.logo-morph__a {
+  animation-name: logo-morph-a;
+  x: 19.708%;
+  y: 46.208%;
+  width: 60.583%;
+  height: 7.583%;
+  transform: rotate(0deg);
+}
+
+.logo-morph__b {
+  animation-name: logo-morph-b;
+  x: 19.708%;
+  y: 46.208%;
+  width: 60.583%;
+  height: 7.583%;
+  transform: rotate(45deg);
+}
+
+.logo-morph__c {
+  animation-name: logo-morph-c;
+  x: 19.708%;
+  y: 46.208%;
+  width: 60.583%;
+  height: 7.583%;
+  transform: rotate(-45deg);
+}
+
+.logo-morph__d {
+  animation-name: logo-morph-d;
+  x: 46.208%;
+  y: 50%;
+  width: 7.583%;
+  height: 30.292%;
+  transform: rotate(0deg);
+}
+
+.logo-morph__pill {
+  animation-name: logo-morph-pill;
+  x: 46.208%;
+  y: 23.5%;
+  width: 7.583%;
+  height: 15.167%;
+  rx: 3.792%;
+  ry: 3.792%;
+  transform: rotate(0deg);
+}
+
+@keyframes logo-morph-a {
+  0%,
+  15%,
+  92%,
+  100% {
+    x: 19.708%;
+    y: 46.208%;
+    width: 60.583%;
+    height: 7.583%;
+    transform: rotate(0deg);
+  }
+  23%,
+  38% {
+    x: 20%;
+    y: 19.167%;
+    width: 4.583%;
+    height: 17.5%;
+    transform: rotate(0deg);
+  }
+  46%,
+  61% {
+    x: 9.167%;
+    y: 29.167%;
+    width: 7.5%;
+    height: 41.667%;
+    transform: rotate(0deg);
+  }
+  69%,
+  84% {
+    x: 28.333%;
+    y: 22.5%;
+    width: 50%;
+    height: 5.833%;
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes logo-morph-b {
+  0%,
+  15%,
+  92%,
+  100% {
+    x: 19.708%;
+    y: 46.208%;
+    width: 60.583%;
+    height: 7.583%;
+    transform: rotate(45deg);
+  }
+  23%,
+  38% {
+    x: 27.5%;
+    y: 19.167%;
+    width: 4.583%;
+    height: 17.5%;
+    transform: rotate(0deg);
+  }
+  46%,
+  61% {
+    x: 19.167%;
+    y: 35%;
+    width: 5.833%;
+    height: 30%;
+    transform: rotate(0deg);
+  }
+  69%,
+  84% {
+    x: 31.667%;
+    y: 48.333%;
+    width: 36.667%;
+    height: 2.917%;
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes logo-morph-c {
+  0%,
+  15%,
+  92%,
+  100% {
+    x: 19.708%;
+    y: 46.208%;
+    width: 60.583%;
+    height: 7.583%;
+    transform: rotate(-45deg);
+  }
+  23%,
+  38% {
+    x: 35%;
+    y: 19.167%;
+    width: 4.583%;
+    height: 17.5%;
+    transform: rotate(0deg);
+  }
+  46%,
+  61% {
+    x: 75%;
+    y: 35%;
+    width: 5.833%;
+    height: 30%;
+    transform: rotate(0deg);
+  }
+  69%,
+  84% {
+    x: 71.667%;
+    y: 28.333%;
+    width: 5%;
+    height: 43.333%;
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes logo-morph-d {
+  0%,
+  15%,
+  92%,
+  100% {
+    x: 46.208%;
+    y: 50%;
+    width: 7.583%;
+    height: 30.292%;
+    transform: rotate(0deg);
+  }
+  23%,
+  38% {
+    x: 27.292%;
+    y: 35%;
+    width: 5%;
+    height: 40%;
+    transform: rotate(0deg);
+  }
+  46%,
+  61% {
+    x: 83.333%;
+    y: 29.167%;
+    width: 7.5%;
+    height: 41.667%;
+    transform: rotate(0deg);
+  }
+  69%,
+  84% {
+    x: 28.333%;
+    y: 71.667%;
+    width: 50%;
+    height: 5.833%;
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes logo-morph-pill {
+  0%,
+  15%,
+  92%,
+  100% {
+    x: 46.208%;
+    y: 23.5%;
+    width: 7.583%;
+    height: 15.167%;
+    rx: 3.792%;
+    ry: 3.792%;
+    transform: rotate(0deg);
+  }
+  23%,
+  38% {
+    x: 61.667%;
+    y: 17.5%;
+    width: 6.667%;
+    height: 58.333%;
+    rx: 3.333%;
+    ry: 3.333%;
+    transform: rotate(-14deg);
+  }
+  46%,
+  61% {
+    x: 22.5%;
+    y: 46.25%;
+    width: 55%;
+    height: 7.5%;
+    rx: 3.75%;
+    ry: 3.75%;
+    transform: rotate(0deg);
+  }
+  69%,
+  84% {
+    x: 19.167%;
+    y: 22.5%;
+    width: 10%;
+    height: 55%;
+    rx: 5%;
+    ry: 5%;
+    transform: rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-morph__line,
+  .logo-morph__pill {
+    animation: none;
+  }
+}

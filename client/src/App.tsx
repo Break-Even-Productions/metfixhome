@@ -44,6 +44,7 @@ import AccountInbox from "./pages/account/AccountInbox";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
 import PublicProfilePage from "./pages/profiles/PublicProfilePage";
+import LinkInBioPage from "./pages/profiles/LinkInBioPage";
 import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
@@ -185,6 +186,11 @@ function AppRoutes() {
       <Route path={"/account/spark"} component={AccountSpark} />
       <Route path={"/account/inbox"} component={AccountInbox} />
       <Route path={"/account"} component={AccountOverview} />
+      <Route path={"/metfix-profile/:memberId/links"} component={LinkInBioPage} />
+      <Route path={"/affiliates/:id/:slug/links"} component={LinkInBioPage} />
+      <Route path={"/affiliates/:id/links"} component={LinkInBioPage} />
+      <Route path={"/clinics/:id/:slug/links"} component={LinkInBioPage} />
+      <Route path={"/clinics/:id/links"} component={LinkInBioPage} />
       <Route path={"/metfix-profile/:memberId"} component={PublicProfilePage} />
       <Route path={"/affiliates/:id/:slug"} component={PublicProfilePage} />
       <Route path={"/affiliates/:id"} component={PublicProfilePage} />
@@ -207,7 +213,11 @@ function AppShell() {
     pathOnly.startsWith("/checkout/") ||
     pathOnly === "/members" ||
     pathOnly.startsWith("/members/") ||
-    pathOnly === "/join";
+    pathOnly === "/join" ||
+    ((pathOnly.startsWith("/metfix-profile/") ||
+      pathOnly.startsWith("/affiliates/") ||
+      pathOnly.startsWith("/clinics/")) &&
+      pathOnly.endsWith("/links"));
   return (
     <>
       <BsiRefCapture />

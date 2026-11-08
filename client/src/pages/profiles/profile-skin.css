@@ -249,3 +249,211 @@
     padding: 1.5rem 1.6rem 1.7rem;
   }
 }
+
+/* Link in bio. Phone column, centered on wider screens. */
+.link-bio {
+  --ps-cream: #f3eee4;
+  --ps-paper: #faf7f1;
+  --ps-ink: #171512;
+  --ps-muted: #686158;
+  --ps-line: rgba(23, 21, 18, 0.12);
+  --ps-accent: #0067b2;
+  --ps-accent-soft: rgba(0, 103, 178, 0.12);
+  --ps-serif: "Playfair Display", ui-serif, Georgia, serif;
+  --ps-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  box-sizing: border-box;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1rem max(1.25rem, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(720px 360px at 50% -8%, var(--ps-accent-soft), transparent 62%),
+    var(--ps-cream);
+  color: var(--ps-ink);
+  font-family: var(--ps-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.link-bio[data-kind="clinic"] {
+  --ps-accent: #183a34;
+  --ps-accent-soft: rgba(24, 58, 52, 0.14);
+}
+
+.link-bio *,
+.link-bio *::before,
+.link-bio *::after {
+  box-sizing: border-box;
+}
+
+.link-bio__sheet {
+  width: min(26rem, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.15rem;
+  text-align: center;
+}
+
+.link-bio__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.link-bio__portrait {
+  width: 6.75rem;
+  height: 6.75rem;
+  margin-bottom: 0.45rem;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ps-accent);
+  color: var(--ps-paper);
+  box-shadow:
+    0 0 0 4px var(--ps-paper),
+    0 0 0 5px var(--ps-line);
+}
+
+.link-bio__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.link-bio__mark {
+  font-family: var(--ps-serif);
+  font-size: 2.1rem;
+  letter-spacing: -0.04em;
+}
+
+.link-bio__kicker {
+  margin: 0;
+  color: var(--ps-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.link-bio h1 {
+  margin: 0;
+  font-family: var(--ps-serif);
+  font-size: clamp(2rem, 8vw, 2.65rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--ps-ink);
+}
+
+.link-bio__location,
+.link-bio__status {
+  margin: 0;
+  color: var(--ps-muted);
+}
+
+.link-bio__bio {
+  margin: 0.2rem 0 0;
+  max-width: 24rem;
+  color: var(--ps-ink);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link-bio__services {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.link-bio__services li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  color: var(--ps-muted);
+  font-size: 0.92rem;
+}
+
+.link-bio__services strong {
+  color: var(--ps-ink);
+  font-weight: 600;
+}
+
+.link-bio__nav {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.link-bio__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.15rem;
+  padding: 0.7rem 1.1rem;
+  border: 1px solid var(--ps-line);
+  border-radius: 999px;
+  background: var(--ps-paper);
+  color: var(--ps-ink);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.link-bio__btn:hover {
+  border-color: var(--ps-accent);
+  background: var(--ps-accent);
+  color: var(--ps-paper);
+}
+
+.link-bio__btn:focus-visible {
+  outline: 2px solid var(--ps-accent);
+  outline-offset: 3px;
+}
+
+.link-bio__btn--primary {
+  background: var(--ps-accent);
+  border-color: transparent;
+  color: var(--ps-paper);
+}
+
+.link-bio__btn--primary:hover {
+  background: var(--ps-ink);
+  border-color: transparent;
+  color: var(--ps-paper);
+}
+
+.link-bio__foot {
+  width: min(26rem, 100%);
+  margin-top: auto;
+  padding-top: 2.25rem;
+  display: flex;
+  justify-content: center;
+}
+
+@media (min-width: 800px) {
+  .link-bio {
+    padding-top: 2.5rem;
+  }
+
+  .link-bio__portrait {
+    width: 7.25rem;
+    height: 7.25rem;
+  }
+}
