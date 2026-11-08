@@ -16,6 +16,12 @@ const base: DirectoryListing = {
 };
 
 describe("listing-links", () => {
+  it("opens on-site profile paths", () => {
+    expect(profileHref({ ...base, profileUrl: "/affiliates/51/metfix-alpha" })).toBe(
+      "/affiliates/51/metfix-alpha",
+    );
+  });
+
   it("passes through brokenscience.org profile URLs", () => {
     expect(
       profileHref({

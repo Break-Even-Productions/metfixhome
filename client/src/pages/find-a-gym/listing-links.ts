@@ -4,7 +4,10 @@ const METFIX_HOSTS = new Set(["metfix.org", "www.metfix.org"]);
 
 /** Prefer the MetFix affiliate/clinic profile over an external gym site. */
 export function profileHref(listing: DirectoryListing): string | null {
-  if (listing.profileUrl && /^https?:\/\//i.test(listing.profileUrl)) return listing.profileUrl;
+  const url = listing.profileUrl;
+  if (!url) return null;
+  if (url.startsWith("/") && !url.startsWith("//")) return url;
+  if (/^https?:\/\//i.test(url)) return url;
   return null;
 }
 

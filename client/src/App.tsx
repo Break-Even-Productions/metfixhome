@@ -43,6 +43,7 @@ import AccountSpark from "./pages/account/AccountSpark";
 import AccountInbox from "./pages/account/AccountInbox";
 import CheckoutComplete from "./pages/checkout/CheckoutComplete";
 import MemberProfilePage from "./pages/members/MemberProfilePage";
+import PublicProfilePage from "./pages/profiles/PublicProfilePage";
 import { captureBsiRef } from "./lib/referralAttribution";
 
 /** Detail + DOMPurify in a separate chunk (PX8 / CQ14). */
@@ -184,6 +185,11 @@ function AppRoutes() {
       <Route path={"/account/spark"} component={AccountSpark} />
       <Route path={"/account/inbox"} component={AccountInbox} />
       <Route path={"/account"} component={AccountOverview} />
+      <Route path={"/metfix-profile/:memberId"} component={PublicProfilePage} />
+      <Route path={"/affiliates/:id/:slug"} component={PublicProfilePage} />
+      <Route path={"/affiliates/:id"} component={PublicProfilePage} />
+      <Route path={"/clinics/:id/:slug"} component={PublicProfilePage} />
+      <Route path={"/clinics/:id"} component={PublicProfilePage} />
       <Route path={"/members/:memberId"} component={MemberProfilePage} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
