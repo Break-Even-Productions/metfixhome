@@ -1,7 +1,11 @@
 import type { DirectoryKind, DirectoryListing } from "./types";
 
-/** Affiliate profiles still live on BSI until metfix.org profiles ship. */
-const BSI_ORIGIN = "https://brokenscience.org";
+const PROFILE_HOSTS = new Set([
+  "brokenscience.org",
+  "www.brokenscience.org",
+  "metfix.org",
+  "www.metfix.org",
+]);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -35,24 +39,31 @@ export function communityLabels(raw: unknown): string[] {
   return [...new Set(labels)];
 }
 
-/** Resolve affiliate/clinic profile URLs onto brokenscience.org. */
-export function absoluteProfile(raw: string): string | undefined {
+/** Map a BSI profile permalink onto the metfix.org public skin. */
+export function siteProfilePath(raw: string, kind: DirectoryKind): string | undefined {
   if (!raw) return undefined;
-  if (raw.startsWith("/")) return `${BSI_ORIGIN}${raw}`;
-  try {
-    const url = new URL(raw);
-    const host = url.hostname.toLowerCase();
-    if (
-      host === "brokenscience.org" ||
-      host === "www.brokenscience.org" ||
-      host === "metfix.org" ||
-      host === "www.metfix.org"
-    ) {
-      return `${BSI_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+  let pathname = "";
+  if (raw.startsWith("/") && !raw.startsWith("//")) {
+    pathname = raw.split("?")[0] ?? raw;
+  } else {
+    try {
+      const url = new URL(raw);
+      if (!PROFILE_HOSTS.has(url.hostname.toLowerCase())) return undefined;
+      pathname = url.pathname;
+    } catch {
+      return undefined;
     }
-  } catch {
+  }
+  const affiliate = pathname.match(/^\/affiliates\/([1-9]\d{0,9})\/([a-z0-9-]+)\/?$/i);
+  const clinic = pathname.match(/^\/clinics\/([1-9]\d{0,9})\/([a-z0-9-]+)\/?$/i);
+  const metfix = pathname.match(/^\/metfix-profile\/([1-9]\d{0,9})\/?$/);
+  if (kind === "doctor") {
+    if (clinic) return `/clinics/${clinic[1]}/${clinic[2]}`;
+    if (affiliate) return `/clinics/${affiliate[1]}/${affiliate[2]}`;
     return undefined;
   }
+  if (kind === "gym" && affiliate) return `/affiliates/${affiliate[1]}/${affiliate[2]}`;
+  if (kind === "coach" && metfix) return `/metfix-profile/${metfix[1]}`;
   return undefined;
 }
 
@@ -98,7 +109,7 @@ export function normalizeDirectoryRow(
   const address = text(row.full_addr) || text(row.address);
   const image = httpUrl(text(row.pfp_pic) || text(row.logo_url) || text(row.image));
   const website = httpUrl(text(row.website));
-  const profileUrl = absoluteProfile(text(row.affiliate_profile_url) || text(row.profile_url));
+  const profileUrl = siteProfilePath(text(row.affiliate_profile_url) || text(row.profile_url), kind);
   const place = [city, state].filter(Boolean).join(", ");
 
   return {

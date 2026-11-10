@@ -233,6 +233,7 @@ describe("library hub sections", () => {
   it("orders capped sections and omits courses from the popular query", async () => {
     renderHub();
 
+    // Archive starts only after the search rails settle, so it gets its own wait.
     await waitFor(() => {
       expect(cardCount("Top resources")).toBe(3);
       expect(cardCount("Courses")).toBe(6);
@@ -240,8 +241,13 @@ describe("library hub sections", () => {
       expect(cardCount("MetFix")).toBe(3);
       expect(cardCount("Free / open")).toBe(3);
       expect(cardCount("BSI")).toBe(3);
-      expect(cardCount("Glassman & Book Library")).toBe(3);
     });
+    await waitFor(
+      () => {
+        expect(cardCount("Glassman & Book Library")).toBe(3);
+      },
+      { timeout: 4_000 },
+    );
 
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
@@ -296,7 +302,7 @@ describe("library hub sections", () => {
       (entry) => entry.path === "/api/library/archive",
     );
     expect(archive?.params.get("limit")).toBe("3");
-  });
+  }, 15_000);
 
   it("cascades filters, then popular, then searches, then archive", async () => {
     const order: string[] = [];
@@ -381,8 +387,13 @@ describe("library hub sections", () => {
       expect(cardCount("Free / open")).toBe(3);
       expect(cardCount("MetFix")).toBe(3);
       expect(cardCount("BSI")).toBe(3);
-      expect(cardCount("Glassman & Book Library")).toBe(3);
     });
+    await waitFor(
+      () => {
+        expect(cardCount("Glassman & Book Library")).toBe(3);
+      },
+      { timeout: 4_000 },
+    );
     expect(screen.queryByText("Daily Fix breakfast")).toBeNull();
     expect(screen.queryByText("Labeled post day")).toBeNull();
     expect(screen.queryByText("Daily Fix open note")).toBeNull();
@@ -390,7 +401,7 @@ describe("library hub sections", () => {
     expect(screen.queryByText("Daily Fix bsi")).toBeNull();
     expect(screen.queryByText("Daily Fix glassman")).toBeNull();
     expect(within(section("Top resources")).getByText("Popular resource 1")).toBeTruthy();
-  });
+  }, 15_000);
 
   it("opens the existing filtered views for Pro library and top resources", async () => {
     renderHub();

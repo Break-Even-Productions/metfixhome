@@ -32,6 +32,7 @@ import { handleLibraryApi, handleLibraryHtml } from "./library";
 import { handlePostCommentsRoutes } from "./postComments";
 import { handlePostsApi, handlePostsHtml, isValidPostId } from "./posts";
 import { handleAccountRoutes } from "./account";
+import { handlePublicProfileRoutes } from "./public-profiles";
 import { handleDirectoryRoutes } from "./directory";
 import { handleSubstackArchive } from "./substack";
 import { handleWhopCheckoutRoutes } from "./whop-checkout";
@@ -166,6 +167,10 @@ export async function handleRequest(
   if (path === "/api/account/onboarding" || path === "/api/billing/whop/checkout-session") {
     const joinRes = await handleJoinRoutes(request, env, { fetchImpl, bsiBaseUrl });
     if (joinRes) return joinRes;
+  }
+  if (path.startsWith("/api/profiles/")) {
+    const profileRes = await handlePublicProfileRoutes(request, env, { fetchImpl, bsiBaseUrl });
+    if (profileRes) return profileRes;
   }
   // Account dashboard + public member profiles + course referral checkout (before /api/* catch-all)
   if (
