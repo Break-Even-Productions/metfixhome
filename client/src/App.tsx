@@ -21,6 +21,7 @@ import AccountOverview from "./pages/account/AccountOverview";
 import AccountBilling from "./pages/account/AccountBilling";
 import AccountProfile from "./pages/account/AccountProfile";
 import AccountCourses from "./pages/account/AccountCourses";
+import AccountRewards from "./pages/account/AccountRewards";
 import AccountFavorites from "./pages/account/AccountFavorites";
 import AccountReferrals from "./pages/account/AccountReferrals";
 import AccountNotifications from "./pages/account/AccountNotifications";
@@ -156,6 +157,7 @@ function AppRoutes() {
       <Route path={"/library"} component={LibraryPage} />
       <Route path={"/checkout/complete"} component={CheckoutComplete} />
       <Route path={"/account/billing"} component={AccountBilling} />
+      <Route path={"/account/rewards"} component={AccountRewards} />
       <Route path={"/account/profile"} component={AccountProfile} />
       <Route path={"/account/courses"} component={AccountCourses} />
       <Route path={"/account/favorites"} component={AccountFavorites} />

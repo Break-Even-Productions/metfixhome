@@ -23,6 +23,7 @@ import {
 import { emitStrayFieldLogs, stripStrayFields } from "./stripStrayFields";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { computeLtvBudget } from "../shared/account/ltv";
+import { shapeRewardsPayload } from "../shared/account/rewards";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
   extractSubscriptionTierItems,
@@ -110,6 +111,7 @@ import {
   accountSparkMeasurementsPath,
   accountSparkUnitsPath,
   accountSparkUserInfoPath,
+  accountRewardsPath,
   accountSpendPath,
   accountSubscriptionsPath,
   accountWorkoutLogPath,
@@ -1630,6 +1632,9 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && (rest === "ltv-certificates" || rest === "spend")) {
     return { id: "DP5", method: "GET", params: {}, limiter: "read" };
   }
+  if (method === "GET" && rest === "rewards") {
+    return { id: "DP5r", method: "GET", params: {}, limiter: "read" };
+  }
   // CR3: purchase-checkout + checkout (bearer when signed in; guest email otherwise)
   const purchase = rest.match(/^courses\/([^/]+)\/(purchase-checkout|checkout)$/);
   if (method === "POST" && purchase) {
@@ -2450,6 +2455,15 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       const shaped = shapeLtv(mapped.json);
       if (shaped instanceof Response) return shaped;
+      return accountJson(shaped, 200);
+    }
+    case "DP5r": {
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountRewardsPath());
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const shaped = shapeRewardsPayload(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
       return accountJson(shaped, 200);
     }
     case "DP7": {

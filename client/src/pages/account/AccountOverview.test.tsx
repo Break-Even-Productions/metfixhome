@@ -370,6 +370,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     const { ACCOUNT_NAV } = await import("./DashboardLayout");
     expect(ACCOUNT_NAV.map((n) => n.href)).toEqual([
       "/account",
+      "/account/rewards",
       "/account/billing",
       "/account/profile",
       "/account/courses",

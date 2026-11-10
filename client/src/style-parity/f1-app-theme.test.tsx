@@ -17,6 +17,7 @@ vi.mock("@/pages/account/AccountOverview", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountBilling", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountProfile", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountCourses", () => ({ default: () => null }));
+vi.mock("@/pages/account/AccountRewards", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountFavorites", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountReferrals", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountNotifications", () => ({ default: () => null }));

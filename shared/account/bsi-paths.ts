@@ -39,6 +39,11 @@ export function accountSpendPath(): string {
   return `${BSI}/me/spend`;
 }
 
+/** First-party Rewards assembly (LTV + class claims + gated offers). */
+export function accountRewardsPath(): string {
+  return `${BSI}/me/rewards`;
+}
+
 export function accountClaimCertificatePath(courseId: string): string {
   return `${BSI}/courses/${encodeURIComponent(courseId)}/claim-certificate`;
 }

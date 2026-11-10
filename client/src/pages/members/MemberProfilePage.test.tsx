@@ -84,6 +84,7 @@ describe("MemberProfilePage (P-DB-14)", () => {
       "AccountOverview.tsx",
       "AccountBilling.tsx",
       "AccountCourses.tsx",
+      "AccountRewards.tsx",
       "AccountProfile.tsx",
       "DashboardLayout.tsx",
     ];

@@ -708,6 +708,63 @@ describe("worker/account routes", () => {
     expect(formatUsdFromCents(1234)).toBe("$12.34");
   });
 
+  it("DP5r Rewards assembly proxies /me/rewards", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/rewards")) {
+          return Response.json({
+            currency: "USD",
+            dashboard_enabled: true,
+            offers_live: false,
+            tier: {
+              canonical_tier: "metfix_pro",
+              personas: { metfix_pro: true, free: false },
+              audience_keys: ["metfix_pro"],
+            },
+            ltv: {
+              total_cents: 30000,
+              available_cents: 10000,
+              claimed_certificate_cents: 20000,
+              claimed_certificates: [],
+              foundations_coach: null,
+            },
+            class_claims: {
+              enabled: false,
+              mode: "windowed",
+              used: 0,
+              cap_n: 1,
+              window_start: null,
+              resets_at: null,
+              calendar_month: { used: 0, start: null, end: null },
+              active: [],
+            },
+            offers: [],
+            referrals: { href: "/bsi/v1/me/referrals" },
+            links: { spend: "/bsi/v1/me/spend" },
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/rewards",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    expect(recorded.some((r) => r.url.includes("/me/rewards"))).toBe(true);
+    const body = (await res.json()) as {
+      ltv: { total_cents: number };
+      offers_live: boolean;
+      offers: unknown[];
+    };
+    expect(body.ltv.total_cents).toBe(30000);
+    expect(body.offers_live).toBe(false);
+    expect(body.offers).toEqual([]);
+  });
+
   it("DP-T-5 / DP-T-CERT3 LTV300 spend + alias (legacy claim-certificate route removed)", async () => {
     const sess = await withSession(h);
     const budget = computeLtvBudget(30000, 20000);

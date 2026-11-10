@@ -21,6 +21,7 @@ import "./account.css";
 
 export const ACCOUNT_NAV = [
   { href: "/account", label: "Overview", always: true },
+  { href: "/account/rewards", label: "Rewards", always: true },
   { href: "/account/billing", label: "Billing & Subscriptions", always: true },
   { href: "/account/profile", label: "Profile", always: true },
   {
