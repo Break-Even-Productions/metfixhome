@@ -394,7 +394,7 @@ export default function AccountWorkouts() {
       {gate !== "open" ? (
         <BodyPanel>
           <FeedSkeleton label="Workout feed locked" />
-          {gate === "locked" ? <ProUnlockBanner /> : null}
+          {gate === "locked" ? <ProUnlockBanner introOffer={overview} /> : null}
         </BodyPanel>
       ) : (
         <BodyPanel className="dash-feed">

@@ -131,7 +131,7 @@ export default function AccountBenchmarkCatalog() {
         {gate === "locked" ? (
           <>
             <FeedSkeleton label="PR catalog locked" />
-            <ProUnlockBanner />
+            <ProUnlockBanner introOffer={overview} />
           </>
         ) : null}
         {gate === "open" && grouped.length === 0 ? (

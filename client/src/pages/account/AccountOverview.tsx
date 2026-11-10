@@ -104,6 +104,7 @@ export default function AccountOverview() {
         legacySource={legacySource ?? undefined}
         ltv={ltv}
         showUpgradeCta
+        introOffer={overview ?? subs}
       />
       <div className="dash-panel">
         <AccountCalendar />
@@ -111,7 +112,7 @@ export default function AccountOverview() {
         <ConversionBanner conversion={subs?.conversion} />
         {ltv ? <LtvVisualizer ltv={ltv} /> : null}
         {coach ? <FoundationsCoachCard coach={coach} /> : null}
-        {!unlocked ? <ProUnlockBanner /> : null}
+        {!unlocked ? <ProUnlockBanner introOffer={overview ?? subs} /> : null}
       </div>
     </DashboardLayout>
   );

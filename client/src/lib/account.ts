@@ -34,6 +34,8 @@ export type AccountOverview = {
     foundations_coach: boolean;
   };
   canonical_tier: CanonicalSubscriptionTier;
+  /** False when the user previously held MetFix Pro (no first-month intro). */
+  pro_intro_offer_eligible?: boolean;
   foundations_coach: FoundationsCoachStatus;
   tabs: unknown[];
   links: Record<string, unknown>;
@@ -75,6 +77,8 @@ export type SubscriptionConversion = {
 
 export type AccountSubscriptions = {
   canonical_tier: CanonicalSubscriptionTier;
+  /** False when the user previously held MetFix Pro (no first-month intro). */
+  pro_intro_offer_eligible?: boolean;
   items: SubscriptionItem[];
   conversion?: SubscriptionConversion;
 };
