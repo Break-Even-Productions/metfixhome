@@ -14,6 +14,7 @@ import type {
 } from "@shared/account/claimOptions";
 import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
+import type { RewardsPayload } from "@shared/account/rewards";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
 import type { RoleId } from "@shared/join/membership-domain";
 
@@ -865,6 +866,7 @@ type CacheKey =
   | "overview"
   | "subscriptions"
   | "ltv"
+  | "rewards"
   | "courses"
   | "profile"
   | "favorites"
@@ -1093,6 +1095,15 @@ export function loadLtvCertificates(options?: {
   signal?: AbortSignal;
 }): Promise<LtvCertificates> {
   return accountGet("/api/account/ltv-certificates", "ltv", options);
+}
+
+export type AccountRewards = RewardsPayload;
+
+export function loadRewards(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<AccountRewards> {
+  return accountGet("/api/account/rewards", "rewards", options);
 }
 
 export function loadPayments(
