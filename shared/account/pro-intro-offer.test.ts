@@ -22,4 +22,18 @@ describe("pro intro offer helpers", () => {
     expect(proMembershipCta(false)).toBe("Start MetFix Pro");
     expect(proMembershipPriceLine(false)).toBe("$30/month · Cancel anytime");
   });
+
+  it("signed-out / missing flag still shows intro; false hides it", () => {
+    // Marketing / signed-out surfaces pass null → intro (same as today).
+    expect(isProIntroOfferEligible(null)).toBe(true);
+    // Worker may omit the field until BSI ships it → still intro.
+    expect(isProIntroOfferEligible({} as { pro_intro_offer_eligible?: boolean })).toBe(
+      true,
+    );
+    // Returning buyer with explicit false → no free-month copy.
+    expect(
+      isProIntroOfferEligible({ pro_intro_offer_eligible: false }),
+    ).toBe(false);
+    expect(proMembershipCta(false)).not.toMatch(/free month/i);
+  });
 });
