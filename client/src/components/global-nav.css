@@ -391,6 +391,32 @@
   .global-nav__login { display: inline-flex; }
 }
 
+/* Inverse of the home audience-strip pill: ink fill, white label. */
+.global-nav__dashboard {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border-radius: 9999px;
+  background: var(--gn-ink);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: none;
+  line-height: 1;
+  padding: 0.5rem 1.25rem;
+  min-height: 44px;
+}
+.global-nav__dashboard:hover {
+  background: #2a261f;
+  color: #fff;
+}
+@media (min-width: 1024px) {
+  .global-nav__dashboard { display: inline-flex; }
+}
+
 .global-nav__mobile {
   display: block;
   border-top: 1px solid var(--gn-line);

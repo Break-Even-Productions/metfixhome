@@ -1,11 +1,13 @@
 /**
  * @vitest-environment jsdom
- * Entitled members see a notifications bell instead of Join Today.
+ * Signed-in users see a notifications bell. Entitled members skip Join Today.
+ * Free members see Join Today with the bell to its right.
  */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setLocation = vi.fn();
+const locationRef = { current: "/classes" };
 
 vi.mock("@/hooks/useSiteContent", () => ({
   useSiteSettings: () => ({
@@ -38,7 +40,7 @@ vi.mock("wouter", async () => {
   const actual = await vi.importActual<typeof import("wouter")>("wouter");
   return {
     ...actual,
-    useLocation: () => ["/classes", setLocation] as const,
+    useLocation: () => [locationRef.current, setLocation] as const,
     Link: ({
       href,
       children,
@@ -58,6 +60,7 @@ vi.mock("wouter", async () => {
 import GlobalNav from "./GlobalNav";
 
 beforeEach(() => {
+  locationRef.current = "/classes";
   setLocation.mockClear();
   loadMe.mockReset();
   loadOverview.mockReset();
@@ -140,5 +143,81 @@ describe("GlobalNav notification bell", () => {
       expect(bell.textContent).toContain("3");
     });
     expect(screen.queryByRole("button", { name: /Join Today/i })).toBeNull();
+    expect(screen.getByRole("link", { name: "Dashboard" }).className).toContain(
+      "global-nav__dashboard",
+    );
+  });
+
+  it("shows Join Today and a bell to its right for signed-in free members", async () => {
+    loadMe.mockResolvedValue({
+      status: "signed_in",
+      public_name: "Ada",
+      moderator: false,
+    });
+    loadOverview.mockResolvedValue({
+      display_name: "Ada",
+      canonical_tier: "free",
+      badges: { medical: false, affiliate: false, foundations_coach: false },
+      foundations_coach: {
+        active: false,
+        grant_reason: null,
+        granted_at: null,
+        expires_at: null,
+        seminar_checked_in: false,
+        metfix_essentials_completed: false,
+        metfix_essentials_certificate_claimed: false,
+      },
+      items: [],
+      tabs: [],
+      links: {},
+    });
+    loadSubscriptions.mockResolvedValue({ canonical_tier: "free", items: [] });
+    loadUnreadNotificationCount.mockResolvedValue({ unread_count: 1 });
+
+    render(<GlobalNav />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /Notifications, 1 unread/i })).toBeTruthy();
+    });
+    const join = screen.getByRole("button", { name: /Join Today/i });
+    const bell = screen.getByRole("link", { name: /Notifications, 1 unread/i });
+    expect(
+      join.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("hides Dashboard on account pages", async () => {
+    locationRef.current = "/account";
+    loadMe.mockResolvedValue({
+      status: "signed_in",
+      public_name: "Ada",
+      moderator: false,
+    });
+    loadOverview.mockResolvedValue({
+      display_name: "Ada",
+      canonical_tier: "free",
+      badges: { medical: false, affiliate: false, foundations_coach: false },
+      foundations_coach: {
+        active: false,
+        grant_reason: null,
+        granted_at: null,
+        expires_at: null,
+        seminar_checked_in: false,
+        metfix_essentials_completed: false,
+        metfix_essentials_certificate_claimed: false,
+      },
+      items: [],
+      tabs: [],
+      links: {},
+    });
+    loadSubscriptions.mockResolvedValue({ canonical_tier: "free", items: [] });
+    loadUnreadNotificationCount.mockResolvedValue({ unread_count: 0 });
+
+    render(<GlobalNav />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Notifications" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("link", { name: "Dashboard" })).toBeNull();
   });
 });

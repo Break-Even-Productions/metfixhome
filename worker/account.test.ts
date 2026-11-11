@@ -1378,6 +1378,9 @@ describe("worker/account routes", () => {
       conversations: unknown[];
       notifications: Array<{ href?: string; type?: string; read?: boolean }>;
       unread_count?: number;
+      view?: string;
+      limit?: number;
+      offset?: number;
     };
     expect(inboxJson.conversations.length).toBe(1);
     expect(inboxJson.notifications.length).toBe(1);
@@ -1385,6 +1388,36 @@ describe("worker/account routes", () => {
     expect(inboxJson.notifications[0]?.type).toBe("messaging");
     expect(inboxJson.notifications[0]?.read).toBe(false);
     expect(inboxJson.unread_count).toBe(1);
+    expect(inboxJson.view).toBe("all");
+    expect(inboxJson.limit).toBe(50);
+    expect(inboxJson.offset).toBe(0);
+    const inApp = recorded.find((r) => r.url.includes("/in-app-notifications"));
+    expect(inApp?.url).toContain("view=all");
+    expect(inApp?.url).toContain("limit=50");
+    expect(inApp?.url).toContain("offset=0");
+
+    const focused = await callAccount(
+      h,
+      "/api/account/inbox?view=focused&limit=10&offset=50",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(focused.status).toBe(200);
+    const focusedJson = (await focused.json()) as { view: string; limit: number; offset: number };
+    expect(focusedJson.view).toBe("focused");
+    expect(focusedJson.limit).toBe(10);
+    expect(focusedJson.offset).toBe(50);
+    expect(recorded.some((r) => r.url.includes("view=focused") && r.url.includes("offset=50"))).toBe(
+      true,
+    );
+
+    const badView = await callAccount(
+      h,
+      "/api/account/inbox?view=mentions",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(badView.status).toBe(400);
 
     const unread = await callAccount(
       h,
@@ -2570,6 +2603,12 @@ describe("worker/account routes", () => {
         method: "PUT",
         headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
         body: JSON.stringify({
+          account: {
+            types: [
+              { slug: "comment_reply", channels: { email: true, push: 0, in_feed: 1 } },
+              { slug: "Not A Slug", channels: { email: true } },
+            ],
+          },
           preferences: { email_digest: true, product_updates: false },
           newsletter: true,
           role: "admin",
@@ -2587,12 +2626,56 @@ describe("worker/account routes", () => {
     );
     expect(prefPut).toBeTruthy();
     const body = JSON.parse(prefPut!.bodyText) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["newsletter", "preferences"].sort());
+    expect(Object.keys(body)).toEqual(["account"]);
     expect(body).not.toHaveProperty("role");
     expect(body).not.toHaveProperty("user_id");
     expect(body).not.toHaveProperty("email");
     expect(body).not.toHaveProperty("is_admin");
-    expect(body.preferences).toEqual({ email_digest: true, product_updates: false });
+    expect(body).not.toHaveProperty("preferences");
+    expect(body).not.toHaveProperty("newsletter");
+    expect(body.account).toEqual({
+      types: [{ slug: "comment_reply", channels: { email: 1, push: 0, in_feed: 1 } }],
+    });
+    const newsPut = recorded.find((r) => r.method === "PUT" && r.url.includes("/me/newsletter"));
+    expect(JSON.parse(newsPut!.bodyText)).toEqual({ subscribed: true });
+  });
+
+  it("marks one inbox notification read and dismisses another", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/notifications/read") && method === "PATCH") {
+          return Response.json({ success: true });
+        }
+        if (path.endsWith("/notifications/dismiss") && method === "POST") {
+          return Response.json({ success: true });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const headers = hOk({ csrf: sess.csrf, sid: sess.sid });
+    const read = await callAccount(
+      h,
+      "/api/account/inbox/read",
+      { method: "POST", headers, body: JSON.stringify({ notification_id: 12 }) },
+      fetchImpl,
+    );
+    expect(read.status).toBe(200);
+    const dismiss = await callAccount(
+      h,
+      "/api/account/inbox/dismiss",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ notification_id: 4, type: "site" }),
+      },
+      fetchImpl,
+    );
+    expect(dismiss.status).toBe(200);
+    expect(JSON.parse(recorded[0]!.bodyText)).toEqual({ notification_id: 12 });
+    expect(recorded[0]!.method).toBe("PATCH");
+    expect(JSON.parse(recorded[1]!.bodyText)).toEqual({ notification_id: 4, type: "site" });
+    expect(recorded[1]!.method).toBe("POST");
   });
 
   it("R3-B1: public /api/members/:id key-set exact; expired coach badge false; no foundations_coach object", async () => {

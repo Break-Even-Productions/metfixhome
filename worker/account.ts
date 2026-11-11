@@ -184,15 +184,8 @@ const POSITIVE_INT_RE = /^[1-9][0-9]{0,9}$/;
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const STRIPE_LIKE_ID_RE = /^(cus|sub|mem|seti|pi)_[A-Za-z0-9]+$/;
 const EMAIL_VALUE_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-/** DP-T-26b: only these top-level keys may leave the Worker toward BSI. */
-const NOTIFICATION_PUT_KEYS = new Set([
-  "email_digest",
-  "product_updates",
-  "newsletter",
-  "newsletter_subscribed",
-  "preferences",
-]);
-const NOTIFICATION_PREF_KEYS = new Set(["email_digest", "product_updates"]);
+const NOTIFICATION_CHANNEL_KEYS = ["email", "text", "phone", "push", "in_feed"] as const;
+const NOTIFICATION_SLUG_RE = /^[a-z0-9_]{1,64}$/;
 
 const REFERRAL_INELIGIBLE_CODES = new Set([
   "bsi_referral_ineligible",
@@ -308,25 +301,41 @@ export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
   return accountRateLimitKeyImpl(ctx);
 }
 
-function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of NOTIFICATION_PUT_KEYS) {
-    if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
-    const val = body[key];
-    if (key === "preferences") {
-      const pref = asRecord(val);
-      if (!pref) continue;
-      const cleaned: Record<string, boolean> = {};
-      for (const pk of NOTIFICATION_PREF_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(pref, pk) && typeof pref[pk] === "boolean") {
-          cleaned[pk] = pref[pk] as boolean;
-        }
+function notificationChannelValue(raw: unknown): 0 | 1 | null {
+  if (raw === true || raw === 1) return 1;
+  if (raw === false || raw === 0) return 0;
+  return null;
+}
+
+/** Only account channel maps and the newsletter flag may leave the Worker. */
+function whitelistNotificationsPut(body: Record<string, unknown>): {
+  account?: { types: Array<{ slug: string; channels: Record<string, 0 | 1> }> };
+  newsletter?: boolean;
+} {
+  const out: {
+    account?: { types: Array<{ slug: string; channels: Record<string, 0 | 1> }> };
+    newsletter?: boolean;
+  } = {};
+  const account = asRecord(body.account);
+  const types = account && Array.isArray(account.types) ? account.types : null;
+  if (types) {
+    const cleaned: Array<{ slug: string; channels: Record<string, 0 | 1> }> = [];
+    for (const item of types) {
+      const row = asRecord(item);
+      if (!row || typeof row.slug !== "string" || !NOTIFICATION_SLUG_RE.test(row.slug)) continue;
+      const channels = asRecord(row.channels);
+      if (!channels) continue;
+      const next: Record<string, 0 | 1> = {};
+      for (const key of NOTIFICATION_CHANNEL_KEYS) {
+        if (!Object.prototype.hasOwnProperty.call(channels, key)) continue;
+        const value = notificationChannelValue(channels[key]);
+        if (value !== null) next[key] = value;
       }
-      out.preferences = cleaned;
-      continue;
+      cleaned.push({ slug: row.slug, channels: next });
     }
-    if (typeof val === "boolean") out[key] = val;
+    out.account = { types: cleaned };
   }
+  if (typeof body.newsletter === "boolean") out.newsletter = body.newsletter;
   return out;
 }
 
@@ -1802,6 +1811,12 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "GET" && rest === "inbox") {
     return { id: "MF14", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "POST" && rest === "inbox/read") {
+    return { id: "MF14r", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "POST" && rest === "inbox/dismiss") {
+    return { id: "MF14d", method: "POST", params: {}, limiter: "write" };
   }
   if (method === "GET" && rest === "workouts/planned") {
     return { id: "MF16", method: "GET", params: {}, limiter: "read" };
@@ -3425,9 +3440,23 @@ async function dispatch(
       return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
     case "MF14": {
+      const viewRaw = url.searchParams.get("view") ?? "all";
+      if (viewRaw !== "all" && viewRaw !== "focused") {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limitRaw = url.searchParams.get("limit") ?? "50";
+      const offsetRaw = url.searchParams.get("offset") ?? "0";
+      if (!/^[1-9][0-9]*$/.test(limitRaw) || !/^(0|[1-9][0-9]*)$/.test(offsetRaw)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limit = Math.min(Number(limitRaw), 100);
+      const offset = Number(offsetRaw);
+      const notifQuery = `limit=${limit}&offset=${offset}&view=${viewRaw}`;
       const [convRan, notifRan, unreadRan] = await Promise.all([
         runBearer(ctx!, env, fetchImpl, opts, "GET", accountMessagesConversationsPath()),
-        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath()),
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath(), {
+          query: notifQuery,
+        }),
         runBearer(
           ctx!,
           env,
@@ -3441,6 +3470,7 @@ async function dispatch(
       if (notifRan instanceof Response) return mapUnauthenticated(notifRan);
       const conversations: unknown[] = [];
       const notifications: Record<string, unknown>[] = [];
+      let total_count = 0;
       if (convRan.result.kind === "ok") {
         const cobj = asRecord(convRan.result.json) ?? {};
         const list = Array.isArray(cobj.conversations)
@@ -3465,6 +3495,10 @@ async function dispatch(
           const shaped = shapeInboxNotification(row);
           if (shaped) notifications.push(shaped);
         }
+        total_count =
+          typeof nobj.total_count === "number" && Number.isFinite(nobj.total_count)
+            ? Math.max(0, Math.floor(nobj.total_count))
+            : notifications.length;
       }
       let unread_count =
         unreadRan instanceof Response
@@ -3488,9 +3522,74 @@ async function dispatch(
         return accountJson({ error: "unavailable" }, 502);
       }
       return accountJson(
-        { conversations, notifications, items: notifications, unread_count },
+        {
+          conversations,
+          notifications,
+          items: notifications,
+          unread_count,
+          total_count,
+          limit,
+          offset,
+          view: viewRaw,
+        },
         200,
       );
+    }
+    case "MF14r": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const id = body?.notification_id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PATCH",
+        `${accountNotificationsListPath()}/read`,
+        {
+          body: JSON.stringify({ notification_id: id }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF14d": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const id = body?.notification_id;
+      const type = body?.type;
+      if (
+        typeof id !== "number" ||
+        !Number.isSafeInteger(id) ||
+        id <= 0 ||
+        (type !== "site" && type !== "personal")
+      ) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        `${accountNotificationsListPath()}/dismiss`,
+        {
+          body: JSON.stringify({ notification_id: id, type }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
     }
     case "MF14u": {
       const ran = await runBearer(
@@ -3906,14 +4005,31 @@ async function dispatch(
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? {}, 200);
+      const base = asRecord(mapped.json) ?? {};
+      let newsletter: { subscribed: boolean } | null = null;
+      const newsRan = await runBearer(
+        ran.ctx,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountNewsletterPath(),
+      );
+      if (!(newsRan instanceof Response) && newsRan.result.kind === "ok") {
+        const state = asRecord(newsRan.result.json);
+        if (state && typeof state.subscribed === "boolean") {
+          newsletter = { subscribed: state.subscribed };
+        }
+      }
+      return accountJson({ ...base, newsletter }, 200);
     }
     case "DP26w": {
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json) ?? {};
-      // DP-T-26b: whitelist before BSI — unknown keys never forwarded.
+      // Unknown keys never forwarded. Newsletter is a separate BSI route.
       const safeBody = whitelistNotificationsPut(body);
+      const prefBody = safeBody.account ? { account: safeBody.account } : {};
       const ran = await runBearer(
         ctx!,
         env,
@@ -3921,12 +4037,13 @@ async function dispatch(
         opts,
         "PUT",
         accountNotificationPreferencesPath(),
-        { body: JSON.stringify(safeBody), contentType: "application/json" },
+        { body: JSON.stringify(prefBody), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      if ("newsletter" in safeBody || "newsletter_subscribed" in safeBody) {
+      let newsletter: { subscribed: boolean } | null = null;
+      if (typeof safeBody.newsletter === "boolean") {
         const newsRan = await runBearer(
           ran.ctx,
           env,
@@ -3935,18 +4052,17 @@ async function dispatch(
           "PUT",
           accountNewsletterPath(),
           {
-            body: JSON.stringify({
-              subscribed:
-                safeBody.newsletter === true || safeBody.newsletter_subscribed === true,
-            }),
+            body: JSON.stringify({ subscribed: safeBody.newsletter }),
             contentType: "application/json",
           },
         );
         if (newsRan instanceof Response) return mapUnauthenticated(newsRan);
         const newsMapped = mapUpstreamResult(newsRan.result);
         if (newsMapped instanceof Response) return newsMapped;
+        newsletter = { subscribed: safeBody.newsletter };
       }
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      const saved = asRecord(mapped.json) ?? {};
+      return accountJson({ ...saved, newsletter }, mapped.status);
     }
     case "DP28": {
       const ran = await runBearer(

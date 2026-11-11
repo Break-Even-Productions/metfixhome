@@ -257,9 +257,22 @@ export type CourseGiftsPayload = {
   [key: string]: unknown;
 };
 
+export type NotificationChannelMap = Partial<
+  Record<"email" | "text" | "phone" | "push" | "in_feed", number | boolean>
+>;
+
+export type NotificationPrefType = {
+  slug: string;
+  label?: string;
+  group?: string;
+  allowed_channels?: string[];
+  channels?: NotificationChannelMap;
+  email_required?: boolean;
+};
+
 export type NotificationsPayload = {
-  preferences?: Record<string, boolean>;
-  newsletter?: boolean;
+  account?: { types?: NotificationPrefType[] };
+  newsletter?: { subscribed: boolean } | null;
   [key: string]: unknown;
 };
 
@@ -551,6 +564,10 @@ export type AccountInbox = {
   items?: AccountInboxNotification[];
   unread_count?: number;
   total?: number;
+  total_count?: number;
+  limit?: number;
+  offset?: number;
+  view?: "all" | "focused";
   [key: string]: unknown;
 };
 
@@ -889,6 +906,7 @@ type CacheKey =
   | "privacy"
   | "pr-overview"
   | "inbox"
+  | `inbox:${string}`
   | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
@@ -1398,10 +1416,21 @@ export function loadSparkEntries(
  * GET /api/account/inbox (worker proxy to BSI messages / in-app-notifications assumed).
  */
 export function loadInbox(options?: {
+  view?: "all" | "focused";
+  limit?: number;
+  offset?: number;
   force?: boolean;
   signal?: AbortSignal;
 }): Promise<AccountInbox> {
-  return accountGet("/api/account/inbox", "inbox", options);
+  const params = new URLSearchParams();
+  if (options?.view) params.set("view", options.view);
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.offset != null) params.set("offset", String(options.offset));
+  const qs = params.toString();
+  const key: CacheKey = qs
+    ? `inbox:${options?.view ?? "all"}:${options?.limit ?? ""}:${options?.offset ?? 0}`
+    : "inbox";
+  return accountGet(`/api/account/inbox${qs ? `?${qs}` : ""}`, key, options);
 }
 
 /** Live unread badge for the site header bell. */
@@ -2375,6 +2404,25 @@ export async function referralCodeAction(
   cache.set("referrals", merged);
   inflight.delete("referrals");
   return merged;
+}
+
+export function markInboxNotificationRead(notificationId: number): Promise<{ success: boolean }> {
+  return accountMutate("/api/account/inbox/read", {
+    method: "POST",
+    body: { notification_id: notificationId },
+    invalidate: ["notifications-unread"],
+  });
+}
+
+export function dismissInboxNotification(
+  notificationId: number,
+  source: "site" | "personal",
+): Promise<{ success: boolean }> {
+  return accountMutate("/api/account/inbox/dismiss", {
+    method: "POST",
+    body: { notification_id: notificationId, type: source },
+    invalidate: ["notifications-unread"],
+  });
 }
 
 export async function updateNotifications(

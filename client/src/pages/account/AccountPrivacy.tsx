@@ -1,16 +1,25 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   confirmEmailChange,
   loadPrivacy,
   requestEmailChange,
   requestPasswordReset,
   updatePrivacy,
-  type PrivacyPayload,
 } from "@/lib/account";
 import DashboardLayout from "./DashboardLayout";
+import NotificationSettings from "./NotificationSettings";
+
+type SettingsPanel = "account" | "privacy" | "notifications";
+
+const PANELS: Array<{ id: SettingsPanel; title: string; detail: string }> = [
+  { id: "account", title: "Your account", detail: "Email and password" },
+  { id: "privacy", title: "Privacy", detail: "Who can see your profile" },
+  { id: "notifications", title: "Notifications", detail: "Email, push, and in-app alerts" },
+];
 
 export default function AccountPrivacy() {
-  const [privacy, setPrivacy] = useState<PrivacyPayload | null>(null);
+  const [panel, setPanel] = useState<SettingsPanel>("account");
   const [directoryVisible, setDirectoryVisible] = useState(false);
   const [profilePublic, setProfilePublic] = useState(false);
   const [email, setEmail] = useState("");
@@ -25,14 +34,12 @@ export default function AccountPrivacy() {
     let cancelled = false;
     (async () => {
       try {
-        const p = await loadPrivacy({ signal: ac.signal });
+        const privacy = await loadPrivacy({ signal: ac.signal });
         if (cancelled) return;
-        setPrivacy(p);
-        setDirectoryVisible(p.directory_visible === true);
-        setProfilePublic(p.profile_public === true);
+        setDirectoryVisible(privacy.directory_visible === true);
+        setProfilePublic(privacy.profile_public === true);
       } catch (err) {
-        if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
         setError("Unable to load privacy settings.");
       }
     })();
@@ -45,12 +52,12 @@ export default function AccountPrivacy() {
   async function onSavePrivacy() {
     setBusy(true);
     setError(null);
+    setMessage(null);
     try {
-      const next = await updatePrivacy({
+      await updatePrivacy({
         directory_visible: directoryVisible,
         profile_public: profilePublic,
       });
-      setPrivacy(next);
       setMessage("Privacy settings saved.");
     } catch {
       setError("Save failed.");
@@ -62,6 +69,7 @@ export default function AccountPrivacy() {
   async function onPasswordReset() {
     setBusy(true);
     setError(null);
+    setMessage(null);
     try {
       await requestPasswordReset();
       setMessage("Password reset email sent.");
@@ -76,6 +84,7 @@ export default function AccountPrivacy() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setMessage(null);
     try {
       await requestEmailChange(email);
       setStep("awaiting_code");
@@ -91,6 +100,7 @@ export default function AccountPrivacy() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setMessage(null);
     try {
       await confirmEmailChange(code);
       setStep("idle");
@@ -103,85 +113,127 @@ export default function AccountPrivacy() {
     }
   }
 
+  const current = PANELS.find((item) => item.id === panel) ?? PANELS[0]!;
+
   return (
-    <DashboardLayout
-      title="Privacy & Security"
-      description="Directory visibility, password reset, and email change."
-    >
-      {error ? <p className="account-error">{error}</p> : null}
-      {message ? <p role="status">{message}</p> : null}
-
-      <section className="account-card">
-        <h2>Privacy</h2>
-        <label className="account-toggle-row">
-          <span>Show in directory</span>
-          <input
-            type="checkbox"
-            checked={directoryVisible}
-            onChange={(e) => setDirectoryVisible(e.target.checked)}
-          />
-        </label>
-        <label className="account-toggle-row">
-          <span>Public profile</span>
-          <input
-            type="checkbox"
-            checked={profilePublic}
-            onChange={(e) => setProfilePublic(e.target.checked)}
-          />
-        </label>
-        <button
-          type="button"
-          className="account-btn"
-          style={{ marginTop: "1rem" }}
-          disabled={busy}
-          onClick={() => void onSavePrivacy()}
-        >
-          Save privacy
-        </button>
-        {privacy ? null : null}
-      </section>
-
-      <section className="account-card">
-        <h2>Password</h2>
-        <button
-          type="button"
-          className="account-btn"
-          disabled={busy}
-          onClick={() => void onPasswordReset()}
-        >
-          Send password reset email
-        </button>
-      </section>
-
-      <section className="account-card">
-        <h2>Change email</h2>
-        {step === "idle" ? (
-          <form className="account-form" onSubmit={onEmailStart}>
-            <label>
-              New email
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </label>
-            <button type="submit" className="account-btn" disabled={busy}>
-              Send confirmation code
+    <DashboardLayout title="Settings" description="Account, privacy, and how MetFix reaches you.">
+      <div className="settings-shell">
+        <nav className="settings-menu" aria-label="Settings">
+          {PANELS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={panel === item.id}
+              onClick={() => {
+                setPanel(item.id);
+                setMessage(null);
+              }}
+            >
+              <span>
+                <span className="settings-menu__title">{item.title}</span>
+                <span className="settings-menu__detail">{item.detail}</span>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
             </button>
-          </form>
-        ) : (
-          <form className="account-form" onSubmit={onEmailConfirm}>
-            <label>
-              Confirmation code
-              <input value={code} onChange={(e) => setCode(e.target.value)} required />
-            </label>
-            <button type="submit" className="account-btn" disabled={busy}>
-              Confirm email
-            </button>
-          </form>
-        )}
-      </section>
+          ))}
+        </nav>
+        <section className="settings-detail" aria-labelledby="settings-detail-title">
+          <h2 id="settings-detail-title">{current.title}</h2>
+          {error ? <p className="account-error">{error}</p> : null}
+          {message ? <p role="status">{message}</p> : null}
+          {panel === "account" ? (
+            <>
+              <p className="settings-detail__lede">Update the email and password on this account.</p>
+              <div className="settings-block">
+                <h3>Email</h3>
+                {step === "idle" ? (
+                  <form className="account-form" onSubmit={onEmailStart}>
+                    <label>
+                      New email
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </label>
+                    <button type="submit" className="account-btn" disabled={busy}>
+                      Send confirmation code
+                    </button>
+                  </form>
+                ) : (
+                  <form className="account-form" onSubmit={onEmailConfirm}>
+                    <label>
+                      Confirmation code
+                      <input value={code} onChange={(e) => setCode(e.target.value)} required />
+                    </label>
+                    <button type="submit" className="account-btn" disabled={busy}>
+                      Confirm email
+                    </button>
+                  </form>
+                )}
+              </div>
+              <div className="settings-block">
+                <h3>Password</h3>
+                <p className="settings-pref__detail">We’ll email a link to choose a new password.</p>
+                <button
+                  type="button"
+                  className="account-btn"
+                  disabled={busy}
+                  onClick={() => void onPasswordReset()}
+                >
+                  Send password reset email
+                </button>
+              </div>
+            </>
+          ) : null}
+          {panel === "privacy" ? (
+            <>
+              <p className="settings-detail__lede">Control how you appear to other MetFix members.</p>
+              <div className="settings-pref">
+                <div>
+                  <p className="settings-pref__title">Show in directory</p>
+                  <p className="settings-pref__detail">List this account in the member directory.</p>
+                </div>
+                <label className="settings-switch">
+                  <input
+                    type="checkbox"
+                    aria-label="Show in directory"
+                    checked={directoryVisible}
+                    onChange={(e) => setDirectoryVisible(e.target.checked)}
+                  />
+                  <span className="settings-switch__track" aria-hidden="true" />
+                </label>
+              </div>
+              <div className="settings-pref">
+                <div>
+                  <p className="settings-pref__title">Public profile</p>
+                  <p className="settings-pref__detail">Let anyone with the link view your profile.</p>
+                </div>
+                <label className="settings-switch">
+                  <input
+                    type="checkbox"
+                    aria-label="Public profile"
+                    checked={profilePublic}
+                    onChange={(e) => setProfilePublic(e.target.checked)}
+                  />
+                  <span className="settings-switch__track" aria-hidden="true" />
+                </label>
+              </div>
+              <button
+                type="button"
+                className="account-btn"
+                style={{ marginTop: "1.25rem" }}
+                disabled={busy}
+                onClick={() => void onSavePrivacy()}
+              >
+                Save privacy
+              </button>
+            </>
+          ) : null}
+          {panel === "notifications" ? <NotificationSettings /> : null}
+        </section>
+      </div>
     </DashboardLayout>
   );
 }

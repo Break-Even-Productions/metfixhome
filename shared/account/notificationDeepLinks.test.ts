@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveNotificationHref } from "./notificationDeepLinks";
+import { externalNotificationHref, resolveNotificationHref } from "./notificationDeepLinks";
 
 describe("resolveNotificationHref", () => {
   it("maps messaging notifications to /account/messages/:id", () => {
@@ -65,5 +65,14 @@ describe("resolveNotificationHref", () => {
         link: "/messages/7",
       }),
     ).toBe("/account/messages/7");
+  });
+
+  it("keeps a newsletter link as an external http(s) URL", () => {
+    expect(externalNotificationHref("https://mailchi.mp/metfix/march")).toBe(
+      "https://mailchi.mp/metfix/march",
+    );
+    expect(externalNotificationHref("javascript:alert(1)")).toBeNull();
+    expect(externalNotificationHref("https://user:pass@example.com/letter")).toBeNull();
+    expect(resolveNotificationHref({ type: "new_newsletter", link: "https://mailchi.mp/metfix/march" })).toBeNull();
   });
 });

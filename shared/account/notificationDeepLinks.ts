@@ -108,6 +108,20 @@ function postHrefFrom(link: string | null, postId: string | null): string | null
  * Resolve a MetFix.org href for a notification. Returns null when no safe
  * in-app destination can be derived (caller may leave the row non-clickable).
  */
+/** http(s) destination when the row has no in-app route. Rejects credentials and other schemes. */
+export function externalNotificationHref(link: string | null | undefined): string | null {
+  const raw = trimStr(link);
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname || url.username || url.password) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function resolveNotificationHref(input: NotificationDeepLinkInput): string | null {
   const existing = trimStr(input.href);
   if (existing?.startsWith("/") && !existing.startsWith("//")) {
