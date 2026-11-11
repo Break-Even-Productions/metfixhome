@@ -256,9 +256,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(screen.getByRole("link", { name: /My Data \/ Spark/i }).getAttribute("href")).toBe(
       "/account/spark",
     );
-    expect(screen.getByRole("link", { name: /Inbox/i }).getAttribute("href")).toBe(
-      "/account/inbox",
-    );
+    expect(
+      document.querySelector('[data-tool="inbox"]')?.getAttribute("href"),
+    ).toBe("/account/messages");
     expect(screen.queryByText("No web page yet")).toBeNull();
     expect(screen.queryByText("MetFix Admin")).toBeNull();
     expect(document.querySelector('[data-tool="workout-feed"]')?.getAttribute("data-state")).toBe(
@@ -370,6 +370,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       "/account/favorites",
       "/account/organization",
       "/account/referrals",
+      "/account/messages",
       "/account/notifications",
       "/account/privacy",
     ]);

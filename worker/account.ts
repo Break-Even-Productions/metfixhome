@@ -57,7 +57,13 @@ import {
   accountMePath,
   accountMeProfilePath,
   accountMemberSummaryPath,
+  accountMessagesConversationMessagesPath,
+  accountMessagesConversationPath,
+  accountMessagesConversationReadPath,
   accountMessagesConversationsPath,
+  accountMessagesDirectPath,
+  accountMessagesUsersPath,
+  accountMessagesUsersSearchPath,
   accountMyCoursesPath,
   accountNewsletterPath,
   accountNotificationPreferencesPath,
@@ -1653,6 +1659,122 @@ function shapeMemberSummary(raw: unknown): Record<string, unknown> | null {
   };
 }
 
+
+function optString(v: unknown, max = 500): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (!t) return null;
+  return t.length > max ? t.slice(0, max) : t;
+}
+
+function optPositiveIdString(v: unknown): string | null {
+  if (typeof v === "number" && Number.isSafeInteger(v) && v > 0) return String(v);
+  if (typeof v === "string" && /^[1-9][0-9]*$/.test(v)) return v;
+  return null;
+}
+
+function shapeChatMember(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  if (!id) return null;
+  return {
+    id,
+    name: optString(obj.name, 120) ?? "Member",
+    avatar: optString(obj.avatar, 500),
+    isOwner: obj.isOwner === true,
+    isAdmin: obj.isAdmin === true,
+    canAddMembers: obj.canAddMembers === true,
+    canRemoveMembers: obj.canRemoveMembers === true,
+  };
+}
+
+function shapeChatConversation(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  if (!id) return null;
+  const membersIn = Array.isArray(obj.members) ? obj.members : [];
+  const members = membersIn
+    .map((row) => shapeChatMember(row))
+    .filter((x): x is Record<string, unknown> => x != null)
+    .slice(0, 100);
+  const type = obj.type === "group" ? "group" : "direct";
+  const out: Record<string, unknown> = {
+    id,
+    type,
+    name: optString(obj.name, 160),
+    avatar: optString(obj.avatar, 500),
+    icon: optString(obj.icon, 64),
+    lastMessage: optString(obj.lastMessage, 2000) ?? "",
+    lastMessageTime: optString(obj.lastMessageTime, 64),
+    unreadCount:
+      typeof obj.unreadCount === "number" && Number.isFinite(obj.unreadCount)
+        ? Math.max(0, Math.min(9999, Math.trunc(obj.unreadCount)))
+        : 0,
+    isPinned: obj.isPinned === true,
+    ownerId: optPositiveIdString(obj.ownerId),
+    currentUserId: optPositiveIdString(obj.currentUserId),
+    isOwner: obj.isOwner === true,
+    canAddMembers: obj.canAddMembers === true,
+    canRemoveMembers: obj.canRemoveMembers === true,
+    members,
+  };
+  if (type === "direct") {
+    out.isBlocked = obj.isBlocked === true;
+    const blocked = optPositiveIdString(obj.blockedUserId);
+    if (blocked) out.blockedUserId = blocked;
+  }
+  return out;
+}
+
+function shapeChatMessage(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  const conversationId = optPositiveIdString(obj.conversationId);
+  const senderId = optPositiveIdString(obj.senderId);
+  if (!id || !conversationId || !senderId) return null;
+  return {
+    id,
+    conversationId,
+    senderId,
+    senderName: optString(obj.senderName, 120) ?? "Member",
+    senderAvatar: optString(obj.senderAvatar, 500),
+    content: optString(obj.content, 8000) ?? "",
+    timestamp: optString(obj.timestamp, 64) ?? "",
+    isRead: obj.isRead === true,
+  };
+}
+
+function dedupeChatUsers(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const unique: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(row);
+  }
+  return unique;
+}
+
+function shapeChatUser(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  if (!id) return null;
+  return {
+    id,
+    name: optString(obj.name, 120) ?? "Member",
+    avatar: optString(obj.avatar, 500),
+    secondary_text: optString(obj.secondary_text, 200),
+    is_affiliate_owner: obj.is_affiliate_owner === true,
+  };
+}
+
 function matchRoute(method: string, path: string): RouteMatch | null {
   if (path === "/api/account" || path === "/api/account/") {
     return null;
@@ -1839,6 +1961,53 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "POST" && rest === "inbox/dismiss") {
     return { id: "MF14d", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "messages/conversations") {
+    return { id: "MF64", method: "GET", params: {}, limiter: "read" };
+  }
+  const msgConvOne = rest.match(/^messages\/conversations\/([1-9][0-9]*)$/);
+  if (method === "GET" && msgConvOne) {
+    return {
+      id: "MF65",
+      method: "GET",
+      params: { id: msgConvOne[1]! },
+      limiter: "read",
+    };
+  }
+  const msgThread = rest.match(/^messages\/conversations\/([1-9][0-9]*)\/messages$/);
+  if (method === "GET" && msgThread) {
+    return {
+      id: "MF66",
+      method: "GET",
+      params: { id: msgThread[1]! },
+      limiter: "read",
+    };
+  }
+  if (method === "POST" && msgThread) {
+    return {
+      id: "MF67",
+      method: "POST",
+      params: { id: msgThread[1]! },
+      limiter: "write",
+    };
+  }
+  const msgRead = rest.match(/^messages\/conversations\/([1-9][0-9]*)\/read$/);
+  if (method === "POST" && msgRead) {
+    return {
+      id: "MF68",
+      method: "POST",
+      params: { id: msgRead[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "POST" && rest === "messages/conversations/direct") {
+    return { id: "MF69", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "messages/users") {
+    return { id: "MF70", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "messages/users/search") {
+    return { id: "MF71", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "workouts/planned") {
     return { id: "MF16", method: "GET", params: {}, limiter: "read" };
@@ -3829,6 +3998,217 @@ async function dispatch(
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
       return accountJson({ unread_count: 0 }, 200);
+    }
+    case "MF64": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesConversationsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.conversations)
+        ? obj.conversations
+        : Array.isArray(obj.items)
+          ? obj.items
+          : Array.isArray(mapped.json)
+            ? (mapped.json as unknown[])
+            : [];
+      const conversations = listIn
+        .map((row) => shapeChatConversation(row))
+        .filter((x): x is Record<string, unknown> => x != null)
+        .slice(0, 200);
+      return accountJson({ conversations }, 200);
+    }
+    case "MF65": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesConversationPath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const shaped =
+        shapeChatConversation(obj.conversation) ?? shapeChatConversation(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ conversation: shaped }, 200);
+    }
+    case "MF66": {
+      const id = match.params.id!;
+      const limitRaw = url.searchParams.get("limit") ?? "50";
+      const offsetRaw = url.searchParams.get("offset") ?? "0";
+      const limit = /^[1-9][0-9]*$/.test(limitRaw) ? Math.min(Number(limitRaw), 100) : 50;
+      const offset = /^[0-9]+$/.test(offsetRaw) ? Math.min(Number(offsetRaw), 10_000) : 0;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesConversationMessagesPath(id),
+        { query: `limit=${limit}&offset=${offset}` },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.messages) ? obj.messages : [];
+      const messages = listIn
+        .map((row) => shapeChatMessage(row))
+        .filter((x): x is Record<string, unknown> => x != null)
+        .slice(0, 100);
+      return accountJson(
+        { messages, has_more: obj.has_more === true },
+        200,
+      );
+    }
+    case "MF67": {
+      const id = match.params.id!;
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const content =
+        typeof body.content === "string" ? body.content.trim().slice(0, 8000) : "";
+      if (!content) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMessagesConversationMessagesPath(id),
+        {
+          body: JSON.stringify({ content }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const shaped = shapeChatMessage(obj.message) ?? shapeChatMessage(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ message: shaped }, mapped.status === 201 ? 201 : 200);
+    }
+    case "MF68": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMessagesConversationReadPath(id),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF69": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const recipientRaw = body.recipient_id;
+      const recipient_id =
+        typeof recipientRaw === "number" && Number.isSafeInteger(recipientRaw) && recipientRaw > 0
+          ? recipientRaw
+          : typeof recipientRaw === "string" && /^[1-9][0-9]*$/.test(recipientRaw)
+            ? Number(recipientRaw)
+            : null;
+      if (recipient_id == null) return accountJson({ error: "invalid_request" }, 400);
+      const message =
+        typeof body.message === "string" ? body.message.trim().slice(0, 8000) : "";
+      const upstream: Record<string, unknown> = { recipient_id };
+      if (message) upstream.message = message;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMessagesDirectPath(),
+        {
+          body: JSON.stringify(upstream),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const shaped =
+        shapeChatConversation(obj.conversation) ?? shapeChatConversation(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ conversation: shaped }, 200);
+    }
+    case "MF70": {
+      const affiliateOwnersOnly = url.searchParams.get("affiliate_owners_only") === "true";
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesUsersPath(),
+        affiliateOwnersOnly ? { query: "affiliate_owners_only=true" } : undefined,
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.users) ? obj.users : [];
+      const users = dedupeChatUsers(
+        listIn
+          .map((row) => shapeChatUser(row))
+          .filter((x): x is Record<string, unknown> => x != null),
+      ).slice(0, 100);
+      return accountJson({ users }, 200);
+    }
+    case "MF71": {
+      const qRaw = url.searchParams.get("q") ?? "";
+      const q = qRaw.trim().slice(0, 80);
+      if (q.length < 3) return accountJson({ users: [] }, 200);
+      const params = new URLSearchParams({ q });
+      if (url.searchParams.get("affiliate_owners_only") === "true") {
+        params.set("affiliate_owners_only", "true");
+      }
+      const affiliateId = url.searchParams.get("affiliate_id");
+      if (affiliateId && /^[1-9][0-9]*$/.test(affiliateId)) {
+        params.set("affiliate_id", affiliateId);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesUsersSearchPath(),
+        { query: params.toString() },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.users) ? obj.users : [];
+      const users = dedupeChatUsers(
+        listIn
+          .map((row) => shapeChatUser(row))
+          .filter((x): x is Record<string, unknown> => x != null),
+      ).slice(0, 100);
+      return accountJson({ users }, 200);
     }
     case "MF51": {
       const ran = await runBearer(

@@ -184,8 +184,9 @@ function AppRoutes() {
       <Route path={"/account/coaching"} component={AccountCoaching} />
       <Route path={"/account/spark"} component={AccountSpark} />
       <Route path={"/account/inbox"} component={AccountInbox} />
-      <Route path={"/account/messages/:conversationId"} component={AccountMessages} />
+      <Route path={"/account/messages/:id"} component={AccountMessages} />
       <Route path={"/account/messages"} component={AccountMessages} />
+      <Route path={"/account/chat/:id"} component={AccountMessages} />
       <Route path={"/account/chat"} component={AccountMessages} />
       <Route path={"/account"} component={AccountOverview} />
       <Route path={"/members/:memberId"} component={MemberProfilePage} />

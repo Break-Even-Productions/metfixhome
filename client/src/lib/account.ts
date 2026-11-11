@@ -907,6 +907,10 @@ type CacheKey =
   | "pr-overview"
   | "inbox"
   | `inbox:${string}`
+  | "messages-conversations"
+  | `messages-conversation:${string}`
+  | `messages-thread:${string}:${number}:${number}`
+  | `messages-users:${string}`
   | typeof CLAIM_OPTIONS_QUERY_KEY
   | `payments:${number}:${number}`
   | `favorites:${string}`
@@ -1443,6 +1447,211 @@ export function loadUnreadNotificationCount(options?: {
     "notifications-unread",
     options,
   );
+}
+
+export type ChatMember = {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  isOwner?: boolean;
+  isAdmin?: boolean;
+  canAddMembers?: boolean;
+  canRemoveMembers?: boolean;
+};
+
+export type ChatConversation = {
+  id: string;
+  type: "direct" | "group" | string;
+  name?: string | null;
+  avatar?: string | null;
+  icon?: string | null;
+  lastMessage?: string | null;
+  lastMessageTime?: string | null;
+  unreadCount?: number;
+  isPinned?: boolean;
+  ownerId?: string | null;
+  currentUserId?: string | null;
+  isOwner?: boolean;
+  canAddMembers?: boolean;
+  canRemoveMembers?: boolean;
+  members?: ChatMember[];
+  isBlocked?: boolean;
+  blockedUserId?: string | null;
+};
+
+export type ChatMessage = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar?: string | null;
+  content: string;
+  timestamp: string;
+  isRead?: boolean;
+};
+
+export type ChatUser = {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  secondary_text?: string | null;
+  is_affiliate_owner?: boolean;
+};
+
+/** GET /api/account/messages/conversations → BSI /messages/conversations */
+export function loadChatConversations(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ conversations: ChatConversation[] }> {
+  return accountGet(
+    "/api/account/messages/conversations",
+    "messages-conversations",
+    options,
+  );
+}
+
+/** GET /api/account/messages/conversations/:id */
+export function loadChatConversation(
+  id: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ conversation: ChatConversation }> {
+  const safe = encodeURIComponent(id);
+  return accountGet(
+    `/api/account/messages/conversations/${safe}`,
+    `messages-conversation:${id}`,
+    options,
+  );
+}
+
+/** GET /api/account/messages/conversations/:id/messages */
+export function loadChatMessages(
+  id: string,
+  params: { limit?: number; offset?: number } = {},
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ messages: ChatMessage[]; has_more?: boolean }> {
+  const limit = params.limit ?? 50;
+  const offset = params.offset ?? 0;
+  const q = `limit=${limit}&offset=${offset}`;
+  return accountGet(
+    `/api/account/messages/conversations/${encodeURIComponent(id)}/messages?${q}`,
+    `messages-thread:${id}:${limit}:${offset}`,
+    options,
+  );
+}
+
+/** POST /api/account/messages/conversations/:id/messages */
+export async function sendChatMessage(
+  id: string,
+  content: string,
+): Promise<{ message: ChatMessage }> {
+  const result = await accountMutate<{ message: ChatMessage }>(
+    `/api/account/messages/conversations/${encodeURIComponent(id)}/messages`,
+    {
+      method: "POST",
+      body: { content },
+      invalidate: ["messages-conversations", `messages-conversation:${id}`],
+    },
+  );
+  invalidateKeys([
+    "messages-conversations",
+    `messages-conversation:${id}`,
+    "inbox",
+  ]);
+  // Clear any cached thread pages for this conversation.
+  for (const key of [...cache.keys()]) {
+    if (String(key).startsWith(`messages-thread:${id}:`)) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
+  }
+  return result;
+}
+
+/** POST /api/account/messages/conversations/:id/read */
+export async function markChatConversationRead(id: string): Promise<{ success: boolean }> {
+  const result = await accountMutate<{ success: boolean }>(
+    `/api/account/messages/conversations/${encodeURIComponent(id)}/read`,
+    {
+      method: "POST",
+      body: {},
+      invalidate: ["messages-conversations", `messages-conversation:${id}`, "inbox"],
+    },
+  );
+  return result;
+}
+
+/**
+ * POST /api/account/messages/conversations/direct
+ * Creates or reuses a DM; optional first message.
+ */
+export async function createDirectChat(input: {
+  recipientId: string | number;
+  message?: string;
+}): Promise<{ conversation: ChatConversation }> {
+  const body: Record<string, unknown> = {
+    recipient_id:
+      typeof input.recipientId === "number"
+        ? input.recipientId
+        : Number(input.recipientId),
+  };
+  if (input.message?.trim()) body.message = input.message.trim();
+  const result = await accountMutate<{ conversation: ChatConversation }>(
+    "/api/account/messages/conversations/direct",
+    {
+      method: "POST",
+      body,
+      invalidate: ["messages-conversations", "inbox"],
+    },
+  );
+  return result;
+}
+
+function dedupeChatUsers(users: ChatUser[]): ChatUser[] {
+  const seen = new Set<string>();
+  const unique: ChatUser[] = [];
+  for (const user of users) {
+    const id = String(user?.id ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(user);
+  }
+  return unique;
+}
+
+/** GET /api/account/messages/users or /users/search */
+export function loadChatUsers(
+  query?: string,
+  options?: {
+    force?: boolean;
+    signal?: AbortSignal;
+    affiliateOwnersOnly?: boolean;
+    affiliateId?: number;
+  },
+): Promise<{ users: ChatUser[] }> {
+  const q = (query ?? "").trim();
+  const params = new URLSearchParams();
+  if (options?.affiliateOwnersOnly) params.set("affiliate_owners_only", "true");
+  if (options?.affiliateId != null && options.affiliateId > 0) {
+    params.set("affiliate_id", String(options.affiliateId));
+  }
+  const finish = (res: { users?: ChatUser[] }) => ({
+    users: dedupeChatUsers(Array.isArray(res.users) ? res.users : []),
+  });
+  if (q.length >= 3) {
+    params.set("q", q);
+    const qs = params.toString();
+    return accountGet<{ users: ChatUser[] }>(
+      `/api/account/messages/users/search?${qs}`,
+      `messages-users:search:${qs}`,
+      options,
+    ).then(finish);
+  }
+  const qs = params.toString();
+  return accountGet<{ users: ChatUser[] }>(
+    `/api/account/messages/users${qs ? `?${qs}` : ""}`,
+    `messages-users:browse:${qs || "all"}`,
+    options,
+  ).then(finish);
 }
 
 /**

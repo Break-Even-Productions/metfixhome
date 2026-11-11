@@ -323,6 +323,30 @@ export function accountMessagesConversationsPath(): string {
   return `${BSI}/messages/conversations`;
 }
 
+export function accountMessagesConversationPath(id: string): string {
+  return `${BSI}/messages/conversations/${encodeURIComponent(id)}`;
+}
+
+export function accountMessagesConversationMessagesPath(id: string): string {
+  return `${BSI}/messages/conversations/${encodeURIComponent(id)}/messages`;
+}
+
+export function accountMessagesConversationReadPath(id: string): string {
+  return `${BSI}/messages/conversations/${encodeURIComponent(id)}/read`;
+}
+
+export function accountMessagesDirectPath(): string {
+  return `${BSI}/messages/conversations/direct`;
+}
+
+export function accountMessagesUsersPath(): string {
+  return `${BSI}/messages/users`;
+}
+
+export function accountMessagesUsersSearchPath(): string {
+  return `${BSI}/messages/users/search`;
+}
+
 export function accountInAppNotificationsPath(): string {
   return `${BSI}/in-app-notifications`;
 }
