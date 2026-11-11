@@ -22,6 +22,7 @@ import {
 } from "../shared/account/claimOptions";
 import { emitStrayFieldLogs, stripStrayFields } from "./stripStrayFields";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
+import { resolveNotificationHref } from "../shared/account/notificationDeepLinks";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
@@ -60,14 +61,20 @@ import {
   accountListSubscribersPath,
   accountListsPath,
   accountContentReportsPath,
-  accountCustomWorkoutsPath,
   accountListsPublicPath,
+  accountNotificationsListPath,
   accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
   accountMePath,
   accountMeProfilePath,
   accountMemberSummaryPath,
+  accountMessagesConversationMessagesPath,
+  accountMessagesConversationPath,
+  accountMessagesConversationReadPath,
   accountMessagesConversationsPath,
+  accountMessagesDirectPath,
+  accountMessagesUsersPath,
+  accountMessagesUsersSearchPath,
   accountMyCoursesPath,
   accountNewsletterPath,
   accountNotificationPreferencesPath,
@@ -93,24 +100,80 @@ import {
   accountPlanPublishPath,
   accountPlanSchedulePath,
   accountPlansLibraryPath,
-  accountPlansPath,
   accountPtCoachClientsPath,
   accountShoppingListEmailPath,
   accountShoppingListGeneratePath,
   accountShoppingListGeneratedDatesPath,
   accountShoppingListPath,
   accountShoppingListsPath,
+  accountCalendarPlannedWorkoutsPath,
+  accountCalendarWorkoutsPath,
+  accountCustomWorkoutPath,
+  accountCustomWorkoutsPath,
+  accountDailyFixWorkoutPath,
+  accountMovementsPath,
+  accountPlansCollectionPath,
+  accountPlannedWorkoutPath,
+  accountProgrammingSeriesDaysPath,
+  accountProgrammingSeriesPath,
+  accountProgrammingSubscribePath,
+  accountProgrammingSubscriptionPath,
+  accountProgrammingSubscriptionsPath,
+  accountPtClientCoachesPath,
+  accountPtCoachProfilePath,
+  accountPtDirectoryPath,
+  accountPtRelationshipActionPath,
+  accountPtRelationshipNotesPath,
+  accountPtRelationshipsPath,
   accountSparkEntriesPath,
+  accountSparkMeasurementsPath,
+  accountSparkUnitsPath,
+  accountSparkUserInfoPath,
   accountSpendPath,
   accountSubscriptionsPath,
+  accountWorkoutLogPath,
+  accountWorkoutsCollectionPath,
+  accountBsiV1Path,
   certificateClaimOptionsPath,
   certificatePrepayCheckoutPath,
 } from "../shared/account/bsi-paths";
 import {
-  shapeBellyCoachingCoach,
-  validateCustomRecipeBody,
+  directoryQuery,
+  parseRouteId,
+  parseYmdRange,
+  shapeCoachNote,
+  shapeCoachNotes,
+  shapeCoachProfile,
+  shapeCoachingClient,
+  shapeCoachingCoach,
+  customWorkoutListQuery,
+  dailyFixQuery,
+  movementQuery,
+  planScheduleQuery,
+  shapeCustomWorkout,
+  shapeCustomWorkoutList,
+  shapeDailyFixWorkout,
+  shapeMovementList,
+  shapePlanDetail,
+  shapePlanList,
+  shapeSparkUserInfo,
+  validateCustomWorkoutBody,
+  validatePlanActiveBody,
   validatePlanWriteBody,
-} from "./belly-coaching";
+  shapeDirectory,
+  shapePlanLibrary,
+  shapePlannedWorkouts,
+  shapeProgrammingDays,
+  shapeProgrammingSeriesList,
+  shapeProgrammingSubscriptions,
+  shapeWorkoutLog,
+  shapeWorkoutLogs,
+  validateCoachNoteBody,
+  validateCoachProfileBody,
+  validateLogWorkoutBody,
+  validatePtInviteBody,
+} from "./account-body";
+import { validateCustomRecipeBody } from "./belly-coaching";
 import { BEP_WHOP_COMPANY_ID } from "../shared/account/whop";
 import {
   listItemWasOmitted,
@@ -161,15 +224,8 @@ const POSITIVE_INT_RE = /^[1-9][0-9]{0,9}$/;
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const STRIPE_LIKE_ID_RE = /^(cus|sub|mem|seti|pi)_[A-Za-z0-9]+$/;
 const EMAIL_VALUE_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-/** DP-T-26b: only these top-level keys may leave the Worker toward BSI. */
-const NOTIFICATION_PUT_KEYS = new Set([
-  "email_digest",
-  "product_updates",
-  "newsletter",
-  "newsletter_subscribed",
-  "preferences",
-]);
-const NOTIFICATION_PREF_KEYS = new Set(["email_digest", "product_updates"]);
+const NOTIFICATION_CHANNEL_KEYS = ["email", "text", "phone", "push", "in_feed"] as const;
+const NOTIFICATION_SLUG_RE = /^[a-z0-9_]{1,64}$/;
 
 const REFERRAL_INELIGIBLE_CODES = new Set([
   "bsi_referral_ineligible",
@@ -226,10 +282,19 @@ type RouteMatch = {
   /**
    * Public routes: no required session.
    * - GET /api/members/:id
-   * - POST course checkout (guest mint; Bearer when signed in)
+   * - POST course checkout (signed-in bearer, or guest with email)
    */
   public?: boolean;
 };
+
+/** Guest checkout email. Null when missing or not a single mailbox. */
+function guestCheckoutEmail(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const email = raw.trim();
+  if (email.length < 3 || email.length > 254) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
+}
 
 function accountJson(
   body: unknown,
@@ -276,25 +341,41 @@ export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
   return accountRateLimitKeyImpl(ctx);
 }
 
-function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of NOTIFICATION_PUT_KEYS) {
-    if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
-    const val = body[key];
-    if (key === "preferences") {
-      const pref = asRecord(val);
-      if (!pref) continue;
-      const cleaned: Record<string, boolean> = {};
-      for (const pk of NOTIFICATION_PREF_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(pref, pk) && typeof pref[pk] === "boolean") {
-          cleaned[pk] = pref[pk] as boolean;
-        }
+function notificationChannelValue(raw: unknown): 0 | 1 | null {
+  if (raw === true || raw === 1) return 1;
+  if (raw === false || raw === 0) return 0;
+  return null;
+}
+
+/** Only account channel maps and the newsletter flag may leave the Worker. */
+function whitelistNotificationsPut(body: Record<string, unknown>): {
+  account?: { types: Array<{ slug: string; channels: Record<string, 0 | 1> }> };
+  newsletter?: boolean;
+} {
+  const out: {
+    account?: { types: Array<{ slug: string; channels: Record<string, 0 | 1> }> };
+    newsletter?: boolean;
+  } = {};
+  const account = asRecord(body.account);
+  const types = account && Array.isArray(account.types) ? account.types : null;
+  if (types) {
+    const cleaned: Array<{ slug: string; channels: Record<string, 0 | 1> }> = [];
+    for (const item of types) {
+      const row = asRecord(item);
+      if (!row || typeof row.slug !== "string" || !NOTIFICATION_SLUG_RE.test(row.slug)) continue;
+      const channels = asRecord(row.channels);
+      if (!channels) continue;
+      const next: Record<string, 0 | 1> = {};
+      for (const key of NOTIFICATION_CHANNEL_KEYS) {
+        if (!Object.prototype.hasOwnProperty.call(channels, key)) continue;
+        const value = notificationChannelValue(channels[key]);
+        if (value !== null) next[key] = value;
       }
-      out.preferences = cleaned;
-      continue;
+      cleaned.push({ slug: row.slug, channels: next });
     }
-    if (typeof val === "boolean") out[key] = val;
+    out.account = { types: cleaned };
   }
+  if (typeof body.newsletter === "boolean") out.newsletter = body.newsletter;
   return out;
 }
 
@@ -784,6 +865,7 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
       foundations_coach: coach.active,
     },
     canonical_tier,
+    pro_intro_offer_eligible: obj.pro_intro_offer_eligible !== false,
     foundations_coach: coach,
     tabs: Array.isArray(obj.tabs) ? obj.tabs : [],
     links: asRecord(obj.links) ?? {},
@@ -855,10 +937,37 @@ function shapeSubscriptions(raw: unknown): Record<string, unknown> | null {
     canonical_tier: obj.canonical_tier,
     items,
   });
-  const out: Record<string, unknown> = { canonical_tier, items };
+  const out: Record<string, unknown> = {
+    canonical_tier,
+    pro_intro_offer_eligible: obj.pro_intro_offer_eligible !== false,
+    items,
+  };
   const conversion = shapeConversion(obj.conversion);
   if (conversion) out.conversion = conversion;
   return out;
+}
+
+function paymentProvider(r: Record<string, unknown>): "whop" | "stripe" | "woo" | null {
+  if (r.provider === "whop" || r.provider === "stripe" || r.provider === "woo") return r.provider;
+  if (r.source === "stripe" || r.source === "woo") return r.source;
+  return null;
+}
+
+function paymentCents(r: Record<string, unknown>): number | null {
+  if (typeof r.amount_cents === "number" && Number.isSafeInteger(r.amount_cents) && r.amount_cents >= 0) {
+    return r.amount_cents;
+  }
+  if (typeof r.amount === "number" && Number.isSafeInteger(r.amount) && r.amount >= 0) return r.amount;
+  return null;
+}
+
+function paymentDescription(r: Record<string, unknown>): string {
+  if (typeof r.description === "string" && r.description.trim()) return r.description;
+  const items = Array.isArray(r.items) ? r.items : [];
+  const first = asRecord(items[0]);
+  if (first && typeof first.name === "string" && first.name.trim()) return first.name;
+  if (typeof r.type === "string" && r.type.trim()) return r.type;
+  return "";
 }
 
 function shapePayments(raw: unknown, page: number, perPage: number): Record<string, unknown> | null {
@@ -869,22 +978,20 @@ function shapePayments(raw: unknown, page: number, perPage: number): Record<stri
   for (const row of itemsIn) {
     const r = asRecord(row);
     if (!r) continue;
-    const provider =
-      r.provider === "whop" || r.provider === "stripe" || r.provider === "woo" ? r.provider : null;
+    const provider = paymentProvider(r);
     if (!provider) continue;
-    const amount =
-      typeof r.amount_cents === "number" && Number.isSafeInteger(r.amount_cents) ? r.amount_cents : null;
-    if (amount == null || amount < 0) continue;
+    const amount = paymentCents(r);
+    if (amount == null) continue;
     const item: Record<string, unknown> = {
       id: r.id ?? null,
-      created_at: strOrNull(r.created_at),
-      description: typeof r.description === "string" ? r.description : "",
+      created_at: strOrNull(r.created_at) ?? strOrNull(r.date),
+      description: paymentDescription(r),
       amount_cents: amount,
       currency: typeof r.currency === "string" ? r.currency : "usd",
       provider,
       status: typeof r.status === "string" ? r.status : "unknown",
     };
-    const receipt = sanitizeExternalBillingUrl(r.receipt_url, "billing_portal");
+    const receipt = sanitizeExternalBillingUrl(r.receipt_url ?? r.invoice_url, "billing_portal");
     if (receipt) item.receipt_url = receipt;
     items.push(item);
   }
@@ -1274,21 +1381,39 @@ function shapeSparkEntries(raw: unknown): Record<string, unknown> {
     const measurement_date =
       typeof r.measurement_date === "string" ? r.measurement_date : null;
     if (!measurement_date || !Number.isFinite(value)) continue;
+    const measurementType =
+      typeof r.measurement_type === "string" ? r.measurement_type.toLowerCase() : null;
+    const subType = typeof r.sub_type === "string" ? r.sub_type.toLowerCase() : null;
+    const mid =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id);
+    const prDirectionRaw =
+      typeof r.pr_direction === "string"
+        ? r.pr_direction.toLowerCase()
+        : typeof r.scoring_direction === "string"
+          ? r.scoring_direction.toLowerCase()
+          : null;
     entries.push({
       id: r.id ?? null,
       measurement_date,
       value,
-      bsi_measurement_id:
-        typeof r.bsi_measurement_id === "number"
-          ? r.bsi_measurement_id
-          : typeof r.measurement_id === "number"
-            ? r.measurement_id
-            : undefined,
-      unit_id: typeof r.unit_id === "number" ? r.unit_id : undefined,
+      bsi_measurement_id: mid ?? undefined,
+      unit_id: parsePositiveCourseId(r.unit_id) ?? undefined,
       unit_abbreviation:
         typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
       measurement_name:
         typeof r.measurement_name === "string" ? r.measurement_name : undefined,
+      measurement_type:
+        measurementType === "health" || measurementType === "movement"
+          ? measurementType
+          : null,
+      sub_type: subType,
+      pr_direction:
+        prDirectionRaw === "higher_better" ||
+        prDirectionRaw === "lower_better" ||
+        prDirectionRaw === "closer_to_target"
+          ? prDirectionRaw
+          : null,
       type: typeof r.type === "string" ? r.type : undefined,
       status: typeof r.status === "string" ? r.status : undefined,
     });
@@ -1304,17 +1429,140 @@ function shapeSparkEntries(raw: unknown): Record<string, unknown> {
   };
 }
 
+function shapeSparkMeasurements(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.measurements)
+    ? obj.measurements
+    : Array.isArray(raw)
+      ? (raw as unknown[])
+      : [];
+  const measurements: Record<string, unknown>[] = [];
+  for (const row of list) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const id =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id) ??
+      parsePositiveCourseId(r.id);
+    if (id == null) continue;
+    const measurementType =
+      typeof r.measurement_type === "string" ? r.measurement_type.toLowerCase() : null;
+    const prRaw =
+      typeof r.pr_direction === "string" ? r.pr_direction.toLowerCase() : null;
+    const defaultUnitId =
+      parsePositiveCourseId(r.default_unit_id) ?? parsePositiveCourseId(r.unit_id);
+    measurements.push({
+      bsi_measurement_id: id,
+      name: typeof r.name === "string" ? r.name : `Metric ${id}`,
+      measurement_type:
+        measurementType === "health" || measurementType === "movement"
+          ? measurementType
+          : null,
+      sub_type: typeof r.sub_type === "string" ? r.sub_type.toLowerCase() : null,
+      pr_direction:
+        prRaw === "higher_better" ||
+        prRaw === "lower_better" ||
+        prRaw === "closer_to_target"
+          ? prRaw
+          : "higher_better",
+      default_unit_id: defaultUnitId,
+      unit_abbreviation:
+        typeof r.default_unit_abbreviation === "string"
+          ? r.default_unit_abbreviation
+          : typeof r.unit_abbreviation === "string"
+            ? r.unit_abbreviation
+            : null,
+    });
+  }
+  return { measurements, count: measurements.length };
+}
+
+function shapeSparkUnits(raw: unknown): Record<string, unknown> {
+  const obj = asRecord(raw) ?? {};
+  const list = Array.isArray(obj.units) ? obj.units : Array.isArray(raw) ? (raw as unknown[]) : [];
+  const units: Record<string, unknown>[] = [];
+  for (const row of list) {
+    const r = asRecord(row);
+    if (!r) continue;
+    const unit_id = parsePositiveCourseId(r.unit_id) ?? parsePositiveCourseId(r.id);
+    if (unit_id == null) continue;
+    const name = typeof r.name === "string" ? r.name : null;
+    const abbreviation = typeof r.abbreviation === "string" ? r.abbreviation : null;
+    if (!name && !abbreviation) continue;
+    units.push({
+      unit_id,
+      name: name ?? abbreviation,
+      abbreviation: abbreviation ?? name,
+    });
+  }
+  return { units, count: units.length };
+}
+
+/** Shape BSI in-app notification rows for the web inbox / notifications page. */
+function shapeInboxNotification(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = obj.id;
+  if (id == null || id === "") return null;
+  const type = typeof obj.type === "string" ? obj.type : null;
+  const link = typeof obj.link === "string" ? obj.link : null;
+  const postId =
+    typeof obj.post_id === "number" || typeof obj.post_id === "string" ? obj.post_id : null;
+  const readAt = typeof obj.read_at === "string" ? obj.read_at : null;
+  const href = resolveNotificationHref({ type, link, post_id: postId });
+  const title = typeof obj.title === "string" ? obj.title : null;
+  const content =
+    typeof obj.content === "string"
+      ? obj.content
+      : typeof obj.message === "string"
+        ? obj.message
+        : null;
+  return {
+    id,
+    type,
+    title,
+    content,
+    message: content,
+    created_at: typeof obj.created_at === "string" ? obj.created_at : null,
+    read_at: readAt,
+    read: Boolean(readAt),
+    source: typeof obj.source === "string" ? obj.source : null,
+    post_id: postId,
+    link,
+    href,
+  };
+}
+
+function unreadCountFromPayload(raw: unknown): number | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const n = obj.unread_count;
+  if (typeof n === "number" && Number.isFinite(n) && n >= 0) return Math.floor(n);
+  if (typeof n === "string" && /^\d+$/.test(n)) return Number.parseInt(n, 10);
+  return null;
+}
+
 /** BSI spark create requires Y-m-d H:i:s; dashboard date inputs send Y-m-d. */
 function normalizeSparkMeasurementDate(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   if (YMD_RE.test(s)) return `${s} 12:00:00`;
+  // datetime-local: Y-m-dTH:i (no seconds)
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(s)) {
+    return `${s.replace("T", " ")}:00`;
+  }
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
     return s.replace("T", " ");
   }
   return null;
 }
 
+/**
+ * BSI GET /spark/pr-overview returns a merged `items` list where the stable id
+ * lives on `id` (`type: "measurement"` → measurement id, `type: "workout"` →
+ * custom workout id). Older/split shapes may use `bsi_measurement_id` /
+ * `custom_workout_id` instead — accept all of them (number or digit string).
+ */
 function shapePrOverview(raw: unknown): Record<string, unknown> {
   const obj = asRecord(raw) ?? {};
   const pickRows = (...keys: string[]): unknown[] => {
@@ -1324,7 +1572,10 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
     }
     return [];
   };
-  const shapeRow = (row: unknown): Record<string, unknown> | null => {
+  const shapeRow = (
+    row: unknown,
+    kindHint?: "workout" | "movement",
+  ): Record<string, unknown> | null => {
     const r = asRecord(row);
     if (!r) return null;
     const name =
@@ -1344,30 +1595,62 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
         : typeof r.last_score === "string"
           ? Number(r.last_score)
           : null;
+    const type =
+      typeof r.type === "string"
+        ? r.type
+        : typeof r.row_kind === "string"
+          ? r.row_kind
+          : null;
+    const typeLower = (type ?? "").toLowerCase();
+    const asMovement =
+      kindHint === "movement" ||
+      typeLower.includes("measurement") ||
+      typeLower.includes("movement");
+    const asWorkout =
+      kindHint === "workout" || typeLower.includes("workout");
+    const explicitMid =
+      parsePositiveCourseId(r.bsi_measurement_id) ??
+      parsePositiveCourseId(r.measurement_id);
+    const explicitWid =
+      parsePositiveCourseId(r.custom_workout_id) ??
+      parsePositiveCourseId(r.custom_workout_template_id);
+    const rowId = parsePositiveCourseId(r.id);
+    let measurement_id = explicitMid;
+    let custom_workout_id = explicitWid;
+    if (asMovement && measurement_id == null) measurement_id = rowId;
+    else if (asWorkout && custom_workout_id == null) custom_workout_id = rowId;
+    const totalRaw =
+      typeof r.total_entries === "number"
+        ? r.total_entries
+        : typeof r.total_entries === "string"
+          ? Number(r.total_entries)
+          : 0;
+    const scoreMode =
+      typeof r.score_mode === "string" ? r.score_mode.toLowerCase() : null;
+    const prDirection =
+      typeof r.pr_direction === "string"
+        ? r.pr_direction.toLowerCase()
+        : typeof r.scoring_direction === "string"
+          ? r.scoring_direction.toLowerCase()
+          : null;
     return {
       name,
-      type:
-        typeof r.type === "string"
-          ? r.type
-          : typeof r.row_kind === "string"
-            ? r.row_kind
-            : null,
-      custom_workout_id:
-        typeof r.custom_workout_id === "number" ? r.custom_workout_id : null,
-      measurement_id:
-        typeof r.bsi_measurement_id === "number"
-          ? r.bsi_measurement_id
-          : typeof r.measurement_id === "number"
-            ? r.measurement_id
-            : null,
+      type,
+      custom_workout_id,
+      measurement_id,
       best_score: best != null && Number.isFinite(best) ? best : null,
       last_score: last != null && Number.isFinite(last) ? last : null,
-      total_entries:
-        typeof r.total_entries === "number" ? r.total_entries : 0,
+      total_entries: Number.isFinite(totalRaw) ? totalRaw : 0,
       unit_abbreviation:
         typeof r.unit_abbreviation === "string" ? r.unit_abbreviation : null,
       score_unit_id:
-        typeof r.score_unit_id === "number" ? r.score_unit_id : null,
+        parsePositiveCourseId(r.score_unit_id) ??
+        parsePositiveCourseId(r.unit_id),
+      score_mode: scoreMode,
+      pr_direction:
+        prDirection === "higher_better" || prDirection === "lower_better"
+          ? prDirection
+          : null,
       benchmark_classification:
         typeof r.benchmark_classification === "string"
           ? r.benchmark_classification
@@ -1390,11 +1673,11 @@ function shapePrOverview(raw: unknown): Record<string, unknown> {
   let workouts: Record<string, unknown>[] = [];
   let movements: Record<string, unknown>[] = [];
   for (const row of workoutsIn) {
-    const s = shapeRow(row);
+    const s = shapeRow(row, "workout");
     if (s) workouts.push(s);
   }
   for (const row of movementsIn) {
-    const s = shapeRow(row);
+    const s = shapeRow(row, "movement");
     if (s) movements.push(s);
   }
   if (workouts.length === 0 && movements.length === 0) {
@@ -1442,6 +1725,122 @@ function shapeMemberSummary(raw: unknown): Record<string, unknown> | null {
   };
 }
 
+
+function optString(v: unknown, max = 500): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (!t) return null;
+  return t.length > max ? t.slice(0, max) : t;
+}
+
+function optPositiveIdString(v: unknown): string | null {
+  if (typeof v === "number" && Number.isSafeInteger(v) && v > 0) return String(v);
+  if (typeof v === "string" && /^[1-9][0-9]*$/.test(v)) return v;
+  return null;
+}
+
+function shapeChatMember(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  if (!id) return null;
+  return {
+    id,
+    name: optString(obj.name, 120) ?? "Member",
+    avatar: optString(obj.avatar, 500),
+    isOwner: obj.isOwner === true,
+    isAdmin: obj.isAdmin === true,
+    canAddMembers: obj.canAddMembers === true,
+    canRemoveMembers: obj.canRemoveMembers === true,
+  };
+}
+
+function shapeChatConversation(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  if (!id) return null;
+  const membersIn = Array.isArray(obj.members) ? obj.members : [];
+  const members = membersIn
+    .map((row) => shapeChatMember(row))
+    .filter((x): x is Record<string, unknown> => x != null)
+    .slice(0, 100);
+  const type = obj.type === "group" ? "group" : "direct";
+  const out: Record<string, unknown> = {
+    id,
+    type,
+    name: optString(obj.name, 160),
+    avatar: optString(obj.avatar, 500),
+    icon: optString(obj.icon, 64),
+    lastMessage: optString(obj.lastMessage, 2000) ?? "",
+    lastMessageTime: optString(obj.lastMessageTime, 64),
+    unreadCount:
+      typeof obj.unreadCount === "number" && Number.isFinite(obj.unreadCount)
+        ? Math.max(0, Math.min(9999, Math.trunc(obj.unreadCount)))
+        : 0,
+    isPinned: obj.isPinned === true,
+    ownerId: optPositiveIdString(obj.ownerId),
+    currentUserId: optPositiveIdString(obj.currentUserId),
+    isOwner: obj.isOwner === true,
+    canAddMembers: obj.canAddMembers === true,
+    canRemoveMembers: obj.canRemoveMembers === true,
+    members,
+  };
+  if (type === "direct") {
+    out.isBlocked = obj.isBlocked === true;
+    const blocked = optPositiveIdString(obj.blockedUserId);
+    if (blocked) out.blockedUserId = blocked;
+  }
+  return out;
+}
+
+function shapeChatMessage(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  const conversationId = optPositiveIdString(obj.conversationId);
+  const senderId = optPositiveIdString(obj.senderId);
+  if (!id || !conversationId || !senderId) return null;
+  return {
+    id,
+    conversationId,
+    senderId,
+    senderName: optString(obj.senderName, 120) ?? "Member",
+    senderAvatar: optString(obj.senderAvatar, 500),
+    content: optString(obj.content, 8000) ?? "",
+    timestamp: optString(obj.timestamp, 64) ?? "",
+    isRead: obj.isRead === true,
+  };
+}
+
+function dedupeChatUsers(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const unique: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(row);
+  }
+  return unique;
+}
+
+function shapeChatUser(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = optPositiveIdString(obj.id);
+  if (!id) return null;
+  return {
+    id,
+    name: optString(obj.name, 120) ?? "Member",
+    avatar: optString(obj.avatar, 500),
+    secondary_text: optString(obj.secondary_text, 200),
+    is_affiliate_owner: obj.is_affiliate_owner === true,
+  };
+}
+
 function matchRoute(method: string, path: string): RouteMatch | null {
   if (path === "/api/account" || path === "/api/account/") {
     return null;
@@ -1458,7 +1857,7 @@ function matchRoute(method: string, path: string): RouteMatch | null {
     };
   }
 
-  // CR3 alias: POST /api/courses/:courseId/checkout (public — guest mint OK)
+  // CR3 alias: POST /api/courses/:courseId/checkout (bearer when signed in; guest email otherwise)
   const coursesCheckout = path.match(/^\/api\/courses\/([^/]+)\/checkout$/);
   if (method === "POST" && coursesCheckout) {
     return {
@@ -1501,7 +1900,7 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && (rest === "ltv-certificates" || rest === "spend")) {
     return { id: "DP5", method: "GET", params: {}, limiter: "read" };
   }
-  // CR3: purchase-checkout + checkout aliases under /api/account/courses/ (public)
+  // CR3: purchase-checkout + checkout (bearer when signed in; guest email otherwise)
   const purchase = rest.match(/^courses\/([^/]+)\/(purchase-checkout|checkout)$/);
   if (method === "POST" && purchase) {
     return {
@@ -1605,6 +2004,15 @@ function matchRoute(method: string, path: string): RouteMatch | null {
       limiter: "write",
     };
   }
+  if (method === "GET" && rest === "spark/user-info") {
+    return { id: "MF50", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "spark/measurements") {
+    return { id: "MF52", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "spark/units") {
+    return { id: "MF63", method: "GET", params: {}, limiter: "read" };
+  }
   if (method === "GET" && rest === "spark/entries") {
     return { id: "MF12", method: "GET", params: {}, limiter: "read" };
   }
@@ -1614,70 +2022,266 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "inbox") {
     return { id: "MF14", method: "GET", params: {}, limiter: "read" };
   }
-  if (method === "GET" && rest === "plans/library") {
+  if (method === "POST" && rest === "inbox/read") {
+    return { id: "MF14r", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "POST" && rest === "inbox/dismiss") {
+    return { id: "MF14d", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "messages/conversations") {
+    return { id: "MF64", method: "GET", params: {}, limiter: "read" };
+  }
+  const msgConvOne = rest.match(/^messages\/conversations\/([1-9][0-9]*)$/);
+  if (method === "GET" && msgConvOne) {
+    return {
+      id: "MF65",
+      method: "GET",
+      params: { id: msgConvOne[1]! },
+      limiter: "read",
+    };
+  }
+  const msgThread = rest.match(/^messages\/conversations\/([1-9][0-9]*)\/messages$/);
+  if (method === "GET" && msgThread) {
+    return {
+      id: "MF66",
+      method: "GET",
+      params: { id: msgThread[1]! },
+      limiter: "read",
+    };
+  }
+  if (method === "POST" && msgThread) {
+    return {
+      id: "MF67",
+      method: "POST",
+      params: { id: msgThread[1]! },
+      limiter: "write",
+    };
+  }
+  const msgRead = rest.match(/^messages\/conversations\/([1-9][0-9]*)\/read$/);
+  if (method === "POST" && msgRead) {
+    return {
+      id: "MF68",
+      method: "POST",
+      params: { id: msgRead[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "POST" && rest === "messages/conversations/direct") {
+    return { id: "MF69", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "messages/users") {
+    return { id: "MF70", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "messages/users/search") {
+    return { id: "MF71", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "workouts/planned") {
+    return { id: "MF16", method: "GET", params: {}, limiter: "read" };
+  }
+  const plannedWorkout = rest.match(/^workouts\/planned\/([1-9][0-9]*)$/);
+  if (method === "DELETE" && plannedWorkout) {
+    return {
+      id: "MF19",
+      method: "DELETE",
+      params: { id: plannedWorkout[1]! },
+      limiter: "write",
+    };
+  }
+  const customWorkout = rest.match(/^custom-workouts\/([1-9][0-9]*)$/);
+  if (customWorkout && (method === "GET" || method === "PUT" || method === "DELETE")) {
+    return {
+      id: method === "GET" ? "MF21" : method === "PUT" ? "MF38" : "MF39",
+      method,
+      params: { id: customWorkout[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if ((method === "GET" || method === "POST") && rest === "custom-workouts") {
+    return {
+      id: method === "GET" ? "MF37" : "MF37w",
+      method,
+      params: {},
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if (method === "GET" && rest === "movements") {
+    return { id: "MF40", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "daily-fix") {
+    return { id: "MF49", method: "GET", params: {}, limiter: "read" };
+  }
+  const planPublish = rest.match(/^plans\/([1-9][0-9]*)\/publish$/);
+  if (method === "POST" && planPublish) {
+    return {
+      id: "MF46",
+      method: "POST",
+      params: { id: planPublish[1]! },
+      limiter: "write",
+    };
+  }
+  const planSchedule = rest.match(/^plans\/([1-9][0-9]*)\/schedule$/);
+  if (method === "POST" && planSchedule) {
+    return {
+      id: "MF47",
+      method: "POST",
+      params: { id: planSchedule[1]! },
+      limiter: "write",
+    };
+  }
+  const planActive = rest.match(/^plans\/([1-9][0-9]*)\/active$/);
+  if (method === "PATCH" && planActive) {
+    return {
+      id: "MF48",
+      method: "PATCH",
+      params: { id: planActive[1]! },
+      limiter: "write",
+    };
+  }
+  const planOne = rest.match(/^plans\/([1-9][0-9]*)$/);
+  if (planOne && (method === "GET" || method === "PUT" || method === "DELETE")) {
+    return {
+      id: method === "GET" ? "MF43" : method === "PUT" ? "MF44" : "MF45",
+      method,
+      params: { id: planOne[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if ((method === "GET" || method === "POST") && rest === "plans") {
+    return {
+      id: method === "GET" ? "MF41" : "MF42",
+      method,
+      params: {},
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  const workoutOne = rest.match(/^workouts\/([1-9][0-9]*)$/);
+  if (workoutOne && (method === "GET" || method === "DELETE")) {
+    return {
+      id: method === "GET" ? "MF17" : "MF18",
+      method,
+      params: { id: workoutOne[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  if (method === "POST" && rest === "workouts") {
+    return { id: "MF20", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "workouts") {
     return { id: "MF15", method: "GET", params: {}, limiter: "read" };
   }
-  const planOne = rest.match(/^plans\/(\d+)$/);
-  if (method === "GET" && planOne) {
-    return { id: "MF16", method: "GET", params: { id: planOne[1]! }, limiter: "read" };
+  if (method === "GET" && rest === "coaching/client") {
+    return { id: "MF22", method: "GET", params: {}, limiter: "read" };
   }
-  const planActive = rest.match(/^plans\/(\d+)\/active$/);
-  if (method === "PATCH" && planActive) {
-    return { id: "MF17", method: "PATCH", params: { id: planActive[1]! }, limiter: "write" };
-  }
-  const planPublish = rest.match(/^plans\/(\d+)\/publish$/);
-  if (method === "POST" && planPublish) {
-    return { id: "MF18", method: "POST", params: { id: planPublish[1]! }, limiter: "write" };
-  }
-  const planSchedule = rest.match(/^plans\/(\d+)\/schedule$/);
-  if (method === "POST" && planSchedule) {
-    return { id: "MF19", method: "POST", params: { id: planSchedule[1]! }, limiter: "write" };
-  }
-  if (method === "GET" && rest === "custom-recipes") {
-    return { id: "MF20", method: "GET", params: {}, limiter: "read" };
-  }
-  if (method === "GET" && rest === "macros/range") {
-    return { id: "MF21", method: "GET", params: {}, limiter: "read" };
-  }
-  const mealDelete = rest.match(/^meals\/(\d+)$/);
-  if (method === "DELETE" && mealDelete) {
-    return { id: "MF22", method: "DELETE", params: { id: mealDelete[1]! }, limiter: "write" };
-  }
-  if (method === "GET" && rest === "shopping-lists/generated-dates") {
+  if (method === "GET" && rest === "coaching/coach") {
     return { id: "MF23", method: "GET", params: {}, limiter: "read" };
   }
-  /* Belly writes + coaching (MF37+ — Body #41 owns MF24–MF36 on its branch). */
-  if (method === "GET" && rest === "coaching/coach") {
-    return { id: "MF37", method: "GET", params: {}, limiter: "read" };
+  if (method === "GET" && rest === "coaching/directory") {
+    return { id: "MF24", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "coaching/profile") {
+    return { id: "MF35", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "PUT" && rest === "coaching/profile") {
+    return { id: "MF36", method: "PUT", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "coaching/plans") {
+    return { id: "MF34", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "coaching/programming/subscriptions") {
+    return { id: "MF29", method: "GET", params: {}, limiter: "read" };
+  }
+  const programmingSub = rest.match(/^coaching\/programming\/subscriptions\/([1-9][0-9]*)$/);
+  if (method === "DELETE" && programmingSub) {
+    return {
+      id: "MF33",
+      method: "DELETE",
+      params: { id: programmingSub[1]! },
+      limiter: "write",
+    };
+  }
+  const programmingDays = rest.match(
+    /^coaching\/programming\/series\/([1-9][0-9]*)\/days$/,
+  );
+  if (method === "GET" && programmingDays) {
+    return {
+      id: "MF31",
+      method: "GET",
+      params: { id: programmingDays[1]! },
+      limiter: "read",
+    };
+  }
+  const programmingSubscribe = rest.match(
+    /^coaching\/programming\/series\/([1-9][0-9]*)\/subscribe$/,
+  );
+  if (method === "POST" && programmingSubscribe) {
+    return {
+      id: "MF32",
+      method: "POST",
+      params: { id: programmingSubscribe[1]! },
+      limiter: "write",
+    };
+  }
+  if (method === "GET" && rest === "coaching/programming/series") {
+    return { id: "MF30", method: "GET", params: {}, limiter: "read" };
+  }
+  const coachNotes = rest.match(/^coaching\/relationships\/([1-9][0-9]*)\/notes$/);
+  if (coachNotes && (method === "GET" || method === "POST")) {
+    return {
+      id: method === "GET" ? "MF27" : "MF28",
+      method,
+      params: { id: coachNotes[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  const coachAction = rest.match(
+    /^coaching\/relationships\/([1-9][0-9]*)\/(accept|decline|end)$/,
+  );
+  if (method === "POST" && coachAction) {
+    return {
+      id: "MF26",
+      method: "POST",
+      params: { id: coachAction[1]!, action: coachAction[2]! },
+      limiter: "write",
+    };
+  }
+  if (method === "POST" && rest === "coaching/relationships") {
+    return { id: "MF25", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "GET" && rest === "plans/library") {
+    return { id: "MF51", method: "GET", params: {}, limiter: "read" };
+  }
+  if (method === "GET" && rest === "custom-recipes") {
+    return { id: "MF53", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "POST" && rest === "custom-recipes") {
-    return { id: "MF38", method: "POST", params: {}, limiter: "write" };
+    return { id: "MF54", method: "POST", params: {}, limiter: "write" };
   }
   const recipeOne = rest.match(/^custom-recipes\/(\d+)$/);
   if (recipeOne && method === "GET") {
-    return { id: "MF39", method: "GET", params: { id: recipeOne[1]! }, limiter: "read" };
+    return { id: "MF55", method: "GET", params: { id: recipeOne[1]! }, limiter: "read" };
   }
   if (recipeOne && method === "PUT") {
-    return { id: "MF40", method: "PUT", params: { id: recipeOne[1]! }, limiter: "write" };
+    return { id: "MF56", method: "PUT", params: { id: recipeOne[1]! }, limiter: "write" };
   }
   if (recipeOne && method === "DELETE") {
-    return { id: "MF41", method: "DELETE", params: { id: recipeOne[1]! }, limiter: "write" };
+    return { id: "MF57", method: "DELETE", params: { id: recipeOne[1]! }, limiter: "write" };
   }
-  if (method === "POST" && rest === "plans") {
-    return { id: "MF42", method: "POST", params: {}, limiter: "write" };
+  if (method === "GET" && rest === "macros/range") {
+    return { id: "MF58", method: "GET", params: {}, limiter: "read" };
   }
-  if (planOne && method === "PUT") {
-    return { id: "MF43", method: "PUT", params: { id: planOne[1]! }, limiter: "write" };
+  const mealDelete = rest.match(/^meals\/(\d+)$/);
+  if (method === "DELETE" && mealDelete) {
+    return { id: "MF59", method: "DELETE", params: { id: mealDelete[1]! }, limiter: "write" };
   }
-  if (planOne && method === "DELETE") {
-    return { id: "MF44", method: "DELETE", params: { id: planOne[1]! }, limiter: "write" };
+  if (method === "GET" && rest === "shopping-lists/generated-dates") {
+    return { id: "MF60", method: "GET", params: {}, limiter: "read" };
   }
   const planAcl = rest.match(/^plans\/(\d+)\/acl$/);
   if (planAcl && method === "GET") {
-    return { id: "MF45", method: "GET", params: { id: planAcl[1]! }, limiter: "read" };
+    return { id: "MF61", method: "GET", params: { id: planAcl[1]! }, limiter: "read" };
   }
   if (planAcl && method === "POST") {
-    return { id: "MF46", method: "POST", params: { id: planAcl[1]! }, limiter: "write" };
+    return { id: "MF62", method: "POST", params: { id: planAcl[1]! }, limiter: "write" };
   }
   if (method === "GET" && rest === "lists") {
     return { id: "LS1", method: "GET", params: {}, limiter: "read" };
@@ -1831,6 +2435,9 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "course-gifts") {
     return { id: "DP25", method: "GET", params: {}, limiter: "read" };
   }
+  if (method === "GET" && rest === "notifications/unread-count") {
+    return { id: "MF14u", method: "GET", params: {}, limiter: "read" };
+  }
   if (method === "GET" && rest === "notifications") {
     return { id: "DP26", method: "GET", params: {}, limiter: "read" };
   }
@@ -1852,8 +2459,133 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "POST" && rest === "email/confirm") {
     return { id: "DP30c", method: "POST", params: {}, limiter: "portal" };
   }
+  if (
+    (rest.startsWith("affiliates/") || rest.startsWith("locations/")) &&
+    affiliateProxySpec(method, rest)
+  ) {
+    return {
+      id: "AFF",
+      method,
+      params: { tail: rest },
+      limiter: method === "GET" || method === "HEAD" ? "read" : "write",
+    };
+  }
 
   return null;
+}
+
+const AFF_ID = "[1-9][0-9]{0,9}";
+
+function affiliateProxySpec(
+  method: string,
+  rest: string,
+): { suffix: string; queryKeys: string[] } | null {
+  if (method === "GET" && rest === "locations/countries") return { suffix: rest, queryKeys: [] };
+  if (method === "GET" && rest === "locations/states") {
+    return { suffix: rest, queryKeys: ["country_id"] };
+  }
+  if (method === "GET" && rest === "affiliates/primary") return { suffix: rest, queryKeys: [] };
+  const rules: Array<{ re: RegExp; methods: string[]; queryKeys: string[] }> = [
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/comments/${AFF_ID}$`), methods: ["DELETE"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/comments$`), methods: ["GET", "POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/pin$`), methods: ["POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/like$`), methods: ["POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}$`), methods: ["GET", "PUT", "PATCH", "DELETE"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed$`), methods: ["GET", "POST"], queryKeys: ["limit", "offset", "days_ahead", "include_drop_ins"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/members/${AFF_ID}$`), methods: ["DELETE"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/members$`), methods: ["GET", "POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/invites$`), methods: ["POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/me/capabilities$`), methods: ["GET"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/delegates/${AFF_ID}/capabilities$`), methods: ["GET", "PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/coaches/${AFF_ID}/capabilities$`), methods: ["GET", "PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/attributes/${AFF_ID}$`), methods: ["GET", "PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/attributes$`), methods: ["GET"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/payments$`), methods: ["GET"], queryKeys: ["year"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/insurance/history$`), methods: ["GET"], queryKeys: ["year"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/insurance$`), methods: ["GET"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/activity$`), methods: ["GET"], queryKeys: ["filter", "limit", "offset"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/join-settings$`), methods: ["PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}$`), methods: ["GET"], queryKeys: [] },
+  ];
+  for (const rule of rules) {
+    if (rule.methods.includes(method) && rule.re.test(rest)) {
+      return { suffix: rest, queryKeys: rule.queryKeys };
+    }
+  }
+  return null;
+}
+
+function affiliateQuery(url: URL, keys: string[], rest: string): string | Response {
+  const parts: string[] = [];
+  for (const key of keys) {
+    const raw = url.searchParams.get(key);
+    if (raw == null || raw === "") continue;
+    if (key === "include_drop_ins") {
+      if (raw !== "true" && raw !== "false" && raw !== "0" && raw !== "1") {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      parts.push(`${key}=${raw === "1" || raw === "true" ? "true" : "false"}`);
+      continue;
+    }
+    if (key === "filter") {
+      if (!["all", "pending", "approved", "affiliate_setting", "member"].includes(raw)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      parts.push(`filter=${raw}`);
+      continue;
+    }
+    if (!/^\d+$/.test(raw)) return accountJson({ error: "invalid_request" }, 400);
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < 0) return accountJson({ error: "invalid_request" }, 400);
+    if ((key === "country_id" || key === "year") && n < 1) {
+      return accountJson({ error: "invalid_request" }, 400);
+    }
+    if (key === "limit" && (n < 1 || n > 200)) return accountJson({ error: "invalid_request" }, 400);
+    if (key === "days_ahead" && n > 365) return accountJson({ error: "invalid_request" }, 400);
+    parts.push(`${key}=${n}`);
+  }
+  if (rest === "locations/states" && !parts.some((p) => p.startsWith("country_id="))) {
+    return accountJson({ error: "invalid_request" }, 400);
+  }
+  return parts.join("&");
+}
+
+const AFFILIATE_ERROR_CODES = new Set([
+  "permission_denied",
+  "invalid_request",
+  "invalid_email",
+  "invalid_role",
+  "invalid_address",
+  "invalid_attr_id",
+  "invalid_user_id",
+  "invalid_post_type",
+  "invalid_content",
+  "invalid_capabilities",
+  "user_not_found",
+  "member_not_found",
+  "affiliate_not_found",
+  "attribute_not_found",
+  "not_delegate",
+  "delegate_limit",
+  "rest_forbidden",
+  "invite_failed",
+  "create_failed",
+]);
+
+function mapAffiliateHttp(json: unknown, status: number): Response {
+  const obj = asRecord(json);
+  const code = typeof obj?.code === "string" ? obj.code : typeof obj?.error === "string" ? obj.error : "";
+  const message =
+    typeof obj?.message === "string" ? obj.message.replace(/<[^>]*>/g, "").slice(0, 240) : "";
+  if (AFFILIATE_ERROR_CODES.has(code)) {
+    const http = status >= 400 && status < 600 ? status : 400;
+    return accountJson(message ? { error: code, message } : { error: code }, http);
+  }
+  if (status === 401) return accountJson({ error: "unauthenticated" }, 401);
+  if (status === 403) return accountJson(message ? { error: "permission_denied", message } : { error: "permission_denied" }, 403);
+  if (status === 404) return accountJson({ error: "not_found" }, 404);
+  if (status === 400) return accountJson(message ? { error: "invalid_request", message } : { error: "invalid_request" }, 400);
+  return accountJson({ error: "upstream_error" }, status >= 500 ? 502 : status);
 }
 
 function parsePageParams(url: URL): { page: number; per_page: number } | Response {
@@ -1928,7 +2660,40 @@ type ProfileAttrWrite = {
   member_type: "general" | "metfix" | "medical";
   attr_id: number;
   attr_value: string;
+  address?: Record<string, string>;
 };
+
+const ADDRESS_KEYS = [
+  "address",
+  "address2",
+  "city",
+  "zip",
+  "country",
+  "state",
+  "other_state_name",
+  "other_state_abbrev",
+] as const;
+
+function sanitizeAddressPayload(raw: unknown): Record<string, string> | null | Response {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const out: Record<string, string> = {};
+  for (const key of ADDRESS_KEYS) {
+    if (!(key in obj)) continue;
+    const v = obj[key];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[key] = String(v);
+      continue;
+    }
+    if (typeof v !== "string") return accountJson({ error: "invalid_field" }, 400);
+    if (v.includes("@")) return accountJson({ error: "invalid_field" }, 400);
+    out[key] = v;
+  }
+  if (!out.address?.trim() || !out.city?.trim() || !out.zip?.trim()) {
+    return accountJson({ error: "invalid_field" }, 400);
+  }
+  return out;
+}
 
 function validateAttributesPayload(json: unknown): Response | ProfileAttrWrite[] {
   const obj = asRecord(json);
@@ -1960,21 +2725,27 @@ function validateAttributesPayload(json: unknown): Response | ProfileAttrWrite[]
         return accountJson({ error: "invalid_field" }, 400);
       }
     }
+    const address = sanitizeAddressPayload(r.address);
+    if (address instanceof Response) return address;
     const value =
       typeof r.attr_value === "string"
         ? r.attr_value
         : typeof r.value === "string"
           ? r.value
-          : null;
+          : address
+            ? ""
+            : null;
     if (value == null) return accountJson({ error: "invalid_field" }, 400);
     if (value.includes("@") || EMAIL_VALUE_RE.test(value)) {
       return accountJson({ error: "invalid_field" }, 400);
     }
-    out.push({
+    const rowOut: ProfileAttrWrite = {
       member_type: mapped as "general" | "metfix" | "medical",
       attr_id: id,
       attr_value: value,
-    });
+    };
+    if (address) rowOut.address = address;
+    out.push(rowOut);
   }
   return out;
 }
@@ -2038,14 +2809,45 @@ function shapeEditableAttrRow(row: unknown): Record<string, unknown> | null {
             : null;
   if (!label || /email/i.test(label)) return null;
   const formType = typeof r.form_type === "string" ? r.form_type : "text";
-  if (formType === "email" || formType === "file") return null;
-  return {
+  if (formType === "email" || formType === "file" || formType === "video") return null;
+  const out: Record<string, unknown> = {
     attr_id: attrId,
     key: typeof r.key === "string" ? r.key : undefined,
     label,
     form_type: formType,
     value: typeof r.value === "string" ? r.value : typeof r.current_value === "string" ? r.current_value : "",
   };
+  if (typeof r.description === "string" && r.description.trim()) {
+    out.description = r.description.slice(0, 500);
+  }
+  if (typeof r.category === "string" && r.category.trim() && r.category.length <= 80) {
+    out.category = r.category;
+  }
+  const address = asRecord(r.address);
+  if (address) {
+    out.address = {
+      address: typeof address.address === "string" ? address.address : "",
+      address2: typeof address.address2 === "string" ? address.address2 : "",
+      city: typeof address.city === "string" ? address.city : "",
+      zip: typeof address.zip === "string" ? address.zip : "",
+      state: typeof address.state === "number" ? address.state : null,
+      country: typeof address.country === "number" ? address.country : null,
+    };
+  }
+  if (Array.isArray(r.options)) {
+    const options: Record<string, unknown>[] = [];
+    for (const opt of r.options) {
+      const o = asRecord(opt);
+      if (!o) continue;
+      const id = typeof o.id === "number" && Number.isInteger(o.id) && o.id > 0 ? o.id : null;
+      const name =
+        typeof o.name === "string" ? o.name : typeof o.label === "string" ? o.label : "";
+      if (id == null || !name.trim()) continue;
+      options.push({ id, name });
+    }
+    if (options.length > 0) out.options = options;
+  }
+  return out;
 }
 
 function shapeProfileAttributes(raw: unknown): {
@@ -2107,6 +2909,25 @@ function shapeOwnProfile(raw: unknown): Record<string, unknown> | null {
     member_since: strOrNull(obj.member_since),
     attributes,
   };
+}
+
+async function accountProxy(
+  ctx: ActingContext,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts: { baseUrl?: string } | undefined,
+  method: string,
+  path: string,
+  init?: { query?: string; jsonBody?: unknown },
+): Promise<Response | { json: unknown; status: number }> {
+  const ran = await runBearer(ctx, env, fetchImpl, opts, method, path, {
+    query: init?.query,
+    ...(init?.jsonBody !== undefined
+      ? { body: JSON.stringify(init.jsonBody), contentType: "application/json" }
+      : {}),
+  });
+  if (ran instanceof Response) return mapUnauthenticated(ran);
+  return mapUpstreamResult(ran.result);
 }
 
 async function dispatch(
@@ -2283,8 +3104,8 @@ async function dispatch(
     }
     case "DP7": {
       // CR3 — exactly `{ checkout_url }` (lead ruling A / CR-CO-1 / N1 ignore extras).
-      // Public: Bearer when signed in; guest mint (no Authorization) when not.
-      // BSI still attempts to match the buyer after Whop checkout.
+      // Signed-in: same Bearer as other /api/account writes.
+      // Guest: email is required and forwarded; no Authorization. No email → 401.
       const courseId = match.params.courseId!;
       if (!COURSE_ID_RE.test(courseId)) {
         return accountJson({ error: "invalid_request" }, 400);
@@ -2293,7 +3114,8 @@ async function dispatch(
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json) ?? {};
 
-      // Allowlist body: only bsi_ref + return_path; drop client attribution overrides.
+      // Allowlist: bsi_ref + return_path. A signed-in body email is dropped.
+      // Guest email is added only when there is no session.
       let bsi_ref: string | undefined;
       if ("bsi_ref" in body) {
         if (typeof body.bsi_ref !== "string" || !BSI_REF_RE.test(body.bsi_ref)) {
@@ -2314,8 +3136,26 @@ async function dispatch(
       if (return_path !== undefined) upstreamBody.return_path = return_path;
 
       const checkoutPath = accountCourseCheckoutPath(courseId);
-      const guestMint = (): Promise<BsiHttpResult> =>
-        accountBsiFetch(
+      let result: BsiHttpResult;
+      if (ctx) {
+        const ran = await runBearer(ctx, env, fetchImpl, opts, "POST", checkoutPath, {
+          body: JSON.stringify(upstreamBody),
+          contentType: "application/json",
+        });
+        if (ran instanceof Response) return mapUnauthenticated(ran);
+        result = ran.result;
+      } else {
+        const email = guestCheckoutEmail(body.email);
+        if (email == null) {
+          const raw = body.email;
+          const missing = raw == null || (typeof raw === "string" && raw.trim() === "");
+          return accountJson(
+            { error: missing ? "unauthenticated" : "invalid_email" },
+            missing ? 401 : 400,
+          );
+        }
+        upstreamBody.email = email;
+        result = await accountBsiFetch(
           bsiUrl(env, checkoutPath, opts),
           {
             method: "POST",
@@ -2329,22 +3169,13 @@ async function dispatch(
           fetchImpl,
           env,
         );
-
-      let result: BsiHttpResult;
-      if (ctx) {
-        const ran = await runBearer(ctx, env, fetchImpl, opts, "POST", checkoutPath, {
-          body: JSON.stringify(upstreamBody),
-          contentType: "application/json",
-        });
-        if (ran instanceof Response) return mapUnauthenticated(ran);
-        result = ran.result;
-      } else {
-        // No usable session (including sticky dead sid) → guest mint; BSI matches after Whop.
-        result = await guestMint();
       }
 
       if (result.kind === "http") {
         const code = upstreamErrorCode(result.json);
+        if (code === "bsi_unauthorized" || result.status === 401) {
+          return accountJson({ error: "unauthenticated" }, 401);
+        }
         if (
           code === "bsi_course_not_found" ||
           code === "bsi_course_whop_mapping_not_found"
@@ -2672,6 +3503,7 @@ async function dispatch(
               member_type: row.member_type,
               attr_id: row.attr_id,
               attr_value: row.attr_value,
+              ...(row.address ? { address: row.address } : {}),
             }),
             contentType: "application/json",
           },
@@ -3055,6 +3887,52 @@ async function dispatch(
         200,
       );
     }
+    case "MF50": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkUserInfoPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeSparkUserInfo(proxied.json), 200);
+    }
+    case "MF52": {
+      const parts: string[] = [];
+      const mtype = url.searchParams.get("measurement_type");
+      if (mtype === "health" || mtype === "movement") {
+        parts.push(`measurement_type=${encodeURIComponent(mtype)}`);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkMeasurementsPath(),
+        { query: parts.length ? parts.join("&") : undefined },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkMeasurements(mapped.json), 200);
+    }
+    case "MF63": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountSparkUnitsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson(shapeSparkUnits(mapped.json), 200);
+    }
     case "MF12": {
       const parts: string[] = [];
       const mid = url.searchParams.get("measurement_id");
@@ -3144,14 +4022,37 @@ async function dispatch(
       return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
     case "MF14": {
-      const [convRan, notifRan] = await Promise.all([
+      const viewRaw = url.searchParams.get("view") ?? "all";
+      if (viewRaw !== "all" && viewRaw !== "focused") {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limitRaw = url.searchParams.get("limit") ?? "50";
+      const offsetRaw = url.searchParams.get("offset") ?? "0";
+      if (!/^[1-9][0-9]*$/.test(limitRaw) || !/^(0|[1-9][0-9]*)$/.test(offsetRaw)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limit = Math.min(Number(limitRaw), 100);
+      const offset = Number(offsetRaw);
+      const notifQuery = `limit=${limit}&offset=${offset}&view=${viewRaw}`;
+      const [convRan, notifRan, unreadRan] = await Promise.all([
         runBearer(ctx!, env, fetchImpl, opts, "GET", accountMessagesConversationsPath()),
-        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath()),
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath(), {
+          query: notifQuery,
+        }),
+        runBearer(
+          ctx!,
+          env,
+          fetchImpl,
+          opts,
+          "GET",
+          `${accountNotificationsListPath()}?limit=1&offset=0`,
+        ),
       ]);
       if (convRan instanceof Response) return mapUnauthenticated(convRan);
       if (notifRan instanceof Response) return mapUnauthenticated(notifRan);
       const conversations: unknown[] = [];
-      const notifications: unknown[] = [];
+      const notifications: Record<string, unknown>[] = [];
+      let total_count = 0;
       if (convRan.result.kind === "ok") {
         const cobj = asRecord(convRan.result.json) ?? {};
         const list = Array.isArray(cobj.conversations)
@@ -3172,7 +4073,26 @@ async function dispatch(
           : Array.isArray(nobj.items)
             ? nobj.items
             : [];
-        notifications.push(...list);
+        for (const row of list) {
+          const shaped = shapeInboxNotification(row);
+          if (shaped) notifications.push(shaped);
+        }
+        total_count =
+          typeof nobj.total_count === "number" && Number.isFinite(nobj.total_count)
+            ? Math.max(0, Math.floor(nobj.total_count))
+            : notifications.length;
+      }
+      let unread_count =
+        unreadRan instanceof Response
+          ? null
+          : unreadRan.result.kind === "ok"
+            ? unreadCountFromPayload(unreadRan.result.json)
+            : null;
+      if (unread_count == null) {
+        unread_count = notifications.reduce(
+          (sum, n) => sum + (n.read === true ? 0 : 1),
+          0,
+        );
       }
       // If both upstreams failed hard, surface unavailable.
       if (
@@ -3183,9 +4103,309 @@ async function dispatch(
       ) {
         return accountJson({ error: "unavailable" }, 502);
       }
-      return accountJson({ conversations, notifications, items: notifications }, 200);
+      return accountJson(
+        {
+          conversations,
+          notifications,
+          items: notifications,
+          unread_count,
+          total_count,
+          limit,
+          offset,
+          view: viewRaw,
+        },
+        200,
+      );
     }
-    case "MF15": {
+    case "MF14r": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const id = body?.notification_id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PATCH",
+        `${accountNotificationsListPath()}/read`,
+        {
+          body: JSON.stringify({ notification_id: id }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF14d": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const id = body?.notification_id;
+      const type = body?.type;
+      if (
+        typeof id !== "number" ||
+        !Number.isSafeInteger(id) ||
+        id <= 0 ||
+        (type !== "site" && type !== "personal")
+      ) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        `${accountNotificationsListPath()}/dismiss`,
+        {
+          body: JSON.stringify({ notification_id: id, type }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF14u": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        `${accountNotificationsListPath()}?limit=1&offset=0`,
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "ok") {
+        const count = unreadCountFromPayload(ran.result.json) ?? 0;
+        return accountJson({ unread_count: count }, 200);
+      }
+      if (ran.result.kind === "http" && ran.result.status === 404) {
+        return accountJson({ unread_count: 0 }, 200);
+      }
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ unread_count: 0 }, 200);
+    }
+    case "MF64": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesConversationsPath(),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.conversations)
+        ? obj.conversations
+        : Array.isArray(obj.items)
+          ? obj.items
+          : Array.isArray(mapped.json)
+            ? (mapped.json as unknown[])
+            : [];
+      const conversations = listIn
+        .map((row) => shapeChatConversation(row))
+        .filter((x): x is Record<string, unknown> => x != null)
+        .slice(0, 200);
+      return accountJson({ conversations }, 200);
+    }
+    case "MF65": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesConversationPath(id),
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const shaped =
+        shapeChatConversation(obj.conversation) ?? shapeChatConversation(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ conversation: shaped }, 200);
+    }
+    case "MF66": {
+      const id = match.params.id!;
+      const limitRaw = url.searchParams.get("limit") ?? "50";
+      const offsetRaw = url.searchParams.get("offset") ?? "0";
+      const limit = /^[1-9][0-9]*$/.test(limitRaw) ? Math.min(Number(limitRaw), 100) : 50;
+      const offset = /^[0-9]+$/.test(offsetRaw) ? Math.min(Number(offsetRaw), 10_000) : 0;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesConversationMessagesPath(id),
+        { query: `limit=${limit}&offset=${offset}` },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.messages) ? obj.messages : [];
+      const messages = listIn
+        .map((row) => shapeChatMessage(row))
+        .filter((x): x is Record<string, unknown> => x != null)
+        .slice(0, 100);
+      return accountJson(
+        { messages, has_more: obj.has_more === true },
+        200,
+      );
+    }
+    case "MF67": {
+      const id = match.params.id!;
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const content =
+        typeof body.content === "string" ? body.content.trim().slice(0, 8000) : "";
+      if (!content) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMessagesConversationMessagesPath(id),
+        {
+          body: JSON.stringify({ content }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const shaped = shapeChatMessage(obj.message) ?? shapeChatMessage(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ message: shaped }, mapped.status === 201 ? 201 : 200);
+    }
+    case "MF68": {
+      const id = match.params.id!;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMessagesConversationReadPath(id),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF69": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json) ?? {};
+      const recipientRaw = body.recipient_id;
+      const recipient_id =
+        typeof recipientRaw === "number" && Number.isSafeInteger(recipientRaw) && recipientRaw > 0
+          ? recipientRaw
+          : typeof recipientRaw === "string" && /^[1-9][0-9]*$/.test(recipientRaw)
+            ? Number(recipientRaw)
+            : null;
+      if (recipient_id == null) return accountJson({ error: "invalid_request" }, 400);
+      const message =
+        typeof body.message === "string" ? body.message.trim().slice(0, 8000) : "";
+      const upstream: Record<string, unknown> = { recipient_id };
+      if (message) upstream.message = message;
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMessagesDirectPath(),
+        {
+          body: JSON.stringify(upstream),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const shaped =
+        shapeChatConversation(obj.conversation) ?? shapeChatConversation(mapped.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ conversation: shaped }, 200);
+    }
+    case "MF70": {
+      const affiliateOwnersOnly = url.searchParams.get("affiliate_owners_only") === "true";
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesUsersPath(),
+        affiliateOwnersOnly ? { query: "affiliate_owners_only=true" } : undefined,
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.users) ? obj.users : [];
+      const users = dedupeChatUsers(
+        listIn
+          .map((row) => shapeChatUser(row))
+          .filter((x): x is Record<string, unknown> => x != null),
+      ).slice(0, 100);
+      return accountJson({ users }, 200);
+    }
+    case "MF71": {
+      const qRaw = url.searchParams.get("q") ?? "";
+      const q = qRaw.trim().slice(0, 80);
+      if (q.length < 3) return accountJson({ users: [] }, 200);
+      const params = new URLSearchParams({ q });
+      if (url.searchParams.get("affiliate_owners_only") === "true") {
+        params.set("affiliate_owners_only", "true");
+      }
+      const affiliateId = url.searchParams.get("affiliate_id");
+      if (affiliateId && /^[1-9][0-9]*$/.test(affiliateId)) {
+        params.set("affiliate_id", affiliateId);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMessagesUsersSearchPath(),
+        { query: params.toString() },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      const obj = asRecord(mapped.json) ?? {};
+      const listIn = Array.isArray(obj.users) ? obj.users : [];
+      const users = dedupeChatUsers(
+        listIn
+          .map((row) => shapeChatUser(row))
+          .filter((x): x is Record<string, unknown> => x != null),
+      ).slice(0, 100);
+      return accountJson({ users }, 200);
+    }
+    case "MF51": {
       const ran = await runBearer(
         ctx!,
         env,
@@ -3199,99 +4419,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { active: {}, inactive: {} }, 200);
     }
-    case "MF16": {
-      const id = match.params.id!;
-      const includeDays = url.searchParams.get("include_days");
-      const q =
-        includeDays === "0" || includeDays === "false"
-          ? undefined
-          : "include_days=1";
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountPlanPath(id),
-        { query: q },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF17": {
-      const id = match.params.id!;
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const body = asRecord(parsed.json) ?? {};
-      const is_active = body.is_active === true || body.is_active === 1;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "PATCH",
-        accountPlanActivePath(id),
-        {
-          body: JSON.stringify({ is_active }),
-          contentType: "application/json",
-        },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF18": {
-      const id = match.params.id!;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountPlanPublishPath(id),
-        { body: "{}", contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF19": {
-      const id = match.params.id!;
-      const start = url.searchParams.get("start_date") ?? "";
-      if (!YMD_RE.test(start)) return accountJson({ error: "invalid_request" }, 400);
-      const parts = [`start_date=${encodeURIComponent(start)}`];
-      const end = url.searchParams.get("end_date");
-      if (end && YMD_RE.test(end)) parts.push(`end_date=${encodeURIComponent(end)}`);
-      const target = url.searchParams.get("target_user_id");
-      if (target && /^[1-9][0-9]{0,9}$/.test(target)) {
-        parts.push(`target_user_id=${encodeURIComponent(target)}`);
-      }
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountPlanSchedulePath(id),
-        {
-          query: parts.join("&"),
-          body: "{}",
-          contentType: "application/json",
-        },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
-    }
-    case "MF20": {
+    case "MF53": {
       const limitRaw = url.searchParams.get("limit") ?? "50";
       const limit = /^[1-9][0-9]*$/.test(limitRaw) ? Math.min(Number(limitRaw), 100) : 50;
       const ran = await runBearer(
@@ -3314,7 +4442,7 @@ async function dispatch(
           : [];
       return accountJson({ recipes, meta: asRecord(obj.meta) ?? {} }, 200);
     }
-    case "MF21": {
+    case "MF58": {
       const start = url.searchParams.get("start_date") ?? "";
       const end = url.searchParams.get("end_date") ?? "";
       if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
@@ -3338,7 +4466,7 @@ async function dispatch(
       const entries = Array.isArray(obj.entries) ? obj.entries : [];
       return accountJson({ entries }, 200);
     }
-    case "MF22": {
+    case "MF59": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3353,21 +4481,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
     }
-    case "MF37": {
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountPtCoachClientsPath(),
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(shapeBellyCoachingCoach(mapped.json), 200);
-    }
-    case "MF38": {
+    case "MF54": {
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const validated = validateCustomRecipeBody(parsed.json);
@@ -3387,7 +4501,7 @@ async function dispatch(
       const obj = asRecord(mapped.json) ?? {};
       return accountJson(obj.recipe ?? mapped.json, mapped.status === 201 ? 201 : mapped.status);
     }
-    case "MF39": {
+    case "MF55": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3403,7 +4517,7 @@ async function dispatch(
       const obj = asRecord(mapped.json) ?? {};
       return accountJson(obj.recipe ?? mapped.json, 200);
     }
-    case "MF40": {
+    case "MF56": {
       const id = match.params.id!;
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
@@ -3424,7 +4538,7 @@ async function dispatch(
       const obj = asRecord(mapped.json) ?? {};
       return accountJson(obj.recipe ?? mapped.json, 200);
     }
-    case "MF41": {
+    case "MF57": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3439,63 +4553,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
     }
-    case "MF42": {
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const validated = validatePlanWriteBody(parsed.json);
-      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "POST",
-        accountPlansPath(),
-        { body: JSON.stringify(validated.body), contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, mapped.status === 201 ? 201 : mapped.status);
-    }
-    case "MF43": {
-      const id = match.params.id!;
-      const parsed = await readJsonBody(request);
-      if (parsed instanceof Response) return parsed;
-      const validated = validatePlanWriteBody(parsed.json);
-      if (!validated.ok) return accountJson({ error: "invalid_request" }, 400);
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "PUT",
-        accountPlanPath(id),
-        { body: JSON.stringify(validated.body), contentType: "application/json" },
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      const obj = asRecord(mapped.json) ?? {};
-      return accountJson(obj.plan ?? mapped.json, 200);
-    }
-    case "MF44": {
-      const id = match.params.id!;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "DELETE",
-        accountPlanPath(id),
-      );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { ok: true }, mapped.status === 204 ? 200 : mapped.status);
-    }
-    case "MF45": {
+    case "MF61": {
       const id = match.params.id!;
       const ran = await runBearer(
         ctx!,
@@ -3510,7 +4568,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { entries: [] }, 200);
     }
-    case "MF46": {
+    case "MF62": {
       const id = match.params.id!;
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
@@ -3541,7 +4599,7 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
-    case "MF23": {
+    case "MF60": {
       const start = url.searchParams.get("start_date") ?? "";
       const end = url.searchParams.get("end_date") ?? "";
       if (!YMD_RE.test(start) || !YMD_RE.test(end)) {
@@ -3740,14 +4798,31 @@ async function dispatch(
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? {}, 200);
+      const base = asRecord(mapped.json) ?? {};
+      let newsletter: { subscribed: boolean } | null = null;
+      const newsRan = await runBearer(
+        ran.ctx,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountNewsletterPath(),
+      );
+      if (!(newsRan instanceof Response) && newsRan.result.kind === "ok") {
+        const state = asRecord(newsRan.result.json);
+        if (state && typeof state.subscribed === "boolean") {
+          newsletter = { subscribed: state.subscribed };
+        }
+      }
+      return accountJson({ ...base, newsletter }, 200);
     }
     case "DP26w": {
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json) ?? {};
-      // DP-T-26b: whitelist before BSI — unknown keys never forwarded.
+      // Unknown keys never forwarded. Newsletter is a separate BSI route.
       const safeBody = whitelistNotificationsPut(body);
+      const prefBody = safeBody.account ? { account: safeBody.account } : {};
       const ran = await runBearer(
         ctx!,
         env,
@@ -3755,12 +4830,13 @@ async function dispatch(
         opts,
         "PUT",
         accountNotificationPreferencesPath(),
-        { body: JSON.stringify(safeBody), contentType: "application/json" },
+        { body: JSON.stringify(prefBody), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      if ("newsletter" in safeBody || "newsletter_subscribed" in safeBody) {
+      let newsletter: { subscribed: boolean } | null = null;
+      if (typeof safeBody.newsletter === "boolean") {
         const newsRan = await runBearer(
           ran.ctx,
           env,
@@ -3769,18 +4845,17 @@ async function dispatch(
           "PUT",
           accountNewsletterPath(),
           {
-            body: JSON.stringify({
-              subscribed:
-                safeBody.newsletter === true || safeBody.newsletter_subscribed === true,
-            }),
+            body: JSON.stringify({ subscribed: safeBody.newsletter }),
             contentType: "application/json",
           },
         );
         if (newsRan instanceof Response) return mapUnauthenticated(newsRan);
         const newsMapped = mapUpstreamResult(newsRan.result);
         if (newsMapped instanceof Response) return newsMapped;
+        newsletter = { subscribed: safeBody.newsletter };
       }
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      const saved = asRecord(mapped.json) ?? {};
+      return accountJson({ ...saved, newsletter }, mapped.status);
     }
     case "DP28": {
       const ran = await runBearer(
@@ -4238,6 +5313,622 @@ async function dispatch(
       }
       return accountJson({ error: "unavailable" }, result.kind === "timeout" ? 503 : 502);
     }
+    case "MF15": {
+      const range = parseYmdRange(
+        url.searchParams.get("start_date"),
+        url.searchParams.get("end_date"),
+      );
+      if (!range) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarWorkoutsPath(),
+        { query: `start_date=${range.start}&end_date=${range.end}` },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeWorkoutLogs(proxied.json), 200);
+    }
+    case "MF16": {
+      const range = parseYmdRange(
+        url.searchParams.get("start_date"),
+        url.searchParams.get("end_date"),
+      );
+      if (!range) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCalendarPlannedWorkoutsPath(),
+        { query: `start_date=${range.start}&end_date=${range.end}` },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapePlannedWorkouts(proxied.json), 200);
+    }
+    case "MF17": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountWorkoutLogPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeWorkoutLog(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ workout: shaped }, 200);
+    }
+    case "MF18": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountWorkoutLogPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF19": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountPlannedWorkoutPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF20": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateLogWorkoutBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountWorkoutsCollectionPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped =
+        shapeWorkoutLog(proxied.json) ?? shapeWorkoutLog(asRecord(proxied.json)?.workout);
+      return accountJson({ ok: true, workout: shaped }, 200);
+    }
+    case "MF21": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const names = url.searchParams.get("include_movement_names") === "1";
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomWorkoutPath(String(id)),
+        names ? { query: "include_movement_names=1" } : undefined,
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeCustomWorkout(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF37": {
+      const query = customWorkoutListQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountCustomWorkoutsPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCustomWorkoutList(proxied.json), 200);
+    }
+    case "MF37w": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCustomWorkoutBody(parsed.json, "create");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountCustomWorkoutsPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeCustomWorkout(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF38": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCustomWorkoutBody(parsed.json, "update");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountCustomWorkoutPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeCustomWorkout(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF39": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountCustomWorkoutPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF40": {
+      const query = movementQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMovementsPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeMovementList(proxied.json), 200);
+    }
+    case "MF49": {
+      const query = dailyFixQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountDailyFixWorkoutPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeDailyFixWorkout(proxied.json), 200);
+    }
+    case "MF41": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlansCollectionPath(),
+        { query: "limit=30&offset=0" },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapePlanList(proxied.json), 200);
+    }
+    case "MF42": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePlanWriteBody(parsed.json, "create");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlansCollectionPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped =
+        shapePlanDetail(proxied.json) ?? shapePlanDetail(asRecord(proxied.json)?.plan);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ ...shaped, plan: shaped }, 200);
+    }
+    case "MF43": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlanPath(String(id)),
+        { query: "include_days=1" },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapePlanDetail(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ ...shaped, plan: shaped }, 200);
+    }
+    case "MF44": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePlanWriteBody(parsed.json, "update");
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountPlanPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapePlanDetail(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson({ ...shaped, plan: shaped }, 200);
+    }
+    case "MF45": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountPlanPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF46": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanPublishPath(String(id)),
+        { jsonBody: {} },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapePlanDetail(proxied.json);
+      return accountJson({ ok: true, plan: shaped }, 200);
+    }
+    case "MF47": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const query = planScheduleQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPlanSchedulePath(String(id)),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF48": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePlanActiveBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PATCH",
+        accountPlanActivePath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF22": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtClientCoachesPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachingClient(proxied.json), 200);
+    }
+    case "MF23": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtCoachClientsPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachingCoach(proxied.json), 200);
+    }
+    case "MF24": {
+      const query = directoryQuery(url.searchParams);
+      if (!query) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtDirectoryPath(),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeDirectory(proxied.json), 200);
+    }
+    case "MF25": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validatePtInviteBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPtRelationshipsPath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF26": {
+      const id = parseRouteId(match.params.id);
+      const action = match.params.action;
+      if (!id || (action !== "accept" && action !== "decline" && action !== "end")) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPtRelationshipActionPath(String(id), action),
+        { jsonBody: {} },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF27": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtRelationshipNotesPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachNotes(proxied.json), 200);
+    }
+    case "MF28": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCoachNoteBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountPtRelationshipNotesPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const note =
+        shapeCoachNote(proxied.json) ?? shapeCoachNote(asRecord(proxied.json)?.note);
+      return accountJson({ ok: true, note }, 200);
+    }
+    case "MF29": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountProgrammingSubscriptionsPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeProgrammingSubscriptions(proxied.json), 200);
+    }
+    case "MF30": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountProgrammingSeriesPath(),
+        { query: "limit=30&offset=0" },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeProgrammingSeriesList(proxied.json), 200);
+    }
+    case "MF31": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const range = parseYmdRange(
+        url.searchParams.get("start_date"),
+        url.searchParams.get("end_date"),
+        120,
+      );
+      const query = range ? `start_date=${range.start}&end_date=${range.end}` : undefined;
+      if (
+        (url.searchParams.get("start_date") || url.searchParams.get("end_date")) &&
+        !range
+      ) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountProgrammingSeriesDaysPath(String(id)),
+        { query },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeProgrammingDays(proxied.json), 200);
+    }
+    case "MF32": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountProgrammingSubscribePath(String(id)),
+        { body: "{}", contentType: "application/json" },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "http" && ran.result.status === 402) {
+        return accountJson({ error: "payment_required" }, 402);
+      }
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF33": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountProgrammingSubscriptionPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ ok: true }, 200);
+    }
+    case "MF34": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPlansLibraryPath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapePlanLibrary(proxied.json), 200);
+    }
+    case "MF35": {
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountPtCoachProfilePath(),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachProfile(proxied.json), 200);
+    }
+    case "MF36": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateCoachProfileBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountPtCoachProfilePath(),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson(shapeCoachProfile(proxied.json), 200);
+    }
+    case "AFF": {
+      const tail = match.params.tail ?? "";
+      const spec = affiliateProxySpec(match.method, tail);
+      if (!spec) return accountJson({ error: "not_found" }, 404);
+      const query = affiliateQuery(new URL(request.url), spec.queryKeys, tail);
+      if (query instanceof Response) return query;
+      let jsonBody: unknown;
+      if (match.method !== "GET" && match.method !== "DELETE") {
+        const parsed = await readJsonBody(request);
+        if (parsed instanceof Response) return parsed;
+        if (!asRecord(parsed.json)) return accountJson({ error: "invalid_request" }, 400);
+        jsonBody = parsed.json;
+      }
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, match.method, accountBsiV1Path(spec.suffix), {
+        query: query || undefined,
+        ...(jsonBody !== undefined
+          ? { body: JSON.stringify(jsonBody), contentType: "application/json" }
+          : {}),
+      });
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "ok") {
+        return accountJson(ran.result.json ?? { ok: true }, ran.result.status);
+      }
+      if (ran.result.kind === "http") return mapAffiliateHttp(ran.result.json, ran.result.status);
+      const mapped = mapUpstreamResult(ran.result);
+      return mapped instanceof Response ? mapped : accountJson(mapped.json ?? { ok: true }, mapped.status);
+    }
     default:
       return accountJson({ error: "not_found" }, 404);
   }
@@ -4281,7 +5972,7 @@ export async function handleAccountRoutes(
     if (resolved instanceof Response) return resolved;
     ctx = resolved;
   } else if (getSid(request)) {
-    // Optional session — Bearer when signed in; guest mint when not.
+    // Public routes only: attach a bearer when a sid resolves; ignore a dead sid.
     const resolved = await resolveAccountSession(request, env, fetchImpl, opts);
     if (!(resolved instanceof Response)) ctx = resolved;
   }

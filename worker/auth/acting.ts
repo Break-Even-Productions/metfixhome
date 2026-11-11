@@ -8,6 +8,7 @@ import { jsonNoStore, unavailable } from "./http";
 import {
   destroySession,
   ensureActingAccess,
+  loadActingAccess,
   SessionUnavailableError,
   type MeCache,
 } from "./session";
@@ -22,8 +23,19 @@ export type ActingContext = {
   record: SessionRecord;
 };
 
-function signedOut(): Response {
-  return jsonNoStore({ error: "signed_out" }, 401, { "Set-Cookie": sidCookieClear() });
+const invalidGrantSignOuts = new WeakSet<Response>();
+
+function signedOut(reason?: "invalid_grant"): Response {
+  const res = jsonNoStore({ error: "signed_out" }, 401, {
+    "Set-Cookie": sidCookieClear(),
+  });
+  if (reason === "invalid_grant") invalidGrantSignOuts.add(res);
+  return res;
+}
+
+/** True only when the refresh grant itself was invalid_grant. */
+export function isInvalidGrantSignOut(res: Response): boolean {
+  return invalidGrantSignOuts.has(res);
 }
 
 async function sessionExpired(env: Env, sid: string): Promise<Response> {
@@ -45,9 +57,9 @@ export async function resolveActingSession(
   const sid = cookies[SID_COOKIE];
   if (!sid) return signedOut();
 
-  let loaded: Awaited<ReturnType<typeof ensureActingAccess>>;
+  let loaded: Awaited<ReturnType<typeof loadActingAccess>>;
   try {
-    loaded = await ensureActingAccess(env, sid, { baseUrl: opts?.baseUrl });
+    loaded = await loadActingAccess(env, sid, { baseUrl: opts?.baseUrl });
   } catch (e) {
     // Forward DO Retry-After (AU27.3 non-grant → 60; 429/5xx clamp).
     if (e instanceof SessionUnavailableError && e.retryAfter != null) {
@@ -55,7 +67,9 @@ export async function resolveActingSession(
     }
     return unavailable();
   }
-  if (!loaded) return signedOut();
+  if (!loaded.ok) {
+    return signedOut(loaded.reason === "invalid_grant" ? "invalid_grant" : undefined);
+  }
 
   const now = Date.now();
   if (now - loaded.record.created >= NINETY_DAYS_MS) {
@@ -77,21 +91,18 @@ export async function refreshAfterUnauthorized(
   _fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<ActingContext | null> {
-  try {
-    const next = await ensureActingAccess(env, ctx.sid, {
-      force: true,
-      baseUrl: opts?.baseUrl,
-    });
-    if (!next) return null;
-    return {
-      sid: ctx.sid,
-      hex: next.hex,
-      access: next.record.bsi_access,
-      record: next.record,
-    };
-  } catch {
-    return null;
-  }
+  // Timeout and 5xx throw SessionUnavailableError. Callers must not treat that as a dead grant.
+  const next = await ensureActingAccess(env, ctx.sid, {
+    force: true,
+    baseUrl: opts?.baseUrl,
+  });
+  if (!next) return null;
+  return {
+    sid: ctx.sid,
+    hex: next.hex,
+    access: next.record.bsi_access,
+    record: next.record,
+  };
 }
 
 function isBsiUnauthorized(
@@ -109,7 +120,16 @@ export async function runUserBsiCall<T extends { kind: string; status?: number }
 ): Promise<{ ctx: ActingContext; result: T } | Response> {
   let result = await call(ctx.access);
   if (!isBsiUnauthorized(result)) return { ctx, result };
-  const next = await refreshAfterUnauthorized(env, ctx, fetchImpl, opts);
+  let next: ActingContext | null;
+  try {
+    next = await refreshAfterUnauthorized(env, ctx, fetchImpl, opts);
+  } catch (e) {
+    // Refresh timed out or the token endpoint returned 5xx. Keep the session.
+    if (e instanceof SessionUnavailableError) {
+      return unavailable(e.retryAfter ?? 300);
+    }
+    throw e;
+  }
   if (!next) return sessionExpired(env, ctx.sid);
   result = await call(next.access);
   if (isBsiUnauthorized(result)) return sessionExpired(env, ctx.sid);

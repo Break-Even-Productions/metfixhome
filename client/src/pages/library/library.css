@@ -235,8 +235,17 @@
 
 .library-rail {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+.library-rail > * {
+  min-width: 0;
+}
+
+/* Tablet and mobile: the first post is large and full width; the next two share a row. */
+.library-rail > :first-child {
+  grid-column: 1 / -1;
 }
 
 .library-infinite-sentinel {
@@ -244,15 +253,23 @@
   padding: 0.5rem 0 1.5rem;
 }
 
-@media (min-width: 720px) {
-  .library-rail {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 1023px) {
+  .library-rail > :first-child .library-card-title {
+    font-size: 1.45rem;
+  }
+
+  .library-rail > :first-child .library-card-excerpt {
+    -webkit-line-clamp: 3;
   }
 }
 
 @media (min-width: 1024px) {
   .library-rail {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .library-rail > :first-child {
+    grid-column: auto;
   }
 }
 

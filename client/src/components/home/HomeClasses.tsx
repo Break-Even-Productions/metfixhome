@@ -1,10 +1,10 @@
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { Clock } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { assetUrl } from "@/const";
 import { COURSE_FILTERS, type CourseFilter } from "@/data/home/audience";
-import { openWhopCheckout, purchaseCourseCheckout } from "@/lib/account";
+import { useCoursePurchase } from "@/lib/coursePurchase";
 import type { HomeCourseCard } from "@/lib/homeTypes";
 import { easeOutExpo, fadeUp, stagger } from "./motion";
 import { Reveal } from "./Reveal";
@@ -29,12 +29,12 @@ function courseStatusLabel(course: HomeCourseCard): string {
 
 function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => void }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const [buying, setBuying] = useState(false);
-  const [buyError, setBuyError] = useState<string | null>(null);
-  const inflight = useRef(false);
   const image = !imageFailed ? resolveCourseImage(course.image) : null;
   const canBuy = Boolean(course.live && course.bsiPostId);
   const statusLabel = courseStatusLabel(course);
+  const { signedIn, buying, error: buyError, buy, emailModal } = useCoursePurchase(
+    course.bsiPostId,
+  );
 
   const openLanding = () => {
     if (!course.href || course.href === "#") return;
@@ -42,26 +42,6 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
       window.open(course.href, "_blank", "noopener,noreferrer");
     } else {
       window.location.assign(course.href);
-    }
-  };
-
-  const startCheckout = async () => {
-    if (!course.bsiPostId || inflight.current) return;
-    inflight.current = true;
-    setBuying(true);
-    setBuyError(null);
-    try {
-      const res = await purchaseCourseCheckout(course.bsiPostId, {
-        return_path: "/checkout/complete",
-      });
-      if (!openWhopCheckout(res.checkout_url)) {
-        setBuyError("Checkout unavailable. Try again.");
-      }
-    } catch {
-      setBuyError("Checkout unavailable. Try again.");
-    } finally {
-      inflight.current = false;
-      setBuying(false);
     }
   };
 
@@ -86,7 +66,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
         }
       }}
     >
-      <div className="relative overflow-hidden rounded-[1.35rem] bg-ink-2 transition-[transform,translate,box-shadow] duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
+      <div className="relative overflow-hidden rounded-[1.35rem] bg-white text-[#171512] transition-[transform,translate,box-shadow] duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
         {image ? (
           <img
             src={image}
@@ -117,19 +97,26 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
             <p className="mt-2 line-clamp-2 text-[13px] leading-snug text-current/80">{course.desc}</p>
             <div className="mt-3 border-t border-current/20 pt-3">
               {canBuy ? (
-                <button
-                  type="button"
-                  disabled={buying}
-                  aria-busy={buying || undefined}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void startCheckout();
-                  }}
-                  className="course-buy-btn inline-flex w-full items-center justify-center rounded-full border border-line bg-white px-4 py-2.5 text-sm font-semibold text-[#171512] shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] disabled:cursor-wait disabled:opacity-70"
+                <div
+                  className="flex flex-col gap-2"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
                 >
-                  {buying ? "Opening…" : "Buy Now"}
-                </button>
+                  {emailModal}
+                  <button
+                    type="button"
+                    disabled={buying || signedIn == null}
+                    aria-busy={buying || undefined}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void buy();
+                    }}
+                    className="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-ink transition-[background-color,transform] duration-300 ease-out hover:-translate-y-px hover:bg-accent-2 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {buying ? "Opening…" : "Buy Now"}
+                  </button>
+                </div>
               ) : (
                 <p className="font-serif text-[1.35rem] leading-none tracking-tight">{statusLabel}</p>
               )}
@@ -150,7 +137,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
                 </p>
               ) : null}
               {buyError ? (
-                <p className="mt-1.5 text-[12px] leading-snug text-red-300" role="alert">
+                <p className="mt-1.5 text-[12px] leading-snug text-red-700" role="alert">
                   {buyError}
                 </p>
               ) : null}

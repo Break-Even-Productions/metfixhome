@@ -209,10 +209,6 @@ export function accountListSubscriberPath(id: string, userId: string): string {
   return `${METFIX}/lists/${encodeURIComponent(id)}/subscribers/${encodeURIComponent(userId)}`;
 }
 
-export function accountCustomWorkoutsPath(): string {
-  return `${METFIX}/custom-workouts`;
-}
-
 export function accountContentReportsPath(): string {
   return `${METFIX}/content-reports`;
 }
@@ -234,42 +230,179 @@ export function accountShoppingListEmailPath(id: string): string {
 }
 
 /** Spark measurement history + log PR write path (same as mobile). */
+export function accountSparkUserInfoPath(): string {
+  return `${METFIX}/spark/user/info`;
+}
+
 export function accountSparkEntriesPath(): string {
   return `${METFIX}/spark/entries`;
 }
 
-export function accountMessagesConversationsPath(): string {
-  return `${BSI}/messages/conversations`;
+/** Spark measurement catalog (health / movement). */
+export function accountSparkMeasurementsPath(): string {
+  return `${METFIX}/spark/measurements`;
 }
 
-export function accountInAppNotificationsPath(): string {
-  return `${BSI}/in-app-notifications`;
+/** Spark unit catalog. */
+export function accountSparkUnitsPath(): string {
+  return `${METFIX}/spark/units`;
 }
 
-/** Hybrid meal/workout plans collection (create). */
-export function accountPlansPath(): string {
+/** Logged workouts for a date range — mobile calendar feed. */
+export function accountCalendarWorkoutsPath(): string {
+  return `${METFIX}/calendar/workouts`;
+}
+
+/** Planned (not yet logged) workouts for a date range. */
+export function accountCalendarPlannedWorkoutsPath(): string {
+  return `${METFIX}/calendar/workouts/planned`;
+}
+
+export function accountWorkoutsCollectionPath(): string {
+  return `${METFIX}/workouts`;
+}
+
+export function accountWorkoutLogPath(id: string): string {
+  return `${METFIX}/workouts/${encodeURIComponent(id)}`;
+}
+
+export function accountPlannedWorkoutPath(id: string): string {
+  return `${METFIX}/calendar/planned-workouts/${encodeURIComponent(id)}`;
+}
+
+export function accountCustomWorkoutPath(id: string): string {
+  return `${METFIX}/custom-workouts/${encodeURIComponent(id)}`;
+}
+
+export function accountCustomWorkoutsPath(): string {
+  return `${METFIX}/custom-workouts`;
+}
+
+export function accountMovementsPath(): string {
+  return `${METFIX}/movements`;
+}
+
+export function accountPlansCollectionPath(): string {
   return `${METFIX}/plans`;
-}
-
-/** Hybrid meal/workout plan library (active / inactive buckets). */
-export function accountPlansLibraryPath(): string {
-  return `${METFIX}/plans/library`;
 }
 
 export function accountPlanPath(id: string): string {
   return `${METFIX}/plans/${encodeURIComponent(id)}`;
 }
 
-export function accountPlanActivePath(id: string): string {
-  return `${METFIX}/plans/${encodeURIComponent(id)}/active`;
+export function accountPlanPublishPath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}/publish`;
 }
 
 export function accountPlanSchedulePath(id: string): string {
   return `${METFIX}/plans/${encodeURIComponent(id)}/schedule`;
 }
 
-export function accountPlanPublishPath(id: string): string {
-  return `${METFIX}/plans/${encodeURIComponent(id)}/publish`;
+export function accountPlanActivePath(id: string): string {
+  return `${METFIX}/plans/${encodeURIComponent(id)}/active`;
+}
+
+export function accountDailyFixWorkoutPath(): string {
+  return `${METFIX}/daily-fix`;
+}
+
+/** Client coaching hub — coaches + gym affiliates. */
+export function accountPtClientCoachesPath(): string {
+  return `${METFIX}/pt/client/coaches`;
+}
+
+/** Coach hub — 1:1 clients + gym affiliates. */
+export function accountPtCoachClientsPath(): string {
+  return `${METFIX}/pt/coach/clients`;
+}
+
+export function accountPtRelationshipsPath(): string {
+  return `${METFIX}/pt/relationships`;
+}
+
+export function accountPtRelationshipActionPath(
+  id: string,
+  action: "accept" | "decline" | "end",
+): string {
+  return `${METFIX}/pt/relationships/${encodeURIComponent(id)}/${action}`;
+}
+
+export function accountPtDirectoryPath(): string {
+  return `${METFIX}/pt/trainers/directory`;
+}
+
+export function accountPtCoachProfilePath(): string {
+  return `${METFIX}/pt/coach/profile`;
+}
+
+export function accountPtRelationshipNotesPath(id: string): string {
+  return `${METFIX}/coach/contexts/pt/relationships/${encodeURIComponent(id)}/notes`;
+}
+
+export function accountProgrammingSubscriptionsPath(): string {
+  return `${METFIX}/programming/me/subscriptions`;
+}
+
+export function accountProgrammingSeriesPath(): string {
+  return `${METFIX}/programming/series`;
+}
+
+export function accountProgrammingSeriesDaysPath(id: string): string {
+  return `${METFIX}/programming/series/${encodeURIComponent(id)}/days`;
+}
+
+export function accountProgrammingSubscribePath(id: string): string {
+  return `${METFIX}/programming/series/${encodeURIComponent(id)}/subscribe`;
+}
+
+export function accountProgrammingSubscriptionPath(id: string): string {
+  return `${METFIX}/programming/subscriptions/${encodeURIComponent(id)}`;
+}
+
+export function accountPlansLibraryPath(): string {
+  return `${METFIX}/plans/library`;
+}
+
+export function accountMessagesConversationsPath(): string {
+  return `${BSI}/messages/conversations`;
+}
+
+export function accountMessagesConversationPath(id: string): string {
+  return `${BSI}/messages/conversations/${encodeURIComponent(id)}`;
+}
+
+export function accountMessagesConversationMessagesPath(id: string): string {
+  return `${BSI}/messages/conversations/${encodeURIComponent(id)}/messages`;
+}
+
+export function accountMessagesConversationReadPath(id: string): string {
+  return `${BSI}/messages/conversations/${encodeURIComponent(id)}/read`;
+}
+
+export function accountMessagesDirectPath(): string {
+  return `${BSI}/messages/conversations/direct`;
+}
+
+export function accountMessagesUsersPath(): string {
+  return `${BSI}/messages/users`;
+}
+
+export function accountMessagesUsersSearchPath(): string {
+  return `${BSI}/messages/users/search`;
+}
+
+export function accountInAppNotificationsPath(): string {
+  return `${BSI}/in-app-notifications`;
+}
+
+/** Combined site/personal list; includes `unread_count` for the header bell. */
+export function accountNotificationsListPath(): string {
+  return `${BSI}/notifications`;
+}
+
+/** Hybrid meal/workout plans collection (create). */
+export function accountPlansPath(): string {
+  return `${METFIX}/plans`;
 }
 
 export function accountCustomRecipesPath(): string {
@@ -284,11 +417,6 @@ export function accountPlanAclPath(id: string): string {
   return `${METFIX}/plans/${encodeURIComponent(id)}/acl`;
 }
 
-/** Coach hub — 1:1 clients + gym affiliates (same path Body #41 uses). */
-export function accountPtCoachClientsPath(): string {
-  return `${METFIX}/pt/coach/clients`;
-}
-
 export function accountMacrosRangePath(): string {
   return `${METFIX}/macros/range`;
 }
@@ -299,4 +427,9 @@ export function accountCalendarMealPath(id: string): string {
 
 export function accountShoppingListGeneratedDatesPath(): string {
   return `${METFIX}/shopping-lists/generated-dates`;
+}
+
+/** Allowlisted `/wp-json/bsi/v1/...` suffix. The worker never builds this prefix itself. */
+export function accountBsiV1Path(suffix: string): string {
+  return `${BSI}/${suffix.replace(/^\/+/, "")}`;
 }

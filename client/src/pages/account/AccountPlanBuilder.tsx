@@ -21,9 +21,21 @@ import { metfixToolsUnlocked } from "./metfixAppTools";
 import { ProUnlockBanner } from "./ProUnlockBanner";
 import { ToolHero } from "./ToolHero";
 
+type KeptItem = {
+  item_type: string;
+  sort_order?: number;
+  label?: string | null;
+  workout_source?: string | null;
+  workout_source_id?: number | null;
+  brain_source_type?: string | null;
+  brain_source_id?: number | null;
+  relative_to_schedule_date?: boolean;
+};
+
 type DayDraft = {
   day_index: number;
   meals: Array<{ recipe_source_id: number; label: string; servings: number }>;
+  kept: KeptItem[];
 };
 
 function parseIdFromPath(path: string): number | null {
@@ -34,7 +46,7 @@ function parseIdFromPath(path: string): number | null {
 }
 
 function emptyDays(duration: number): DayDraft[] {
-  return Array.from({ length: duration }, (_, i) => ({ day_index: i, meals: [] }));
+  return Array.from({ length: duration }, (_, i) => ({ day_index: i, meals: [], kept: [] }));
 }
 
 function planToDays(plan: MealPlanSummary): DayDraft[] {
@@ -50,7 +62,19 @@ function planToDays(plan: MealPlanSummary): DayDraft[] {
         label: String(it.label ?? ""),
         servings: typeof it.servings === "number" && it.servings > 0 ? it.servings : 1,
       }));
-    days[idx] = { day_index: idx, meals };
+    const kept = (day.items ?? [])
+      .filter((it) => it.item_type !== "meal")
+      .map((it) => ({
+        item_type: String(it.item_type),
+        label: it.label ?? null,
+        workout_source: (it as { workout_source?: string | null }).workout_source ?? null,
+        workout_source_id: (it as { workout_source_id?: number | null }).workout_source_id ?? null,
+        brain_source_type: (it as { brain_source_type?: string | null }).brain_source_type ?? null,
+        brain_source_id: (it as { brain_source_id?: number | null }).brain_source_id ?? null,
+        relative_to_schedule_date:
+          (it as { relative_to_schedule_date?: boolean }).relative_to_schedule_date === true,
+      }));
+    days[idx] = { day_index: idx, meals, kept };
   }
   return days;
 }
@@ -131,7 +155,7 @@ export default function AccountPlanBuilder() {
     setDays((prev) => {
       const next = emptyDays(n);
       for (let i = 0; i < Math.min(prev.length, n); i++) {
-        next[i] = { day_index: i, meals: prev[i]?.meals ?? [] };
+        next[i] = { day_index: i, meals: prev[i]?.meals ?? [], kept: prev[i]?.kept ?? [] };
       }
       return next;
     });
@@ -179,14 +203,21 @@ export default function AccountPlanBuilder() {
       days: days.map((day) => ({
         day_index: day.day_index,
         notes: null,
-        items: day.meals.map((m, sort_order) => ({
-          item_type: "meal" as const,
-          sort_order,
-          recipe_source_type: "custom_recipe",
-          recipe_source_id: m.recipe_source_id,
-          servings: m.servings,
-          label: m.label.trim() || null,
-        })),
+        items: [
+          ...day.meals.map((m, sort_order) => ({
+            item_type: "meal" as const,
+            sort_order,
+            recipe_source_type: "custom_recipe",
+            recipe_source_id: m.recipe_source_id,
+            servings: m.servings,
+            label: m.label.trim() || null,
+          })),
+          ...day.kept.map((item, index) => ({
+            ...item,
+            sort_order: day.meals.length + index,
+            relative_to_schedule_date: item.relative_to_schedule_date || undefined,
+          })),
+        ],
       })),
     };
   }
@@ -260,7 +291,7 @@ export default function AccountPlanBuilder() {
           { label: "Recipes", value: String(recipes.length) },
         ]}
       />
-      {!unlocked ? <ProUnlockBanner /> : null}
+      {!unlocked ? <ProUnlockBanner introOffer={overview} /> : null}
       {loading ? <p className="account-muted">Loading…</p> : null}
       {error ? <p className="account-error">{error}</p> : null}
       {message ? <p className="account-muted">{message}</p> : null}

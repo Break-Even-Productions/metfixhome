@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { assetUrl } from "@/const";
 import CopyrightText from "@/components/CopyrightText";
 import { UpgradePrompt } from "@/components/UpgradePrompt";
-import { openWhopCheckout, purchaseCourseCheckout } from "@/lib/account";
+import { useCoursePurchase } from "@/lib/coursePurchase";
 import type { Course } from "@/lib/contentTypes";
 import { useCourses } from "@/hooks/useSiteContent";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -69,29 +69,9 @@ function CourseCard({
   const startLabel = course.startButtonLabel || "Start Here";
   const notifyLabel = course.notifyButtonLabel || "Notify Me";
   const tagColor = isComing ? "var(--color-muted)" : "var(--color-accent-text)";
-  const [buying, setBuying] = useState(false);
-  const [buyError, setBuyError] = useState<string | null>(null);
-  const buyInflight = useRef(false);
-
-  const onBuy = async () => {
-    if (!course.bsiPostId || buyInflight.current) return;
-    buyInflight.current = true;
-    setBuying(true);
-    setBuyError(null);
-    try {
-      const res = await purchaseCourseCheckout(course.bsiPostId, {
-        return_path: "/checkout/complete",
-      });
-      if (!openWhopCheckout(res.checkout_url)) {
-        setBuyError("Checkout unavailable. Try again.");
-      }
-    } catch {
-      setBuyError("Checkout unavailable. Try again.");
-    } finally {
-      buyInflight.current = false;
-      setBuying(false);
-    }
-  };
+  const { signedIn, buying, error: buyError, buy, emailModal } = useCoursePurchase(
+    course.bsiPostId,
+  );
 
   return (
     <div id={course.id} className={`cls-course-card${isExpanded ? " is-expanded" : ""}`}>
@@ -336,13 +316,14 @@ function CourseCard({
               flexWrap: "wrap",
             }}
           >
+            {emailModal}
             {showBuy && (
               <button
                 type="button"
                 className="btn-primary"
                 style={{ padding: "0.875rem 2rem", fontSize: "0.85rem" }}
-                disabled={buying}
-                onClick={() => void onBuy()}
+                disabled={buying || signedIn == null}
+                onClick={() => void buy()}
               >
                 {buying ? "Opening…" : startLabel === "Buy Now" ? `Buy Now · ${course.price}` : startLabel}
                 <ArrowRight size={14} />

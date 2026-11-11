@@ -19,6 +19,16 @@ vi.mock("@/contexts/JoinFlowContext", () => ({
   useJoinFlowOptional: () => null,
 }));
 
+vi.mock("@/lib/session", () => ({
+  loadMe: vi.fn(async () => ({ status: "signed_out" as const })),
+}));
+
+vi.mock("@/lib/account", () => ({
+  loadOverview: vi.fn(async () => null),
+  loadSubscriptions: vi.fn(async () => null),
+  loadUnreadNotificationCount: vi.fn(async () => ({ unread_count: 0 })),
+}));
+
 vi.mock("wouter", async () => {
   const actual = await vi.importActual<typeof import("wouter")>("wouter");
   return {

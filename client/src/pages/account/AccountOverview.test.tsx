@@ -105,17 +105,16 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     });
   });
 
-  it("shows Foundations Coach card with grant path and expires_at in mono", async () => {
+  it("links Foundations Seminar to the courses tab", async () => {
     render(
       <Router>
         <AccountOverview />
       </Router>,
     );
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: /Foundations Coach/i })).toBeTruthy(),
+      expect(screen.getByRole("link", { name: /Foundations Seminar/i })).toBeTruthy(),
     );
-    expect(screen.getByText(/in-person seminar check-in/i)).toBeTruthy();
-    expect(screen.getByText(/Expires/i)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /Foundations Coach/i })).toBeNull();
   });
 
   it("DP-T-COACH3: none state shows checklist; Path B partial tick only first box", async () => {
@@ -157,14 +156,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       </Router>,
     );
     await waitFor(() =>
-      expect(screen.getByText(/Attend an in-person seminar \(checked in\)/i)).toBeTruthy(),
+      expect(screen.getByRole("link", { name: /Foundations Seminar/i })).toBeTruthy(),
     );
-    expect(screen.getByText(/Complete MetFix Essentials online/i)).toBeTruthy();
-    expect(screen.getByText(/Claim MetFix Essentials certificate/i)).toBeTruthy();
-    const done = document.querySelectorAll('.account-checklist li[data-done="true"]');
-    expect(done.length).toBe(1);
-    expect(done[0]!.textContent).toMatch(/Complete MetFix Essentials online/);
-    expect(document.body.textContent).not.toMatch(/Foundations Coach · Active/);
+    expect(screen.queryByText(/Attend an in-person seminar \(checked in\)/i)).toBeNull();
   });
 
   it("DP-T-UI2: CSS shows sidebar at ≥1024 and mobile nav below", () => {
@@ -264,16 +258,26 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(screen.getByRole("link", { name: /PR tracking/i }).getAttribute("href")).toBe(
       "/account/benchmarks",
     );
+    expect(screen.getByRole("link", { name: /Workout feed/i }).getAttribute("href")).toBe(
+      "/account/workouts",
+    );
+    expect(screen.getByRole("link", { name: /Coaching/i }).getAttribute("href")).toBe(
+      "/account/coaching",
+    );
+    expect(document.querySelector('[data-tool="body"] .account-body-watermark')).toBeTruthy();
     expect(screen.getByRole("link", { name: /My Data \/ Spark/i }).getAttribute("href")).toBe(
       "/account/spark",
     );
-    expect(screen.getByRole("link", { name: /Inbox/i }).getAttribute("href")).toBe(
-      "/account/inbox",
-    );
-    expect(screen.getAllByText("No web page yet").length).toBeGreaterThan(0);
+    expect(
+      document.querySelector('[data-tool="inbox"]')?.getAttribute("href"),
+    ).toBe("/account/messages");
+    expect(screen.queryByText("No web page yet")).toBeNull();
     expect(screen.queryByText("MetFix Admin")).toBeNull();
     expect(document.querySelector('[data-tool="workout-feed"]')?.getAttribute("data-state")).toBe(
-      "available",
+      "open",
+    );
+    expect(document.querySelector('[data-tool="coaching"]')?.getAttribute("data-state")).toBe(
+      "open",
     );
     expect(document.querySelector('[data-tool="belly"]')).toBeTruthy();
     expect(document.querySelector('[data-tool="body"]')).toBeTruthy();
@@ -390,6 +394,7 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       "/account/favorites",
       "/account/organization",
       "/account/referrals",
+      "/account/messages",
       "/account/notifications",
       "/account/privacy",
     ]);

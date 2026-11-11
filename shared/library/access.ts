@@ -67,6 +67,14 @@ export function isLockedCard(r: LibraryResource): boolean {
 }
 
 /**
+ * show_same 3 and 4: first paragraph of the body, with or without the preview video.
+ * Same-body (2) and custom preview copy (0, 1) are not this fade.
+ */
+export function isFirstParagraphPreview(showSame: number): boolean {
+  return showSame === 3 || showSame === 4;
+}
+
+/**
  * Public BSI page HTML for legacy membership shortcodes
  * (`bsi-society-member`, `med-member-only`, `metfix-only`, …).
  * The resource search API still reports `access: "full"` for these pages.
@@ -83,6 +91,13 @@ export function htmlShowsMembershipGate(html: string): boolean {
 /** Open / free rail: full access and not exclusive. */
 export function isFreeOpen(r: LibraryResource): boolean {
   return r.access.access === "full" && !r.access.is_exclusive && !r.access.has_content_access;
+}
+
+/** Daily Fix rows belong on /the-daily-fix, not the Resource Library rails. */
+export function isDailyFixResource(
+  r: Pick<LibraryResource, "type"> & { daily_fix_date?: string | null },
+): boolean {
+  return r.type === "daily_fix" || Boolean(r.daily_fix_date);
 }
 
 export function joinCtaHref(): string {

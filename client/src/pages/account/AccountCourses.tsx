@@ -405,6 +405,37 @@ export default function AccountCourses() {
             )}
           </section>
 
+          <section className="account-card" aria-labelledby="certificates-heading">
+            <h2 id="certificates-heading">Certificates</h2>
+            {(ltv?.claimed_certificates.length ?? 0) === 0 && archivedCourses.length === 0 ? (
+              <p className="account-muted">No certificates claimed yet.</p>
+            ) : (
+              <ul>
+                {(ltv?.claimed_certificates ?? []).map((cert) => (
+                  <li key={`${cert.course_id ?? cert.course_slug ?? cert.course_title}`}>
+                    <strong>{cert.course_title ?? cert.course_slug ?? "Certificate"}</strong>
+                    {cert.claimed_at ? (
+                      <span className="account-muted">
+                        {" "}
+                        · claimed {new Date(cert.claimed_at).toLocaleDateString()}
+                      </span>
+                    ) : null}
+                    {cert.claim_method ? (
+                      <span className="account-muted"> · {cert.claim_method}</span>
+                    ) : null}
+                    {cert.certificate_url ? (
+                      <p>
+                        <a href={cert.certificate_url} rel="noreferrer">
+                          View certificate
+                        </a>
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {archivedCourses.length > 0 ? (
             <section className="account-card" aria-labelledby="claimed-courses-heading">
               <h2 id="claimed-courses-heading">Certificates claimed</h2>

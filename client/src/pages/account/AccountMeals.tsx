@@ -468,7 +468,7 @@ export default function AccountMeals() {
             </Link>
           </section>
 
-          <ProUnlockBanner />
+          <ProUnlockBanner introOffer={overview} />
         </div>
       ) : (
         <div className="dash-panel dash-meals">

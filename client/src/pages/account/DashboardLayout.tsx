@@ -13,6 +13,11 @@ import {
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
+import {
+  isProIntroOfferEligible,
+  proMembershipCta,
+  proSidebarUnlockCopy,
+} from "@shared/account/pro-intro-offer";
 import { staffRoleLabels } from "./roleLabels";
 import { onboardingRoleLabel } from "./onboardingRoles";
 import { metfixToolsUnlocked } from "./metfixAppTools";
@@ -41,8 +46,9 @@ export const ACCOUNT_NAV = [
     always: false,
     referrals: true,
   },
+  { href: "/account/messages", label: "Messages", always: true },
   { href: "/account/notifications", label: "Notifications", always: true },
-  { href: "/account/privacy", label: "Privacy & Security", always: true },
+  { href: "/account/privacy", label: "Settings", always: true },
 ] as const;
 
 export function accountNavVisible(
@@ -167,7 +173,18 @@ export default function DashboardLayout({
         location.startsWith("/account/shopping-cart") ||
         location.startsWith("/account/my-meals") ||
         location.startsWith("/account/benchmarks") ||
+        location.startsWith("/account/prs") ||
+        location.startsWith("/account/workouts") ||
+        location.startsWith("/account/plans") ||
         location.startsWith("/account/coaching")
+      );
+    }
+    if (href === "/account/messages") {
+      return (
+        location === "/account/messages" ||
+        location.startsWith("/account/messages/") ||
+        location === "/account/chat" ||
+        location.startsWith("/account/chat/")
       );
     }
     return location === href || location.startsWith(`${href}/`);
@@ -233,10 +250,16 @@ export default function DashboardLayout({
               <div className="account-sidebar-unlock">
                 <p className="account-sidebar-unlock__title">Unlock MetFix Pro</p>
                 <p className="account-sidebar-unlock__copy">
-                  Tools, tracking &amp; classes. First month free.
+                  {proSidebarUnlockCopy(
+                    isProIntroOfferEligible(overview) &&
+                      isProIntroOfferEligible(subs),
+                  )}
                 </p>
                 <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                  Start my free month
+                  {proMembershipCta(
+                    isProIntroOfferEligible(overview) &&
+                      isProIntroOfferEligible(subs),
+                  )}
                 </Link>
               </div>
             ) : null}

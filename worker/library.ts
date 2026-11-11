@@ -28,6 +28,7 @@ import {
   libraryFiltersCacheKey,
   libraryPopularCacheKey,
   librarySearchCacheKey,
+  libraryViewerCacheSalt,
   lockedDetailShell,
   mapDetailBody,
   mapFiltersPayload,
@@ -46,10 +47,10 @@ import {
   type LibrarySearchBody,
   type ResourceType,
 } from "../shared/library";
-import { parseCookies, SID_COOKIE } from "./auth/cookies";
+import { parseCookies, SID_COOKIE, sidCookieClear } from "./auth/cookies";
 import {
+  isInvalidGrantSignOut,
   resolveActingSession,
-  runUserBsiCall,
   type ActingContext,
 } from "./auth/acting";
 import { finishDetailPageHtml } from "./detailHtml";
@@ -120,9 +121,10 @@ function resourcesBase(env: Env, opts?: { baseUrl?: string }): string {
 function apiOkHeaders(privateCache: boolean): HeadersInit {
   return {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": privateCache
-      ? "private, max-age=30"
-      : "public, max-age=60",
+    // Vary on Cookie so a public anon document is not reused after login,
+    // and a private member document is not reused after logout.
+    Vary: "Cookie",
+    "Cache-Control": privateCache ? "private, no-store" : "public, max-age=60",
     "X-Content-Type-Options": "nosniff",
   };
 }
@@ -269,6 +271,14 @@ async function htmlOk(
   if (cc && /s-maxage/i.test(cc)) {
     headers.delete("Cache-Control");
   }
+  // The HTML document carries the same session split as the JSON API.
+  // A shell cached for anon must not be replayed for a signed-in member.
+  headers.set("Vary", "Cookie");
+  if (parseCookies(request.headers.get("Cookie"))[SID_COOKIE]) {
+    headers.set("Cache-Control", "private, no-store");
+  } else {
+    headers.set("Cache-Control", "public, max-age=60");
+  }
   if (isHead) return new Response(null, { status: 200, headers });
   return new Response(finished.body, { status: 200, headers });
 }
@@ -291,24 +301,100 @@ function libraryHeadPlan(head: LibraryHead): HeadMode {
   };
 }
 
-/** Optional session — never 401 for anonymous library browse. */
+type LibrarySession = {
+  acting: ActingContext | null;
+  /**
+   * Refresh grant was invalid_grant. The session DO already deleted the record.
+   * Forward Set-Cookie so the browser drops the dead sid. A library 401 does not.
+   */
+  clearCookie: boolean;
+};
+
+/**
+ * Optional session — never 401 the browser for library browse.
+ * Resolves (and, when the access token is inside the refresh window, refreshes)
+ * once per request. Filters and archive legs reuse `acting.access`.
+ */
 async function optionalActing(
   request: Request,
   env: Env,
   fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
-): Promise<ActingContext | null> {
+): Promise<LibrarySession> {
   const cookies = parseCookies(request.headers.get("Cookie"));
-  if (!cookies[SID_COOKIE]) return null;
+  if (!cookies[SID_COOKIE]) return { acting: null, clearCookie: false };
   const resolved = await resolveActingSession(request, env, fetchImpl, opts);
-  if (resolved instanceof Response) return null;
-  return resolved;
+  if (resolved instanceof Response) {
+    return {
+      acting: null,
+      clearCookie: isInvalidGrantSignOut(resolved),
+    };
+  }
+  return { acting: resolved, clearCookie: false };
+}
+
+function withClearedSession(response: Response, clearCookie: boolean): Response {
+  if (!clearCookie) return response;
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", sidCookieClear());
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+type LibraryCachePlan = {
+  /** Null → anon key. Ignored when `bypass` is set. */
+  salt: string | null;
+  /**
+   * Session cookie is present but the session did not resolve.
+   * Do not read or write the anon entry — a new session must not receive it.
+   * #39 salt stays user + session + access-token hash. Member bodies stay off anon.
+   */
+  bypass: boolean;
+  /** Client Cache-Control: private no-store (member or unresolved session). */
+  private: boolean;
+};
+
+/** FNV-1a. Keeps the bearer token out of the Cache API key. */
+function entitlementHash(access: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < access.length; i++) {
+    h ^= access.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
 }
 
 function userSalt(acting: ActingContext | null): string | null {
   if (!acting) return null;
-  const id = acting.record.bsi_user_id;
-  return id && id !== "0" ? `u${id}` : acting.hex.slice(0, 16);
+  const session = (acting.hex || acting.sid).slice(0, 16);
+  return libraryViewerCacheSalt({
+    userId: acting.record.bsi_user_id,
+    sessionId: session,
+    entitlement: entitlementHash(acting.access || ""),
+  });
+}
+
+function libraryCachePlan(
+  request: Request,
+  acting: ActingContext | null,
+): LibraryCachePlan {
+  const hasSid = Boolean(parseCookies(request.headers.get("Cookie"))[SID_COOKIE]);
+  const salt = userSalt(acting);
+  if (hasSid && salt == null) {
+    return { salt: null, bypass: true, private: true };
+  }
+  return { salt, bypass: false, private: salt != null };
+}
+
+function cacheKeyFor(
+  plan: LibraryCachePlan,
+  build: (salt: string | null) => Request,
+): Request | null {
+  if (plan.bypass) return null;
+  return build(plan.salt);
 }
 
 function bsiHeaders(
@@ -412,6 +498,37 @@ async function fetchBsi(
     console.info("library:throw");
     return { kind: "throw" };
   }
+}
+
+/**
+ * One access token for every leg in this request — do not call runUserBsiCall.
+ * A library 401 is not a dead session: retry once with the API key and keep the sid.
+ * The public body is not written into the member or anonymous cache.
+ */
+async function fetchWithSharedAccess(
+  url: string,
+  apiKey: string,
+  accessToken: string | null,
+  fetchImpl: FetchImpl,
+  env: Env | undefined,
+  timeoutMs: number,
+): Promise<{ upstream: UpstreamResult; fellBack: boolean }> {
+  const first = await fetchBsi(
+    url,
+    apiKey,
+    accessToken,
+    fetchImpl,
+    env,
+    timeoutMs,
+  );
+  const bearerRejected =
+    accessToken != null &&
+    accessToken !== "" &&
+    first.kind === "http" &&
+    first.status === 401;
+  if (!bearerRejected) return { upstream: first, fellBack: false };
+  const second = await fetchBsi(url, apiKey, null, fetchImpl, env, timeoutMs);
+  return { upstream: second, fellBack: true };
 }
 
 /** Fresh only when header parses to a finite instant strictly later than now. */
@@ -656,6 +773,7 @@ async function getSearch(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
@@ -668,10 +786,11 @@ async function getSearch(
     return { kind: "nokey" };
   }
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = librarySearchCacheKey(queryString, salt);
-  const hit = await matchSearchCache(cache, keyReq);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => librarySearchCacheKey(queryString, salt));
+  const hit = keyReq
+    ? await matchSearchCache(cache, keyReq)
+    : ({ kind: "miss" } as const);
   if (hit.kind === "fresh") {
     return {
       kind: "ok",
@@ -683,24 +802,15 @@ async function getSearch(
   const stale = hit.kind === "stale" ? hit : null;
 
   const url = `${resourcesBase(env, opts)}/search?${queryString}`;
-
-  const call = (access: string | null) =>
-    fetchBsi(url, key, access, fetchImpl, env, BSI_TIMEOUT_SEARCH_MS);
-
-  let upstream: UpstreamResult;
-  if (acting) {
-    const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
-      call(access),
-    );
-    if (ran instanceof Response) {
-      return stale
-        ? serveStaleSearch(stale, privateCache, "search_acting")
-        : { kind: "unavailable" };
-    }
-    upstream = ran.result;
-  } else {
-    upstream = await call(null);
-  }
+  const fetched = await fetchWithSharedAccess(
+    url,
+    key,
+    acting?.access ?? null,
+    fetchImpl,
+    env,
+    BSI_TIMEOUT_SEARCH_MS,
+  );
+  const upstream = fetched.upstream;
 
   if (
     upstream.kind === "timeout" ||
@@ -737,22 +847,24 @@ async function getSearch(
       : { kind: "unavailable" };
   }
 
-  if (!acting) {
+  if (!acting || fetched.fellBack) {
     await flagMembershipGatedPages(mapped, key, fetchImpl, env);
   }
 
   const jsonText = JSON.stringify(mapped);
   const fresh = privateCache ? SEARCH_FRESH_USER : SEARCH_FRESH_ANON;
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    fresh,
-    SEARCH_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq && !fetched.fellBack) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      fresh,
+      SEARCH_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -764,6 +876,7 @@ async function getPopular(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
@@ -776,10 +889,11 @@ async function getPopular(
     return { kind: "nokey" };
   }
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = libraryPopularCacheKey(queryString, salt);
-  const hit = await matchSearchCache(cache, keyReq);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => libraryPopularCacheKey(queryString, salt));
+  const hit = keyReq
+    ? await matchSearchCache(cache, keyReq)
+    : ({ kind: "miss" } as const);
   if (hit.kind === "fresh") {
     return {
       kind: "ok",
@@ -791,24 +905,15 @@ async function getPopular(
   const stale = hit.kind === "stale" ? hit : null;
 
   const url = `${resourcesBase(env, opts)}/popular?${queryString}`;
-
-  const call = (access: string | null) =>
-    fetchBsi(url, key, access, fetchImpl, env, BSI_TIMEOUT_POPULAR_MS);
-
-  let upstream: UpstreamResult;
-  if (acting) {
-    const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
-      call(access),
-    );
-    if (ran instanceof Response) {
-      return stale
-        ? serveStaleSearch(stale, privateCache, "popular_acting")
-        : { kind: "unavailable" };
-    }
-    upstream = ran.result;
-  } else {
-    upstream = await call(null);
-  }
+  const fetched = await fetchWithSharedAccess(
+    url,
+    key,
+    acting?.access ?? null,
+    fetchImpl,
+    env,
+    BSI_TIMEOUT_POPULAR_MS,
+  );
+  const upstream = fetched.upstream;
 
   if (
     upstream.kind === "timeout" ||
@@ -853,16 +958,18 @@ async function getPopular(
   // an already-expensive ranking call. Search still flags gated pages.
   const jsonText = JSON.stringify(mapped);
   const fresh = privateCache ? POPULAR_FRESH_USER : POPULAR_FRESH_ANON;
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    fresh,
-    POPULAR_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq && !fetched.fellBack) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      fresh,
+      POPULAR_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -873,6 +980,7 @@ async function getFilters(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibraryFiltersBody; jsonText: string; private: boolean }
@@ -882,11 +990,10 @@ async function getFilters(
   const key = readApiKey(env);
   if (key == null) return { kind: "nokey" };
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = libraryFiltersCacheKey(salt);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => libraryFiltersCacheKey(salt));
   let stale: { body: LibraryFiltersBody; jsonText: string } | null = null;
-  const cached = await cache.match(keyReq);
+  const cached = keyReq ? await cache.match(keyReq) : undefined;
   if (cached) {
     try {
       const text = await cached.clone().text();
@@ -917,12 +1024,20 @@ async function getFilters(
   const access = acting?.access ?? null;
   const results = await Promise.all(
     paths.map((u) =>
-      fetchBsi(u, key, access, fetchImpl, env, BSI_TIMEOUT_FILTERS_MS),
+      fetchWithSharedAccess(
+        u,
+        key,
+        access,
+        fetchImpl,
+        env,
+        BSI_TIMEOUT_FILTERS_MS,
+      ),
     ),
   );
+  const fellBack = results.some((result) => result.fellBack);
 
   const parsed: unknown[] = [];
-  for (const upstream of results) {
+  for (const { upstream } of results) {
     if (upstream.kind !== "http" || upstream.status !== 200) {
       console.info("library:filters_upstream");
       if (stale) {
@@ -958,16 +1073,18 @@ async function getFilters(
     categories: parsed[2],
   });
   const jsonText = JSON.stringify(mapped);
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    FILTERS_FRESH,
-    FILTERS_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq && !fellBack) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      FILTERS_FRESH,
+      FILTERS_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return { kind: "ok", body: mapped, jsonText, private: privateCache };
 }
 
@@ -980,6 +1097,7 @@ async function getDetail(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibraryDetailBody; jsonText: string; private: boolean }
@@ -1031,15 +1149,14 @@ async function getDetail(
     return { kind: "ok", body, jsonText, private: false };
   }
 
-  const salt = userSalt(acting);
-  const privateCache = salt != null;
-  const keyReq = libraryDetailCacheKey(type, id, salt);
+  const privateCache = plan.private;
+  const keyReq = cacheKeyFor(plan, (salt) => libraryDetailCacheKey(type, id, salt));
   let stale: {
     kind: "ok" | "locked";
     body: LibraryDetailBody;
     jsonText: string;
   } | null = null;
-  const cached = await cache.match(keyReq);
+  const cached = keyReq ? await cache.match(keyReq) : undefined;
   if (cached) {
     try {
       const text = await cached.clone().text();
@@ -1083,19 +1200,15 @@ async function getDetail(
     url = `${base}/${id}`;
   }
 
-  const call = (access: string | null) =>
-    fetchBsi(url, key, access, fetchImpl, env, BSI_TIMEOUT_DETAIL_MS);
-
-  let upstream: UpstreamResult;
-  if (acting) {
-    const ran = await runUserBsiCall(acting, env, fetchImpl, opts, (access) =>
-      call(access),
-    );
-    if (ran instanceof Response) return serveDetailStale("detail_acting");
-    upstream = ran.result;
-  } else {
-    upstream = await call(null);
-  }
+  const fetched = await fetchWithSharedAccess(
+    url,
+    key,
+    acting?.access ?? null,
+    fetchImpl,
+    env,
+    BSI_TIMEOUT_DETAIL_MS,
+  );
+  const upstream = fetched.upstream;
 
   if (
     upstream.kind === "timeout" ||
@@ -1116,16 +1229,18 @@ async function getDetail(
     const body: LibraryDetailBody = { resource: shell };
     const jsonText = JSON.stringify(body);
     const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
-    await storeMapped(
-      cache,
-      keyReq,
-      jsonText,
-      fresh,
-      DETAIL_STORE,
-      putMode,
-      ctx,
-      privateCache,
-    );
+    if (keyReq && !fetched.fellBack) {
+      await storeMapped(
+        cache,
+        keyReq,
+        jsonText,
+        fresh,
+        DETAIL_STORE,
+        putMode,
+        ctx,
+        privateCache,
+      );
+    }
     return { kind: "locked", body, jsonText, private: privateCache };
   }
 
@@ -1152,16 +1267,18 @@ async function getDetail(
       if (alt) {
         const jsonText = JSON.stringify(alt);
         const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
-        await storeMapped(
-          cache,
-          keyReq,
-          jsonText,
-          fresh,
-          DETAIL_STORE,
-          putMode,
-          ctx,
-          privateCache,
-        );
+        if (keyReq && !fetched.fellBack) {
+          await storeMapped(
+            cache,
+            keyReq,
+            jsonText,
+            fresh,
+            DETAIL_STORE,
+            putMode,
+            ctx,
+            privateCache,
+          );
+        }
         return {
           kind: alt.resource.locked ? "locked" : "ok",
           body: alt,
@@ -1175,16 +1292,18 @@ async function getDetail(
 
   const jsonText = JSON.stringify(mapped);
   const fresh = privateCache ? DETAIL_FRESH_USER : DETAIL_FRESH_ANON;
-  await storeMapped(
-    cache,
-    keyReq,
-    jsonText,
-    fresh,
-    DETAIL_STORE,
-    putMode,
-    ctx,
-    privateCache,
-  );
+  if (keyReq && !fetched.fellBack) {
+    await storeMapped(
+      cache,
+      keyReq,
+      jsonText,
+      fresh,
+      DETAIL_STORE,
+      putMode,
+      ctx,
+      privateCache,
+    );
+  }
   return {
     kind: mapped.resource.locked ? "locked" : "ok",
     body: mapped,
@@ -1252,6 +1371,7 @@ async function getArchive(
   ctx: ExecutionContext,
   putMode: CachePutMode,
   acting: ActingContext | null,
+  plan: LibraryCachePlan,
   opts?: { baseUrl?: string },
 ): Promise<
   | { kind: "ok"; body: LibrarySearchBody; jsonText: string; private: boolean }
@@ -1265,12 +1385,13 @@ async function getArchive(
     ctx,
     putMode,
     acting,
+    plan,
     opts,
   );
   if (filters.kind !== "ok") return filters;
 
   const legs = archiveSearchLegs(filters.body);
-  const privateCache = userSalt(acting) != null;
+  const privateCache = plan.private;
   if (legs.length === 0) {
     const body: LibrarySearchBody = {
       resources: [],
@@ -1288,7 +1409,17 @@ async function getArchive(
     legs.map(async (leg) => {
       const qs = archiveLegQuery(limit, offset, leg);
       if (qs == null) return { kind: "unavailable" as const };
-      return getSearch(qs, env, fetchImpl, cache, ctx, putMode, acting, opts);
+      return getSearch(
+        qs,
+        env,
+        fetchImpl,
+        cache,
+        ctx,
+        putMode,
+        acting,
+        plan,
+        opts,
+      );
     }),
   );
   if (results.some((result) => result.kind !== "ok"))
@@ -1356,7 +1487,11 @@ export async function handleLibraryApi(
   const url = new URL(request.url);
   const path = url.pathname;
 
-  const acting = await optionalActing(request, env, fetchImpl, opts);
+  const session = await optionalActing(request, env, fetchImpl, opts);
+  const acting = session.acting;
+  const plan = libraryCachePlan(request, acting);
+  const finish = (response: Response) =>
+    withClearedSession(response, session.clearCookie);
 
   if (
     path === "/api/library/exclusive/levels" ||
@@ -1376,6 +1511,7 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
@@ -1389,7 +1525,7 @@ export async function handleLibraryApi(
 
   if (path === "/api/library/search" || path === "/api/library/search/") {
     const qs = buildSearchUpstreamQuery(url.searchParams);
-    if (qs == null) return badRequestJson(isHead);
+    if (qs == null) return finish(badRequestJson(isHead));
     const result = await getSearch(
       qs,
       env,
@@ -1398,19 +1534,20 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
       const headers = new Headers(apiOkHeaders(result.private));
-      if (isHead) return new Response(null, { status: 200, headers });
-      return new Response(result.jsonText, { status: 200, headers });
+      if (isHead) return finish(new Response(null, { status: 200, headers }));
+      return finish(new Response(result.jsonText, { status: 200, headers }));
     }
-    return unavailableJson(isHead);
+    return finish(unavailableJson(isHead));
   }
 
   if (path === "/api/library/popular" || path === "/api/library/popular/") {
     const qs = buildPopularUpstreamQuery(url.searchParams);
-    if (qs == null) return badRequestJson(isHead);
+    if (qs == null) return finish(badRequestJson(isHead));
     const result = await getPopular(
       qs,
       env,
@@ -1419,14 +1556,15 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
       const headers = new Headers(apiOkHeaders(result.private));
-      if (isHead) return new Response(null, { status: 200, headers });
-      return new Response(result.jsonText, { status: 200, headers });
+      if (isHead) return finish(new Response(null, { status: 200, headers }));
+      return finish(new Response(result.jsonText, { status: 200, headers }));
     }
-    return unavailableJson(isHead);
+    return finish(unavailableJson(isHead));
   }
 
   if (path === "/api/library/filters" || path === "/api/library/filters/") {
@@ -1437,19 +1575,20 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
       const headers = new Headers(apiOkHeaders(result.private));
-      if (isHead) return new Response(null, { status: 200, headers });
-      return new Response(result.jsonText, { status: 200, headers });
+      if (isHead) return finish(new Response(null, { status: 200, headers }));
+      return finish(new Response(result.jsonText, { status: 200, headers }));
     }
-    return unavailableJson(isHead);
+    return finish(unavailableJson(isHead));
   }
 
   if (path === "/api/library/archive" || path === "/api/library/archive/") {
     const page = archivePage(url.searchParams);
-    if (page == null) return badRequestJson(isHead);
+    if (page == null) return finish(badRequestJson(isHead));
     const result = await getArchive(
       page.limit,
       page.offset,
@@ -1459,14 +1598,15 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok") {
       const headers = new Headers(apiOkHeaders(result.private));
-      if (isHead) return new Response(null, { status: 200, headers });
-      return new Response(result.jsonText, { status: 200, headers });
+      if (isHead) return finish(new Response(null, { status: 200, headers }));
+      return finish(new Response(result.jsonText, { status: 200, headers }));
     }
-    return unavailableJson(isHead);
+    return finish(unavailableJson(isHead));
   }
 
   const itemMatch = path.match(/^\/api\/library\/item\/([^/]+)\/([^/]+)\/?$/);
@@ -1474,7 +1614,7 @@ export async function handleLibraryApi(
     const typePart = itemMatch[1]!;
     const idPart = itemMatch[2]!;
     if (!isResourceType(typePart) || !isValidLibraryId(idPart)) {
-      return notFoundJson(isHead);
+      return finish(notFoundJson(isHead));
     }
     const result = await getDetail(
       typePart,
@@ -1485,18 +1625,19 @@ export async function handleLibraryApi(
       ctx,
       "waitUntil",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok" || result.kind === "locked") {
       const headers = new Headers(apiOkHeaders(result.private));
-      if (isHead) return new Response(null, { status: 200, headers });
-      return new Response(result.jsonText, { status: 200, headers });
+      if (isHead) return finish(new Response(null, { status: 200, headers }));
+      return finish(new Response(result.jsonText, { status: 200, headers }));
     }
-    if (result.kind === "not_found") return notFoundJson(isHead);
-    return unavailableJson(isHead);
+    if (result.kind === "not_found") return finish(notFoundJson(isHead));
+    return finish(unavailableJson(isHead));
   }
 
-  return notFoundJson(isHead);
+  return finish(notFoundJson(isHead));
 }
 
 /** HTML: GET|HEAD /library and /library/:type/:id */
@@ -1521,25 +1662,29 @@ export async function handleLibraryHtml(
     return redirectResponse(`/library/${trail[1]}/${trail[2]}${url.search}`);
   }
 
-  const acting = await optionalActing(request, env, fetchImpl, opts);
+  const session = await optionalActing(request, env, fetchImpl, opts);
+  const acting = session.acting;
+  const plan = libraryCachePlan(request, acting);
+  const finish = (response: Response) =>
+    withClearedSession(response, session.clearCookie);
 
   if (path === "/library") {
     const head = buildLibraryHead({ kind: "hub" });
-    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+    return finish(await htmlOk(request, env, libraryHeadPlan(head), isHead));
   }
 
   // SR18 / E1: SPA search page (not a resource type/id). Same shell as hub.
   if (path === "/library/search") {
     const head = buildLibraryHead({ kind: "hub" });
-    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+    return finish(await htmlOk(request, env, libraryHeadPlan(head), isHead));
   }
 
   const topicRoot = path.match(/^\/topic\/([^/]+)$/);
   if (topicRoot) {
     const slug = topicRoot[1]!;
-    if (!SLUG_RE.test(slug)) return htmlNotFound(request, env);
+    if (!SLUG_RE.test(slug)) return finish(await htmlNotFound(request, env));
     const head = buildLibraryHead({ kind: "hub" });
-    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+    return finish(await htmlOk(request, env, libraryHeadPlan(head), isHead));
   }
 
   const taxonomy = path.match(
@@ -1547,9 +1692,9 @@ export async function handleLibraryHtml(
   );
   if (taxonomy) {
     const slug = taxonomy[2]!;
-    if (!SLUG_RE.test(slug)) return htmlNotFound(request, env);
+    if (!SLUG_RE.test(slug)) return finish(await htmlNotFound(request, env));
     const head = buildLibraryHead({ kind: "hub" });
-    return htmlOk(request, env, libraryHeadPlan(head), isHead);
+    return finish(await htmlOk(request, env, libraryHeadPlan(head), isHead));
   }
 
   const detail = path.match(/^\/library\/([^/]+)\/([^/]+)$/);
@@ -1557,7 +1702,7 @@ export async function handleLibraryHtml(
     const typePart = detail[1]!;
     const idPart = detail[2]!;
     if (!isResourceType(typePart) || !isValidLibraryId(idPart)) {
-      return htmlNotFound(request, env);
+      return finish(await htmlNotFound(request, env));
     }
     const result = await getDetail(
       typePart,
@@ -1568,6 +1713,7 @@ export async function handleLibraryHtml(
       ctx,
       "await",
       acting,
+      plan,
       opts,
     );
     if (result.kind === "ok" || result.kind === "locked") {
@@ -1581,11 +1727,11 @@ export async function handleLibraryHtml(
         permalink: r.permalink,
         image: r.image,
       });
-      return htmlOk(request, env, libraryHeadPlan(head), isHead);
+      return finish(await htmlOk(request, env, libraryHeadPlan(head), isHead));
     }
-    if (result.kind === "not_found") return htmlNotFound(request, env);
-    return htmlServiceUnavailable(request, env, isHead);
+    if (result.kind === "not_found") return finish(await htmlNotFound(request, env));
+    return finish(await htmlServiceUnavailable(request, env, isHead));
   }
 
-  return htmlNotFound(request, env);
+  return finish(await htmlNotFound(request, env));
 }

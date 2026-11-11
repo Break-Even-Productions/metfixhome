@@ -15,6 +15,7 @@ import {
   csrfSid,
   hOk,
   ORIGIN,
+  sessionBlob,
   setupAuthHooks,
   type Harness,
 } from "../tools/pr2/harness/realauth-harness";
@@ -276,7 +277,7 @@ describe("worker/account routes", () => {
     assertNoStore(ok);
   });
 
-  it("DP-T-1 overview DTO includes canonical_tier + foundations_coach 7 keys", async () => {
+  it("DP-T-1 overview DTO includes canonical_tier + foundations_coach keys", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path }) => {
@@ -299,12 +300,15 @@ describe("worker/account routes", () => {
     expect(Object.keys(body.foundations_coach).sort()).toEqual(
       [
         "active",
+        "discount_codes",
         "expires_at",
         "grant_reason",
         "granted_at",
         "metfix_essentials_certificate_claimed",
         "metfix_essentials_completed",
         "seminar_checked_in",
+        "seminar_date",
+        "seminar_name",
       ].sort(),
     );
     expect(recorded.length).toBe(1);
@@ -706,6 +710,108 @@ describe("worker/account routes", () => {
     const body = (await ok.json()) as { items: Array<{ amount_cents: number }> };
     expect(body.items[0]!.amount_cents).toBe(1234);
     expect(formatUsdFromCents(1234)).toBe("$12.34");
+  });
+
+  it("DP-T-4b maps live me/payments rows into the billing history list", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/payments")) {
+          return Response.json({
+            items: [
+              {
+                source: "stripe",
+                id: "p_9",
+                date: "2026-03-01T00:00:00.000Z",
+                amount: 2500,
+                currency: "usd",
+                type: "subscription",
+                status: "paid",
+                invoice_url: "https://billing.stripe.com/r/1",
+                items: [{ name: "MetFix Pro" }],
+              },
+              {
+                source: "woo",
+                id: "w_3",
+                date: "2026-02-01T00:00:00.000Z",
+                amount: 1000,
+                currency: "usd",
+                type: "order",
+                status: "paid",
+                invoice_url: "https://example.com/order",
+                items: [{ name: "Seminar" }],
+              },
+            ],
+            total: 2,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/payments",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{
+        id: string;
+        created_at: string;
+        description: string;
+        provider: string;
+        amount_cents: number;
+        receipt_url?: string;
+      }>;
+    };
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toMatchObject({
+      id: "p_9",
+      created_at: "2026-03-01T00:00:00.000Z",
+      description: "MetFix Pro",
+      provider: "stripe",
+      amount_cents: 2500,
+      receipt_url: "https://billing.stripe.com/r/1",
+    });
+    expect(body.items[1]?.provider).toBe("woo");
+    expect(body.items[1]?.description).toBe("Seminar");
+    expect(body.items[1]?.receipt_url).toBeUndefined();
+  });
+
+  it("AFF proxies affiliate capabilities and rejects unknown affiliate paths", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/affiliates/3/me/capabilities")) {
+          return Response.json({
+            role: "owner",
+            permissions: { can_edit_affiliate: true },
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const ok = await callAccount(
+      h,
+      "/api/account/affiliates/3/me/capabilities",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { role: string };
+    expect(body.role).toBe("owner");
+    const hit = recorded.find((row) => row.url.includes("/affiliates/3/me/capabilities"));
+    expect(hit?.url).toContain("/wp-json/bsi/v1/affiliates/3/me/capabilities");
+    expect(hit?.headers.authorization).toMatch(/^Bearer /);
+
+    const missing = await callAccount(
+      h,
+      "/api/account/affiliates/3/not-a-tool",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(missing.status).toBe(404);
   });
 
   it("DP-T-5 / DP-T-CERT3 LTV300 spend + alias (legacy claim-certificate route removed)", async () => {
@@ -1141,30 +1247,31 @@ describe("worker/account routes", () => {
           });
         }
         if (path.includes("/spark/pr-overview")) {
+          // Mirror live BSI: merged `items` with stable id on `id` + `title`.
           return Response.json({
-            workout_benchmarks: [
+            items: [
               {
-                name: "Fran",
+                title: "Fran",
                 type: "workout",
-                custom_workout_id: 44,
+                id: 44,
                 best_score: 194,
                 last_score: 210,
                 total_entries: 3,
-                is_benchmark: true,
+                is_benchmark: 1,
+                benchmark_classification: "girl",
               },
-            ],
-            movement_benchmarks: [
               {
-                name: "Back Squat",
-                type: "movement",
-                bsi_measurement_id: 7,
+                title: "Back Squat",
+                type: "measurement",
+                id: 7,
                 best_score: 335,
                 last_score: 325,
                 total_entries: 6,
                 unit_abbreviation: "lb",
-                score_unit_id: 1,
+                unit_id: 1,
               },
             ],
+            meta: { workout_count: 1, measurement_count: 1 },
           });
         }
         if (path.includes("/messages/conversations")) {
@@ -1172,7 +1279,27 @@ describe("worker/account routes", () => {
         }
         if (path.includes("/in-app-notifications")) {
           return Response.json({
-            notifications: [{ id: 2, title: "Welcome", message: "Hi", created_at: "2026-11-01" }],
+            notifications: [
+              {
+                id: 2,
+                type: "messaging",
+                title: "Welcome",
+                content: "Hi",
+                created_at: "2026-11-01",
+                read_at: null,
+                link: "/messages/9",
+                post_id: 9,
+                source: "personal",
+              },
+            ],
+          });
+        }
+        if (path.includes("/bsi/v1/notifications") && !path.includes("preferences")) {
+          return Response.json({
+            site_notifications: [],
+            personal_notifications: [],
+            total_count: 1,
+            unread_count: 1,
           });
         }
         return Response.json({ error: "unexpected" }, 500);
@@ -1228,11 +1355,23 @@ describe("worker/account routes", () => {
     );
     expect(pr.status).toBe(200);
     const prJson = (await pr.json()) as {
-      workouts: Array<{ name: string; best_score: number }>;
-      movements: Array<{ name: string; best_score: number }>;
+      workouts: Array<{
+        name: string;
+        best_score: number;
+        custom_workout_id: number | null;
+      }>;
+      movements: Array<{
+        name: string;
+        best_score: number;
+        measurement_id: number | null;
+        score_unit_id: number | null;
+      }>;
     };
     expect(prJson.workouts[0]?.name).toBe("Fran");
+    expect(prJson.workouts[0]?.custom_workout_id).toBe(44);
     expect(prJson.movements[0]?.best_score).toBe(335);
+    expect(prJson.movements[0]?.measurement_id).toBe(7);
+    expect(prJson.movements[0]?.score_unit_id).toBe(1);
 
     const surface = await callAccount(
       h,
@@ -1342,14 +1481,310 @@ describe("worker/account routes", () => {
     expect(inbox.status).toBe(200);
     const inboxJson = (await inbox.json()) as {
       conversations: unknown[];
-      notifications: unknown[];
+      notifications: Array<{ href?: string; type?: string; read?: boolean }>;
+      unread_count?: number;
+      view?: string;
+      limit?: number;
+      offset?: number;
     };
     expect(inboxJson.conversations.length).toBe(1);
     expect(inboxJson.notifications.length).toBe(1);
+    expect(inboxJson.notifications[0]?.href).toBe("/account/messages/9");
+    expect(inboxJson.notifications[0]?.type).toBe("messaging");
+    expect(inboxJson.notifications[0]?.read).toBe(false);
+    expect(inboxJson.unread_count).toBe(1);
+    expect(inboxJson.view).toBe("all");
+    expect(inboxJson.limit).toBe(50);
+    expect(inboxJson.offset).toBe(0);
+    const inApp = recorded.find((r) => r.url.includes("/in-app-notifications"));
+    expect(inApp?.url).toContain("view=all");
+    expect(inApp?.url).toContain("limit=50");
+    expect(inApp?.url).toContain("offset=0");
+
+    const focused = await callAccount(
+      h,
+      "/api/account/inbox?view=focused&limit=10&offset=50",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(focused.status).toBe(200);
+    const focusedJson = (await focused.json()) as { view: string; limit: number; offset: number };
+    expect(focusedJson.view).toBe("focused");
+    expect(focusedJson.limit).toBe(10);
+    expect(focusedJson.offset).toBe(50);
+    expect(recorded.some((r) => r.url.includes("view=focused") && r.url.includes("offset=50"))).toBe(
+      true,
+    );
+
+    const badView = await callAccount(
+      h,
+      "/api/account/inbox?view=mentions",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(badView.status).toBe(400);
+
+    const unread = await callAccount(
+      h,
+      "/api/account/notifications/unread-count",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(unread.status).toBe(200);
+    const unreadJson = (await unread.json()) as { unread_count: number };
+    expect(unreadJson.unread_count).toBe(1);
 
     for (const rec of recorded) {
       assertHasBearer(rec);
       expect(rec.url).toMatch(/\/wp-json\/(metfix|bsi)\/v1\//);
+    }
+  });
+
+  it("MF64–MF71 messages chat proxies (list, thread, send, direct, search)", async () => {
+    const sess = await withSession(h);
+    installAccountLimiters(h.env);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText, url }) => {
+        if (path.endsWith("/messages/conversations") && method === "GET") {
+          return Response.json({
+            conversations: [
+              {
+                id: "9",
+                type: "direct",
+                name: "Coach Ada",
+                lastMessage: "See you at 6",
+                lastMessageTime: "2026-11-06T18:00:00Z",
+                unreadCount: 2,
+                currentUserId: "42",
+                ownerId: "42",
+                isOwner: true,
+                canAddMembers: false,
+                canRemoveMembers: false,
+                members: [
+                  {
+                    id: "42",
+                    name: "Jane",
+                    isOwner: true,
+                    isAdmin: true,
+                    canAddMembers: true,
+                    canRemoveMembers: true,
+                  },
+                  {
+                    id: "7",
+                    name: "Coach Ada",
+                    isOwner: false,
+                    isAdmin: false,
+                    canAddMembers: false,
+                    canRemoveMembers: false,
+                  },
+                ],
+              },
+            ],
+          });
+        }
+        if (path.endsWith("/messages/conversations/9") && method === "GET") {
+          return Response.json({
+            conversation: {
+              id: "9",
+              type: "direct",
+              name: "Coach Ada",
+              lastMessage: "See you at 6",
+              lastMessageTime: "2026-11-06T18:00:00Z",
+              unreadCount: 0,
+              currentUserId: "42",
+              ownerId: "42",
+              isOwner: true,
+              canAddMembers: false,
+              canRemoveMembers: false,
+              members: [],
+            },
+          });
+        }
+        if (path.endsWith("/messages/conversations/9/messages") && method === "GET") {
+          expect(url).toContain("limit=");
+          return Response.json({
+            messages: [
+              {
+                id: "100",
+                conversationId: "9",
+                senderId: "7",
+                senderName: "Coach Ada",
+                content: "See you at 6",
+                timestamp: "2026-11-06T18:00:00Z",
+                isRead: true,
+              },
+            ],
+            has_more: false,
+          });
+        }
+        if (path.endsWith("/messages/conversations/9/messages") && method === "POST") {
+          const body = JSON.parse(bodyText) as { content?: string };
+          expect(body.content).toBe("On my way");
+          return Response.json(
+            {
+              message: {
+                id: "101",
+                conversationId: "9",
+                senderId: "42",
+                senderName: "Jane",
+                content: "On my way",
+                timestamp: "2026-11-06T18:01:00Z",
+                isRead: true,
+              },
+            },
+            { status: 201 },
+          );
+        }
+        if (path.endsWith("/messages/conversations/9/read") && method === "POST") {
+          return Response.json({ success: true });
+        }
+        if (path.endsWith("/messages/conversations/direct") && method === "POST") {
+          const body = JSON.parse(bodyText) as { recipient_id?: number; message?: string };
+          expect(body.recipient_id).toBe(7);
+          expect(body.message).toBe("Hello");
+          return Response.json({
+            conversation: {
+              id: "11",
+              type: "direct",
+              name: "Coach Ada",
+              lastMessage: "Hello",
+              lastMessageTime: "2026-11-06T19:00:00Z",
+              unreadCount: 0,
+              currentUserId: "42",
+              ownerId: "42",
+              isOwner: true,
+              canAddMembers: false,
+              canRemoveMembers: false,
+              members: [],
+            },
+          });
+        }
+        if (path.endsWith("/messages/users") && method === "GET") {
+          return Response.json({
+            users: [
+              { id: "7", name: "Coach Ada", secondary_text: "Staff" },
+              { id: "7", name: "Coach Ada", secondary_text: "Staff" },
+            ],
+          });
+        }
+        if (path.endsWith("/messages/users/search") && method === "GET") {
+          expect(url).toContain("q=Ada");
+          return Response.json({
+            users: [
+              { id: "7", name: "Coach Ada", secondary_text: "Staff" },
+              { id: "7", name: "Ada again" },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const list = await callAccount(
+      h,
+      "/api/account/messages/conversations",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(list.status).toBe(200);
+    const listJson = (await list.json()) as {
+      conversations: Array<{ id: string; name: string | null; unreadCount: number }>;
+    };
+    expect(listJson.conversations[0]?.id).toBe("9");
+    expect(listJson.conversations[0]?.name).toBe("Coach Ada");
+    expect(listJson.conversations[0]?.unreadCount).toBe(2);
+
+    const detail = await callAccount(
+      h,
+      "/api/account/messages/conversations/9",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(detail.status).toBe(200);
+
+    const thread = await callAccount(
+      h,
+      "/api/account/messages/conversations/9/messages?limit=50&offset=0",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(thread.status).toBe(200);
+    const threadJson = (await thread.json()) as { messages: Array<{ content: string }> };
+    expect(threadJson.messages[0]?.content).toBe("See you at 6");
+
+    const writeHeaders = {
+      ...hOk({ csrf: sess.csrf, sid: sess.sid }),
+      "Content-Type": "application/json",
+    };
+
+    const send = await callAccount(
+      h,
+      "/api/account/messages/conversations/9/messages",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({ content: "On my way" }),
+      },
+      fetchImpl,
+    );
+    expect(send.status).toBe(201);
+
+    const read = await callAccount(
+      h,
+      "/api/account/messages/conversations/9/read",
+      { method: "POST", headers: writeHeaders, body: "{}" },
+      fetchImpl,
+    );
+    expect(read.status).toBe(200);
+
+    const direct = await callAccount(
+      h,
+      "/api/account/messages/conversations/direct",
+      {
+        method: "POST",
+        headers: writeHeaders,
+        body: JSON.stringify({ recipient_id: 7, message: "Hello" }),
+      },
+      fetchImpl,
+    );
+    expect(direct.status).toBe(200);
+    const directJson = (await direct.json()) as { conversation: { id: string } };
+    expect(directJson.conversation.id).toBe("11");
+
+    const users = await callAccount(
+      h,
+      "/api/account/messages/users",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(users.status).toBe(200);
+    const usersJson = (await users.json()) as { users: Array<{ id: string }> };
+    expect(usersJson.users).toHaveLength(1);
+    expect(usersJson.users[0]?.id).toBe("7");
+
+    const search = await callAccount(
+      h,
+      "/api/account/messages/users/search?q=Ada",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(search.status).toBe(200);
+    const searchJson = (await search.json()) as { users: Array<{ name: string }> };
+    expect(searchJson.users).toHaveLength(1);
+    expect(searchJson.users[0]?.name).toBe("Coach Ada");
+
+    const shortSearch = await callAccount(
+      h,
+      "/api/account/messages/users/search?q=Ad",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(shortSearch.status).toBe(200);
+    expect(((await shortSearch.json()) as { users: unknown[] }).users).toEqual([]);
+
+    for (const rec of recorded) {
+      assertHasBearer(rec);
+      expect(rec.url).toMatch(/\/wp-json\/bsi\/v1\/messages\//);
     }
   });
 
@@ -2521,6 +2956,12 @@ describe("worker/account routes", () => {
         method: "PUT",
         headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
         body: JSON.stringify({
+          account: {
+            types: [
+              { slug: "comment_reply", channels: { email: true, push: 0, in_feed: 1 } },
+              { slug: "Not A Slug", channels: { email: true } },
+            ],
+          },
           preferences: { email_digest: true, product_updates: false },
           newsletter: true,
           role: "admin",
@@ -2538,12 +2979,56 @@ describe("worker/account routes", () => {
     );
     expect(prefPut).toBeTruthy();
     const body = JSON.parse(prefPut!.bodyText) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["newsletter", "preferences"].sort());
+    expect(Object.keys(body)).toEqual(["account"]);
     expect(body).not.toHaveProperty("role");
     expect(body).not.toHaveProperty("user_id");
     expect(body).not.toHaveProperty("email");
     expect(body).not.toHaveProperty("is_admin");
-    expect(body.preferences).toEqual({ email_digest: true, product_updates: false });
+    expect(body).not.toHaveProperty("preferences");
+    expect(body).not.toHaveProperty("newsletter");
+    expect(body.account).toEqual({
+      types: [{ slug: "comment_reply", channels: { email: 1, push: 0, in_feed: 1 } }],
+    });
+    const newsPut = recorded.find((r) => r.method === "PUT" && r.url.includes("/me/newsletter"));
+    expect(JSON.parse(newsPut!.bodyText)).toEqual({ subscribed: true });
+  });
+
+  it("marks one inbox notification read and dismisses another", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/notifications/read") && method === "PATCH") {
+          return Response.json({ success: true });
+        }
+        if (path.endsWith("/notifications/dismiss") && method === "POST") {
+          return Response.json({ success: true });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const headers = hOk({ csrf: sess.csrf, sid: sess.sid });
+    const read = await callAccount(
+      h,
+      "/api/account/inbox/read",
+      { method: "POST", headers, body: JSON.stringify({ notification_id: 12 }) },
+      fetchImpl,
+    );
+    expect(read.status).toBe(200);
+    const dismiss = await callAccount(
+      h,
+      "/api/account/inbox/dismiss",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ notification_id: 4, type: "site" }),
+      },
+      fetchImpl,
+    );
+    expect(dismiss.status).toBe(200);
+    expect(JSON.parse(recorded[0]!.bodyText)).toEqual({ notification_id: 12 });
+    expect(recorded[0]!.method).toBe("PATCH");
+    expect(JSON.parse(recorded[1]!.bodyText)).toEqual({ notification_id: 4, type: "site" });
+    expect(recorded[1]!.method).toBe("POST");
   });
 
   it("R3-B1: public /api/members/:id key-set exact; expired coach badge false; no foundations_coach object", async () => {
@@ -3670,6 +4155,258 @@ describe("worker/account routes", () => {
         spyWarn.mockRestore();
       }
     });
+  });
+
+  it("MF body routes shape workouts and coaching and reject a bad range", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, url }) => {
+        if (path.includes("/calendar/workouts") && !path.includes("planned") && method === "GET") {
+          expect(url).toContain("start_date=2026-11-01");
+          expect(url).toContain("end_date=2026-11-06");
+          return Response.json({
+            workouts: [
+              {
+                id: 4,
+                user_id: 99,
+                workout_title: "Back Squat",
+                date_time: "2026-11-06 09:00:00",
+              },
+            ],
+          });
+        }
+        if (path.includes("/pt/client/coaches") && method === "GET") {
+          return Response.json({
+            coaches: [
+              {
+                id: 3,
+                status: "pending",
+                invited_by: "coach",
+                coach: { user_id: 12, display_name: "Ada Coach" },
+              },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected", path, method }, { status: 500 });
+      },
+    ]);
+
+    const workouts = await callAccount(
+      h,
+      "/api/account/workouts?start_date=2026-11-01&end_date=2026-11-06",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(workouts.status).toBe(200);
+    const body = (await workouts.json()) as { workouts: Array<{ workout_title: string }> };
+    expect(body.workouts[0]?.workout_title).toBe("Back Squat");
+    expect(JSON.stringify(body)).not.toContain("99");
+    expect(recorded.some((row) => row.url.includes("/calendar/workouts"))).toBe(true);
+    assertHasBearer(recorded[0]!);
+
+    recorded.length = 0;
+    const bad = await callAccount(
+      h,
+      "/api/account/workouts?start_date=2026-11-06&end_date=2026-11-01",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const coaching = await callAccount(
+      h,
+      "/api/account/coaching/client",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(coaching.status).toBe(200);
+    const hub = (await coaching.json()) as {
+      coaches: Array<{ counterparty: { display_name: string } }>;
+    };
+    expect(hub.coaches[0]?.counterparty.display_name).toBe("Ada Coach");
+
+    const beforePosts = recorded.length;
+    const missingTitle = await callAccount(
+      h,
+      "/api/account/workouts",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ date_time: "2026-11-06" }),
+      },
+      fetchImpl,
+    );
+    expect(missingTitle.status).toBe(400);
+    expect(recorded).toHaveLength(beforePosts);
+  });
+
+  it("saves a custom workout and posts an Rx log with scores", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/custom-workouts") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { title: string; structure: { version: number } };
+          expect(sent.title).toBe("Fran");
+          expect(sent.structure.version).toBe(1);
+          expect(bodyText).not.toContain("user_id");
+          return Response.json({
+            id: 8,
+            title: sent.title,
+            user_id: 99,
+            logging_type: "time",
+            structure: sent.structure,
+          });
+        }
+        if (path.endsWith("/workouts") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { scaling_mode: string; scores: unknown[] };
+          expect(sent.scaling_mode).toBe("rx");
+          expect(sent.scores).toHaveLength(1);
+          return Response.json({
+            id: 15,
+            workout_title: "Fran",
+            date_time: "2026-11-06 12:00:00",
+            user_id: 99,
+          });
+        }
+        return Response.json({ error: "unexpected", path, method }, { status: 500 });
+      },
+    ]);
+
+    const created = await callAccount(
+      h,
+      "/api/account/custom-workouts",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          title: "Fran",
+          logging_type: "time",
+          structure: {
+            version: 1,
+            segments: [
+              {
+                id: "seg-1",
+                preset: "straight",
+                steps: [{ movement_id: 12, order: 0, prescription: { reps: 21 } }],
+              },
+            ],
+          },
+        }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(200);
+    const workout = (await created.json()) as { id: number; title: string };
+    expect(workout).toMatchObject({ id: 8, title: "Fran", logging_type: "time" });
+    expect(JSON.stringify(workout)).not.toContain("99");
+    assertHasBearer(recorded[0]!);
+
+    const logged = await callAccount(
+      h,
+      "/api/account/workouts",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          workout_title: "Fran",
+          date_time: "2026-11-06 12:00:00",
+          workout_source: "custom",
+          workout_source_id: 8,
+          scaling_mode: "rx",
+          scores: [{ score_type: "time", score_value: 180, workout_item_id: 3 }],
+          movement_actuals: [{ movement_id: 12, segment_id: "seg-1", step_order: 0, reps: 21 }],
+        }),
+      },
+      fetchImpl,
+    );
+    expect(logged.status).toBe(200);
+    const logBody = (await logged.json()) as { workout: { workout_title: string } | null };
+    expect(logBody.workout?.workout_title).toBe("Fran");
+    expect(JSON.stringify(logBody)).not.toContain("99");
+  });
+});
+
+describe("calendar 401 refresh", () => {
+  async function calendar401(h: Harness) {
+    let hits = 0;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.includes("/calendar/surface")) {
+          hits += 1;
+          return Response.json({ code: "bsi_token_expired" }, { status: 401 });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const sess = await withSession(h);
+    const before = await sessionBlob(h, sess.sid);
+    const res = await callAccount(
+      h,
+      "/api/account/calendar/surface?start_date=2026-11-01&end_date=2026-11-02",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    return { hits, res, before, sid: sess.sid };
+  }
+
+  it("returns 503 and keeps the session when the refresh times out", async () => {
+    const h = createHarness({
+      refresh: async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, before, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await sessionBlob(h, sid))?.blob).toBe(before?.blob);
+    expect(before?.blob).toBeTruthy();
+  });
+
+  it("returns 503 and keeps the session when the refresh returns 5xx", async () => {
+    const h = createHarness({
+      refresh: async () => new Response("boom", { status: 503 }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, before, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await sessionBlob(h, sid))?.blob).toBe(before?.blob);
+  });
+
+  it("destroys the session when the refresh grant is invalid_grant", async () => {
+    const h = createHarness({
+      refresh: async () => Response.json({ error: "invalid_grant" }, { status: 400 }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect(res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+    expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
+  });
+
+  it("destroys the session when the retried calendar call is still 401", async () => {
+    const h = createHarness({
+      refresh: async () =>
+        Response.json({
+          access_token: "access-refreshed",
+          refresh_token: "refresh-refreshed",
+          expires_in: 3600,
+        }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, sid } = await calendar401(h);
+    expect(hits).toBe(2);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
   });
 });
 

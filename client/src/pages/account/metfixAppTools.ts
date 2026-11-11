@@ -76,14 +76,14 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
         id: "workout-feed",
         title: "Workout feed",
         summary: "Logged sessions and consistency.",
-        href: null,
+        href: "/account/workouts",
         proOnly: true,
       },
       {
         id: "coaching",
         title: "Coaching",
         summary: "Coach notes and programming.",
-        href: null,
+        href: "/account/coaching",
         proOnly: true,
       },
     ],
@@ -133,9 +133,9 @@ export const METFIX_APP_TOOLS: readonly AppTool[] = [
   },
   {
     id: "inbox",
-    title: "Inbox",
-    summary: "Conversations and in-app notifications.",
-    href: "/account/inbox",
+    title: "Messages",
+    summary: "Chat with members and staff.",
+    href: "/account/messages",
   },
 ];
 

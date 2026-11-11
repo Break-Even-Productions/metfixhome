@@ -440,9 +440,22 @@ export function mapFiltersPayload(parts: {
   };
 }
 
+/** Preview posts render as a single "Full Video (members only)" link. */
+function isMembersOnlyStub(html: string): boolean {
+  const text = html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text || Array.from(text).length > 80) return false;
+  return /full video/i.test(text) && /members only/i.test(text);
+}
+
 /**
  * Map BSI post / exclusive detail into LibraryDetail.
  * When access is none / upstream omitted body → locked.
+ * Full access prefers the exclusive attachment (`full_video` / `full_content` /
+ * `full_permalink`) over the public preview video and members-only stub.
+ * Preview and locked viewers never receive those fields.
  */
 export function mapDetailFromPostLike(
   raw: unknown,
@@ -455,13 +468,27 @@ export function mapDetailFromPostLike(
 
   const access = base.access;
   const locked = access.access === "none";
-  const contentRaw = typeof item.content === "string" ? item.content : "";
+  let contentRaw = typeof item.content === "string" ? item.content : "";
+  let videoRaw: unknown = item.video;
+  let permalink = base.permalink;
+  if (access.access === "full") {
+    const fullContent = typeof item.full_content === "string" ? item.full_content : "";
+    if (fullContent && (contentRaw.trim() === "" || isMembersOnlyStub(contentRaw))) {
+      contentRaw = fullContent;
+    }
+    if (item.full_video != null && mapResourceVideo(item.full_video, { allowPlayable: true })) {
+      videoRaw = item.full_video;
+    }
+    const fullPermalink = mapPermalink(item.full_permalink);
+    if (fullPermalink) permalink = fullPermalink;
+  }
   const content = locked ? "" : sanitizeHtml(contentRaw);
   const allowPlayable = !locked || access.show_video_in_preview === true;
-  const video: ResourceVideo | null = mapResourceVideo(item.video, { allowPlayable });
+  const video: ResourceVideo | null = mapResourceVideo(videoRaw, { allowPlayable });
 
   return {
     ...base,
+    permalink,
     content,
     video,
     locked,

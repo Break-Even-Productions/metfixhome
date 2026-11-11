@@ -14,6 +14,7 @@ import {
   QUERY_MAX,
   SEARCH_TYPE_PILLS,
   buildLibraryHead,
+  isDailyFixResource,
   isFreeOpen,
   isProfessionalTagged,
   type LibraryFilterTerm,
@@ -47,9 +48,19 @@ type RailState =
 
 type BrandSlug = "metfix" | "bsi";
 type SectionSlug = "featured" | "free" | "gated" | "archives";
+type HubPhase = "filters" | "popular" | "searches" | "archive";
 
-const FEATURED_LIMIT = 6;
-const ARCHIVE_RAIL_LIMIT = 9;
+const TOP_LIMIT = 3;
+const COURSE_DISPLAY_LIMIT = 6;
+const SECTION_LIMIT = 3;
+const ARCHIVE_RAIL_LIMIT = 3;
+
+/**
+ * Popular ranks posts, events, and courses. BSI has no exclude flag;
+ * asking for the other ranked types leaves courses out of this rail.
+ */
+const POPULAR_CONTENT_TYPES = ["post", "event"] as const;
+const PRO_LIBRARY_TITLE = "Pro library";
 
 /** Keep a prior good rail instead of blanking to error on transient failures. */
 function softFailRail(setState: Dispatch<SetStateAction<RailState>>): void {
@@ -58,6 +69,17 @@ function softFailRail(setState: Dispatch<SetStateAction<RailState>>): void {
       ? prev
       : { status: "error" },
   );
+}
+
+/** Daily Fix days stay on /the-daily-fix. */
+function withoutDailyFix(items: LibraryResource[]): LibraryResource[] {
+  return items.filter((item) => !isDailyFixResource(item));
+}
+
+/** Hub rails never render more cards than their cap, even if a response is long. */
+function capRail(state: RailState, limit: number): RailState {
+  if (state.status !== "data" || state.items.length <= limit) return state;
+  return { status: "data", items: state.items.slice(0, limit) };
 }
 
 /** Pass `null` to skip the network call (keeps loading until params are ready). */
@@ -79,7 +101,7 @@ function useRail(params: SearchParams | null, refreshKey: number): RailState {
       try {
         const body = await fetchLibrarySearch(params, controller.signal);
         if (controller.signal.aborted) return;
-        setState({ status: "data", items: body.resources });
+        setState({ status: "data", items: withoutDailyFix(body.resources) });
       } catch {
         if (controller.signal.aborted) return;
         softFailRail(setState);
@@ -112,7 +134,7 @@ function useArchiveRail(limit: number | null, refreshKey: number): RailState {
           controller.signal,
         );
         if (controller.signal.aborted) return;
-        setState({ status: "data", items: body.resources });
+        setState({ status: "data", items: withoutDailyFix(body.resources) });
       } catch {
         if (controller.signal.aborted) return;
         softFailRail(setState);
@@ -124,13 +146,19 @@ function useArchiveRail(limit: number | null, refreshKey: number): RailState {
 }
 
 /** Popular-by-views rail (BSI /resources/popular). Pass null limit to skip. */
-function usePopular(limit: number | null, refreshKey: number): RailState {
+function usePopular(
+  limit: number | null,
+  refreshKey: number,
+  contentTypes: readonly string[],
+): RailState {
   const [state, setState] = useState<RailState>({ status: "loading" });
+  const typesKey = contentTypes.join("\0");
   useEffect(() => {
     if (limit == null) {
       setState({ status: "loading" });
       return;
     }
+    const types = typesKey ? typesKey.split("\0") : [];
     const controller = new AbortController();
     setState((prev) =>
       prev.status === "data" && prev.items.length > 0
@@ -138,11 +166,18 @@ function usePopular(limit: number | null, refreshKey: number): RailState {
         : { status: "loading" },
     );
     void (async () => {
-      const load = () => fetchLibraryPopular({ limit }, controller.signal);
+      const load = () =>
+        fetchLibraryPopular(
+          {
+            limit,
+            content_types: types.length ? types : undefined,
+          },
+          controller.signal,
+        );
       try {
         const body = await load();
         if (controller.signal.aborted) return;
-        setState({ status: "data", items: body.resources });
+        setState({ status: "data", items: withoutDailyFix(body.resources) });
       } catch {
         if (controller.signal.aborted) return;
         // One cheap retry for popular — cold BSI often clears on the second try.
@@ -151,7 +186,7 @@ function usePopular(limit: number | null, refreshKey: number): RailState {
           if (controller.signal.aborted) return;
           const body = await load();
           if (controller.signal.aborted) return;
-          setState({ status: "data", items: body.resources });
+          setState({ status: "data", items: withoutDailyFix(body.resources) });
         } catch {
           if (controller.signal.aborted) return;
           softFailRail(setState);
@@ -159,7 +194,7 @@ function usePopular(limit: number | null, refreshKey: number): RailState {
       }
     })();
     return () => controller.abort();
-  }, [limit, refreshKey]);
+  }, [limit, refreshKey, typesKey]);
   return state;
 }
 
@@ -190,6 +225,7 @@ function Rail({
   emptyHint,
   browseAllHref,
   onBrowseAll,
+  skeletonCount,
 }: {
   label?: string;
   title: string;
@@ -198,6 +234,7 @@ function Rail({
   emptyHint?: string;
   browseAllHref?: string;
   onBrowseAll?: () => void;
+  skeletonCount?: number;
 }) {
   return (
     <section className="library-section">
@@ -221,7 +258,7 @@ function Rail({
         ) : null}
       </div>
       {state.status === "loading" ? (
-        <LibraryRailSkeleton />
+        <LibraryRailSkeleton count={skeletonCount} />
       ) : state.status === "error" ? (
         <p className="library-status">
           Couldn’t load this section. Try again later.
@@ -270,11 +307,30 @@ export default function LibraryPage() {
   const [catalogCourses, setCatalogCourses] = useState<Course[]>([]);
   const [catalogCoursesReady, setCatalogCoursesReady] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [cascade, setCascade] = useState<{ key: number; phase: HubPhase }>({
+    key: 0,
+    phase: "filters",
+  });
 
   const archiveMode = Boolean(
     submittedQuery || activeType || activeCategory || activeSection,
   );
   const browseMode = !archiveMode;
+  const cascadeKey = browseMode ? refresh : -1;
+  if (cascade.key !== cascadeKey) {
+    setCascade({ key: cascadeKey, phase: "filters" });
+  }
+  const phase: HubPhase =
+    cascade.key === cascadeKey ? cascade.phase : "filters";
+
+  useEffect(() => {
+    if (!browseMode || !filtersReady) return;
+    setCascade((current) =>
+      current.key === refresh && current.phase === "filters"
+        ? { key: refresh, phase: "popular" }
+        : current,
+    );
+  }, [browseMode, filtersReady, refresh]);
 
   useEffect(() => {
     const c = new AbortController();
@@ -324,7 +380,9 @@ export default function LibraryPage() {
 
   const archiveKind = useMemo((): ArchiveKind | null => {
     if (!archiveMode) return null;
-    if (activeSection === "featured") return { kind: "popular" };
+    if (activeSection === "featured") {
+      return { kind: "popular", content_types: [...POPULAR_CONTENT_TYPES] };
+    }
     if (activeSection === "archives") return { kind: "archive" };
     const base: Omit<SearchParams, "limit" | "offset"> = {
       query: submittedQuery || undefined,
@@ -376,6 +434,7 @@ export default function LibraryPage() {
     archiveMode,
     archiveKind,
     archiveResetKey,
+    true,
   );
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -393,47 +452,81 @@ export default function LibraryPage() {
     return () => io.disconnect();
   }, [archiveMode, infinite.hasMore, infinite.loadMore, infinite.items.length]);
 
-  // Catalog powers free/gated hub rails only.
-  const catalog = useRail(browseMode ? hubCatalogParams : null, refresh);
+  // Top resources first. Searches wait for it. Archive waits for the searches.
+  const popular = usePopular(
+    browseMode && phase !== "filters" ? TOP_LIMIT : null,
+    refresh,
+    POPULAR_CONTENT_TYPES,
+  );
 
-  // Top resources: BSI popular-by-views (not newest-by-date).
-  const popular = usePopular(browseMode ? FEATURED_LIMIT : null, refresh);
+  useEffect(() => {
+    if (!browseMode || phase !== "popular") return;
+    if (popular.status === "loading") return;
+    setCascade((current) =>
+      current.key === refresh && current.phase === "popular"
+        ? { key: refresh, phase: "searches" }
+        : current,
+    );
+  }, [browseMode, phase, popular.status, refresh]);
+
+  const searchesOn =
+    browseMode && (phase === "searches" || phase === "archive");
+
+  // Catalog powers free/gated hub rails only.
+  const catalog = useRail(searchesOn ? hubCatalogParams : null, refresh);
 
   const coursesRail = useRail(
-    browseMode ? { content_types: ["course"], limit: 9, offset: 0 } : null,
+    // Extra rows so catalog cards can still merge BSI fields; the rail shows 6.
+    searchesOn ? { content_types: ["course"], limit: 9, offset: 0 } : null,
     refresh,
   );
 
   const metfixRail = useRail(
-    browseMode && filtersReady
+    searchesOn
       ? metfixCatIds.length
-        ? { categories: metfixCatIds, limit: 9, offset: 0 }
-        : { query: "metfix", limit: 9, offset: 0 }
+        ? { categories: metfixCatIds, limit: SECTION_LIMIT, offset: 0 }
+        : { query: "metfix", limit: SECTION_LIMIT, offset: 0 }
       : null,
-    refresh,
-  );
-  const archivesRail = useArchiveRail(
-    browseMode ? ARCHIVE_RAIL_LIMIT : null,
     refresh,
   );
 
   const bsiRail = useRail(
-    browseMode && filtersReady
+    searchesOn
       ? bsiCatIds.length
-        ? { categories: bsiCatIds, limit: 9, offset: 0 }
-        : { query: "broken science", limit: 9, offset: 0 }
+        ? { categories: bsiCatIds, limit: SECTION_LIMIT, offset: 0 }
+        : { query: "broken science", limit: SECTION_LIMIT, offset: 0 }
       : null,
+    refresh,
+  );
+
+  const searchesSettled =
+    catalog.status !== "loading" &&
+    coursesRail.status !== "loading" &&
+    metfixRail.status !== "loading" &&
+    bsiRail.status !== "loading";
+
+  useEffect(() => {
+    if (!browseMode || phase !== "searches" || !searchesSettled) return;
+    setCascade((current) =>
+      current.key === refresh && current.phase === "searches"
+        ? { key: refresh, phase: "archive" }
+        : current,
+    );
+  }, [browseMode, phase, searchesSettled, refresh]);
+
+  const archivesRail = useArchiveRail(
+    browseMode && phase === "archive" ? ARCHIVE_RAIL_LIMIT : null,
     refresh,
   );
 
   const freeItems = useMemo(() => {
     if (catalog.status !== "data") return [];
-    return catalog.items.filter(isFreeOpen).slice(0, 9);
+    return catalog.items.filter(isFreeOpen).slice(0, SECTION_LIMIT);
   }, [catalog]);
 
   const gatedItems = useMemo(() => {
     if (catalog.status !== "data") return [];
-    return catalog.items.filter(isProfessionalTagged).slice(0, 9);
+    return catalog.items.filter(isProfessionalTagged).slice(0, SECTION_LIMIT);
   }, [catalog]);
 
   const archiveTitle = useMemo(() => {
@@ -449,14 +542,17 @@ export default function LibraryPage() {
     if (activeSection === "featured") return "Top resources";
     if (activeSection === "archives") return "Glassman & Book Library";
     if (activeSection === "free") return "Free / open";
-    if (activeSection === "gated") return "Gated & exclusive";
+    if (activeSection === "gated") return PRO_LIBRARY_TITLE;
     return "Filtered results";
   }, [submittedQuery, activeType, activeCategory, activeSection]);
 
   /** Local catalog and BSI courses merge field-by-field; empty catalog values take the BSI value. */
   const courseCards = useMemo(() => {
     const bsiCourses = coursesRail.status === "data" ? coursesRail.items : [];
-    return mergeCourseRail(catalogCourses, bsiCourses).slice(0, 12);
+    return mergeCourseRail(catalogCourses, bsiCourses).slice(
+      0,
+      COURSE_DISPLAY_LIMIT,
+    );
   }, [coursesRail, catalogCourses]);
 
   useEffect(() => {
@@ -556,7 +652,11 @@ export default function LibraryPage() {
           <button type="submit">Search resources</button>
         </form>
 
-        <div className="library-chips" role="toolbar" aria-label="Content type filters">
+        <div
+          className="library-chips"
+          role="toolbar"
+          aria-label="Content type filters"
+        >
           <button
             type="button"
             className="library-chip"
@@ -627,54 +727,11 @@ export default function LibraryPage() {
             <Rail
               label="Featured"
               title="Top resources"
-              state={popular}
+              state={capRail(popular, TOP_LIMIT)}
+              skeletonCount={TOP_LIMIT}
               onLocked={setLocked}
               onBrowseAll={() => openArchive({ section: "featured" })}
             />
-            <Rail
-              label="No membership required"
-              title="Free / open"
-              state={
-                freeItems.length
-                  ? { status: "data", items: freeItems }
-                  : catalog.status === "loading"
-                    ? { status: "loading" }
-                    : catalog.status === "error"
-                      ? { status: "error" }
-                      : { status: "data", items: [] }
-              }
-              onLocked={setLocked}
-              onBrowseAll={() => openArchive({ section: "free" })}
-            />
-            <Rail
-              label="Professional"
-              title="Gated & exclusive"
-              state={
-                gatedItems.length
-                  ? { status: "data", items: gatedItems }
-                  : catalog.status === "loading"
-                    ? { status: "loading" }
-                    : { status: "data", items: [] }
-              }
-              onLocked={setLocked}
-              emptyHint="Exclusive items appear here with a Professional tag when BSI returns them for your session."
-              onBrowseAll={() => openArchive({ section: "gated" })}
-            />
-            <Rail
-              label="MetFix"
-              title="MetFix"
-              state={metfixRail}
-              onLocked={setLocked}
-              onBrowseAll={() => openArchive({ category: "metfix" })}
-            />
-            <Rail
-              label="Broken Science Initiative"
-              title="BSI"
-              state={bsiRail}
-              onLocked={setLocked}
-              onBrowseAll={() => openArchive({ category: "bsi" })}
-            />
-
             <section className="library-section">
               <div className="library-section-head">
                 <div>
@@ -687,7 +744,10 @@ export default function LibraryPage() {
               </div>
               {courseCards.length === 0 &&
               (coursesRail.status === "loading" || !catalogCoursesReady) ? (
-                <LibraryRailSkeleton label="Loading courses" />
+                <LibraryRailSkeleton
+                  count={COURSE_DISPLAY_LIMIT}
+                  label="Loading courses"
+                />
               ) : courseCards.length === 0 ? (
                 <div className="library-stub">
                   <strong>Courses</strong>
@@ -744,11 +804,58 @@ export default function LibraryPage() {
                 </div>
               )}
             </section>
-
+            <Rail
+              label="Professional"
+              title={PRO_LIBRARY_TITLE}
+              state={
+                gatedItems.length
+                  ? { status: "data", items: gatedItems }
+                  : catalog.status === "loading"
+                    ? { status: "loading" }
+                    : { status: "data", items: [] }
+              }
+              skeletonCount={SECTION_LIMIT}
+              onLocked={setLocked}
+              emptyHint="Exclusive items appear here with a Professional tag when BSI returns them for your session."
+              onBrowseAll={() => openArchive({ section: "gated" })}
+            />
+            <Rail
+              label="MetFix"
+              title="MetFix"
+              state={capRail(metfixRail, SECTION_LIMIT)}
+              skeletonCount={SECTION_LIMIT}
+              onLocked={setLocked}
+              onBrowseAll={() => openArchive({ category: "metfix" })}
+            />
+            <Rail
+              label="No membership required"
+              title="Free / open"
+              state={
+                freeItems.length
+                  ? { status: "data", items: freeItems }
+                  : catalog.status === "loading"
+                    ? { status: "loading" }
+                    : catalog.status === "error"
+                      ? { status: "error" }
+                      : { status: "data", items: [] }
+              }
+              skeletonCount={SECTION_LIMIT}
+              onLocked={setLocked}
+              onBrowseAll={() => openArchive({ section: "free" })}
+            />
+            <Rail
+              label="Broken Science Initiative"
+              title="BSI"
+              state={capRail(bsiRail, SECTION_LIMIT)}
+              skeletonCount={SECTION_LIMIT}
+              onLocked={setLocked}
+              onBrowseAll={() => openArchive({ category: "bsi" })}
+            />
             <Rail
               label="Archives"
               title="Glassman & Book Library"
-              state={archivesRail}
+              state={capRail(archivesRail, ARCHIVE_RAIL_LIMIT)}
+              skeletonCount={ARCHIVE_RAIL_LIMIT}
               onLocked={setLocked}
               emptyHint="Glassman Archive and Book Library items will show up here."
               onBrowseAll={() => openArchive({ section: "archives" })}

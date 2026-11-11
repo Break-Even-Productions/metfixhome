@@ -43,6 +43,25 @@ beforeEach(() => {
       if (url.includes("/email/confirm") && method === "POST") {
         return jsonResponse({ ok: true });
       }
+      if (url.includes("/api/account/notifications") && method === "GET") {
+        return jsonResponse({
+          account: {
+            types: [
+              {
+                slug: "comment_reply",
+                label: "Replies",
+                group: "content",
+                allowed_channels: ["email", "push", "in_feed"],
+                channels: { email: 1, push: 0, in_feed: 1 },
+              },
+            ],
+          },
+          newsletter: { subscribed: false },
+        });
+      }
+      if (url.includes("/api/account/notifications") && method === "PUT") {
+        return jsonResponse(JSON.parse(String(init?.body ?? "{}")));
+      }
       if (url.includes("/api/account/overview") || url.includes("/subscriptions")) {
         return jsonResponse({
           display_name: "Ada",
@@ -75,19 +94,15 @@ afterEach(() => {
 });
 
 describe("AccountPrivacy (P-DB-13)", () => {
-  it("saves privacy toggles, password reset, and 2-step email change", async () => {
+  it("skips the missing privacy settings route and still changes email and password", async () => {
     render(
       <Router>
         <AccountPrivacy />
       </Router>,
     );
-    await waitFor(() => expect(screen.getByLabelText("Show in directory")).toBeTruthy());
-    expect(screen.getByText("Public profile")).toBeTruthy();
-    expect(screen.queryByText("directory_visible")).toBeNull();
-    fireEvent.click(screen.getByLabelText("Show in directory"));
-    fireEvent.click(screen.getByRole("button", { name: /Save privacy/i }));
-    await waitFor(() => expect(screen.getByText(/Privacy settings saved/i)).toBeTruthy());
-
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Your account/ })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /^Privacy/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /Coaching/i })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Send password reset email/i }));
     await waitFor(() => expect(screen.getByText(/Password reset email sent/i)).toBeTruthy());
 
@@ -101,13 +116,9 @@ describe("AccountPrivacy (P-DB-13)", () => {
     await waitFor(() => expect(screen.getByText(/Email updated/i)).toBeTruthy());
 
     const fetchImpl = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(
-      fetchImpl.mock.calls.some(
-        (c) =>
-          String(c[0]).includes("/privacy") &&
-          ((c[1] as RequestInit)?.method ?? "").toUpperCase() === "PUT",
-      ),
-    ).toBe(true);
+    expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes("/api/account/privacy"))).toBe(
+      false,
+    );
     expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes("/password-reset"))).toBe(true);
     expect(
       fetchImpl.mock.calls.some(
@@ -117,5 +128,33 @@ describe("AccountPrivacy (P-DB-13)", () => {
       ),
     ).toBe(true);
     expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes("/email/confirm"))).toBe(true);
+  });
+
+  it("saves notification preferences from the settings pane", async () => {
+    render(
+      <Router>
+        <AccountPrivacy />
+      </Router>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /^Notifications/ }));
+    await waitFor(() => expect(screen.getByLabelText("Replies Email")).toBeTruthy());
+    expect(screen.queryByLabelText("Newsletter")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Replies Push"));
+    fireEvent.click(screen.getByRole("button", { name: /Save preferences/i }));
+    await waitFor(() => {
+      const fetchImpl = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const put = fetchImpl.mock.calls.find(
+        (c) =>
+          String(c[0]).includes("/api/account/notifications") &&
+          ((c[1] as RequestInit)?.method ?? "").toUpperCase() === "PUT",
+      );
+      expect(put).toBeTruthy();
+      const body = JSON.parse(String((put![1] as RequestInit).body)) as {
+        newsletter?: boolean;
+        account: { types: Array<{ slug: string; channels: Record<string, number> }> };
+      };
+      expect(body.newsletter).toBeUndefined();
+      expect(body.account.types[0]?.channels.push).toBe(1);
+    });
   });
 });
