@@ -100,6 +100,11 @@ import {
   accountCustomWorkoutPath,
   accountCustomWorkoutsPath,
   accountDailyFixWorkoutPath,
+  accountMeMovementVideosPath,
+  accountMovementPath,
+  accountMovementVideoPath,
+  accountMovementVideoPreferPath,
+  accountMovementVideosPath,
   accountMovementsPath,
   accountPlansCollectionPath,
   accountPlannedWorkoutPath,
@@ -143,10 +148,12 @@ import {
   shapeCustomWorkoutList,
   shapeDailyFixWorkout,
   shapeMovementList,
+  shapeMovementVideo,
   shapePlanDetail,
   shapePlanList,
   shapeSparkUserInfo,
   validateCustomWorkoutBody,
+  validateMovementVideoBody,
   validatePlanActiveBody,
   validatePlanWriteBody,
   shapeDirectory,
@@ -2040,6 +2047,47 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   }
   if (method === "GET" && rest === "movements") {
     return { id: "MF40", method: "GET", params: {}, limiter: "read" };
+  }
+  const movementDetail = rest.match(/^movements\/([1-9][0-9]*)$/);
+  if (method === "GET" && movementDetail) {
+    return {
+      id: "MF40d",
+      method: "GET",
+      params: { id: movementDetail[1]! },
+      limiter: "read",
+    };
+  }
+  const movementVideos = rest.match(/^movements\/([1-9][0-9]*)\/videos$/);
+  if (movementVideos && (method === "GET" || method === "POST")) {
+    return {
+      id: method === "GET" ? "MF40v" : "MF40vw",
+      method,
+      params: { id: movementVideos[1]! },
+      limiter: method === "GET" ? "read" : "write",
+    };
+  }
+  const movementVideo = rest.match(/^movements\/([1-9][0-9]*)\/videos\/([1-9][0-9]*)$/);
+  if (movementVideo && (method === "PUT" || method === "DELETE")) {
+    return {
+      id: method === "PUT" ? "MF40vu" : "MF40vd",
+      method,
+      params: { id: movementVideo[1]!, videoId: movementVideo[2]! },
+      limiter: "write",
+    };
+  }
+  const movementVideoPrefer = rest.match(
+    /^movements\/([1-9][0-9]*)\/videos\/([1-9][0-9]*)\/prefer$/,
+  );
+  if (method === "PUT" && movementVideoPrefer) {
+    return {
+      id: "MF40vp",
+      method: "PUT",
+      params: { id: movementVideoPrefer[1]!, videoId: movementVideoPrefer[2]! },
+      limiter: "write",
+    };
+  }
+  if (method === "GET" && rest === "me/movement-videos") {
+    return { id: "MF40vb", method: "GET", params: {}, limiter: "read" };
   }
   if (method === "GET" && rest === "daily-fix") {
     return { id: "MF49", method: "GET", params: {}, limiter: "read" };
@@ -4990,6 +5038,154 @@ async function dispatch(
       );
       if (proxied instanceof Response) return proxied;
       return accountJson(shapeMovementList(proxied.json), 200);
+    }
+    case "MF40d": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMovementPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeMovementList({ movements: [proxied.json] }).movements;
+      const row = Array.isArray(shaped) ? shaped[0] : null;
+      if (!row || typeof row !== "object") return accountJson({ error: "unavailable" }, 502);
+      const detail = { ...(row as Record<string, unknown>) };
+      const raw = asRecord(proxied.json);
+      if (raw && Array.isArray(raw.videos)) {
+        detail.videos = raw.videos
+          .map((v) => shapeMovementVideo(v))
+          .filter((v): v is Record<string, unknown> => v != null)
+          .slice(0, 20);
+      }
+      return accountJson(detail, 200);
+    }
+    case "MF40v": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMovementVideosPath(String(id)),
+      );
+      if (proxied instanceof Response) return proxied;
+      const raw = asRecord(proxied.json);
+      const videos = Array.isArray(raw?.videos)
+        ? raw!.videos
+            .map((v) => shapeMovementVideo(v))
+            .filter((v): v is Record<string, unknown> => v != null)
+            .slice(0, 20)
+        : [];
+      return accountJson({ movement_id: id, videos, count: videos.length }, 200);
+    }
+    case "MF40vw": {
+      const id = parseRouteId(match.params.id);
+      if (!id) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateMovementVideoBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        accountMovementVideosPath(String(id)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeMovementVideo(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 201);
+    }
+    case "MF40vu": {
+      const id = parseRouteId(match.params.id);
+      const videoId = parseRouteId(match.params.videoId);
+      if (!id || !videoId) return accountJson({ error: "invalid_request" }, 400);
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = validateMovementVideoBody(parsed.json);
+      if (!body.ok) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountMovementVideoPath(String(id), String(videoId)),
+        { jsonBody: body.body },
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeMovementVideo(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF40vd": {
+      const id = parseRouteId(match.params.id);
+      const videoId = parseRouteId(match.params.videoId);
+      if (!id || !videoId) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "DELETE",
+        accountMovementVideoPath(String(id), String(videoId)),
+      );
+      if (proxied instanceof Response) return proxied;
+      return accountJson({ deleted: true, id: videoId }, 200);
+    }
+    case "MF40vp": {
+      const id = parseRouteId(match.params.id);
+      const videoId = parseRouteId(match.params.videoId);
+      if (!id || !videoId) return accountJson({ error: "invalid_request" }, 400);
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PUT",
+        accountMovementVideoPreferPath(String(id), String(videoId)),
+      );
+      if (proxied instanceof Response) return proxied;
+      const shaped = shapeMovementVideo(proxied.json);
+      if (!shaped) return accountJson({ error: "unavailable" }, 502);
+      return accountJson(shaped, 200);
+    }
+    case "MF40vb": {
+      const ids = (url.searchParams.get("ids") ?? "").trim();
+      if (!ids || ids.length > 200 || !/^[0-9]+(?:,[0-9]+)*$/.test(ids)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const proxied = await accountProxy(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountMeMovementVideosPath(),
+        { query: `ids=${encodeURIComponent(ids)}` },
+      );
+      if (proxied instanceof Response) return proxied;
+      const raw = asRecord(proxied.json);
+      const byRaw = asRecord(raw?.by_movement_id) ?? {};
+      const by_movement_id: Record<string, Record<string, unknown>[]> = {};
+      for (const [key, list] of Object.entries(byRaw)) {
+        if (!Array.isArray(list)) continue;
+        by_movement_id[key] = list
+          .map((v) => shapeMovementVideo(v))
+          .filter((v): v is Record<string, unknown> => v != null)
+          .slice(0, 20);
+      }
+      return accountJson({ by_movement_id, meta: { ids: ids.split(",").map(Number) } }, 200);
     }
     case "MF49": {
       const query = dailyFixQuery(url.searchParams);

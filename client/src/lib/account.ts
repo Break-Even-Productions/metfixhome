@@ -689,6 +689,23 @@ export type WorkoutStepPrescription = {
   bodyweight_adjustment_unit_id?: number;
 };
 
+export type MovementDemoVideo = {
+  type: string;
+  url: string;
+  provider_id?: string | null;
+  title?: string | null;
+  source: "workout" | "personal" | "sitewide";
+  library_video_id?: number;
+};
+
+export type WorkoutStepVideo = {
+  type?: string;
+  url: string;
+  provider_id?: string | null;
+  title?: string | null;
+  library_video_id?: number;
+};
+
 export type WorkoutStructureStep = {
   movement_id: number;
   order: number;
@@ -702,6 +719,10 @@ export type WorkoutStructureStep = {
     allow?: WorkoutLoggableDimension[];
     require?: WorkoutLoggableDimension[];
   };
+  /** Coach-attached demo snapshots for this workout step. */
+  videos?: WorkoutStepVideo[];
+  /** Viewer-resolved demo: workout → personal → sitewide. */
+  demo_video?: MovementDemoVideo | null;
 };
 
 export type WorkoutStructureSegment = {
@@ -735,7 +756,24 @@ export type CustomWorkoutSummary = {
   workout_items?: WorkoutItemScore[];
 };
 
-export type MovementRow = { id: number; name: string; category: string | null };
+export type MovementRow = {
+  id: number;
+  name: string;
+  category: string | null;
+  video_url?: string | null;
+  demo_video?: MovementDemoVideo | null;
+};
+
+export type MovementLibraryVideo = {
+  id: number;
+  movement_id: number;
+  type: string;
+  url: string;
+  provider_id?: string | null;
+  title?: string | null;
+  sort_order: number;
+  is_preferred: boolean;
+};
 
 export type CustomWorkoutWrite = {
   title: string;
@@ -1768,6 +1806,31 @@ export function searchMovements(
 ): Promise<{ movements: MovementRow[] }> {
   const q = new URLSearchParams({ search, limit: "20", offset: "0" });
   return accountGet(`/api/account/movements?${q.toString()}`, `movements:${q.toString()}`, options);
+}
+
+export function loadMovementDetail(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<MovementRow & { videos?: MovementLibraryVideo[] }> {
+  return accountGet(`/api/account/movements/${id}`, `movement:${id}`, options);
+}
+
+/** Save a personal preferred demo for a movement (YouTube / Vimeo). */
+export async function savePreferredMovementVideo(
+  movementId: number,
+  url: string,
+  title?: string,
+): Promise<MovementLibraryVideo> {
+  const result = await accountMutate<MovementLibraryVideo>(
+    `/api/account/movements/${movementId}/videos`,
+    {
+      method: "POST",
+      body: { url, title, is_preferred: true },
+    },
+  );
+  cache.delete(`movement:${movementId}`);
+  inflight.delete(`movement:${movementId}`);
+  return result;
 }
 
 export function loadDailyFixWorkout(
