@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   loadOverview,
   loadProfile,
@@ -17,6 +17,7 @@ import {
   editableProfileAttributesForSection,
   type EditableProfileAttribute,
 } from "./profileAttributes";
+import { AttributeFields, type AttributeWrite } from "./AttributeFields";
 import { onboardingRoleOptions } from "./onboardingRoles";
 
 const EMAIL_RE = /@/;
@@ -69,7 +70,14 @@ export default function AccountProfile() {
   const [onboardingRoles, setOnboardingRoles] = useState<RoleId[]>([]);
   const [hasPhysicalGym, setHasPhysicalGym] = useState<boolean | null>(null);
   const [hasPhysicalClinic, setHasPhysicalClinic] = useState<boolean | null>(null);
-  const [attrValues, setAttrValues] = useState<Record<string, string>>({});
+  const writesRef = useRef<Record<ProfileAttrSection, AttributeWrite[]>>({
+    personal: [],
+    affiliate: [],
+    clinic: [],
+  });
+  const onAttributeChange = useCallback((section: ProfileAttrSection, writes: AttributeWrite[]) => {
+    writesRef.current[section] = writes;
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -95,13 +103,6 @@ export default function AccountProfile() {
         setHasPhysicalClinic(
           typeof ov.has_physical_clinic === "boolean" ? ov.has_physical_clinic : null,
         );
-        const nextValues: Record<string, string> = {};
-        for (const section of ["personal", "affiliate", "clinic"] as const) {
-          for (const field of editableProfileAttributesForSection(p, section)) {
-            nextValues[`${section}:${field.attr_id}`] = field.value;
-          }
-        }
-        setAttrValues(nextValues);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -182,16 +183,19 @@ export default function AccountProfile() {
     setError(null);
     setSaved(null);
     const fields = sectionFields[section];
-    for (const field of fields) {
-      const value = attrValues[`${section}:${field.attr_id}`] ?? "";
-      if (EMAIL_RE.test(value) || /email/i.test(value)) {
+    const writes = writesRef.current[section];
+    for (const row of writes) {
+      const blob = `${row.value} ${Object.values(row.address ?? {}).join(" ")}`;
+      if (EMAIL_RE.test(blob)) {
         setError("Email-like attributes are not allowed.");
         return;
       }
     }
-    const changed = fields.filter(
-      (field) => (attrValues[`${section}:${field.attr_id}`] ?? "") !== field.value,
-    );
+    const original = new Map(fields.map((field) => [field.attr_id, field.value]));
+    const changed = writes.filter((row) => {
+      if (row.form_type === "address" || row.form_type === "tag") return true;
+      return (original.get(row.attr_id) ?? "") !== row.value;
+    });
 
     // Facility flags live with Affiliate / Clinic sections.
     const rolesTouched =
@@ -208,8 +212,9 @@ export default function AccountProfile() {
         await updateProfileAttributes(
           changed.map((field) => ({
             attr_id: field.attr_id,
-            value: attrValues[`${section}:${field.attr_id}`] ?? "",
+            value: field.value,
             section,
+            ...(field.address ? { address: field.address } : {}),
           })),
         );
         const refreshedProfile = await loadProfile({ force: true });
@@ -440,20 +445,11 @@ export default function AccountProfile() {
               {fields.length === 0 ? (
                 <p className="account-muted">No editable {section} fields on this account.</p>
               ) : (
-                fields.map((field) => (
-                  <label key={`${section}-${field.attr_id}`}>
-                    {field.label}
-                    <input
-                      value={attrValues[`${section}:${field.attr_id}`] ?? ""}
-                      onChange={(e) =>
-                        setAttrValues((current) => ({
-                          ...current,
-                          [`${section}:${field.attr_id}`]: e.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                ))
+                <AttributeFields
+                  fields={fields}
+                  idPrefix={section}
+                  onChange={(writes) => onAttributeChange(section, writes)}
+                />
               )}
               <button type="submit" className="account-btn" disabled={busy}>
                 Save {meta.title.toLowerCase()}

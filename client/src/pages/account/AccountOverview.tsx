@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
+import { basePath } from "@/const";
 import {
   deriveMembershipStatus,
   formatNextPayment,
@@ -14,7 +16,6 @@ import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 import DashboardLayout from "./DashboardLayout";
 import { ConversionBanner } from "./ConversionBanner";
 import { LtvVisualizer } from "./LtvVisualizer";
-import { FoundationsCoachCard } from "./FoundationsCoachCard";
 import { AccountCalendar } from "./AccountCalendar";
 import { AppTools } from "./AppTools";
 import { GreetingHero } from "./GreetingHero";
@@ -111,7 +112,14 @@ export default function AccountOverview() {
         <AppTools tier={tier} />
         <ConversionBanner conversion={subs?.conversion} />
         {ltv ? <LtvVisualizer ltv={ltv} /> : null}
-        {coach ? <FoundationsCoachCard coach={coach} /> : null}
+        {coach ? (
+          <p>
+            <Link href={basePath("/account/courses")}>
+              Foundations Seminar
+              {coach.active ? " · active" : coach.seminar_checked_in ? " · checked in" : ""}
+            </Link>
+          </p>
+        ) : null}
         {!unlocked ? <ProUnlockBanner introOffer={overview ?? subs} /> : null}
       </div>
     </DashboardLayout>

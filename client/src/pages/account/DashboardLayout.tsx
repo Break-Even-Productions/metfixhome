@@ -47,7 +47,7 @@ export const ACCOUNT_NAV = [
     referrals: true,
   },
   { href: "/account/notifications", label: "Notifications", always: true },
-  { href: "/account/privacy", label: "Privacy & Security", always: true },
+  { href: "/account/privacy", label: "Settings", always: true },
 ] as const;
 
 export function accountNavVisible(

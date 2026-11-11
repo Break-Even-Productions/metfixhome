@@ -34,10 +34,18 @@ import { DEFAULT_NAV_LINKS, type NavLink } from "@/lib/contentTypes";
 import { expectedSearchHrefFromApp } from "@/style-parity/searchHref";
 import { loadMe } from "@/lib/session";
 import { sanitizeReturnPath } from "@shared/account/returnPath";
-import { ChevronDown, Menu, Search, X } from "lucide-react";
+import { shouldSkipProRecommendation } from "@/join/membership-access";
+import {
+  loadOverview,
+  loadSubscriptions,
+  loadUnreadNotificationCount,
+} from "@/lib/account";
+import { Bell, ChevronDown, Menu, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import "./global-nav.css";
+
+const NOTIF_POLL_MS = 60_000;
 
 const ALLOWED_EXTERNAL_HOSTS = ["whatis.metfix.org", "brokenscience.org"] as const;
 
@@ -145,17 +153,97 @@ export default function GlobalNav() {
   const mobilePanelRef = useRef<HTMLElement>(null);
   const onHome = location === "/" || location === "";
   const [accountName, setAccountName] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [hasMembership, setHasMembership] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const onAccount = location === "/account" || location.startsWith("/account/");
 
   useEffect(() => {
     let cancelled = false;
-    void loadMe().then((me) => {
+    void (async () => {
+      const me = await loadMe();
       if (cancelled) return;
-      setAccountName(me.status === "signed_in" ? me.public_name : null);
-    });
+      if (me.status !== "signed_in") {
+        setAccountName(null);
+        setSignedIn(false);
+        setHasMembership(false);
+        setUnreadCount(0);
+        return;
+      }
+      setAccountName(me.public_name);
+      let member = false;
+      try {
+        const [overview, subscriptions] = await Promise.all([
+          loadOverview().catch(() => null),
+          loadSubscriptions().catch(() => null),
+        ]);
+        if (cancelled) return;
+        member = shouldSkipProRecommendation(subscriptions, overview);
+      } catch {
+        member = false;
+      }
+      if (cancelled) return;
+      setSignedIn(true);
+      setHasMembership(member);
+    })();
     return () => {
       cancelled = true;
     };
   }, [location]);
+
+  useEffect(() => {
+    if (!signedIn) {
+      setUnreadCount(0);
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const payload = await loadUnreadNotificationCount({ force: true });
+        if (!cancelled) {
+          const n = payload.unread_count;
+          setUnreadCount(typeof n === "number" && Number.isFinite(n) ? Math.max(0, n) : 0);
+        }
+      } catch {
+        /* keep last known count */
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, NOTIF_POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [signedIn, location]);
+
+  const notifBellLabel =
+    unreadCount > 0
+      ? `Notifications, ${unreadCount > 99 ? "99+" : unreadCount} unread`
+      : "Notifications";
+
+  const renderNotifBell = (className: string, onNavigate?: () => void) => (
+    <Link
+      href="/account/notifications"
+      className={className}
+      aria-label={notifBellLabel}
+      data-nav-auth="notifications"
+      onClick={onNavigate}
+    >
+      <Bell size={18} aria-hidden="true" />
+      {unreadCount > 0 ? (
+        <span className="global-nav__bell-badge" aria-hidden="true">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      ) : null}
+    </Link>
+  );
 
   useBodyScrollLock(mobileOpen);
 
@@ -436,20 +524,22 @@ export default function GlobalNav() {
             >
               <Search size={18} aria-hidden="true" />
             </button>
-            {!onHome ? (
-              accountName ? (
-                <Link href="/account" className="global-nav__login" data-nav-auth="account">
-                  Dashboard
-                </Link>
-              ) : (
-                <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
-                  Sign in
-                </Link>
-              )
+            {!onHome && accountName && !onAccount ? (
+              <Link href="/account" className="global-nav__dashboard" data-nav-auth="account">
+                Dashboard
+              </Link>
             ) : null}
-            <button type="button" className="global-nav__join" onClick={openJoin}>
-              Join Today — 1 Month Free
-            </button>
+            {!onHome && !accountName ? (
+              <Link href={loginHref} className="global-nav__login" data-nav-auth="login">
+                Sign in
+              </Link>
+            ) : null}
+            {hasMembership ? null : (
+              <button type="button" className="global-nav__join" onClick={openJoin}>
+                Join Today — 1 Month Free
+              </button>
+            )}
+            {signedIn ? renderNotifBell("global-nav__icon-btn global-nav__bell") : null}
             <button
               ref={toggleRef}
               type="button"
@@ -536,18 +626,38 @@ export default function GlobalNav() {
                 );
               })}
               <div className="global-nav__mobile-actions">
-                <Link
-                  href={accountName ? "/account" : loginHref}
-                  className="global-nav__join"
-                  style={{ display: "inline-flex" }}
-                  data-nav-auth={accountName ? "account" : "login"}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  {accountName ? "Dashboard" : "Sign in"}
-                </Link>
-                <button type="button" className="global-nav__join" onClick={openJoin}>
-                  Join Today — 1 Month Free
-                </button>
+                {accountName && !onAccount ? (
+                  <Link
+                    href="/account"
+                    className="global-nav__dashboard"
+                    style={{ display: "inline-flex" }}
+                    data-nav-auth="account"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Dashboard
+                  </Link>
+                ) : null}
+                {!accountName ? (
+                  <Link
+                    href={loginHref}
+                    className="global-nav__join"
+                    style={{ display: "inline-flex" }}
+                    data-nav-auth="login"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    Sign in
+                  </Link>
+                ) : null}
+                {hasMembership ? null : (
+                  <button type="button" className="global-nav__join" onClick={openJoin}>
+                    Join Today — 1 Month Free
+                  </button>
+                )}
+                {signedIn
+                  ? renderNotifBell("global-nav__icon-btn global-nav__bell", () =>
+                      setMobileOpen(false),
+                    )
+                  : null}
                 <button
                   type="button"
                   className="global-nav__icon-btn"
