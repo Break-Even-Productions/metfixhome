@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { basePath } from "@/const";
 import {
   loadInbox,
   type AccountInbox,
   type AccountInboxConversation,
   type AccountInboxNotification,
 } from "@/lib/account";
+import { resolveNotificationHref } from "@shared/account/notificationDeepLinks";
 import DashboardLayout from "./DashboardLayout";
 
 const SHORT_MONTHS = [
@@ -138,13 +138,12 @@ export default function AccountInbox() {
           <ul className="account-inbox-list">
             {conversations.map((c) => {
               const unread = unreadOf(c);
-              return (
-                <li key={String(c.id)} className="account-inbox-list__item">
+              const href = `/account/messages/${encodeURIComponent(String(c.id))}`;
+              const inner = (
+                <>
                   <div>
                     <div className="account-inbox-list__title">
-                      <Link href={basePath(`/account/messages/${c.id}`)}>
-                        {conversationTitle(c)}
-                      </Link>
+                      {conversationTitle(c)}
                       {unread > 0 ? (
                         <span className="account-inbox-list__badge account-mono">
                           {unread}
@@ -156,6 +155,13 @@ export default function AccountInbox() {
                   <div className="account-muted account-mono account-inbox-list__time">
                     {conversationTime(c)}
                   </div>
+                </>
+              );
+              return (
+                <li key={String(c.id)} className="account-inbox-list__item">
+                  <Link href={href} className="account-notif-feed__link">
+                    {inner}
+                  </Link>
                 </li>
               );
             })}
@@ -167,23 +173,41 @@ export default function AccountInbox() {
         <div className="account-card">
           <h2>Notifications</h2>
           <ul className="account-inbox-list">
-            {notifications.map((n) => (
-              <li
-                key={String(n.id)}
-                className="account-inbox-list__item"
-                data-read={n.read === true ? "true" : "false"}
-              >
-                <div>
-                  <div className="account-inbox-list__title">{notificationTitle(n)}</div>
-                  {notificationBody(n) ? (
-                    <div className="account-muted">{notificationBody(n)}</div>
-                  ) : null}
-                </div>
-                <div className="account-muted account-mono account-inbox-list__time">
-                  {notificationTime(n)}
-                </div>
-              </li>
-            ))}
+            {notifications.map((n) => {
+              const href = resolveNotificationHref({
+                type: n.type,
+                link: n.link,
+                post_id: n.post_id,
+                href: n.href,
+              });
+              const body = notificationBody(n);
+              const inner = (
+                <>
+                  <div>
+                    <div className="account-inbox-list__title">{notificationTitle(n)}</div>
+                    {body ? <div className="account-muted">{body}</div> : null}
+                  </div>
+                  <div className="account-muted account-mono account-inbox-list__time">
+                    {notificationTime(n)}
+                  </div>
+                </>
+              );
+              return (
+                <li
+                  key={String(n.id)}
+                  className="account-inbox-list__item"
+                  data-read={n.read === true ? "true" : "false"}
+                >
+                  {href ? (
+                    <Link href={href} className="account-notif-feed__link">
+                      {inner}
+                    </Link>
+                  ) : (
+                    inner
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}

@@ -22,6 +22,7 @@ import {
 } from "../shared/account/claimOptions";
 import { emitStrayFieldLogs, stripStrayFields } from "./stripStrayFields";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
+import { resolveNotificationHref } from "../shared/account/notificationDeepLinks";
 import { computeLtvBudget } from "../shared/account/ltv";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
@@ -50,6 +51,7 @@ import {
   accountFavoriteItemPath,
   accountFavoritesPath,
   accountInAppNotificationsPath,
+  accountNotificationsListPath,
   accountMacrosDailyPath,
   accountMeCommunityChoicesPath,
   accountMePath,
@@ -120,6 +122,7 @@ import {
   accountSubscriptionsPath,
   accountWorkoutLogPath,
   accountWorkoutsCollectionPath,
+  accountBsiV1Path,
   certificateClaimOptionsPath,
   certificatePrepayCheckoutPath,
 } from "../shared/account/bsi-paths";
@@ -188,15 +191,8 @@ const POSITIVE_INT_RE = /^[1-9][0-9]{0,9}$/;
 const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const STRIPE_LIKE_ID_RE = /^(cus|sub|mem|seti|pi)_[A-Za-z0-9]+$/;
 const EMAIL_VALUE_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-/** DP-T-26b: only these top-level keys may leave the Worker toward BSI. */
-const NOTIFICATION_PUT_KEYS = new Set([
-  "email_digest",
-  "product_updates",
-  "newsletter",
-  "newsletter_subscribed",
-  "preferences",
-]);
-const NOTIFICATION_PREF_KEYS = new Set(["email_digest", "product_updates"]);
+const NOTIFICATION_CHANNEL_KEYS = ["email", "text", "phone", "push", "in_feed"] as const;
+const NOTIFICATION_SLUG_RE = /^[a-z0-9_]{1,64}$/;
 
 const REFERRAL_INELIGIBLE_CODES = new Set([
   "bsi_referral_ineligible",
@@ -312,25 +308,41 @@ export async function accountRateLimitKey(ctx: ActingContext): Promise<string> {
   return accountRateLimitKeyImpl(ctx);
 }
 
-function whitelistNotificationsPut(body: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const key of NOTIFICATION_PUT_KEYS) {
-    if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
-    const val = body[key];
-    if (key === "preferences") {
-      const pref = asRecord(val);
-      if (!pref) continue;
-      const cleaned: Record<string, boolean> = {};
-      for (const pk of NOTIFICATION_PREF_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(pref, pk) && typeof pref[pk] === "boolean") {
-          cleaned[pk] = pref[pk] as boolean;
-        }
+function notificationChannelValue(raw: unknown): 0 | 1 | null {
+  if (raw === true || raw === 1) return 1;
+  if (raw === false || raw === 0) return 0;
+  return null;
+}
+
+/** Only account channel maps and the newsletter flag may leave the Worker. */
+function whitelistNotificationsPut(body: Record<string, unknown>): {
+  account?: { types: Array<{ slug: string; channels: Record<string, 0 | 1> }> };
+  newsletter?: boolean;
+} {
+  const out: {
+    account?: { types: Array<{ slug: string; channels: Record<string, 0 | 1> }> };
+    newsletter?: boolean;
+  } = {};
+  const account = asRecord(body.account);
+  const types = account && Array.isArray(account.types) ? account.types : null;
+  if (types) {
+    const cleaned: Array<{ slug: string; channels: Record<string, 0 | 1> }> = [];
+    for (const item of types) {
+      const row = asRecord(item);
+      if (!row || typeof row.slug !== "string" || !NOTIFICATION_SLUG_RE.test(row.slug)) continue;
+      const channels = asRecord(row.channels);
+      if (!channels) continue;
+      const next: Record<string, 0 | 1> = {};
+      for (const key of NOTIFICATION_CHANNEL_KEYS) {
+        if (!Object.prototype.hasOwnProperty.call(channels, key)) continue;
+        const value = notificationChannelValue(channels[key]);
+        if (value !== null) next[key] = value;
       }
-      out.preferences = cleaned;
-      continue;
+      cleaned.push({ slug: row.slug, channels: next });
     }
-    if (typeof val === "boolean") out[key] = val;
+    out.account = { types: cleaned };
   }
+  if (typeof body.newsletter === "boolean") out.newsletter = body.newsletter;
   return out;
 }
 
@@ -787,6 +799,7 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
       foundations_coach: coach.active,
     },
     canonical_tier,
+    pro_intro_offer_eligible: obj.pro_intro_offer_eligible !== false,
     foundations_coach: coach,
     tabs: Array.isArray(obj.tabs) ? obj.tabs : [],
     links: asRecord(obj.links) ?? {},
@@ -858,10 +871,37 @@ function shapeSubscriptions(raw: unknown): Record<string, unknown> | null {
     canonical_tier: obj.canonical_tier,
     items,
   });
-  const out: Record<string, unknown> = { canonical_tier, items };
+  const out: Record<string, unknown> = {
+    canonical_tier,
+    pro_intro_offer_eligible: obj.pro_intro_offer_eligible !== false,
+    items,
+  };
   const conversion = shapeConversion(obj.conversion);
   if (conversion) out.conversion = conversion;
   return out;
+}
+
+function paymentProvider(r: Record<string, unknown>): "whop" | "stripe" | "woo" | null {
+  if (r.provider === "whop" || r.provider === "stripe" || r.provider === "woo") return r.provider;
+  if (r.source === "stripe" || r.source === "woo") return r.source;
+  return null;
+}
+
+function paymentCents(r: Record<string, unknown>): number | null {
+  if (typeof r.amount_cents === "number" && Number.isSafeInteger(r.amount_cents) && r.amount_cents >= 0) {
+    return r.amount_cents;
+  }
+  if (typeof r.amount === "number" && Number.isSafeInteger(r.amount) && r.amount >= 0) return r.amount;
+  return null;
+}
+
+function paymentDescription(r: Record<string, unknown>): string {
+  if (typeof r.description === "string" && r.description.trim()) return r.description;
+  const items = Array.isArray(r.items) ? r.items : [];
+  const first = asRecord(items[0]);
+  if (first && typeof first.name === "string" && first.name.trim()) return first.name;
+  if (typeof r.type === "string" && r.type.trim()) return r.type;
+  return "";
 }
 
 function shapePayments(raw: unknown, page: number, perPage: number): Record<string, unknown> | null {
@@ -872,22 +912,20 @@ function shapePayments(raw: unknown, page: number, perPage: number): Record<stri
   for (const row of itemsIn) {
     const r = asRecord(row);
     if (!r) continue;
-    const provider =
-      r.provider === "whop" || r.provider === "stripe" || r.provider === "woo" ? r.provider : null;
+    const provider = paymentProvider(r);
     if (!provider) continue;
-    const amount =
-      typeof r.amount_cents === "number" && Number.isSafeInteger(r.amount_cents) ? r.amount_cents : null;
-    if (amount == null || amount < 0) continue;
+    const amount = paymentCents(r);
+    if (amount == null) continue;
     const item: Record<string, unknown> = {
       id: r.id ?? null,
-      created_at: strOrNull(r.created_at),
-      description: typeof r.description === "string" ? r.description : "",
+      created_at: strOrNull(r.created_at) ?? strOrNull(r.date),
+      description: paymentDescription(r),
       amount_cents: amount,
       currency: typeof r.currency === "string" ? r.currency : "usd",
       provider,
       status: typeof r.status === "string" ? r.status : "unknown",
     };
-    const receipt = sanitizeExternalBillingUrl(r.receipt_url, "billing_portal");
+    const receipt = sanitizeExternalBillingUrl(r.receipt_url ?? r.invoice_url, "billing_portal");
     if (receipt) item.receipt_url = receipt;
     items.push(item);
   }
@@ -1394,6 +1432,50 @@ function shapeSparkUnits(raw: unknown): Record<string, unknown> {
   return { units, count: units.length };
 }
 
+/** Shape BSI in-app notification rows for the web inbox / notifications page. */
+function shapeInboxNotification(raw: unknown): Record<string, unknown> | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const id = obj.id;
+  if (id == null || id === "") return null;
+  const type = typeof obj.type === "string" ? obj.type : null;
+  const link = typeof obj.link === "string" ? obj.link : null;
+  const postId =
+    typeof obj.post_id === "number" || typeof obj.post_id === "string" ? obj.post_id : null;
+  const readAt = typeof obj.read_at === "string" ? obj.read_at : null;
+  const href = resolveNotificationHref({ type, link, post_id: postId });
+  const title = typeof obj.title === "string" ? obj.title : null;
+  const content =
+    typeof obj.content === "string"
+      ? obj.content
+      : typeof obj.message === "string"
+        ? obj.message
+        : null;
+  return {
+    id,
+    type,
+    title,
+    content,
+    message: content,
+    created_at: typeof obj.created_at === "string" ? obj.created_at : null,
+    read_at: readAt,
+    read: Boolean(readAt),
+    source: typeof obj.source === "string" ? obj.source : null,
+    post_id: postId,
+    link,
+    href,
+  };
+}
+
+function unreadCountFromPayload(raw: unknown): number | null {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const n = obj.unread_count;
+  if (typeof n === "number" && Number.isFinite(n) && n >= 0) return Math.floor(n);
+  if (typeof n === "string" && /^\d+$/.test(n)) return Number.parseInt(n, 10);
+  return null;
+}
+
 /** BSI spark create requires Y-m-d H:i:s; dashboard date inputs send Y-m-d. */
 function normalizeSparkMeasurementDate(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -1874,6 +1956,12 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "inbox") {
     return { id: "MF14", method: "GET", params: {}, limiter: "read" };
   }
+  if (method === "POST" && rest === "inbox/read") {
+    return { id: "MF14r", method: "POST", params: {}, limiter: "write" };
+  }
+  if (method === "POST" && rest === "inbox/dismiss") {
+    return { id: "MF14d", method: "POST", params: {}, limiter: "write" };
+  }
   if (method === "GET" && rest === "messages/conversations") {
     return { id: "MF64", method: "GET", params: {}, limiter: "read" };
   }
@@ -2152,6 +2240,9 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "GET" && rest === "course-gifts") {
     return { id: "DP25", method: "GET", params: {}, limiter: "read" };
   }
+  if (method === "GET" && rest === "notifications/unread-count") {
+    return { id: "MF14u", method: "GET", params: {}, limiter: "read" };
+  }
   if (method === "GET" && rest === "notifications") {
     return { id: "DP26", method: "GET", params: {}, limiter: "read" };
   }
@@ -2173,8 +2264,133 @@ function matchRoute(method: string, path: string): RouteMatch | null {
   if (method === "POST" && rest === "email/confirm") {
     return { id: "DP30c", method: "POST", params: {}, limiter: "portal" };
   }
+  if (
+    (rest.startsWith("affiliates/") || rest.startsWith("locations/")) &&
+    affiliateProxySpec(method, rest)
+  ) {
+    return {
+      id: "AFF",
+      method,
+      params: { tail: rest },
+      limiter: method === "GET" || method === "HEAD" ? "read" : "write",
+    };
+  }
 
   return null;
+}
+
+const AFF_ID = "[1-9][0-9]{0,9}";
+
+function affiliateProxySpec(
+  method: string,
+  rest: string,
+): { suffix: string; queryKeys: string[] } | null {
+  if (method === "GET" && rest === "locations/countries") return { suffix: rest, queryKeys: [] };
+  if (method === "GET" && rest === "locations/states") {
+    return { suffix: rest, queryKeys: ["country_id"] };
+  }
+  if (method === "GET" && rest === "affiliates/primary") return { suffix: rest, queryKeys: [] };
+  const rules: Array<{ re: RegExp; methods: string[]; queryKeys: string[] }> = [
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/comments/${AFF_ID}$`), methods: ["DELETE"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/comments$`), methods: ["GET", "POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/pin$`), methods: ["POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}/like$`), methods: ["POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed/${AFF_ID}$`), methods: ["GET", "PUT", "PATCH", "DELETE"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/feed$`), methods: ["GET", "POST"], queryKeys: ["limit", "offset", "days_ahead", "include_drop_ins"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/members/${AFF_ID}$`), methods: ["DELETE"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/members$`), methods: ["GET", "POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/invites$`), methods: ["POST"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/me/capabilities$`), methods: ["GET"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/delegates/${AFF_ID}/capabilities$`), methods: ["GET", "PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/coaches/${AFF_ID}/capabilities$`), methods: ["GET", "PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/attributes/${AFF_ID}$`), methods: ["GET", "PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/attributes$`), methods: ["GET"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/payments$`), methods: ["GET"], queryKeys: ["year"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/insurance/history$`), methods: ["GET"], queryKeys: ["year"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/insurance$`), methods: ["GET"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/activity$`), methods: ["GET"], queryKeys: ["filter", "limit", "offset"] },
+    { re: new RegExp(`^affiliates/${AFF_ID}/join-settings$`), methods: ["PATCH", "PUT"], queryKeys: [] },
+    { re: new RegExp(`^affiliates/${AFF_ID}$`), methods: ["GET"], queryKeys: [] },
+  ];
+  for (const rule of rules) {
+    if (rule.methods.includes(method) && rule.re.test(rest)) {
+      return { suffix: rest, queryKeys: rule.queryKeys };
+    }
+  }
+  return null;
+}
+
+function affiliateQuery(url: URL, keys: string[], rest: string): string | Response {
+  const parts: string[] = [];
+  for (const key of keys) {
+    const raw = url.searchParams.get(key);
+    if (raw == null || raw === "") continue;
+    if (key === "include_drop_ins") {
+      if (raw !== "true" && raw !== "false" && raw !== "0" && raw !== "1") {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      parts.push(`${key}=${raw === "1" || raw === "true" ? "true" : "false"}`);
+      continue;
+    }
+    if (key === "filter") {
+      if (!["all", "pending", "approved", "affiliate_setting", "member"].includes(raw)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      parts.push(`filter=${raw}`);
+      continue;
+    }
+    if (!/^\d+$/.test(raw)) return accountJson({ error: "invalid_request" }, 400);
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < 0) return accountJson({ error: "invalid_request" }, 400);
+    if ((key === "country_id" || key === "year") && n < 1) {
+      return accountJson({ error: "invalid_request" }, 400);
+    }
+    if (key === "limit" && (n < 1 || n > 200)) return accountJson({ error: "invalid_request" }, 400);
+    if (key === "days_ahead" && n > 365) return accountJson({ error: "invalid_request" }, 400);
+    parts.push(`${key}=${n}`);
+  }
+  if (rest === "locations/states" && !parts.some((p) => p.startsWith("country_id="))) {
+    return accountJson({ error: "invalid_request" }, 400);
+  }
+  return parts.join("&");
+}
+
+const AFFILIATE_ERROR_CODES = new Set([
+  "permission_denied",
+  "invalid_request",
+  "invalid_email",
+  "invalid_role",
+  "invalid_address",
+  "invalid_attr_id",
+  "invalid_user_id",
+  "invalid_post_type",
+  "invalid_content",
+  "invalid_capabilities",
+  "user_not_found",
+  "member_not_found",
+  "affiliate_not_found",
+  "attribute_not_found",
+  "not_delegate",
+  "delegate_limit",
+  "rest_forbidden",
+  "invite_failed",
+  "create_failed",
+]);
+
+function mapAffiliateHttp(json: unknown, status: number): Response {
+  const obj = asRecord(json);
+  const code = typeof obj?.code === "string" ? obj.code : typeof obj?.error === "string" ? obj.error : "";
+  const message =
+    typeof obj?.message === "string" ? obj.message.replace(/<[^>]*>/g, "").slice(0, 240) : "";
+  if (AFFILIATE_ERROR_CODES.has(code)) {
+    const http = status >= 400 && status < 600 ? status : 400;
+    return accountJson(message ? { error: code, message } : { error: code }, http);
+  }
+  if (status === 401) return accountJson({ error: "unauthenticated" }, 401);
+  if (status === 403) return accountJson(message ? { error: "permission_denied", message } : { error: "permission_denied" }, 403);
+  if (status === 404) return accountJson({ error: "not_found" }, 404);
+  if (status === 400) return accountJson(message ? { error: "invalid_request", message } : { error: "invalid_request" }, 400);
+  return accountJson({ error: "upstream_error" }, status >= 500 ? 502 : status);
 }
 
 function parsePageParams(url: URL): { page: number; per_page: number } | Response {
@@ -2249,7 +2465,40 @@ type ProfileAttrWrite = {
   member_type: "general" | "metfix" | "medical";
   attr_id: number;
   attr_value: string;
+  address?: Record<string, string>;
 };
+
+const ADDRESS_KEYS = [
+  "address",
+  "address2",
+  "city",
+  "zip",
+  "country",
+  "state",
+  "other_state_name",
+  "other_state_abbrev",
+] as const;
+
+function sanitizeAddressPayload(raw: unknown): Record<string, string> | null | Response {
+  const obj = asRecord(raw);
+  if (!obj) return null;
+  const out: Record<string, string> = {};
+  for (const key of ADDRESS_KEYS) {
+    if (!(key in obj)) continue;
+    const v = obj[key];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[key] = String(v);
+      continue;
+    }
+    if (typeof v !== "string") return accountJson({ error: "invalid_field" }, 400);
+    if (v.includes("@")) return accountJson({ error: "invalid_field" }, 400);
+    out[key] = v;
+  }
+  if (!out.address?.trim() || !out.city?.trim() || !out.zip?.trim()) {
+    return accountJson({ error: "invalid_field" }, 400);
+  }
+  return out;
+}
 
 function validateAttributesPayload(json: unknown): Response | ProfileAttrWrite[] {
   const obj = asRecord(json);
@@ -2281,21 +2530,27 @@ function validateAttributesPayload(json: unknown): Response | ProfileAttrWrite[]
         return accountJson({ error: "invalid_field" }, 400);
       }
     }
+    const address = sanitizeAddressPayload(r.address);
+    if (address instanceof Response) return address;
     const value =
       typeof r.attr_value === "string"
         ? r.attr_value
         : typeof r.value === "string"
           ? r.value
-          : null;
+          : address
+            ? ""
+            : null;
     if (value == null) return accountJson({ error: "invalid_field" }, 400);
     if (value.includes("@") || EMAIL_VALUE_RE.test(value)) {
       return accountJson({ error: "invalid_field" }, 400);
     }
-    out.push({
+    const rowOut: ProfileAttrWrite = {
       member_type: mapped as "general" | "metfix" | "medical",
       attr_id: id,
       attr_value: value,
-    });
+    };
+    if (address) rowOut.address = address;
+    out.push(rowOut);
   }
   return out;
 }
@@ -2359,14 +2614,45 @@ function shapeEditableAttrRow(row: unknown): Record<string, unknown> | null {
             : null;
   if (!label || /email/i.test(label)) return null;
   const formType = typeof r.form_type === "string" ? r.form_type : "text";
-  if (formType === "email" || formType === "file") return null;
-  return {
+  if (formType === "email" || formType === "file" || formType === "video") return null;
+  const out: Record<string, unknown> = {
     attr_id: attrId,
     key: typeof r.key === "string" ? r.key : undefined,
     label,
     form_type: formType,
     value: typeof r.value === "string" ? r.value : typeof r.current_value === "string" ? r.current_value : "",
   };
+  if (typeof r.description === "string" && r.description.trim()) {
+    out.description = r.description.slice(0, 500);
+  }
+  if (typeof r.category === "string" && r.category.trim() && r.category.length <= 80) {
+    out.category = r.category;
+  }
+  const address = asRecord(r.address);
+  if (address) {
+    out.address = {
+      address: typeof address.address === "string" ? address.address : "",
+      address2: typeof address.address2 === "string" ? address.address2 : "",
+      city: typeof address.city === "string" ? address.city : "",
+      zip: typeof address.zip === "string" ? address.zip : "",
+      state: typeof address.state === "number" ? address.state : null,
+      country: typeof address.country === "number" ? address.country : null,
+    };
+  }
+  if (Array.isArray(r.options)) {
+    const options: Record<string, unknown>[] = [];
+    for (const opt of r.options) {
+      const o = asRecord(opt);
+      if (!o) continue;
+      const id = typeof o.id === "number" && Number.isInteger(o.id) && o.id > 0 ? o.id : null;
+      const name =
+        typeof o.name === "string" ? o.name : typeof o.label === "string" ? o.label : "";
+      if (id == null || !name.trim()) continue;
+      options.push({ id, name });
+    }
+    if (options.length > 0) out.options = options;
+  }
+  return out;
 }
 
 function shapeProfileAttributes(raw: unknown): {
@@ -3022,6 +3308,7 @@ async function dispatch(
               member_type: row.member_type,
               attr_id: row.attr_id,
               attr_value: row.attr_value,
+              ...(row.address ? { address: row.address } : {}),
             }),
             contentType: "application/json",
           },
@@ -3540,14 +3827,37 @@ async function dispatch(
       return accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
     case "MF14": {
-      const [convRan, notifRan] = await Promise.all([
+      const viewRaw = url.searchParams.get("view") ?? "all";
+      if (viewRaw !== "all" && viewRaw !== "focused") {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limitRaw = url.searchParams.get("limit") ?? "50";
+      const offsetRaw = url.searchParams.get("offset") ?? "0";
+      if (!/^[1-9][0-9]*$/.test(limitRaw) || !/^(0|[1-9][0-9]*)$/.test(offsetRaw)) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const limit = Math.min(Number(limitRaw), 100);
+      const offset = Number(offsetRaw);
+      const notifQuery = `limit=${limit}&offset=${offset}&view=${viewRaw}`;
+      const [convRan, notifRan, unreadRan] = await Promise.all([
         runBearer(ctx!, env, fetchImpl, opts, "GET", accountMessagesConversationsPath()),
-        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath()),
+        runBearer(ctx!, env, fetchImpl, opts, "GET", accountInAppNotificationsPath(), {
+          query: notifQuery,
+        }),
+        runBearer(
+          ctx!,
+          env,
+          fetchImpl,
+          opts,
+          "GET",
+          `${accountNotificationsListPath()}?limit=1&offset=0`,
+        ),
       ]);
       if (convRan instanceof Response) return mapUnauthenticated(convRan);
       if (notifRan instanceof Response) return mapUnauthenticated(notifRan);
       const conversations: unknown[] = [];
-      const notifications: unknown[] = [];
+      const notifications: Record<string, unknown>[] = [];
+      let total_count = 0;
       if (convRan.result.kind === "ok") {
         const cobj = asRecord(convRan.result.json) ?? {};
         const list = Array.isArray(cobj.conversations)
@@ -3568,7 +3878,26 @@ async function dispatch(
           : Array.isArray(nobj.items)
             ? nobj.items
             : [];
-        notifications.push(...list);
+        for (const row of list) {
+          const shaped = shapeInboxNotification(row);
+          if (shaped) notifications.push(shaped);
+        }
+        total_count =
+          typeof nobj.total_count === "number" && Number.isFinite(nobj.total_count)
+            ? Math.max(0, Math.floor(nobj.total_count))
+            : notifications.length;
+      }
+      let unread_count =
+        unreadRan instanceof Response
+          ? null
+          : unreadRan.result.kind === "ok"
+            ? unreadCountFromPayload(unreadRan.result.json)
+            : null;
+      if (unread_count == null) {
+        unread_count = notifications.reduce(
+          (sum, n) => sum + (n.read === true ? 0 : 1),
+          0,
+        );
       }
       // If both upstreams failed hard, surface unavailable.
       if (
@@ -3579,7 +3908,96 @@ async function dispatch(
       ) {
         return accountJson({ error: "unavailable" }, 502);
       }
-      return accountJson({ conversations, notifications, items: notifications }, 200);
+      return accountJson(
+        {
+          conversations,
+          notifications,
+          items: notifications,
+          unread_count,
+          total_count,
+          limit,
+          offset,
+          view: viewRaw,
+        },
+        200,
+      );
+    }
+    case "MF14r": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const id = body?.notification_id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "PATCH",
+        `${accountNotificationsListPath()}/read`,
+        {
+          body: JSON.stringify({ notification_id: id }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF14d": {
+      const parsed = await readJsonBody(request);
+      if (parsed instanceof Response) return parsed;
+      const body = asRecord(parsed.json);
+      const id = body?.notification_id;
+      const type = body?.type;
+      if (
+        typeof id !== "number" ||
+        !Number.isSafeInteger(id) ||
+        id <= 0 ||
+        (type !== "site" && type !== "personal")
+      ) {
+        return accountJson({ error: "invalid_request" }, 400);
+      }
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "POST",
+        `${accountNotificationsListPath()}/dismiss`,
+        {
+          body: JSON.stringify({ notification_id: id, type }),
+          contentType: "application/json",
+        },
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ success: true }, 200);
+    }
+    case "MF14u": {
+      const ran = await runBearer(
+        ctx!,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        `${accountNotificationsListPath()}?limit=1&offset=0`,
+      );
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "ok") {
+        const count = unreadCountFromPayload(ran.result.json) ?? 0;
+        return accountJson({ unread_count: count }, 200);
+      }
+      if (ran.result.kind === "http" && ran.result.status === 404) {
+        return accountJson({ unread_count: 0 }, 200);
+      }
+      const mapped = mapUpstreamResult(ran.result);
+      if (mapped instanceof Response) return mapped;
+      return accountJson({ unread_count: 0 }, 200);
     }
     case "MF64": {
       const ran = await runBearer(
@@ -4185,14 +4603,31 @@ async function dispatch(
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? {}, 200);
+      const base = asRecord(mapped.json) ?? {};
+      let newsletter: { subscribed: boolean } | null = null;
+      const newsRan = await runBearer(
+        ran.ctx,
+        env,
+        fetchImpl,
+        opts,
+        "GET",
+        accountNewsletterPath(),
+      );
+      if (!(newsRan instanceof Response) && newsRan.result.kind === "ok") {
+        const state = asRecord(newsRan.result.json);
+        if (state && typeof state.subscribed === "boolean") {
+          newsletter = { subscribed: state.subscribed };
+        }
+      }
+      return accountJson({ ...base, newsletter }, 200);
     }
     case "DP26w": {
       const parsed = await readJsonBody(request);
       if (parsed instanceof Response) return parsed;
       const body = asRecord(parsed.json) ?? {};
-      // DP-T-26b: whitelist before BSI — unknown keys never forwarded.
+      // Unknown keys never forwarded. Newsletter is a separate BSI route.
       const safeBody = whitelistNotificationsPut(body);
+      const prefBody = safeBody.account ? { account: safeBody.account } : {};
       const ran = await runBearer(
         ctx!,
         env,
@@ -4200,12 +4635,13 @@ async function dispatch(
         opts,
         "PUT",
         accountNotificationPreferencesPath(),
-        { body: JSON.stringify(safeBody), contentType: "application/json" },
+        { body: JSON.stringify(prefBody), contentType: "application/json" },
       );
       if (ran instanceof Response) return mapUnauthenticated(ran);
       const mapped = mapUpstreamResult(ran.result);
       if (mapped instanceof Response) return mapped;
-      if ("newsletter" in safeBody || "newsletter_subscribed" in safeBody) {
+      let newsletter: { subscribed: boolean } | null = null;
+      if (typeof safeBody.newsletter === "boolean") {
         const newsRan = await runBearer(
           ran.ctx,
           env,
@@ -4214,18 +4650,17 @@ async function dispatch(
           "PUT",
           accountNewsletterPath(),
           {
-            body: JSON.stringify({
-              subscribed:
-                safeBody.newsletter === true || safeBody.newsletter_subscribed === true,
-            }),
+            body: JSON.stringify({ subscribed: safeBody.newsletter }),
             contentType: "application/json",
           },
         );
         if (newsRan instanceof Response) return mapUnauthenticated(newsRan);
         const newsMapped = mapUpstreamResult(newsRan.result);
         if (newsMapped instanceof Response) return newsMapped;
+        newsletter = { subscribed: safeBody.newsletter };
       }
-      return accountJson(mapped.json ?? { ok: true }, mapped.status);
+      const saved = asRecord(mapped.json) ?? {};
+      return accountJson({ ...saved, newsletter }, mapped.status);
     }
     case "DP28": {
       const ran = await runBearer(
@@ -4943,6 +5378,33 @@ async function dispatch(
       );
       if (proxied instanceof Response) return proxied;
       return accountJson(shapeCoachProfile(proxied.json), 200);
+    }
+    case "AFF": {
+      const tail = match.params.tail ?? "";
+      const spec = affiliateProxySpec(match.method, tail);
+      if (!spec) return accountJson({ error: "not_found" }, 404);
+      const query = affiliateQuery(new URL(request.url), spec.queryKeys, tail);
+      if (query instanceof Response) return query;
+      let jsonBody: unknown;
+      if (match.method !== "GET" && match.method !== "DELETE") {
+        const parsed = await readJsonBody(request);
+        if (parsed instanceof Response) return parsed;
+        if (!asRecord(parsed.json)) return accountJson({ error: "invalid_request" }, 400);
+        jsonBody = parsed.json;
+      }
+      const ran = await runBearer(ctx!, env, fetchImpl, opts, match.method, accountBsiV1Path(spec.suffix), {
+        query: query || undefined,
+        ...(jsonBody !== undefined
+          ? { body: JSON.stringify(jsonBody), contentType: "application/json" }
+          : {}),
+      });
+      if (ran instanceof Response) return mapUnauthenticated(ran);
+      if (ran.result.kind === "ok") {
+        return accountJson(ran.result.json ?? { ok: true }, ran.result.status);
+      }
+      if (ran.result.kind === "http") return mapAffiliateHttp(ran.result.json, ran.result.status);
+      const mapped = mapUpstreamResult(ran.result);
+      return mapped instanceof Response ? mapped : accountJson(mapped.json ?? { ok: true }, mapped.status);
     }
     default:
       return accountJson({ error: "not_found" }, 404);

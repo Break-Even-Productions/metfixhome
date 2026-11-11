@@ -34,6 +34,8 @@ export type AccountOverview = {
     foundations_coach: boolean;
   };
   canonical_tier: CanonicalSubscriptionTier;
+  /** False when the user previously held MetFix Pro (no first-month intro). */
+  pro_intro_offer_eligible?: boolean;
   foundations_coach: FoundationsCoachStatus;
   tabs: unknown[];
   links: Record<string, unknown>;
@@ -75,6 +77,8 @@ export type SubscriptionConversion = {
 
 export type AccountSubscriptions = {
   canonical_tier: CanonicalSubscriptionTier;
+  /** False when the user previously held MetFix Pro (no first-month intro). */
+  pro_intro_offer_eligible?: boolean;
   items: SubscriptionItem[];
   conversion?: SubscriptionConversion;
 };
@@ -253,9 +257,22 @@ export type CourseGiftsPayload = {
   [key: string]: unknown;
 };
 
+export type NotificationChannelMap = Partial<
+  Record<"email" | "text" | "phone" | "push" | "in_feed", number | boolean>
+>;
+
+export type NotificationPrefType = {
+  slug: string;
+  label?: string;
+  group?: string;
+  allowed_channels?: string[];
+  channels?: NotificationChannelMap;
+  email_required?: boolean;
+};
+
 export type NotificationsPayload = {
-  preferences?: Record<string, boolean>;
-  newsletter?: boolean;
+  account?: { types?: NotificationPrefType[] };
+  newsletter?: { subscribed: boolean } | null;
   [key: string]: unknown;
 };
 
@@ -527,8 +544,13 @@ export type AccountInboxNotification = {
   content?: string | null;
   type?: string | null;
   read?: boolean;
+  read_at?: string | null;
   created_at?: string | null;
   link?: string | null;
+  /** MetFix.org deep link shaped by the account worker. */
+  href?: string | null;
+  post_id?: number | string | null;
+  source?: string | null;
   [key: string]: unknown;
 };
 
@@ -540,8 +562,17 @@ export type AccountInbox = {
   conversations?: AccountInboxConversation[];
   notifications?: AccountInboxNotification[];
   items?: AccountInboxNotification[];
+  unread_count?: number;
   total?: number;
+  total_count?: number;
+  limit?: number;
+  offset?: number;
+  view?: "all" | "focused";
   [key: string]: unknown;
+};
+
+export type UnreadNotificationCount = {
+  unread_count: number;
 };
 
 export type WorkoutScoreEntry = {
@@ -871,9 +902,11 @@ type CacheKey =
   | "referrals"
   | "gifts"
   | "notifications"
+  | "notifications-unread"
   | "privacy"
   | "pr-overview"
   | "inbox"
+  | `inbox:${string}`
   | "messages-conversations"
   | `messages-conversation:${string}`
   | `messages-thread:${string}:${number}:${number}`
@@ -1387,10 +1420,33 @@ export function loadSparkEntries(
  * GET /api/account/inbox (worker proxy to BSI messages / in-app-notifications assumed).
  */
 export function loadInbox(options?: {
+  view?: "all" | "focused";
+  limit?: number;
+  offset?: number;
   force?: boolean;
   signal?: AbortSignal;
 }): Promise<AccountInbox> {
-  return accountGet("/api/account/inbox", "inbox", options);
+  const params = new URLSearchParams();
+  if (options?.view) params.set("view", options.view);
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.offset != null) params.set("offset", String(options.offset));
+  const qs = params.toString();
+  const key: CacheKey = qs
+    ? `inbox:${options?.view ?? "all"}:${options?.limit ?? ""}:${options?.offset ?? 0}`
+    : "inbox";
+  return accountGet(`/api/account/inbox${qs ? `?${qs}` : ""}`, key, options);
+}
+
+/** Live unread badge for the site header bell. */
+export function loadUnreadNotificationCount(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<UnreadNotificationCount> {
+  return accountGet(
+    "/api/account/notifications/unread-count",
+    "notifications-unread",
+    options,
+  );
 }
 
 export type ChatMember = {
@@ -2490,6 +2546,7 @@ export async function updateProfileAttributes(
     attr_id: number;
     value: string;
     section: ProfileAttrSection;
+    address?: Record<string, string>;
   }>,
 ): Promise<unknown> {
   return accountMutate("/api/account/profile/attributes", {
@@ -2499,6 +2556,7 @@ export async function updateProfileAttributes(
         attr_id: a.attr_id,
         value: a.value,
         section: a.section,
+        ...(a.address ? { address: a.address } : {}),
       })),
     },
     invalidate: ["profile"],
@@ -2557,6 +2615,25 @@ export async function referralCodeAction(
   cache.set("referrals", merged);
   inflight.delete("referrals");
   return merged;
+}
+
+export function markInboxNotificationRead(notificationId: number): Promise<{ success: boolean }> {
+  return accountMutate("/api/account/inbox/read", {
+    method: "POST",
+    body: { notification_id: notificationId },
+    invalidate: ["notifications-unread"],
+  });
+}
+
+export function dismissInboxNotification(
+  notificationId: number,
+  source: "site" | "personal",
+): Promise<{ success: boolean }> {
+  return accountMutate("/api/account/inbox/dismiss", {
+    method: "POST",
+    body: { notification_id: notificationId, type: source },
+    invalidate: ["notifications-unread"],
+  });
 }
 
 export async function updateNotifications(

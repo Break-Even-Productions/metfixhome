@@ -91,21 +91,18 @@ export async function refreshAfterUnauthorized(
   _fetchImpl: FetchImpl,
   opts?: { baseUrl?: string },
 ): Promise<ActingContext | null> {
-  try {
-    const next = await ensureActingAccess(env, ctx.sid, {
-      force: true,
-      baseUrl: opts?.baseUrl,
-    });
-    if (!next) return null;
-    return {
-      sid: ctx.sid,
-      hex: next.hex,
-      access: next.record.bsi_access,
-      record: next.record,
-    };
-  } catch {
-    return null;
-  }
+  // Timeout and 5xx throw SessionUnavailableError. Callers must not treat that as a dead grant.
+  const next = await ensureActingAccess(env, ctx.sid, {
+    force: true,
+    baseUrl: opts?.baseUrl,
+  });
+  if (!next) return null;
+  return {
+    sid: ctx.sid,
+    hex: next.hex,
+    access: next.record.bsi_access,
+    record: next.record,
+  };
 }
 
 function isBsiUnauthorized(
@@ -123,7 +120,16 @@ export async function runUserBsiCall<T extends { kind: string; status?: number }
 ): Promise<{ ctx: ActingContext; result: T } | Response> {
   let result = await call(ctx.access);
   if (!isBsiUnauthorized(result)) return { ctx, result };
-  const next = await refreshAfterUnauthorized(env, ctx, fetchImpl, opts);
+  let next: ActingContext | null;
+  try {
+    next = await refreshAfterUnauthorized(env, ctx, fetchImpl, opts);
+  } catch (e) {
+    // Refresh timed out or the token endpoint returned 5xx. Keep the session.
+    if (e instanceof SessionUnavailableError) {
+      return unavailable(e.retryAfter ?? 300);
+    }
+    throw e;
+  }
   if (!next) return sessionExpired(env, ctx.sid);
   result = await call(next.access);
   if (isBsiUnauthorized(result)) return sessionExpired(env, ctx.sid);

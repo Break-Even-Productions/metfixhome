@@ -19,6 +19,8 @@ export const FOOTER_LINK_ALLOWLIST = [
   "/account/favorites",
   "/account/referrals",
   "/account/notifications",
+  "/account/messages",
+  "/account/chat",
   "/account/privacy",
   "/404",
   "/#membership-section",

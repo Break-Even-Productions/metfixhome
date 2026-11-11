@@ -66,7 +66,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
         }
       }}
     >
-      <div className="relative overflow-hidden rounded-[1.35rem] bg-ink-2 transition-[transform,translate,box-shadow] duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
+      <div className="relative overflow-hidden rounded-[1.35rem] bg-white text-[#171512] transition-[transform,translate,box-shadow] duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
         {image ? (
           <img
             src={image}
@@ -112,7 +112,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
                       event.stopPropagation();
                       void buy();
                     }}
-                    className="course-buy-btn inline-flex w-full items-center justify-center rounded-full border border-line bg-white px-4 py-2.5 text-sm font-semibold text-[#171512] shadow-[0_1px_0_rgba(23,21,18,0.04)] transition-[background-color,box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-px hover:border-ink/15 hover:bg-cream hover:shadow-[0_8px_20px_rgba(23,21,18,0.08)] disabled:cursor-wait disabled:opacity-70"
+                    className="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-2.5 text-sm font-semibold text-ink transition-[background-color,transform] duration-300 ease-out hover:-translate-y-px hover:bg-accent-2 disabled:cursor-wait disabled:opacity-70"
                   >
                     {buying ? "Opening…" : "Buy Now"}
                   </button>
@@ -137,7 +137,7 @@ function CourseCard({ course, onJoin }: { course: HomeCourseCard; onJoin: () => 
                 </p>
               ) : null}
               {buyError ? (
-                <p className="mt-1.5 text-[12px] leading-snug text-red-300" role="alert">
+                <p className="mt-1.5 text-[12px] leading-snug text-red-700" role="alert">
                   {buyError}
                 </p>
               ) : null}

@@ -15,6 +15,7 @@ import {
   csrfSid,
   hOk,
   ORIGIN,
+  sessionBlob,
   setupAuthHooks,
   type Harness,
 } from "../tools/pr2/harness/realauth-harness";
@@ -276,7 +277,7 @@ describe("worker/account routes", () => {
     assertNoStore(ok);
   });
 
-  it("DP-T-1 overview DTO includes canonical_tier + foundations_coach 7 keys", async () => {
+  it("DP-T-1 overview DTO includes canonical_tier + foundations_coach keys", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path }) => {
@@ -299,12 +300,15 @@ describe("worker/account routes", () => {
     expect(Object.keys(body.foundations_coach).sort()).toEqual(
       [
         "active",
+        "discount_codes",
         "expires_at",
         "grant_reason",
         "granted_at",
         "metfix_essentials_certificate_claimed",
         "metfix_essentials_completed",
         "seminar_checked_in",
+        "seminar_date",
+        "seminar_name",
       ].sort(),
     );
     expect(recorded.length).toBe(1);
@@ -706,6 +710,108 @@ describe("worker/account routes", () => {
     const body = (await ok.json()) as { items: Array<{ amount_cents: number }> };
     expect(body.items[0]!.amount_cents).toBe(1234);
     expect(formatUsdFromCents(1234)).toBe("$12.34");
+  });
+
+  it("DP-T-4b maps live me/payments rows into the billing history list", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/payments")) {
+          return Response.json({
+            items: [
+              {
+                source: "stripe",
+                id: "p_9",
+                date: "2026-03-01T00:00:00.000Z",
+                amount: 2500,
+                currency: "usd",
+                type: "subscription",
+                status: "paid",
+                invoice_url: "https://billing.stripe.com/r/1",
+                items: [{ name: "MetFix Pro" }],
+              },
+              {
+                source: "woo",
+                id: "w_3",
+                date: "2026-02-01T00:00:00.000Z",
+                amount: 1000,
+                currency: "usd",
+                type: "order",
+                status: "paid",
+                invoice_url: "https://example.com/order",
+                items: [{ name: "Seminar" }],
+              },
+            ],
+            total: 2,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/payments",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{
+        id: string;
+        created_at: string;
+        description: string;
+        provider: string;
+        amount_cents: number;
+        receipt_url?: string;
+      }>;
+    };
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toMatchObject({
+      id: "p_9",
+      created_at: "2026-03-01T00:00:00.000Z",
+      description: "MetFix Pro",
+      provider: "stripe",
+      amount_cents: 2500,
+      receipt_url: "https://billing.stripe.com/r/1",
+    });
+    expect(body.items[1]?.provider).toBe("woo");
+    expect(body.items[1]?.description).toBe("Seminar");
+    expect(body.items[1]?.receipt_url).toBeUndefined();
+  });
+
+  it("AFF proxies affiliate capabilities and rejects unknown affiliate paths", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/affiliates/3/me/capabilities")) {
+          return Response.json({
+            role: "owner",
+            permissions: { can_edit_affiliate: true },
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const ok = await callAccount(
+      h,
+      "/api/account/affiliates/3/me/capabilities",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { role: string };
+    expect(body.role).toBe("owner");
+    const hit = recorded.find((row) => row.url.includes("/affiliates/3/me/capabilities"));
+    expect(hit?.url).toContain("/wp-json/bsi/v1/affiliates/3/me/capabilities");
+    expect(hit?.headers.authorization).toMatch(/^Bearer /);
+
+    const missing = await callAccount(
+      h,
+      "/api/account/affiliates/3/not-a-tool",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(missing.status).toBe(404);
   });
 
   it("DP-T-5 / DP-T-CERT3 LTV300 spend + alias (legacy claim-certificate route removed)", async () => {
@@ -1173,7 +1279,27 @@ describe("worker/account routes", () => {
         }
         if (path.includes("/in-app-notifications")) {
           return Response.json({
-            notifications: [{ id: 2, title: "Welcome", message: "Hi", created_at: "2026-11-01" }],
+            notifications: [
+              {
+                id: 2,
+                type: "messaging",
+                title: "Welcome",
+                content: "Hi",
+                created_at: "2026-11-01",
+                read_at: null,
+                link: "/messages/9",
+                post_id: 9,
+                source: "personal",
+              },
+            ],
+          });
+        }
+        if (path.includes("/bsi/v1/notifications") && !path.includes("preferences")) {
+          return Response.json({
+            site_notifications: [],
+            personal_notifications: [],
+            total_count: 1,
+            unread_count: 1,
           });
         }
         return Response.json({ error: "unexpected" }, 500);
@@ -1355,10 +1481,58 @@ describe("worker/account routes", () => {
     expect(inbox.status).toBe(200);
     const inboxJson = (await inbox.json()) as {
       conversations: unknown[];
-      notifications: unknown[];
+      notifications: Array<{ href?: string; type?: string; read?: boolean }>;
+      unread_count?: number;
+      view?: string;
+      limit?: number;
+      offset?: number;
     };
     expect(inboxJson.conversations.length).toBe(1);
     expect(inboxJson.notifications.length).toBe(1);
+    expect(inboxJson.notifications[0]?.href).toBe("/account/messages/9");
+    expect(inboxJson.notifications[0]?.type).toBe("messaging");
+    expect(inboxJson.notifications[0]?.read).toBe(false);
+    expect(inboxJson.unread_count).toBe(1);
+    expect(inboxJson.view).toBe("all");
+    expect(inboxJson.limit).toBe(50);
+    expect(inboxJson.offset).toBe(0);
+    const inApp = recorded.find((r) => r.url.includes("/in-app-notifications"));
+    expect(inApp?.url).toContain("view=all");
+    expect(inApp?.url).toContain("limit=50");
+    expect(inApp?.url).toContain("offset=0");
+
+    const focused = await callAccount(
+      h,
+      "/api/account/inbox?view=focused&limit=10&offset=50",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(focused.status).toBe(200);
+    const focusedJson = (await focused.json()) as { view: string; limit: number; offset: number };
+    expect(focusedJson.view).toBe("focused");
+    expect(focusedJson.limit).toBe(10);
+    expect(focusedJson.offset).toBe(50);
+    expect(recorded.some((r) => r.url.includes("view=focused") && r.url.includes("offset=50"))).toBe(
+      true,
+    );
+
+    const badView = await callAccount(
+      h,
+      "/api/account/inbox?view=mentions",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(badView.status).toBe(400);
+
+    const unread = await callAccount(
+      h,
+      "/api/account/notifications/unread-count",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(unread.status).toBe(200);
+    const unreadJson = (await unread.json()) as { unread_count: number };
+    expect(unreadJson.unread_count).toBe(1);
 
     for (const rec of recorded) {
       assertHasBearer(rec);
@@ -2782,6 +2956,12 @@ describe("worker/account routes", () => {
         method: "PUT",
         headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
         body: JSON.stringify({
+          account: {
+            types: [
+              { slug: "comment_reply", channels: { email: true, push: 0, in_feed: 1 } },
+              { slug: "Not A Slug", channels: { email: true } },
+            ],
+          },
           preferences: { email_digest: true, product_updates: false },
           newsletter: true,
           role: "admin",
@@ -2799,12 +2979,56 @@ describe("worker/account routes", () => {
     );
     expect(prefPut).toBeTruthy();
     const body = JSON.parse(prefPut!.bodyText) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["newsletter", "preferences"].sort());
+    expect(Object.keys(body)).toEqual(["account"]);
     expect(body).not.toHaveProperty("role");
     expect(body).not.toHaveProperty("user_id");
     expect(body).not.toHaveProperty("email");
     expect(body).not.toHaveProperty("is_admin");
-    expect(body.preferences).toEqual({ email_digest: true, product_updates: false });
+    expect(body).not.toHaveProperty("preferences");
+    expect(body).not.toHaveProperty("newsletter");
+    expect(body.account).toEqual({
+      types: [{ slug: "comment_reply", channels: { email: 1, push: 0, in_feed: 1 } }],
+    });
+    const newsPut = recorded.find((r) => r.method === "PUT" && r.url.includes("/me/newsletter"));
+    expect(JSON.parse(newsPut!.bodyText)).toEqual({ subscribed: true });
+  });
+
+  it("marks one inbox notification read and dismisses another", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/notifications/read") && method === "PATCH") {
+          return Response.json({ success: true });
+        }
+        if (path.endsWith("/notifications/dismiss") && method === "POST") {
+          return Response.json({ success: true });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const headers = hOk({ csrf: sess.csrf, sid: sess.sid });
+    const read = await callAccount(
+      h,
+      "/api/account/inbox/read",
+      { method: "POST", headers, body: JSON.stringify({ notification_id: 12 }) },
+      fetchImpl,
+    );
+    expect(read.status).toBe(200);
+    const dismiss = await callAccount(
+      h,
+      "/api/account/inbox/dismiss",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ notification_id: 4, type: "site" }),
+      },
+      fetchImpl,
+    );
+    expect(dismiss.status).toBe(200);
+    expect(JSON.parse(recorded[0]!.bodyText)).toEqual({ notification_id: 12 });
+    expect(recorded[0]!.method).toBe("PATCH");
+    expect(JSON.parse(recorded[1]!.bodyText)).toEqual({ notification_id: 4, type: "site" });
+    expect(recorded[1]!.method).toBe("POST");
   });
 
   it("R3-B1: public /api/members/:id key-set exact; expired coach badge false; no foundations_coach object", async () => {
@@ -4100,5 +4324,88 @@ describe("worker/account routes", () => {
     const logBody = (await logged.json()) as { workout: { workout_title: string } | null };
     expect(logBody.workout?.workout_title).toBe("Fran");
     expect(JSON.stringify(logBody)).not.toContain("99");
+  });
+});
+
+describe("calendar 401 refresh", () => {
+  async function calendar401(h: Harness) {
+    let hits = 0;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.includes("/calendar/surface")) {
+          hits += 1;
+          return Response.json({ code: "bsi_token_expired" }, { status: 401 });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const sess = await withSession(h);
+    const before = await sessionBlob(h, sess.sid);
+    const res = await callAccount(
+      h,
+      "/api/account/calendar/surface?start_date=2026-11-01&end_date=2026-11-02",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    return { hits, res, before, sid: sess.sid };
+  }
+
+  it("returns 503 and keeps the session when the refresh times out", async () => {
+    const h = createHarness({
+      refresh: async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, before, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await sessionBlob(h, sid))?.blob).toBe(before?.blob);
+    expect(before?.blob).toBeTruthy();
+  });
+
+  it("returns 503 and keeps the session when the refresh returns 5xx", async () => {
+    const h = createHarness({
+      refresh: async () => new Response("boom", { status: 503 }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, before, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await sessionBlob(h, sid))?.blob).toBe(before?.blob);
+  });
+
+  it("destroys the session when the refresh grant is invalid_grant", async () => {
+    const h = createHarness({
+      refresh: async () => Response.json({ error: "invalid_grant" }, { status: 400 }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect(res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+    expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
+  });
+
+  it("destroys the session when the retried calendar call is still 401", async () => {
+    const h = createHarness({
+      refresh: async () =>
+        Response.json({
+          access_token: "access-refreshed",
+          refresh_token: "refresh-refreshed",
+          expires_in: 3600,
+        }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, sid } = await calendar401(h);
+    expect(hits).toBe(2);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
   });
 });

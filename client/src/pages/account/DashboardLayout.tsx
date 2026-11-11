@@ -13,6 +13,11 @@ import {
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
+import {
+  isProIntroOfferEligible,
+  proMembershipCta,
+  proSidebarUnlockCopy,
+} from "@shared/account/pro-intro-offer";
 import { staffRoleLabels } from "./roleLabels";
 import { onboardingRoleLabel } from "./onboardingRoles";
 import { metfixToolsUnlocked } from "./metfixAppTools";
@@ -43,7 +48,7 @@ export const ACCOUNT_NAV = [
   },
   { href: "/account/messages", label: "Messages", always: true },
   { href: "/account/notifications", label: "Notifications", always: true },
-  { href: "/account/privacy", label: "Privacy & Security", always: true },
+  { href: "/account/privacy", label: "Settings", always: true },
 ] as const;
 
 export function accountNavVisible(
@@ -245,10 +250,16 @@ export default function DashboardLayout({
               <div className="account-sidebar-unlock">
                 <p className="account-sidebar-unlock__title">Unlock MetFix Pro</p>
                 <p className="account-sidebar-unlock__copy">
-                  Tools, tracking &amp; classes. First month free.
+                  {proSidebarUnlockCopy(
+                    isProIntroOfferEligible(overview) &&
+                      isProIntroOfferEligible(subs),
+                  )}
                 </p>
                 <Link href={basePath("/join")} className="account-btn account-btn--accent">
-                  Start my free month
+                  {proMembershipCta(
+                    isProIntroOfferEligible(overview) &&
+                      isProIntroOfferEligible(subs),
+                  )}
                 </Link>
               </div>
             ) : null}

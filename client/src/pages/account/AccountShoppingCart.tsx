@@ -264,7 +264,7 @@ export default function AccountShoppingCart() {
           },
         ]}
       />
-      {!unlocked ? <ProUnlockBanner /> : null}
+      {!unlocked ? <ProUnlockBanner introOffer={overview} /> : null}
 
       {unlocked ? (
         <div className="belly-subnav" aria-label="Belly sections">

@@ -105,17 +105,16 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     });
   });
 
-  it("shows Foundations Coach card with grant path and expires_at in mono", async () => {
+  it("links Foundations Seminar to the courses tab", async () => {
     render(
       <Router>
         <AccountOverview />
       </Router>,
     );
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: /Foundations Coach/i })).toBeTruthy(),
+      expect(screen.getByRole("link", { name: /Foundations Seminar/i })).toBeTruthy(),
     );
-    expect(screen.getByText(/in-person seminar check-in/i)).toBeTruthy();
-    expect(screen.getByText(/Expires/i)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /Foundations Coach/i })).toBeNull();
   });
 
   it("DP-T-COACH3: none state shows checklist; Path B partial tick only first box", async () => {
@@ -157,14 +156,9 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
       </Router>,
     );
     await waitFor(() =>
-      expect(screen.getByText(/Attend an in-person seminar \(checked in\)/i)).toBeTruthy(),
+      expect(screen.getByRole("link", { name: /Foundations Seminar/i })).toBeTruthy(),
     );
-    expect(screen.getByText(/Complete MetFix Essentials online/i)).toBeTruthy();
-    expect(screen.getByText(/Claim MetFix Essentials certificate/i)).toBeTruthy();
-    const done = document.querySelectorAll('.account-checklist li[data-done="true"]');
-    expect(done.length).toBe(1);
-    expect(done[0]!.textContent).toMatch(/Complete MetFix Essentials online/);
-    expect(document.body.textContent).not.toMatch(/Foundations Coach · Active/);
+    expect(screen.queryByText(/Attend an in-person seminar \(checked in\)/i)).toBeNull();
   });
 
   it("DP-T-UI2: CSS shows sidebar at ≥1024 and mobile nav below", () => {

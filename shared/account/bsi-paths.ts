@@ -351,6 +351,11 @@ export function accountInAppNotificationsPath(): string {
   return `${BSI}/in-app-notifications`;
 }
 
+/** Combined site/personal list; includes `unread_count` for the header bell. */
+export function accountNotificationsListPath(): string {
+  return `${BSI}/notifications`;
+}
+
 /** Hybrid meal/workout plans collection (create). */
 export function accountPlansPath(): string {
   return `${METFIX}/plans`;
@@ -378,4 +383,9 @@ export function accountCalendarMealPath(id: string): string {
 
 export function accountShoppingListGeneratedDatesPath(): string {
   return `${METFIX}/shopping-lists/generated-dates`;
+}
+
+/** Allowlisted `/wp-json/bsi/v1/...` suffix. The worker never builds this prefix itself. */
+export function accountBsiV1Path(suffix: string): string {
+  return `${BSI}/${suffix.replace(/^\/+/, "")}`;
 }
