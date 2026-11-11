@@ -3,6 +3,12 @@ export type FoundationsCoachGrantReason =
   | "metfix_essentials_certificate"
   | null;
 
+export type FoundationsSeminarDiscount = {
+  name: string;
+  code: string;
+  description: string;
+};
+
 export type FoundationsCoachStatus = {
   active: boolean;
   grant_reason: FoundationsCoachGrantReason;
@@ -11,7 +17,38 @@ export type FoundationsCoachStatus = {
   seminar_checked_in: boolean;
   metfix_essentials_completed: boolean;
   metfix_essentials_certificate_claimed: boolean;
+  /** Present when the worker normalized a BSI foundations payload. */
+  seminar_name?: string | null;
+  seminar_date?: string | null;
+  discount_codes?: FoundationsSeminarDiscount[];
 };
+
+function readSeminarFields(obj: Record<string, unknown>): {
+  seminar_name: string | null;
+  seminar_date: string | null;
+  discount_codes: FoundationsSeminarDiscount[];
+} {
+  const discount_codes: FoundationsSeminarDiscount[] = [];
+  if (Array.isArray(obj.discount_codes)) {
+    for (const row of obj.discount_codes) {
+      if (!row || typeof row !== "object") continue;
+      const rec = row as Record<string, unknown>;
+      const name = typeof rec.name === "string" ? rec.name.trim() : "";
+      const code = typeof rec.code === "string" ? rec.code.trim() : "";
+      if (!name || !code) continue;
+      discount_codes.push({
+        name,
+        code,
+        description: typeof rec.description === "string" ? rec.description : "",
+      });
+    }
+  }
+  const seminar_name =
+    typeof obj.seminar_name === "string" && obj.seminar_name.trim() ? obj.seminar_name : null;
+  const seminar_date =
+    typeof obj.seminar_date === "string" && obj.seminar_date.trim() ? obj.seminar_date : null;
+  return { seminar_name, seminar_date, discount_codes };
+}
 
 /**
  * Calendar +3 years in UTC. Leap-day grants clamp to Feb 28 (CQ: Feb29→Feb28),
@@ -54,6 +91,8 @@ export function normalizeFoundationsCoachStatus(
       ? "metfix_essentials_certificate"
       : null;
 
+  const seminar = readSeminarFields(obj);
+
   if (!grant_reason) {
     return {
       active: false,
@@ -63,6 +102,7 @@ export function normalizeFoundationsCoachStatus(
       seminar_checked_in,
       metfix_essentials_completed,
       metfix_essentials_certificate_claimed,
+      ...seminar,
     };
   }
 
@@ -81,6 +121,7 @@ export function normalizeFoundationsCoachStatus(
       seminar_checked_in,
       metfix_essentials_completed,
       metfix_essentials_certificate_claimed,
+      ...seminar,
     };
   }
 
@@ -106,5 +147,6 @@ export function normalizeFoundationsCoachStatus(
     seminar_checked_in,
     metfix_essentials_completed,
     metfix_essentials_certificate_claimed,
+    ...seminar,
   };
 }

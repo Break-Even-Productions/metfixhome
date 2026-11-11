@@ -3,37 +3,63 @@ import { Link } from "wouter";
 import { basePath } from "@/const";
 import {
   assignBillingUrl,
+  loadCoachingClient,
+  loadCoachingCoach,
   loadOverview,
   loadSubscriptions,
   portalLink,
   type AccountOverview,
   type AccountSubscriptions,
 } from "@/lib/account";
-import { tierDisplayLabel } from "@shared/account/tiers";
+import { accountRead } from "@/lib/affiliateAccount";
 import DashboardLayout from "./DashboardLayout";
+import AffiliateWorkspace from "./AffiliateWorkspace";
+
+type Choice = { id: number; name: string };
 
 export default function AccountOrganization() {
   const [overview, setOverview] = useState<AccountOverview | null>(null);
   const [subs, setSubs] = useState<AccountSubscriptions | null>(null);
+  const [affiliates, setAffiliates] = useState<Choice[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const ac = new AbortController();
     let cancelled = false;
     (async () => {
       try {
-        const [ov, su] = await Promise.all([
+        const [ov, su, client, coach] = await Promise.all([
           loadOverview({ signal: ac.signal }),
           loadSubscriptions({ signal: ac.signal }),
+          loadCoachingClient({ signal: ac.signal }).catch(() => null),
+          loadCoachingCoach({ signal: ac.signal }).catch(() => null),
         ]);
         if (cancelled) return;
         setOverview(ov);
         setSubs(su);
+        const byId = new Map<number, string>();
+        for (const row of [...(client?.affiliates ?? []), ...(coach?.affiliates ?? [])]) {
+          if (row.affiliate_id > 0) byId.set(row.affiliate_id, row.name || `Affiliate ${row.affiliate_id}`);
+        }
+        try {
+          const primary = await accountRead<{
+            affiliate?: { id?: number; name?: string };
+          }>("/api/account/affiliates/primary", ac.signal);
+          const id = primary.affiliate?.id;
+          if (typeof id === "number" && id > 0) {
+            byId.set(id, primary.affiliate?.name || byId.get(id) || `Affiliate ${id}`);
+          }
+        } catch {
+          /* no primary affiliate */
+        }
+        setAffiliates([...byId.entries()].map(([id, name]) => ({ id, name })));
       } catch (err) {
-        if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
         setError("Unable to load organization.");
+      } finally {
+        if (!cancelled) setReady(true);
       }
     })();
     return () => {
@@ -41,9 +67,6 @@ export default function AccountOrganization() {
       ac.abort();
     };
   }, []);
-
-  const tier = subs?.canonical_tier ?? overview?.canonical_tier ?? "free";
-  const isOrg = tier === "organization_owner" || overview?.badges.affiliate === true;
 
   async function onPortal() {
     setBusy(true);
@@ -70,51 +93,33 @@ export default function AccountOrganization() {
   return (
     <DashboardLayout
       title="Organization"
-      description="Manage Organization Owner membership, affiliate access, and related portals."
+      description="Manage your affiliate: settings, team, feed, insurance, and payments."
     >
       {error ? <p className="account-error">{error}</p> : null}
-
-      {!isOrg ? (
+      {ready && affiliates.length === 0 ? (
         <section className="account-card">
           <h2>Organization tools</h2>
           <p className="account-muted">
-            Organization management is available for Organization Owner members and affiliates.
-            Upgrade on Billing when you operate a gym or clinical practice.
+            Affiliate tools appear here when you are on a gym roster. Organization Owner billing stays in the Whop portal.
           </p>
           <div className="account-course-card__actions">
-            <Link href={basePath("/account/billing")} className="account-btn">
+            <button type="button" className="account-btn" disabled={busy} onClick={() => void onPortal()}>
+              Manage organization billing
+            </button>
+            <Link href={basePath("/account/billing")} className="account-btn account-btn--ghost">
               Open Billing
             </Link>
           </div>
         </section>
-      ) : (
-        <>
-          <section className="account-card">
-            <h2>Organization status</h2>
-            <p className="account-mono">{tierDisplayLabel(tier)}</p>
-            <p className="account-muted" style={{ marginTop: "0.5rem" }}>
-              Organization Owner covers gym affiliates and doctor practices and includes MetFix Pro
-              access. Billing changes happen in the Break Even Productions Whop portal.
-            </p>
-            <div className="account-course-card__actions">
-              <button
-                type="button"
-                className="account-btn"
-                disabled={busy}
-                onClick={() => void onPortal()}
-              >
-                Manage organization billing
-              </button>
-              <Link href={basePath("/account/referrals")} className="account-btn account-btn--ghost">
-                Referral portal
-              </Link>
-              <Link href={basePath("/account/profile")} className="account-btn account-btn--ghost">
-                Profile settings
-              </Link>
-            </div>
-          </section>
-        </>
-      )}
+      ) : null}
+      {affiliates.length > 0 ? (
+        <AffiliateWorkspace
+          affiliates={affiliates}
+          overview={overview}
+          onPortal={() => void onPortal()}
+          portalBusy={busy}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

@@ -11,6 +11,35 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function SeminarDetail({ coach }: { coach: FoundationsCoachStatus }) {
+  const codes = coach.discount_codes ?? [];
+  if (!coach.seminar_name && !coach.seminar_date && codes.length === 0) return null;
+  return (
+    <div>
+      {coach.seminar_name ? (
+        <p>
+          <strong>Seminar:</strong> {coach.seminar_name}
+        </p>
+      ) : null}
+      {coach.seminar_date ? (
+        <p>
+          <strong>Date:</strong> {formatDate(coach.seminar_date)}
+        </p>
+      ) : null}
+      {codes.length > 0 ? (
+        <ul>
+          {codes.map((code) => (
+            <li key={code.code}>
+              <strong>{code.name}:</strong> <code>{code.code}</code>
+              {code.description ? <span className="account-muted"> {code.description}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function SeminarBadges({ coach }: { coach: FoundationsCoachStatus }) {
   return (
     <div className="account-course-badges" aria-label="Seminar and Essentials status">
@@ -51,10 +80,12 @@ export function FoundationsCoachCard({ coach }: Props) {
           <p className="account-mono">
             Granted {formatDate(coach.granted_at)} · Expires {formatDate(coach.expires_at)}
           </p>
+          <SeminarDetail coach={coach} />
         </>
       ) : expired ? (
         <>
           <SeminarBadges coach={coach} />
+          <SeminarDetail coach={coach} />
           <p role="status">
             Foundations Coach expired on{" "}
             <span className="account-mono">
@@ -66,6 +97,7 @@ export function FoundationsCoachCard({ coach }: Props) {
       ) : (
         <>
           <SeminarBadges coach={coach} />
+          <SeminarDetail coach={coach} />
           <p className="account-muted">Qualify through either path:</p>
           <ul className="account-checklist">
             <li data-done={coach.seminar_checked_in ? "true" : "false"}>

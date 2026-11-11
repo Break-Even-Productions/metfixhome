@@ -94,22 +94,15 @@ afterEach(() => {
 });
 
 describe("AccountPrivacy (P-DB-13)", () => {
-  it("saves privacy toggles, password reset, and 2-step email change", async () => {
+  it("skips the missing privacy settings route and still changes email and password", async () => {
     render(
       <Router>
         <AccountPrivacy />
       </Router>,
     );
     await waitFor(() => expect(screen.getByRole("button", { name: /^Your account/ })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /^Privacy/ }));
-    await waitFor(() => expect(screen.getByLabelText("Show in directory")).toBeTruthy());
-    expect(screen.getByText("Public profile")).toBeTruthy();
-    expect(screen.queryByText("directory_visible")).toBeNull();
-    fireEvent.click(screen.getByLabelText("Show in directory"));
-    fireEvent.click(screen.getByRole("button", { name: /Save privacy/i }));
-    await waitFor(() => expect(screen.getByText(/Privacy settings saved/i)).toBeTruthy());
-
-    fireEvent.click(screen.getByRole("button", { name: /^Your account/ }));
+    expect(screen.queryByRole("button", { name: /^Privacy/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /Coaching/i })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Send password reset email/i }));
     await waitFor(() => expect(screen.getByText(/Password reset email sent/i)).toBeTruthy());
 
@@ -123,13 +116,9 @@ describe("AccountPrivacy (P-DB-13)", () => {
     await waitFor(() => expect(screen.getByText(/Email updated/i)).toBeTruthy());
 
     const fetchImpl = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(
-      fetchImpl.mock.calls.some(
-        (c) =>
-          String(c[0]).includes("/privacy") &&
-          ((c[1] as RequestInit)?.method ?? "").toUpperCase() === "PUT",
-      ),
-    ).toBe(true);
+    expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes("/api/account/privacy"))).toBe(
+      false,
+    );
     expect(fetchImpl.mock.calls.some((c) => String(c[0]).includes("/password-reset"))).toBe(true);
     expect(
       fetchImpl.mock.calls.some(

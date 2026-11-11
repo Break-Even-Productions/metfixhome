@@ -465,8 +465,8 @@
 .home-root .course-rail { padding-top: 0.75rem; padding-bottom: 1.75rem; }
 .home-root .course-photo { filter: brightness(0.9); }
 .home-root .card-body {
-  background: color-mix(in srgb, var(--color-accent) 92%, white);
-  color: var(--color-ink);
+  background: #fff;
+  color: #171512;
 }
 
 .home-root .audience-tab-active { position: relative; z-index: 1; }
@@ -541,20 +541,6 @@
   --join-accent: var(--color-accent);
   --join-accent-2: var(--color-accent-2);
   --join-accent-3: var(--color-accent-3);
-}
-
-/* Course Buy Now stays white/black on every audience theme (incl. surface-ink cream flips). */
-.home-root .course-buy-btn,
-.home-root[data-theme] .course-buy-btn,
-.home-root .surface-ink .course-buy-btn {
-  background-color: #fff;
-  color: #171512;
-}
-.home-root .course-buy-btn:hover,
-.home-root[data-theme] .course-buy-btn:hover,
-.home-root .surface-ink .course-buy-btn:hover {
-  background-color: #f3eee4;
-  color: #171512;
 }
 
 /* Dark accent fills need light label text (ink on blue/green fails contrast).

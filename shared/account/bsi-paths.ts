@@ -360,3 +360,8 @@ export function accountCalendarMealPath(id: string): string {
 export function accountShoppingListGeneratedDatesPath(): string {
   return `${METFIX}/shopping-lists/generated-dates`;
 }
+
+/** Allowlisted `/wp-json/bsi/v1/...` suffix. The worker never builds this prefix itself. */
+export function accountBsiV1Path(suffix: string): string {
+  return `${BSI}/${suffix.replace(/^\/+/, "")}`;
+}

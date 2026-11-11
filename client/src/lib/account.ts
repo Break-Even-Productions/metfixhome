@@ -2337,6 +2337,7 @@ export async function updateProfileAttributes(
     attr_id: number;
     value: string;
     section: ProfileAttrSection;
+    address?: Record<string, string>;
   }>,
 ): Promise<unknown> {
   return accountMutate("/api/account/profile/attributes", {
@@ -2346,6 +2347,7 @@ export async function updateProfileAttributes(
         attr_id: a.attr_id,
         value: a.value,
         section: a.section,
+        ...(a.address ? { address: a.address } : {}),
       })),
     },
     invalidate: ["profile"],

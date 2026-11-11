@@ -277,7 +277,7 @@ describe("worker/account routes", () => {
     assertNoStore(ok);
   });
 
-  it("DP-T-1 overview DTO includes canonical_tier + foundations_coach 7 keys", async () => {
+  it("DP-T-1 overview DTO includes canonical_tier + foundations_coach keys", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
       async ({ path }) => {
@@ -300,12 +300,15 @@ describe("worker/account routes", () => {
     expect(Object.keys(body.foundations_coach).sort()).toEqual(
       [
         "active",
+        "discount_codes",
         "expires_at",
         "grant_reason",
         "granted_at",
         "metfix_essentials_certificate_claimed",
         "metfix_essentials_completed",
         "seminar_checked_in",
+        "seminar_date",
+        "seminar_name",
       ].sort(),
     );
     expect(recorded.length).toBe(1);
@@ -707,6 +710,108 @@ describe("worker/account routes", () => {
     const body = (await ok.json()) as { items: Array<{ amount_cents: number }> };
     expect(body.items[0]!.amount_cents).toBe(1234);
     expect(formatUsdFromCents(1234)).toBe("$12.34");
+  });
+
+  it("DP-T-4b maps live me/payments rows into the billing history list", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/me/payments")) {
+          return Response.json({
+            items: [
+              {
+                source: "stripe",
+                id: "p_9",
+                date: "2026-03-01T00:00:00.000Z",
+                amount: 2500,
+                currency: "usd",
+                type: "subscription",
+                status: "paid",
+                invoice_url: "https://billing.stripe.com/r/1",
+                items: [{ name: "MetFix Pro" }],
+              },
+              {
+                source: "woo",
+                id: "w_3",
+                date: "2026-02-01T00:00:00.000Z",
+                amount: 1000,
+                currency: "usd",
+                type: "order",
+                status: "paid",
+                invoice_url: "https://example.com/order",
+                items: [{ name: "Seminar" }],
+              },
+            ],
+            total: 2,
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/payments",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{
+        id: string;
+        created_at: string;
+        description: string;
+        provider: string;
+        amount_cents: number;
+        receipt_url?: string;
+      }>;
+    };
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toMatchObject({
+      id: "p_9",
+      created_at: "2026-03-01T00:00:00.000Z",
+      description: "MetFix Pro",
+      provider: "stripe",
+      amount_cents: 2500,
+      receipt_url: "https://billing.stripe.com/r/1",
+    });
+    expect(body.items[1]?.provider).toBe("woo");
+    expect(body.items[1]?.description).toBe("Seminar");
+    expect(body.items[1]?.receipt_url).toBeUndefined();
+  });
+
+  it("AFF proxies affiliate capabilities and rejects unknown affiliate paths", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/affiliates/3/me/capabilities")) {
+          return Response.json({
+            role: "owner",
+            permissions: { can_edit_affiliate: true },
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const ok = await callAccount(
+      h,
+      "/api/account/affiliates/3/me/capabilities",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { role: string };
+    expect(body.role).toBe("owner");
+    const hit = recorded.find((row) => row.url.includes("/affiliates/3/me/capabilities"));
+    expect(hit?.url).toContain("/wp-json/bsi/v1/affiliates/3/me/capabilities");
+    expect(hit?.headers.authorization).toMatch(/^Bearer /);
+
+    const missing = await callAccount(
+      h,
+      "/api/account/affiliates/3/not-a-tool",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(missing.status).toBe(404);
   });
 
   it("DP-T-5 / DP-T-CERT3 LTV300 spend + alias (legacy claim-certificate route removed)", async () => {
