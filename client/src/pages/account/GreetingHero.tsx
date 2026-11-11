@@ -8,6 +8,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { basePath } from "@/const";
+import {
+  isProIntroOfferEligible,
+  proMembershipCta,
+  type ProIntroOfferSource,
+} from "@shared/account/pro-intro-offer";
 import type { CanonicalSubscriptionTier } from "@shared/account/tiers";
 import { formatUsdFromCents } from "@shared/account/ltv";
 import { tierDisplayLabel, type LegacySubscriptionSource } from "@shared/account/tiers";
@@ -35,6 +40,7 @@ type Props = {
   legacySource?: LegacySubscriptionSource;
   ltv: LtvCertificates | null;
   showUpgradeCta: boolean;
+  introOffer?: ProIntroOfferSource | null;
 };
 
 export function GreetingHero({
@@ -47,7 +53,9 @@ export function GreetingHero({
   legacySource,
   ltv,
   showUpgradeCta,
+  introOffer = null,
 }: Props) {
+  const introEligible = isProIntroOfferEligible(introOffer);
   const rootRef = useRef<HTMLElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
@@ -105,7 +113,7 @@ export function GreetingHero({
         <h2 className="dash-greet__hello">{greeting}</h2>
         {showUpgradeCta && !unlocked ? (
           <Link href={basePath("/join")} className="account-btn account-btn--accent dash-greet__cta">
-            Start my free month
+            {proMembershipCta(introEligible)}
           </Link>
         ) : null}
       </div>

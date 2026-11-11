@@ -3,6 +3,10 @@
  * Courses are out of scope — subscriptions only (pro / org).
  */
 import type { CanonicalSubscriptionTier } from "./tiers";
+import {
+  proMembershipCta,
+  proMembershipPriceLine,
+} from "./pro-intro-offer";
 
 /** Default Whop `redirect_url` path after subscription checkout. */
 export const DEFAULT_WHOP_CHECKOUT_RETURN_PATH = "/checkout/complete";
@@ -32,7 +36,7 @@ export const WHOP_SUBSCRIPTION_PLAN_COPY: Record<
 > = {
   pro: {
     title: "MetFix Pro",
-    price: "First month free · Then $30/month",
+    price: proMembershipPriceLine(true),
     cta: "Start MetFix Pro",
   },
   org: {
@@ -41,3 +45,16 @@ export const WHOP_SUBSCRIPTION_PLAN_COPY: Record<
     cta: "Start Organization Owner",
   },
 };
+
+/** Pro plan marketing copy gated by first-time intro eligibility. */
+export function whopProPlanCopy(introEligible: boolean): {
+  title: string;
+  price: string;
+  cta: string;
+} {
+  return {
+    title: "MetFix Pro",
+    price: proMembershipPriceLine(introEligible),
+    cta: introEligible ? proMembershipCta(true) : "Start MetFix Pro",
+  };
+}

@@ -2,6 +2,11 @@
  * Single source of truth for JoinFlow roles, tiers, certificate/coach rules,
  * and the Membership comparison table (WJ5, WJ17, WJ-CERT-1, WJ-COACH-*, WJ-TIER-1).
  */
+import {
+  proMembershipCtaArrow,
+  proMembershipPriceHeader,
+  proMembershipSubcopy,
+} from "../account/pro-intro-offer";
 
 export const ONBOARDING_ROLE_IDS = [
   "individual",
@@ -121,13 +126,29 @@ export const MEMBERSHIP_COMPARISON_ROWS: ReadonlyArray<{
 
 export const MEMBERSHIP_HERO = {
   headline: "Everything You Need in One Membership",
-  subcopy:
-    "Full course library including MetFix Essentials, The Daily Fix, and cumulative LTV toward official course certificates — plus your first month free. Cancel anytime.",
-  cta: "Start my free month →",
+  subcopy: proMembershipSubcopy(true),
+  cta: proMembershipCtaArrow(true),
 } as const;
 
-export const PRO_CARD_HEADER = "First month free · Then $30/month · Cancel anytime";
+export const PRO_CARD_HEADER = proMembershipPriceHeader(true);
 export const ORG_CARD_HEADER = "$170/month · Approval required";
+
+/** Join / pricing copy for MetFix Pro, gated by intro eligibility. */
+export function membershipHeroForIntro(eligible: boolean): {
+  headline: string;
+  subcopy: string;
+  cta: string;
+} {
+  return {
+    headline: MEMBERSHIP_HERO.headline,
+    subcopy: proMembershipSubcopy(eligible),
+    cta: proMembershipCtaArrow(eligible),
+  };
+}
+
+export function proCardHeaderForIntro(eligible: boolean): string {
+  return proMembershipPriceHeader(eligible);
+}
 export const ORG_AFFILIATE_NOTE =
   "Affiliate membership includes full MetFix Membership access and course library, so you do not also pay $30/month.";
 

@@ -783,6 +783,7 @@ function shapeOverview(raw: unknown): Record<string, unknown> | null {
       foundations_coach: coach.active,
     },
     canonical_tier,
+    pro_intro_offer_eligible: obj.pro_intro_offer_eligible !== false,
     foundations_coach: coach,
     tabs: Array.isArray(obj.tabs) ? obj.tabs : [],
     links: asRecord(obj.links) ?? {},
@@ -854,7 +855,11 @@ function shapeSubscriptions(raw: unknown): Record<string, unknown> | null {
     canonical_tier: obj.canonical_tier,
     items,
   });
-  const out: Record<string, unknown> = { canonical_tier, items };
+  const out: Record<string, unknown> = {
+    canonical_tier,
+    pro_intro_offer_eligible: obj.pro_intro_offer_eligible !== false,
+    items,
+  };
   const conversion = shapeConversion(obj.conversion);
   if (conversion) out.conversion = conversion;
   return out;

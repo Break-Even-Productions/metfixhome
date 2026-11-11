@@ -3,9 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   ORG_AFFILIATE_NOTE,
   ORG_CARD_HEADER,
-  PRO_CARD_HEADER,
+  proCardHeaderForIntro,
   showOrganizationOwnerCard,
 } from "@shared/join";
+import {
+  isProIntroOfferEligible,
+  proMembershipCta,
+  proMembershipShortPitch,
+} from "@shared/account/pro-intro-offer";
 import { basePath } from "@/const";
 import { useCourses } from "@/hooks/useSiteContent";
 import { loadOverview, loadSubscriptions } from "@/lib/account";
@@ -247,6 +252,7 @@ export function RecommendedPath({
   );
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [introEligible, setIntroEligible] = useState(true);
   const inflight = useRef(false);
 
   useEffect(() => {
@@ -263,6 +269,9 @@ export function RecommendedPath({
       if (cancelled) return;
       const subs = subsResult.status === "fulfilled" ? subsResult.value : null;
       const overview = overviewResult.status === "fulfilled" ? overviewResult.value : null;
+      setIntroEligible(
+        isProIntroOfferEligible(overview) && isProIntroOfferEligible(subs),
+      );
       if (!subs && !overview) {
         setPhase("plans");
         return;
@@ -348,9 +357,8 @@ export function RecommendedPath({
       <section className="mt-10 overflow-hidden rounded-[1.8rem] bg-[var(--join-ink)] px-5 py-10 text-[var(--join-cream)] md:px-8 md:py-12">
         <h2 className="font-serif text-3xl">Your membership</h2>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-[var(--join-cream)]/75">
-          MetFix Membership includes a free first month, then $30/month.
-          Affiliate membership is $170/month and opens after your application is
-          approved.
+          {proMembershipShortPitch(introEligible)} Affiliate membership is
+          $170/month and opens after your application is approved.
         </p>
         {checkoutError ? (
           <p className="mt-4 text-sm text-red-300" role="alert">
@@ -361,9 +369,9 @@ export function RecommendedPath({
           <PlanCard
             featured
             title="MetFix Membership"
-            price={PRO_CARD_HEADER.replace(/ · /g, "\n")}
+            price={proCardHeaderForIntro(introEligible).replace(/ · /g, "\n")}
             items={PRO_BENEFITS}
-            cta="Start my free month"
+            cta={proMembershipCta(introEligible)}
             busy={checkoutBusy}
             onCta={() => void startCheckout()}
           />
