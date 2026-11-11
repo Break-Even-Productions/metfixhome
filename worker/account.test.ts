@@ -1487,13 +1487,19 @@ describe("worker/account routes", () => {
         }
         if (path.endsWith("/messages/users") && method === "GET") {
           return Response.json({
-            users: [{ id: "7", name: "Coach Ada", secondary_text: "Staff" }],
+            users: [
+              { id: "7", name: "Coach Ada", secondary_text: "Staff" },
+              { id: "7", name: "Coach Ada", secondary_text: "Staff" },
+            ],
           });
         }
         if (path.endsWith("/messages/users/search") && method === "GET") {
           expect(url).toContain("q=Ada");
           return Response.json({
-            users: [{ id: "7", name: "Coach Ada", secondary_text: "Staff" }],
+            users: [
+              { id: "7", name: "Coach Ada", secondary_text: "Staff" },
+              { id: "7", name: "Ada again" },
+            ],
           });
         }
         return Response.json({ error: "unexpected" }, 500);
@@ -1578,6 +1584,9 @@ describe("worker/account routes", () => {
       fetchImpl,
     );
     expect(users.status).toBe(200);
+    const usersJson = (await users.json()) as { users: Array<{ id: string }> };
+    expect(usersJson.users).toHaveLength(1);
+    expect(usersJson.users[0]?.id).toBe("7");
 
     const search = await callAccount(
       h,
@@ -1587,6 +1596,7 @@ describe("worker/account routes", () => {
     );
     expect(search.status).toBe(200);
     const searchJson = (await search.json()) as { users: Array<{ name: string }> };
+    expect(searchJson.users).toHaveLength(1);
     expect(searchJson.users[0]?.name).toBe("Coach Ada");
 
     const shortSearch = await callAccount(

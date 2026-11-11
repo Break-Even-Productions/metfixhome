@@ -1665,6 +1665,20 @@ function shapeChatMessage(raw: unknown): Record<string, unknown> | null {
   };
 }
 
+function dedupeChatUsers(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const unique: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(row);
+  }
+  return unique;
+}
+
 function shapeChatUser(raw: unknown): Record<string, unknown> | null {
   const obj = asRecord(raw);
   if (!obj) return null;
@@ -3738,10 +3752,11 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       const obj = asRecord(mapped.json) ?? {};
       const listIn = Array.isArray(obj.users) ? obj.users : [];
-      const users = listIn
-        .map((row) => shapeChatUser(row))
-        .filter((x): x is Record<string, unknown> => x != null)
-        .slice(0, 100);
+      const users = dedupeChatUsers(
+        listIn
+          .map((row) => shapeChatUser(row))
+          .filter((x): x is Record<string, unknown> => x != null),
+      ).slice(0, 100);
       return accountJson({ users }, 200);
     }
     case "MF71": {
@@ -3770,10 +3785,11 @@ async function dispatch(
       if (mapped instanceof Response) return mapped;
       const obj = asRecord(mapped.json) ?? {};
       const listIn = Array.isArray(obj.users) ? obj.users : [];
-      const users = listIn
-        .map((row) => shapeChatUser(row))
-        .filter((x): x is Record<string, unknown> => x != null)
-        .slice(0, 100);
+      const users = dedupeChatUsers(
+        listIn
+          .map((row) => shapeChatUser(row))
+          .filter((x): x is Record<string, unknown> => x != null),
+      ).slice(0, 100);
       return accountJson({ users }, 200);
     }
     case "MF51": {

@@ -77,6 +77,28 @@ function Avatar({
   );
 }
 
+function MemberLookupSkeleton() {
+  return (
+    <ul
+      className="account-chat-user-list account-chat-user-list--skel"
+      aria-busy="true"
+      aria-label="Loading members"
+    >
+      {Array.from({ length: 6 }, (_, i) => (
+        <li key={i} aria-hidden="true">
+          <div className="account-chat-user account-chat-user--skel">
+            <span className="dash-skel account-chat-skel-avatar" />
+            <span className="account-chat-user__body">
+              <span className="dash-skel account-chat-skel-line" />
+              <span className="dash-skel account-chat-skel-line account-chat-skel-line--short" />
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function useConversationId(): string | null {
   const [, messagesParams] = useRoute("/account/messages/:id");
   const [, chatParams] = useRoute("/account/chat/:id");
@@ -338,9 +360,7 @@ export default function AccountMessages() {
                   : "Pick someone to start or continue a chat."}
               </p>
               {usersLoading ? (
-                <p className="account-muted" aria-busy="true">
-                  Looking up members…
-                </p>
+                <MemberLookupSkeleton />
               ) : users.length === 0 ? (
                 <p className="account-muted">No members found.</p>
               ) : (
@@ -354,7 +374,7 @@ export default function AccountMessages() {
                         onClick={() => void startWithUser(user)}
                       >
                         <Avatar name={user.name} src={user.avatar} />
-                        <span>
+                        <span className="account-chat-user__body">
                           <span className="account-chat-user__name">{user.name}</span>
                           {user.secondary_text ? (
                             <span className="account-muted">{user.secondary_text}</span>

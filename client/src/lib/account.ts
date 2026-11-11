@@ -1550,6 +1550,18 @@ export async function createDirectChat(input: {
   return result;
 }
 
+function dedupeChatUsers(users: ChatUser[]): ChatUser[] {
+  const seen = new Set<string>();
+  const unique: ChatUser[] = [];
+  for (const user of users) {
+    const id = String(user?.id ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(user);
+  }
+  return unique;
+}
+
 /** GET /api/account/messages/users or /users/search */
 export function loadChatUsers(
   query?: string,
@@ -1566,21 +1578,24 @@ export function loadChatUsers(
   if (options?.affiliateId != null && options.affiliateId > 0) {
     params.set("affiliate_id", String(options.affiliateId));
   }
+  const finish = (res: { users?: ChatUser[] }) => ({
+    users: dedupeChatUsers(Array.isArray(res.users) ? res.users : []),
+  });
   if (q.length >= 3) {
     params.set("q", q);
     const qs = params.toString();
-    return accountGet(
+    return accountGet<{ users: ChatUser[] }>(
       `/api/account/messages/users/search?${qs}`,
       `messages-users:search:${qs}`,
       options,
-    );
+    ).then(finish);
   }
   const qs = params.toString();
-  return accountGet(
+  return accountGet<{ users: ChatUser[] }>(
     `/api/account/messages/users${qs ? `?${qs}` : ""}`,
     `messages-users:browse:${qs || "all"}`,
     options,
-  );
+  ).then(finish);
 }
 
 /**

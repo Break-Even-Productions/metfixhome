@@ -107,7 +107,16 @@ beforeEach(() => {
       }
       if (url.includes("/api/account/messages/users")) {
         return jsonResponse({
-          users: [{ id: "7", name: "Coach Ada", secondary_text: "Staff" }],
+          users: [
+            {
+              id: "7",
+              name: "Coach Ada",
+              secondary_text: "Staff",
+              avatar: "https://example.com/ada.jpg",
+            },
+            { id: "7", name: "Coach Ada duplicate", secondary_text: "Again" },
+            { id: "8", name: "Mia Kotalik", secondary_text: "Member" },
+          ],
         });
       }
       return jsonResponse({ error: "not_found" }, 404);
@@ -156,6 +165,56 @@ describe("AccountMessages", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /^New$/i })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /^New$/i }));
     await waitFor(() => expect(screen.getByPlaceholderText(/Search members/i)).toBeTruthy());
+    expect(screen.queryByText(/Looking up members/i)).toBeNull();
     await waitFor(() => expect(screen.getByText("Coach Ada")).toBeTruthy());
+    expect(screen.getAllByRole("button", { name: /Coach Ada/i })).toHaveLength(1);
+    expect(screen.getByText("Mia Kotalik")).toBeTruthy();
+    expect(screen.queryByText("Coach Ada duplicate")).toBeNull();
+    const avatar = document.querySelector(".account-chat-user .account-chat-avatar img");
+    expect(avatar).toBeTruthy();
+    expect(avatar?.className).not.toContain("account-chat-user__body");
+  });
+
+  it("shows member skeletons while lookup is in flight", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/overview") || url.includes("/subscriptions")) {
+          return jsonResponse({
+            display_name: "Jane",
+            badges: {},
+            foundations_coach: { active: false },
+            canonical_tier: "metfix_pro",
+            items: [],
+            tabs: [],
+            links: {},
+          });
+        }
+        if (url.includes("/api/account/messages/conversations") && (init?.method ?? "GET") === "GET") {
+          return jsonResponse({ conversations: [] });
+        }
+        if (url.includes("/api/account/messages/users")) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return jsonResponse({ users: [{ id: "7", name: "Coach Ada" }] });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+
+    const { hook } = memoryLocation({ path: "/account/messages" });
+    render(
+      <Router hook={hook}>
+        <AccountMessages />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /^New$/i })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /^New$/i }));
+    const loading = await screen.findByRole("list", { name: "Loading members" });
+    expect(loading.querySelectorAll(".account-chat-user--skel").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Looking up members/i)).toBeNull();
+    await waitFor(() => expect(screen.getByText("Coach Ada")).toBeTruthy());
+    expect(screen.queryByRole("list", { name: "Loading members" })).toBeNull();
   });
 });

@@ -5021,6 +5021,8 @@ button.dash-wb__score-card {
   margin: 0;
   padding: 0.35rem 0.65rem 0.85rem;
   display: grid;
+  align-content: start;
+  align-items: start;
   gap: 0.25rem;
   overflow: auto;
   flex: 1 1 auto;
@@ -5037,8 +5039,8 @@ button.dash-wb__score-card {
   background: transparent;
   color: inherit;
   font: inherit;
-  padding: 0.7rem 0.65rem;
-  border-radius: 0.95rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.75rem;
   cursor: pointer;
   text-decoration: none;
   transition: background 160ms ease, transform 160ms ease;
@@ -5055,11 +5057,17 @@ button.dash-wb__score-card {
 }
 
 .account-chat-avatar {
-  flex: 0 0 auto;
+  position: relative;
+  flex: 0 0 2.55rem;
   display: inline-grid;
   place-items: center;
   width: 2.55rem;
   height: 2.55rem;
+  min-width: 2.55rem;
+  min-height: 2.55rem;
+  max-width: 2.55rem;
+  max-height: 2.55rem;
+  aspect-ratio: 1;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-accent) 28%, var(--color-cream));
   color: var(--color-ink);
@@ -5069,23 +5077,58 @@ button.dash-wb__score-card {
 }
 
 .account-chat-avatar--sm {
+  flex-basis: 2.1rem;
   width: 2.1rem;
   height: 2.1rem;
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  max-width: 2.1rem;
+  max-height: 2.1rem;
   font-size: 0.7rem;
 }
 
 .account-chat-avatar img {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
+  max-width: none;
   object-fit: cover;
+  object-position: center;
 }
 
 .account-chat-row__body,
-.account-chat-user span {
+.account-chat-user__body {
   display: grid;
   gap: 0.15rem;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.account-chat-user-list--skel {
+  pointer-events: none;
+}
+
+.account-chat-user--skel {
+  cursor: default;
+}
+
+.account-chat-skel-avatar {
+  flex: 0 0 2.55rem;
+  width: 2.55rem;
+  height: 2.55rem;
+  border-radius: 999px;
+}
+
+.account-chat-skel-line {
+  height: 0.72rem;
+  width: 58%;
+  border-radius: 999px;
+}
+
+.account-chat-skel-line--short {
+  width: 36%;
 }
 
 .account-chat-row__top {
