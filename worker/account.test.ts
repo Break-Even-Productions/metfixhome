@@ -15,6 +15,7 @@ import {
   csrfSid,
   hOk,
   ORIGIN,
+  sessionBlob,
   setupAuthHooks,
   type Harness,
 } from "../tools/pr2/harness/realauth-harness";
@@ -3852,5 +3853,88 @@ describe("worker/account routes", () => {
     const logBody = (await logged.json()) as { workout: { workout_title: string } | null };
     expect(logBody.workout?.workout_title).toBe("Fran");
     expect(JSON.stringify(logBody)).not.toContain("99");
+  });
+});
+
+describe("calendar 401 refresh", () => {
+  async function calendar401(h: Harness) {
+    let hits = 0;
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.includes("/calendar/surface")) {
+          hits += 1;
+          return Response.json({ code: "bsi_token_expired" }, { status: 401 });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const sess = await withSession(h);
+    const before = await sessionBlob(h, sess.sid);
+    const res = await callAccount(
+      h,
+      "/api/account/calendar/surface?start_date=2026-11-01&end_date=2026-11-02",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    return { hits, res, before, sid: sess.sid };
+  }
+
+  it("returns 503 and keeps the session when the refresh times out", async () => {
+    const h = createHarness({
+      refresh: async () => {
+        throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+      },
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, before, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await sessionBlob(h, sid))?.blob).toBe(before?.blob);
+    expect(before?.blob).toBeTruthy();
+  });
+
+  it("returns 503 and keeps the session when the refresh returns 5xx", async () => {
+    const h = createHarness({
+      refresh: async () => new Response("boom", { status: 503 }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, before, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "unavailable" });
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await sessionBlob(h, sid))?.blob).toBe(before?.blob);
+  });
+
+  it("destroys the session when the refresh grant is invalid_grant", async () => {
+    const h = createHarness({
+      refresh: async () => Response.json({ error: "invalid_grant" }, { status: 400 }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, sid } = await calendar401(h);
+    expect(hits).toBe(1);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect(res.headers.get("Set-Cookie") ?? "").toMatch(/__Host-mfx_sid=/);
+    expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
+  });
+
+  it("destroys the session when the retried calendar call is still 401", async () => {
+    const h = createHarness({
+      refresh: async () =>
+        Response.json({
+          access_token: "access-refreshed",
+          refresh_token: "refresh-refreshed",
+          expires_in: 3600,
+        }),
+    });
+    installAccountLimiters(h.env);
+    const { hits, res, sid } = await calendar401(h);
+    expect(hits).toBe(2);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthenticated" });
+    expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
   });
 });
