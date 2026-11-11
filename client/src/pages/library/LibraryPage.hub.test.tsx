@@ -233,15 +233,20 @@ describe("library hub sections", () => {
   it("orders capped sections and omits courses from the popular query", async () => {
     renderHub();
 
-    await waitFor(() => {
-      expect(cardCount("Top resources")).toBe(3);
-      expect(cardCount("Courses")).toBe(6);
-      expect(cardCount("Pro library")).toBe(3);
-      expect(cardCount("MetFix")).toBe(3);
-      expect(cardCount("Free / open")).toBe(3);
-      expect(cardCount("BSI")).toBe(3);
-      expect(cardCount("Glassman & Book Library")).toBe(3);
-    });
+    // Archive is the last cascade step. CI often still has that rail loading
+    // when the default 1s waitFor expires, after the earlier sections are full.
+    await waitFor(
+      () => {
+        expect(cardCount("Top resources")).toBe(3);
+        expect(cardCount("Courses")).toBe(6);
+        expect(cardCount("Pro library")).toBe(3);
+        expect(cardCount("MetFix")).toBe(3);
+        expect(cardCount("Free / open")).toBe(3);
+        expect(cardCount("BSI")).toBe(3);
+        expect(cardCount("Glassman & Book Library")).toBe(3);
+      },
+      { timeout: 10_000 },
+    );
 
     expect(
       screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
@@ -296,7 +301,7 @@ describe("library hub sections", () => {
       (entry) => entry.path === "/api/library/archive",
     );
     expect(archive?.params.get("limit")).toBe("3");
-  });
+  }, 15_000);
 
   it("cascades filters, then popular, then searches, then archive", async () => {
     const order: string[] = [];
@@ -376,13 +381,16 @@ describe("library hub sections", () => {
   it("does not show Daily Fix items in the library sections", async () => {
     installFetch({ dailyFix: true });
     renderHub();
-    await waitFor(() => {
-      expect(cardCount("Top resources")).toBe(3);
-      expect(cardCount("Free / open")).toBe(3);
-      expect(cardCount("MetFix")).toBe(3);
-      expect(cardCount("BSI")).toBe(3);
-      expect(cardCount("Glassman & Book Library")).toBe(3);
-    });
+    await waitFor(
+      () => {
+        expect(cardCount("Top resources")).toBe(3);
+        expect(cardCount("Free / open")).toBe(3);
+        expect(cardCount("MetFix")).toBe(3);
+        expect(cardCount("BSI")).toBe(3);
+        expect(cardCount("Glassman & Book Library")).toBe(3);
+      },
+      { timeout: 10_000 },
+    );
     expect(screen.queryByText("Daily Fix breakfast")).toBeNull();
     expect(screen.queryByText("Labeled post day")).toBeNull();
     expect(screen.queryByText("Daily Fix open note")).toBeNull();
