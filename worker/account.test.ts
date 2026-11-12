@@ -1118,6 +1118,214 @@ describe("worker/account routes", () => {
     expect(recorded.length).toBe(0);
   });
 
+  it("DP-T-21b normalizes BSI favorites/recipes/workouts/articles into items", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) {
+          return Response.json({
+            recipes: [{ source_type: "daily_mod", source_id: 11, title: "Chili", recipe_url: "/r/11" }],
+          });
+        }
+        if (path.endsWith("/favorites/workouts")) {
+          return Response.json({
+            workouts: [{ source_type: "daily_workout", source_id: 22, title: "Push Day" }],
+          });
+        }
+        if (path.endsWith("/favorites/articles")) {
+          return Response.json({
+            articles: [
+              {
+                source_type: "post",
+                source_id: 33,
+                title: "Sleep Science",
+                article_url: "https://metfix.org/posts/33",
+              },
+            ],
+          });
+        }
+        if (path.endsWith("/favorites")) {
+          return Response.json({
+            favorites: [{ source_type: "daily_mod", source_id: 11 }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+
+    const res = await callAccount(
+      h,
+      "/api/account/favorites",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(3);
+    expect(body.items.map((i) => i.source_type).sort()).toEqual([
+      "daily_mod",
+      "daily_workout",
+      "post",
+    ]);
+    expect(body.items.find((i) => i.source_type === "daily_mod")?.title).toBe("Chili");
+    expect(body.items.find((i) => i.source_type === "post")?.url).toBe("/posts/33");
+    expect(recorded.some((r) => r.url.includes("/favorites/recipes"))).toBe(true);
+    expect(recorded.some((r) => r.url.includes("/favorites/workouts"))).toBe(true);
+    expect(recorded.some((r) => r.url.includes("/favorites/articles"))).toBe(true);
+  });
+
+  it("DP-T-21c recipes filter hits enriched recipes endpoint only", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) {
+          return Response.json({
+            recipes: [{ source_type: "custom_recipe", source_id: 9, title: "Broth" }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites?type=recipes",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      source_type: "custom_recipe",
+      source_id: "9",
+      title: "Broth",
+      url: "/account/my-meals/recipes/9/edit",
+      photo_url: null,
+      protein_g: null,
+      fat_g: null,
+      carb_g: null,
+    });
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.url.includes("/favorites/recipes")).toBe(true);
+  });
+
+  it("DP-T-21d falls back to raw { favorites } when enriched lists are empty", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) return Response.json({ recipes: [] });
+        if (path.endsWith("/favorites/workouts")) return Response.json({ workouts: [] });
+        if (path.endsWith("/favorites/articles")) return Response.json({ articles: [] });
+        if (path.endsWith("/favorites")) {
+          return Response.json({
+            favorites: [{ source_type: "daily_article", source_id: 77 }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      source_type: "daily_article",
+      source_id: "77",
+      title: null,
+      url: null,
+      photo_url: null,
+    });
+  });
+
+  it("DP-T-21e keeps photo + macros from enriched recipe rows", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) {
+          return Response.json({
+            recipes: [
+              {
+                source_type: "daily_mod",
+                source_id: 5,
+                title: "Steak",
+                photo_url: "https://cdn.example/steak.jpg",
+                excerpt: "Seared ribeye with greens",
+                protein_g: 42,
+                fat_g: 28,
+                carb_g: 6,
+                protein_name: "Beef",
+                servings_default: 2,
+              },
+            ],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites?type=recipes",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items[0]).toMatchObject({
+      source_type: "daily_mod",
+      source_id: "5",
+      title: "Steak",
+      photo_url: "https://cdn.example/steak.jpg",
+      excerpt: "Seared ribeye with greens",
+      protein_g: 42,
+      fat_g: 28,
+      carb_g: 6,
+      protein_name: "Beef",
+      servings_default: 2,
+    });
+  });
+
+  it("DP-T-21f strips HTML from excerpt and scale", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/workouts")) {
+          return Response.json({
+            workouts: [
+              {
+                source_type: "daily_workout",
+                source_id: 3,
+                title: "Hero WOD",
+                scale:
+                  "<p>In honor of veteran Chad Wilkinson. Learn more at the <a href=\"https://example.com\">foundation</a>.</p>",
+                excerpt: "<p>Short <strong>blurb</strong></p>",
+              },
+            ],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites?type=workouts",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items[0]?.scale).toBe(
+      "In honor of veteran Chad Wilkinson. Learn more at the foundation.",
+    );
+    expect(body.items[0]?.excerpt).toBe("Short blurb");
+    expect(String(body.items[0]?.scale)).not.toMatch(/</);
+  });
+
   it("MF meals + macros + pr-overview proxy live BSI metfix/v1 routes", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([
@@ -4407,5 +4615,361 @@ describe("calendar 401 refresh", () => {
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthenticated" });
     expect((await sessionBlob(h, sid))?.blob).toBeFalsy();
+  });
+});
+
+describe("user lists proxy", () => {
+  let h: Harness;
+
+  beforeEach(() => {
+    h = createHarness();
+    installAccountLimiters(h.env);
+  });
+
+  it("GET /api/account/lists is bearer-only and strips item HTML", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/lists") && method === "GET") {
+          return Response.json({
+            lists: [
+              {
+                id: 4,
+                title: "Race week",
+                visibility: "private",
+                item_count: 1,
+                list_relationship: "owner",
+                body: "<p>nope</p>",
+              },
+            ],
+            meta: { count: 1, total: 1, limit: 20, offset: 0 },
+          });
+        }
+        if (path.endsWith("/lists/4/items") && method === "GET") {
+          return Response.json({
+            list_id: 4,
+            count: 1,
+            items: [
+              {
+                id: 9,
+                list_id: 4,
+                sort_order: 0,
+                content: {
+                  source_type: "post",
+                  source_id: 88,
+                  title: "Briefing",
+                  body: "<p>full article</p>",
+                  article_url: "https://brokenscience.org/briefing",
+                },
+              },
+            ],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const index = await callAccount(
+      h,
+      "/api/account/lists",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(index.status).toBe(200);
+    const indexJson = (await index.json()) as { lists: Array<{ title: string }> };
+    expect(indexJson.lists[0]?.title).toBe("Race week");
+    expect(JSON.stringify(indexJson)).not.toContain("nope");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists");
+    expect(recorded[0]?.url).not.toContain("shopping-lists");
+    assertHasBearer(recorded[0]!);
+
+    const items = await callAccount(
+      h,
+      "/api/account/lists/4/items",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(items.status).toBe(200);
+    const itemsJson = (await items.json()) as {
+      items: Array<{ content: Record<string, unknown> }>;
+    };
+    expect(itemsJson.items[0]?.content.title).toBe("Briefing");
+    expect(itemsJson.items[0]?.content).not.toHaveProperty("body");
+    expect(JSON.stringify(itemsJson)).not.toContain("full article");
+  });
+
+  it("POST /api/account/lists forwards a title and rejects an empty one", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/lists") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { title: string; visibility: string };
+          return Response.json(
+            {
+              list: {
+                id: 8,
+                title: sent.title,
+                visibility: sent.visibility,
+                list_relationship: "owner",
+                item_count: 0,
+              },
+            },
+            { status: 201 },
+          );
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const bad = await callAccount(
+      h,
+      "/api/account/lists",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ title: "  " }),
+      },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const created = await callAccount(
+      h,
+      "/api/account/lists",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ title: "Travel", visibility: "unlisted" }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as { list: { title: string; visibility: string } };
+    expect(body.list.title).toBe("Travel");
+    expect(body.list.visibility).toBe("unlisted");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists");
+    assertHasBearer(recorded[0]!);
+    expect(recorded[0]?.headers["x-api-key"]).toBeUndefined();
+  });
+
+  it("invites and removes a subscriber by user id", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/lists/4/subscribers") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { user_id: number };
+          return Response.json(
+            {
+              list: {
+                id: 4,
+                title: "Race week",
+                visibility: "private",
+                list_relationship: "subscriber",
+                owner_user_id: 1,
+                item_count: 0,
+              },
+            },
+            { status: sent.user_id === 15 ? 201 : 400 },
+          );
+        }
+        if (path.endsWith("/lists/4/subscribers/15") && method === "DELETE") {
+          return new Response(null, { status: 204 });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const bad = await callAccount(
+      h,
+      "/api/account/lists/4/subscribers",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ user_id: "nope" }),
+      },
+      fetchImpl,
+    );
+    expect(bad.status).toBe(400);
+    expect(recorded).toHaveLength(0);
+
+    const invited = await callAccount(
+      h,
+      "/api/account/lists/4/subscribers",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ user_id: 15, email: "hidden@example.test" }),
+      },
+      fetchImpl,
+    );
+    expect(invited.status).toBe(201);
+    expect(JSON.parse(recorded[0]?.bodyText ?? "{}")).toEqual({ user_id: 15 });
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/lists/4/subscribers");
+    assertHasBearer(recorded[0]!);
+
+    const removed = await callAccount(
+      h,
+      "/api/account/lists/4/subscribers/15",
+      {
+        method: "DELETE",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+      },
+      fetchImpl,
+    );
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toEqual({ success: true });
+  });
+
+  it("uses Belly custom recipes and strips owned workout templates", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, url }) => {
+        if (path.endsWith("/custom-recipes") && method === "GET") {
+          expect(url).toContain("limit=20");
+          expect(url).not.toContain("org_id");
+          return Response.json({
+            recipes: [{ id: 3, title: "My bowl", instructions: "secret steps" }],
+          });
+        }
+        if (path.endsWith("/custom-workouts") && method === "GET") {
+          expect(url).toContain("owner_id=me");
+          return Response.json({
+            workouts: [{ id: 8, title: "Engine", structure: { steps: ["secret"] }, body: "<p>html</p>" }],
+          });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const recipes = await callAccount(
+      h,
+      "/api/account/custom-recipes?limit=20&org_id=9",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(recipes.status).toBe(200);
+    const recipeJson = await recipes.json();
+    expect(recipeJson).toEqual({
+      recipes: [{ id: 3, title: "My bowl", instructions: "secret steps" }],
+      meta: {},
+    });
+
+    const workouts = await callAccount(
+      h,
+      "/api/account/custom-workouts?owner_id=99",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(workouts.status).toBe(200);
+    const workoutJson = await workouts.json();
+    expect(workoutJson).toEqual({ items: [{ id: 8, title: "Engine" }] });
+    expect(JSON.stringify(workoutJson)).not.toContain("secret");
+    assertHasBearer(recorded[1]!);
+  });
+
+  it("submits a list report and maps a duplicate to duplicate_report", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path, method, bodyText }) => {
+        if (path.endsWith("/content-reports") && method === "POST") {
+          const sent = JSON.parse(bodyText) as { platform?: string; note?: string };
+          if (sent.note === "again") {
+            return Response.json(
+              {
+                code: "duplicate_report",
+                message: "You already have an open report for this content.",
+                data: { status: 409 },
+              },
+              { status: 409 },
+            );
+          }
+          expect(sent.platform).toBe("web");
+          return Response.json(
+            {
+              id: 9,
+              report_id: 9,
+              content_type: "user_list",
+              content_id: 4,
+              status: "pending",
+              message: "internal",
+            },
+            { status: 201 },
+          );
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+
+    const created = await callAccount(
+      h,
+      "/api/account/content-reports",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          content_type: "user_list",
+          content_id: 4,
+          reason_code: "spam",
+          platform: "ios",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(created.status).toBe(201);
+    const createdJson = await created.json();
+    expect(createdJson).toEqual({
+      id: 9,
+      content_type: "user_list",
+      content_id: 4,
+      status: "pending",
+    });
+    expect(JSON.stringify(createdJson)).not.toContain("internal");
+    expect(recorded[0]?.url).toContain("/wp-json/metfix/v1/content-reports");
+    assertHasBearer(recorded[0]!);
+
+    const duplicate = await callAccount(
+      h,
+      "/api/account/content-reports",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({
+          content_type: "user_list",
+          content_id: 4,
+          reason_code: "spam",
+          note: "again",
+        }),
+      },
+      fetchImpl,
+    );
+    expect(duplicate.status).toBe(409);
+    const duplicateJson = await duplicate.json();
+    expect(duplicateJson).toEqual({ error: "duplicate_report" });
+    expect(JSON.stringify(duplicateJson)).not.toContain("already have");
+  });
+
+  it("reports a saved custom workout when the catalog omits the row", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path, method }) => {
+        if (path.endsWith("/lists/4/items") && method === "POST") {
+          return Response.json({ list_item: null }, { status: 201 });
+        }
+        return Response.json({ error: "unexpected" }, 500);
+      },
+    ]);
+    const added = await callAccount(
+      h,
+      "/api/account/lists/4/items",
+      {
+        method: "POST",
+        headers: hOk({ csrf: sess.csrf, sid: sess.sid }),
+        body: JSON.stringify({ source_type: "custom_workout", source_id: 8 }),
+      },
+      fetchImpl,
+    );
+    expect(added.status).toBe(201);
+    expect(await added.json()).toEqual({ saved: true, listed: false });
   });
 });

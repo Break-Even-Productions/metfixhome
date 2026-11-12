@@ -2,6 +2,9 @@ import {
   isLibraryDetailBody,
   isLibraryFiltersBody,
   isLibrarySearchBody,
+  mapExclusiveAccessLevels,
+  retainExclusiveCatalog,
+  type ExclusiveAccessLevel,
   type LibraryDetailBody,
   type LibraryFiltersBody,
   type LibrarySearchBody,
@@ -35,6 +38,49 @@ function toQuery(params: SearchParams): string {
     sp.append("categories[]", String(v));
   }
   return sp.toString();
+}
+
+export type ExclusiveFeedParams = {
+  query?: string;
+  content_access?: number[];
+  limit?: number;
+  offset?: number;
+};
+
+export async function fetchExclusiveFeed(
+  params: ExclusiveFeedParams,
+  signal?: AbortSignal,
+): Promise<LibrarySearchBody> {
+  const sp = new URLSearchParams();
+  if (params.query) sp.set("query", params.query);
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.offset != null) sp.set("offset", String(params.offset));
+  for (const id of params.content_access ?? []) {
+    sp.append("content_access[]", String(id));
+  }
+  const qs = sp.toString();
+  const res = await fetch(`/api/library/exclusive${qs ? `?${qs}` : ""}`, {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    signal,
+  });
+  if (!res.ok) throw new Error(`exclusive_${res.status}`);
+  const json: unknown = await res.json();
+  if (!isLibrarySearchBody(json)) throw new Error("exclusive_shape");
+  return retainExclusiveCatalog(json);
+}
+
+export async function fetchExclusiveAccessLevels(
+  signal?: AbortSignal,
+): Promise<ExclusiveAccessLevel[]> {
+  const res = await fetch("/api/library/exclusive/levels", {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    signal,
+  });
+  if (!res.ok) return [];
+  const json: unknown = await res.json();
+  return mapExclusiveAccessLevels(json);
 }
 
 export async function fetchLibrarySearch(

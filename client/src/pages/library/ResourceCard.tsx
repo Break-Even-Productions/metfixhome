@@ -2,6 +2,7 @@ import {
   Clapperboard,
   FileText,
   Lock,
+  LockOpen,
   Play,
   Presentation,
   Radio,
@@ -137,6 +138,8 @@ type ResourceCardProps = {
   onOpenLocked: (r: LibraryResource) => void;
   /** Breadcrumb context `?from=` (PL9 / TX7). */
   from?: string;
+  /** Exclusive feed: stay on the library detail URL. */
+  libraryOnly?: boolean;
 };
 
 function hrefWithFrom(href: string, from?: string): string {
@@ -147,15 +150,23 @@ function hrefWithFrom(href: string, from?: string): string {
   return `${href}${sep}from=${encodeURIComponent(valid)}`;
 }
 
-export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps) {
+export function ResourceCard({
+  resource,
+  onOpenLocked,
+  from,
+  libraryOnly = false,
+}: ResourceCardProps) {
   const locked = isLockedCard(resource);
   const exclusive = isProfessionalTagged(resource);
   const showLock = locked || exclusive;
-  const baseHref = resource.daily_fix_date
-    ? `/the-daily-fix/${resource.daily_fix_date.replace(/-/g, "").slice(2)}`
-    : resource.type === "daily_fix"
-      ? "/the-daily-fix"
-      : `/library/${resource.type}/${resource.id}`;
+  const hasAccess = resource.access.user_has_access || resource.access.access === "full";
+  const baseHref = libraryOnly
+    ? `/library/${resource.type}/${resource.id}`
+    : resource.daily_fix_date
+      ? `/the-daily-fix/${resource.daily_fix_date.replace(/-/g, "").slice(2)}`
+      : resource.type === "daily_fix"
+        ? "/the-daily-fix"
+        : `/library/${resource.type}/${resource.id}`;
   const href = hrefWithFrom(baseHref, from);
 
   const visual = typeVisual(resource);
@@ -163,6 +174,9 @@ export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps
   const TypeIcon = visual.Icon;
   const dateLabel = formatDate(resource.date);
   const category = resource.categories[0]?.name;
+  const LockIcon = hasAccess && !locked ? LockOpen : Lock;
+  const lockLabel =
+    hasAccess && !locked ? "Unlocked exclusive content" : "Exclusive content";
 
   const body = (
     <>
@@ -226,8 +240,8 @@ export function ResourceCard({ resource, onOpenLocked, from }: ResourceCardProps
           </span>
         ) : null}
         {showLock ? (
-          <span className="library-card-lock" aria-label="Exclusive content">
-            <Lock size={12} strokeWidth={2.25} aria-hidden />
+          <span className="library-card-lock" aria-label={lockLabel}>
+            <LockIcon size={12} strokeWidth={2.25} aria-hidden />
           </span>
         ) : null}
       </div>

@@ -243,6 +243,18 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(screen.getByRole("link", { name: /^My Meals$/i }).getAttribute("href")).toBe(
       "/account/my-meals",
     );
+    expect(screen.getByRole("link", { name: /^Exclusive feed$/i }).getAttribute("href")).toBe(
+      "/account/exclusive",
+    );
+    expect(screen.getByRole("link", { name: /^Lists$/i }).getAttribute("href")).toBe(
+      "/account/lists",
+    );
+    expect(screen.getByRole("link", { name: /^Saved$/i }).getAttribute("href")).toBe(
+      "/account/favorites",
+    );
+    expect(
+      document.querySelector('[data-tool="exclusive-feed"]')?.innerHTML ?? "",
+    ).not.toContain("/the-daily-fix");
     expect(screen.getByRole("link", { name: /PR tracking/i }).getAttribute("href")).toBe(
       "/account/benchmarks",
     );
@@ -330,6 +342,18 @@ describe("AccountOverview (P-DB-1, P-DB-2, P-DB-8, UI3b)", () => {
     expect(document.querySelectorAll('.account-tool[data-state="locked"]').length).toBe(5);
     expect(document.querySelector('[data-tool="inbox"]')?.getAttribute("data-state")).toBe(
       "open",
+    );
+    expect(document.querySelector('[data-tool="lists"]')?.getAttribute("data-state")).toBe(
+      "open",
+    );
+    expect(document.querySelector('[data-tool="lists"]')?.getAttribute("href")).toBe(
+      "/account/lists",
+    );
+    expect(document.querySelector('[data-tool="exclusive-feed"]')?.getAttribute("href")).toBe(
+      "/join",
+    );
+    expect(document.querySelector('[data-tool="saved"]')?.getAttribute("href")).toBe(
+      "/account/favorites",
     );
   });
 

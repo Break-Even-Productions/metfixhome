@@ -159,6 +159,34 @@ describe("library search map", () => {
     expect(mapLibraryResource({ id: 1, type: "post", date: "2026-01-01T00:00:00Z" })).toBeNull();
   });
 
+  it("keeps Daily Fix recipe and article rows that share an id", () => {
+    const mapped = mapSearchResponse({
+      resources: [
+        {
+          id: 489,
+          type: "daily_fix_mod",
+          title: "Steak",
+          excerpt: "Belly",
+          date: "2026-10-22T00:00:00Z",
+          daily_fix_date: "2026-10-22",
+        },
+        {
+          id: 489,
+          type: "daily_fix_thought",
+          title: "Recovery",
+          excerpt: "Brain",
+          date: "2026-10-22T00:00:00Z",
+          daily_fix_date: "2026-10-22",
+        },
+      ],
+      meta: { total: 2, count: 2, limit: 12, offset: 0, has_more: false },
+    });
+    expect(mapped?.resources.map((row) => [row.daily_fix_pillar, row.title])).toEqual([
+      ["belly", "Steak"],
+      ["brain", "Recovery"],
+    ]);
+  });
+
   it("coerces BSI Daily Fix rows labeled as post when daily_fix_date is set", () => {
     const mapped = mapLibraryResource({
       id: 235,

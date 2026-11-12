@@ -16,6 +16,18 @@ import type { FoundationsCoachStatus } from "@shared/account/foundations-coach";
 import type { StoredClaimMethod } from "@shared/account/ltv";
 import type { CanonicalSubscriptionTier, LegacySubscriptionSource } from "@shared/account/tiers";
 import type { RoleId } from "@shared/join/membership-domain";
+import type { CatalogHit } from "@shared/account/listCatalog";
+import type {
+  ContentReportReason,
+  ContentReportReceipt,
+  ContentReportType,
+} from "@shared/account/contentReports";
+import type {
+  ListSourceType,
+  ListVisibility,
+  UserListDto,
+  UserListItemDto,
+} from "@shared/account/userLists";
 
 export { sanitizeReturnPath } from "@shared/account/returnPath";
 export type { ClaimOptionsDto, ClaimPathId };
@@ -192,11 +204,26 @@ export type FavoriteItem = {
   source_id: string;
   title?: string | null;
   url?: string | null;
+  photo_url?: string | null;
+  excerpt?: string | null;
+  protein_g?: number | null;
+  fat_g?: number | null;
+  carb_g?: number | null;
+  protein_name?: string | null;
+  servings_default?: number | null;
+  scale?: string | null;
+  video_url?: string | null;
+  article_url?: string | null;
+  recipe_url?: string | null;
+  saved_at?: string | null;
+  date?: string | null;
   [key: string]: unknown;
 };
 
 export type FavoritesPage = {
   items: FavoriteItem[];
+  /** Legacy BSI key — worker should normalize to `items`. */
+  favorites?: FavoriteItem[];
   [key: string]: unknown;
 };
 
@@ -920,6 +947,13 @@ type CacheKey =
   | `macros:${string}`
   | "shopping-lists"
   | `shopping-list:${number}`
+  | "user-lists"
+  | "public-lists"
+  | `user-list:${number}`
+  | `user-list-items:${number}`
+  | `user-list-share:${string}`
+  | "custom-recipes"
+  | "custom-workouts"
   | `spark-entries:${string}`
   | "spark-user-info"
   | `spark-measurements:${string}`
@@ -929,7 +963,6 @@ type CacheKey =
   | `workouts-planned:${string}`
   | `workout:${number}`
   | `custom-workout:${number}`
-  | "custom-workouts"
   | `custom-workouts:${number}`
   | `movements:${string}`
   | "plans"
@@ -1000,6 +1033,19 @@ function invalidateKeys(keys: CacheKey[]): void {
   for (const key of keys) {
     cache.delete(key);
     inflight.delete(key);
+  }
+}
+
+function dropUserListCaches(): void {
+  for (const key of [...cache.keys()]) {
+    if (
+      key === "user-lists" ||
+      key === "public-lists" ||
+      (typeof key === "string" && key.startsWith("user-list"))
+    ) {
+      cache.delete(key);
+      inflight.delete(key);
+    }
   }
 }
 
@@ -2734,6 +2780,223 @@ export function hasScheduledNextPayment(
       : primary.paid_through ?? primary.current_period_end;
   if (!iso) return false;
   return Number.isFinite(new Date(iso).getTime());
+}
+
+export type UserList = UserListDto;
+export type UserListItem = UserListItemDto;
+
+export type UserListsPage = {
+  lists: UserList[];
+  meta: { count: number; total: number; limit: number; offset: number };
+};
+
+export function loadUserLists(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<UserListsPage> {
+  return accountGet("/api/account/lists?limit=50&offset=0", "user-lists", options);
+}
+
+export function loadPublicLists(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<UserListsPage> {
+  return accountGet("/api/account/lists/public?limit=50&offset=0", "public-lists", options);
+}
+
+export function loadUserList(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal; shareToken?: string },
+): Promise<{ list: UserList }> {
+  const q = options?.shareToken
+    ? `?share_token=${encodeURIComponent(options.shareToken)}`
+    : "";
+  return accountGet(`/api/account/lists/${id}${q}`, `user-list:${id}`, options);
+}
+
+export function loadUserListByToken(
+  token: string,
+  options?: { force?: boolean; signal?: AbortSignal },
+): Promise<{ list: UserList }> {
+  return accountGet(
+    `/api/account/lists/share/${encodeURIComponent(token)}`,
+    `user-list-share:${token}`,
+    options,
+  );
+}
+
+export function loadUserListItems(
+  id: number,
+  options?: { force?: boolean; signal?: AbortSignal; shareToken?: string },
+): Promise<{ items: UserListItem[]; count: number; list_id: number | null }> {
+  const q = options?.shareToken
+    ? `?share_token=${encodeURIComponent(options.shareToken)}`
+    : "";
+  return accountGet(
+    `/api/account/lists/${id}/items${q}`,
+    `user-list-items:${id}`,
+    options,
+  );
+}
+
+export async function createUserList(body: {
+  title: string;
+  description?: string;
+  visibility: ListVisibility;
+}): Promise<{ list: UserList }> {
+  const res = await accountMutate<{ list: UserList }>("/api/account/lists", {
+    method: "POST",
+    body,
+  });
+  dropUserListCaches();
+  return res;
+}
+
+export async function updateUserList(
+  id: number,
+  body: { title?: string; description?: string; visibility?: ListVisibility },
+): Promise<{ list: UserList }> {
+  const res = await accountMutate<{ list: UserList }>(`/api/account/lists/${id}`, {
+    method: "PUT",
+    body,
+  });
+  dropUserListCaches();
+  return res;
+}
+
+export async function deleteUserList(id: number): Promise<{ success: boolean }> {
+  const res = await accountMutate<{ success: boolean }>(`/api/account/lists/${id}`, {
+    method: "DELETE",
+  });
+  dropUserListCaches();
+  return res;
+}
+
+export async function addUserListItem(
+  id: number,
+  body: { source_type: ListSourceType | string; source_id: number; note?: string },
+): Promise<{ list_item?: UserListItem; listed?: boolean; saved?: boolean }> {
+  const res = await accountMutate<{
+    list_item?: UserListItem;
+    listed?: boolean;
+    saved?: boolean;
+  }>(`/api/account/lists/${id}/items`, { method: "POST", body });
+  dropUserListCaches();
+  return res;
+}
+
+export function loadOwnedCustomWorkouts(options?: {
+  force?: boolean;
+  signal?: AbortSignal;
+}): Promise<{ items: CatalogHit[] }> {
+  return accountGet(
+    "/api/account/custom-workouts?limit=50&offset=0",
+    "custom-workouts",
+    options,
+  );
+}
+
+export async function inviteListSubscriber(
+  id: number,
+  userId: number,
+): Promise<{ list: UserList }> {
+  const res = await accountMutate<{ list: UserList }>(
+    `/api/account/lists/${id}/subscribers`,
+    { method: "POST", body: { user_id: userId } },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function removeListSubscriber(
+  id: number,
+  userId: number,
+): Promise<{ success: boolean }> {
+  const res = await accountMutate<{ success: boolean }>(
+    `/api/account/lists/${id}/subscribers/${userId}`,
+    { method: "DELETE" },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function submitContentReport(body: {
+  content_type: ContentReportType;
+  content_id: number;
+  reason_code: ContentReportReason;
+  note?: string;
+}): Promise<ContentReportReceipt> {
+  const note = body.note?.trim();
+  return accountMutate<ContentReportReceipt>("/api/account/content-reports", {
+    method: "POST",
+    body: {
+      content_type: body.content_type,
+      content_id: body.content_id,
+      reason_code: body.reason_code,
+      ...(note ? { note } : {}),
+    },
+  });
+}
+
+export async function removeUserListItem(
+  id: number,
+  itemId: number,
+): Promise<{ success: boolean }> {
+  const res = await accountMutate<{ success: boolean }>(
+    `/api/account/lists/${id}/items/${itemId}`,
+    { method: "DELETE" },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function updateUserListItem(
+  id: number,
+  itemId: number,
+  body: { note?: string },
+): Promise<{ list_item?: UserListItem; success?: boolean }> {
+  const res = await accountMutate<{ list_item?: UserListItem; success?: boolean }>(
+    `/api/account/lists/${id}/items/${itemId}`,
+    { method: "PUT", body },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function reorderUserListItems(
+  id: number,
+  item_orders: Array<{ id: number; sort_order: number }>,
+): Promise<{ items?: UserListItem[]; success?: boolean }> {
+  const res = await accountMutate<{ items?: UserListItem[]; success?: boolean }>(
+    `/api/account/lists/${id}/items/reorder`,
+    { method: "PUT", body: { item_orders } },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function subscribeToUserList(
+  id: number,
+  shareToken?: string,
+): Promise<{ list: UserList }> {
+  const res = await accountMutate<{ list: UserList }>(
+    `/api/account/lists/${id}/subscribe`,
+    {
+      method: "POST",
+      body: shareToken ? { share_token: shareToken } : {},
+    },
+  );
+  dropUserListCaches();
+  return res;
+}
+
+export async function unsubscribeFromUserList(id: number): Promise<{ success: boolean }> {
+  const res = await accountMutate<{ success: boolean }>(
+    `/api/account/lists/${id}/subscribe`,
+    { method: "DELETE" },
+  );
+  dropUserListCaches();
+  return res;
 }
 
 export function formatNextPayment(

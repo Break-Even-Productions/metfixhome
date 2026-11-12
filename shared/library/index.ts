@@ -100,6 +100,14 @@ export {
 
 export { isResourceVideo, mapResourceVideo } from "./video";
 
+export {
+  buildExclusiveFeedQuery,
+  isExclusiveCatalogItem,
+  mapExclusiveAccessLevels,
+  retainExclusiveCatalog,
+  type ExclusiveAccessLevel,
+} from "./exclusiveFeed";
+
 export type {
   BuildLibraryHeadInput,
   ContentAccessDisplay,

@@ -31,13 +31,39 @@ beforeEach(() => {
       if (url.includes("/api/account/favorites") && method === "GET") {
         if (url.includes("type=recipes")) {
           return jsonResponse({
-            items: [{ source_type: "recipes", source_id: "r1", title: "Soup" }],
+            items: [
+              {
+                source_type: "custom_recipe",
+                source_id: "r1",
+                title: "Soup",
+                url: "/account/my-meals/recipes/r1/edit",
+                photo_url: "https://cdn.example/soup.jpg",
+                protein_g: 30,
+                fat_g: 12,
+                carb_g: 8,
+                protein_name: "Chicken",
+              },
+            ],
           });
         }
         return jsonResponse({
           items: [
-            { source_type: "articles", source_id: "a1", title: "Article One" },
-            { source_type: "recipes", source_id: "r1", title: "Soup" },
+            {
+              source_type: "daily_article",
+              source_id: "a1",
+              title: "Article One",
+              url: "/posts/a1",
+            },
+            {
+              source_type: "custom_recipe",
+              source_id: "r1",
+              title: "Soup",
+              url: "/account/my-meals/recipes/r1/edit",
+              photo_url: "https://cdn.example/soup.jpg",
+              protein_g: 30,
+              fat_g: 12,
+              carb_g: 8,
+            },
           ],
         });
       }
@@ -89,16 +115,131 @@ describe("AccountFavorites (P-DB-10)", () => {
     );
     expect(favGets.length).toBeGreaterThanOrEqual(1);
 
-    fireEvent.click(screen.getByRole("tab", { name: /^recipes$/i }));
-    await waitFor(() => expect(screen.getByText("Soup")).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: /^Recipes$/i }));
+    await waitFor(() => expect(screen.getByRole("link", { name: "Soup" })).toBeTruthy());
     expect(screen.queryByText("Article One")).toBeNull();
+    expect(screen.getByText("Recipe")).toBeTruthy();
+    expect(screen.getByText(/P 30g/i)).toBeTruthy();
+    expect(document.querySelector("img.account-fav-card__img")?.getAttribute("src")).toBe(
+      "https://cdn.example/soup.jpg",
+    );
+    expect(screen.getByRole("link", { name: "Soup" }).getAttribute("href")).toBe(
+      "/account/my-meals/recipes/r1/edit",
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /Remove/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Remove Soup from saved/i }));
     await waitFor(() => expect(screen.queryByText("Soup")).toBeNull());
     const dels = fetchImpl.mock.calls.filter(
       (c) => ((c[1] as RequestInit | undefined)?.method ?? "").toUpperCase() === "DELETE",
     );
     expect(dels.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows article date without time", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/favorites")) {
+          return jsonResponse({
+            items: [
+              {
+                source_type: "post",
+                source_id: "42",
+                title: "Sleep Science",
+                url: "/posts/42",
+                date: "2026-09-30 07:00:13",
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/account/overview") || url.includes("/subscriptions")) {
+          return jsonResponse({
+            display_name: "Ada",
+            badges: {},
+            foundations_coach: {
+              active: false,
+              grant_reason: null,
+              granted_at: null,
+              expires_at: null,
+              seminar_checked_in: false,
+              metfix_essentials_completed: false,
+              metfix_essentials_certificate_claimed: false,
+            },
+            canonical_tier: "free",
+            items: [],
+            tabs: [],
+            links: {},
+          });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+    render(
+      <Router>
+        <AccountFavorites />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("Sleep Science")).toBeTruthy());
+    expect(screen.getByText("Sep 30, 2026")).toBeTruthy();
+    expect(screen.queryByText(/07:00/)).toBeNull();
+  });
+
+  it("strips HTML from scale and uses bookmark control", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/api/auth/csrf")) return jsonResponse({ csrf: "test-csrf" });
+        if (url.includes("/api/account/favorites") && method === "GET") {
+          return jsonResponse({
+            items: [
+              {
+                source_type: "daily_workout",
+                source_id: "3",
+                title: "Hero WOD",
+                scale:
+                  "<p>In honor of veteran Chad Wilkinson. Learn more at the <a href=\"https://example.com\">foundation</a>.</p>",
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/account/favorites/") && method === "DELETE") {
+          return jsonResponse({ ok: true });
+        }
+        if (url.includes("/api/account/overview") || url.includes("/subscriptions")) {
+          return jsonResponse({
+            display_name: "Ada",
+            badges: {},
+            foundations_coach: {
+              active: false,
+              grant_reason: null,
+              granted_at: null,
+              expires_at: null,
+              seminar_checked_in: false,
+              metfix_essentials_completed: false,
+              metfix_essentials_certificate_claimed: false,
+            },
+            canonical_tier: "free",
+            items: [],
+            tabs: [],
+            links: {},
+          });
+        }
+        return jsonResponse({ error: "not_found" }, 404);
+      }),
+    );
+    render(
+      <Router>
+        <AccountFavorites />
+      </Router>,
+    );
+    await waitFor(() => expect(screen.getByText("Hero WOD")).toBeTruthy());
+    expect(screen.getByText(/In honor of veteran Chad Wilkinson/i)).toBeTruthy();
+    expect(screen.queryByText(/<p>/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /Remove Hero WOD from saved/i })).toBeTruthy();
   });
 
   it("empty state shows clear message and browse CTA", async () => {

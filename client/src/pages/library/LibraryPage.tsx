@@ -272,7 +272,7 @@ function Rail({
         <div className="library-rail">
           {state.items.map((r) => (
             <ResourceCard
-              key={`${r.type}-${r.id}`}
+              key={`${r.type}-${r.daily_fix_pillar ?? ""}-${r.id}`}
               resource={r}
               onOpenLocked={onLocked}
             />
