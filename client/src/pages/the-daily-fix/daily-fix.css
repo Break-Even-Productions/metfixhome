@@ -1629,6 +1629,56 @@ a.df-article {
   color: rgba(243, 238, 228, 0.5);
 }
 
+.df-wheel-cta {
+  display: flex;
+  max-width: 40rem;
+  margin: 0 auto;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1.25rem 0 0.5rem;
+}
+
+.df-pill-ink {
+  background: var(--df-ink);
+  color: var(--df-cream);
+}
+
+.df-wheel-cta h2 {
+  margin: 1.25rem 0 0;
+  font-family: var(--df-font-serif);
+  font-size: 2.25rem;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--df-ink);
+}
+
+.df-wheel-cta h2 em {
+  font-style: italic;
+  color: var(--df-accent-2);
+}
+
+@media (min-width: 768px) {
+  .df-wheel-cta h2 {
+    font-size: 3.5rem;
+  }
+}
+
+.df-wheel-cta p {
+  margin: 1rem 0 0;
+  max-width: 28rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--df-muted);
+}
+
+.df-wheel-cta-btn {
+  margin-top: 1.75rem;
+  min-width: 12rem;
+  justify-content: center;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

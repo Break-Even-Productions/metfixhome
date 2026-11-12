@@ -5,6 +5,7 @@ import {
   cacheTtlSeconds,
   escapeScriptJson,
   isIsoDate,
+  isWheelPath,
   mapDailyFixDay,
   normalizeDailyFixPath,
   outOfRangeLocation,
@@ -38,6 +39,7 @@ import { handleWhopCheckoutRoutes } from "./whop-checkout";
 import {
   fetchDailyFixDay,
   fetchDailyFixListPage,
+  fetchWheelRecipes,
   isPublicListItem,
   LIST_PAGE_SIZE,
   scopeEnvBsiOrigin,
@@ -118,6 +120,9 @@ export async function handleRequest(
   // /api/* — worker-owned
   if (path === "/api/daily-fix" || path === "/api/daily-fix/") {
     return handleApi(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
+  }
+  if (path === "/api/daily-fix/wheel/recipes") {
+    return handleWheelRecipes(request, env, fetchImpl, bsiBaseUrl);
   }
   if (path === "/api/daily-fix/archive") {
     return handleArchive(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
@@ -258,6 +263,13 @@ export async function handleRequest(
     }
     if (!wantsHtml) {
       return env.ASSETS.fetch(request);
+    }
+    // Dedicated wheel SPA surface — skip Daily Fix day SSR / path normalize 404.
+    if (isWheelPath(path)) {
+      if (path.endsWith("/") && path.length > 1) {
+        return redirectResponse(path.replace(/\/+$/, "") || "/");
+      }
+      return handleWheelHtml(request, env);
     }
     return handleDailyFixHtml(request, env, ctx, fetchImpl, cache, bsiBaseUrl);
   }
@@ -510,6 +522,59 @@ function indexAssetRequest(request: Request): Request {
     method: "GET",
     headers: { Accept: "text/html" },
   });
+}
+
+/** SPA shell for `/the-daily-fix/wheel` (no day SSR seed). */
+async function handleWheelHtml(request: Request, env: Env): Promise<Response> {
+  const isHead = request.method.toUpperCase() === "HEAD";
+  let assetRes: Response;
+  try {
+    assetRes = await fetchIndexHtml(request, env);
+  } catch {
+    return new Response(isHead ? null : "Service Unavailable", {
+      status: 503,
+      headers: withDailyFixCsp(new Headers({ "Retry-After": "300", "Cache-Control": "no-store" })),
+    });
+  }
+  const rewritten = rewriteHtml(assetRes, { mode: "generic" });
+  const headers = withDailyFixCsp(new Headers(rewritten.headers));
+  headers.set("Cache-Control", "public, max-age=60");
+  if (isHead) return new Response(null, { status: 200, headers });
+  return new Response(rewritten.body, { status: 200, headers });
+}
+
+async function handleWheelRecipes(
+  request: Request,
+  env: Env,
+  fetchImpl: typeof fetch,
+  bsiBaseUrl?: string,
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+  const isHead = method === "HEAD";
+  if (method !== "GET" && !isHead) {
+    return jsonResponse({ error: "method_not_allowed" }, 405, { Allow: "GET, HEAD" }, false);
+  }
+
+  const url = new URL(request.url);
+  const outcome = await fetchWheelRecipes(url.searchParams, env, fetchImpl, { baseUrl: bsiBaseUrl });
+  if (outcome.kind === "ok") {
+    return apiRawBody(
+      outcome.bodyText,
+      200,
+      {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+      isHead,
+    );
+  }
+  return jsonResponse(
+    { error: "unavailable" },
+    503,
+    { "Retry-After": "300", "Cache-Control": "no-store" },
+    isHead,
+  );
 }
 
 async function handleApi(
