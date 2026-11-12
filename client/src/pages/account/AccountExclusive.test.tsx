@@ -132,14 +132,24 @@ describe("AccountExclusive", () => {
     expect(screen.queryByText("Wednesday Fix")).toBeNull();
     const link = title.closest("a");
     expect(link?.getAttribute("href")).toBe("/library/exclusive_resource/7");
-    expect(document.querySelector(".account-exclusive-grid")?.innerHTML ?? "").not.toContain(
+    expect(
+      document.querySelector(".library-card-lock")?.getAttribute("aria-label"),
+    ).toBe("Unlocked exclusive content");
+    expect(document.querySelector(".library-rail")?.innerHTML ?? "").not.toContain(
       "/the-daily-fix",
     );
+    expect(document.querySelector(".library-filter-hint")?.textContent).toContain(
+      "Every exclusive post",
+    );
+    expect(screen.getByRole("button", { name: "All exclusive" })).toBeTruthy();
     expect(calls.some((url) => url.includes("/the-daily-fix"))).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "MetFix Pro" }));
     await waitFor(() =>
       expect(calls.some((url) => url.includes("content_access"))).toBe(true),
+    );
+    expect(document.querySelector(".library-filter-hint")?.textContent).toContain(
+      "MetFix Pro",
     );
   });
 });

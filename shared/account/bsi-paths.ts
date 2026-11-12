@@ -95,6 +95,21 @@ export function accountFavoritesPath(): string {
   return `${METFIX}/favorites`;
 }
 
+/** Enriched recipe favorites (daily_mod + custom_recipe). */
+export function accountFavoriteRecipesPath(): string {
+  return `${METFIX}/favorites/recipes`;
+}
+
+/** Enriched daily_workout favorites. */
+export function accountFavoriteWorkoutsPath(): string {
+  return `${METFIX}/favorites/workouts`;
+}
+
+/** Enriched article favorites (daily_article + WP posts). */
+export function accountFavoriteArticlesPath(): string {
+  return `${METFIX}/favorites/articles`;
+}
+
 export function accountFavoriteItemPath(sourceType: string, sourceId: string): string {
   return `${METFIX}/favorites/${encodeURIComponent(sourceType)}/${encodeURIComponent(sourceId)}`;
 }

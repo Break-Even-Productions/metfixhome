@@ -204,11 +204,26 @@ export type FavoriteItem = {
   source_id: string;
   title?: string | null;
   url?: string | null;
+  photo_url?: string | null;
+  excerpt?: string | null;
+  protein_g?: number | null;
+  fat_g?: number | null;
+  carb_g?: number | null;
+  protein_name?: string | null;
+  servings_default?: number | null;
+  scale?: string | null;
+  video_url?: string | null;
+  article_url?: string | null;
+  recipe_url?: string | null;
+  saved_at?: string | null;
+  date?: string | null;
   [key: string]: unknown;
 };
 
 export type FavoritesPage = {
   items: FavoriteItem[];
+  /** Legacy BSI key — worker should normalize to `items`. */
+  favorites?: FavoriteItem[];
   [key: string]: unknown;
 };
 

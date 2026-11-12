@@ -1118,6 +1118,214 @@ describe("worker/account routes", () => {
     expect(recorded.length).toBe(0);
   });
 
+  it("DP-T-21b normalizes BSI favorites/recipes/workouts/articles into items", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) {
+          return Response.json({
+            recipes: [{ source_type: "daily_mod", source_id: 11, title: "Chili", recipe_url: "/r/11" }],
+          });
+        }
+        if (path.endsWith("/favorites/workouts")) {
+          return Response.json({
+            workouts: [{ source_type: "daily_workout", source_id: 22, title: "Push Day" }],
+          });
+        }
+        if (path.endsWith("/favorites/articles")) {
+          return Response.json({
+            articles: [
+              {
+                source_type: "post",
+                source_id: 33,
+                title: "Sleep Science",
+                article_url: "https://metfix.org/posts/33",
+              },
+            ],
+          });
+        }
+        if (path.endsWith("/favorites")) {
+          return Response.json({
+            favorites: [{ source_type: "daily_mod", source_id: 11 }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+
+    const res = await callAccount(
+      h,
+      "/api/account/favorites",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(3);
+    expect(body.items.map((i) => i.source_type).sort()).toEqual([
+      "daily_mod",
+      "daily_workout",
+      "post",
+    ]);
+    expect(body.items.find((i) => i.source_type === "daily_mod")?.title).toBe("Chili");
+    expect(body.items.find((i) => i.source_type === "post")?.url).toBe("/posts/33");
+    expect(recorded.some((r) => r.url.includes("/favorites/recipes"))).toBe(true);
+    expect(recorded.some((r) => r.url.includes("/favorites/workouts"))).toBe(true);
+    expect(recorded.some((r) => r.url.includes("/favorites/articles"))).toBe(true);
+  });
+
+  it("DP-T-21c recipes filter hits enriched recipes endpoint only", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl, recorded } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) {
+          return Response.json({
+            recipes: [{ source_type: "custom_recipe", source_id: 9, title: "Broth" }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites?type=recipes",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      source_type: "custom_recipe",
+      source_id: "9",
+      title: "Broth",
+      url: "/account/my-meals/recipes/9/edit",
+      photo_url: null,
+      protein_g: null,
+      fat_g: null,
+      carb_g: null,
+    });
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.url.includes("/favorites/recipes")).toBe(true);
+  });
+
+  it("DP-T-21d falls back to raw { favorites } when enriched lists are empty", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) return Response.json({ recipes: [] });
+        if (path.endsWith("/favorites/workouts")) return Response.json({ workouts: [] });
+        if (path.endsWith("/favorites/articles")) return Response.json({ articles: [] });
+        if (path.endsWith("/favorites")) {
+          return Response.json({
+            favorites: [{ source_type: "daily_article", source_id: 77 }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      source_type: "daily_article",
+      source_id: "77",
+      title: null,
+      url: null,
+      photo_url: null,
+    });
+  });
+
+  it("DP-T-21e keeps photo + macros from enriched recipe rows", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/recipes")) {
+          return Response.json({
+            recipes: [
+              {
+                source_type: "daily_mod",
+                source_id: 5,
+                title: "Steak",
+                photo_url: "https://cdn.example/steak.jpg",
+                excerpt: "Seared ribeye with greens",
+                protein_g: 42,
+                fat_g: 28,
+                carb_g: 6,
+                protein_name: "Beef",
+                servings_default: 2,
+              },
+            ],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites?type=recipes",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items[0]).toMatchObject({
+      source_type: "daily_mod",
+      source_id: "5",
+      title: "Steak",
+      photo_url: "https://cdn.example/steak.jpg",
+      excerpt: "Seared ribeye with greens",
+      protein_g: 42,
+      fat_g: 28,
+      carb_g: 6,
+      protein_name: "Beef",
+      servings_default: 2,
+    });
+  });
+
+  it("DP-T-21f strips HTML from excerpt and scale", async () => {
+    const sess = await withSession(h);
+    const { fetchImpl } = makeFetchMock([
+      async ({ path }) => {
+        if (path.endsWith("/favorites/workouts")) {
+          return Response.json({
+            workouts: [
+              {
+                source_type: "daily_workout",
+                source_id: 3,
+                title: "Hero WOD",
+                scale:
+                  "<p>In honor of veteran Chad Wilkinson. Learn more at the <a href=\"https://example.com\">foundation</a>.</p>",
+                excerpt: "<p>Short <strong>blurb</strong></p>",
+              },
+            ],
+          });
+        }
+        return new Response(null, { status: 404 });
+      },
+    ]);
+    const res = await callAccount(
+      h,
+      "/api/account/favorites?type=workouts",
+      { headers: { Cookie: sess.cookie } },
+      fetchImpl,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<Record<string, unknown>> };
+    expect(body.items[0]?.scale).toBe(
+      "In honor of veteran Chad Wilkinson. Learn more at the foundation.",
+    );
+    expect(body.items[0]?.excerpt).toBe("Short blurb");
+    expect(String(body.items[0]?.scale)).not.toMatch(/</);
+  });
+
   it("MF meals + macros + pr-overview proxy live BSI metfix/v1 routes", async () => {
     const sess = await withSession(h);
     const { fetchImpl, recorded } = makeFetchMock([

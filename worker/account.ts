@@ -24,6 +24,7 @@ import { emitStrayFieldLogs, stripStrayFields } from "./stripStrayFields";
 import { sanitizeReturnPath } from "../shared/account/returnPath";
 import { resolveNotificationHref } from "../shared/account/notificationDeepLinks";
 import { computeLtvBudget } from "../shared/account/ltv";
+import { plainText } from "../shared/daily-fix";
 import { normalizeFoundationsCoachStatus } from "../shared/account/foundations-coach";
 import {
   extractSubscriptionTierItems,
@@ -48,7 +49,10 @@ import {
   accountCourseGiftsPath,
   accountEmailConfirmPath,
   accountEmailPath,
+  accountFavoriteArticlesPath,
   accountFavoriteItemPath,
+  accountFavoriteRecipesPath,
+  accountFavoriteWorkoutsPath,
   accountFavoritesPath,
   accountInAppNotificationsPath,
   accountListItemPath,
@@ -238,12 +242,20 @@ const REFERRAL_INELIGIBLE_CODES = new Set([
  */
 export const EDITABLE_ATTR_IDS: ReadonlySet<number> = new Set([1, 2, 3, 4, 5]);
 
+/** BSI toggle source types plus legacy web filter aliases. */
 const FAVORITE_SOURCE_TYPES = new Set([
+  "daily_mod",
+  "custom_recipe",
+  "daily_workout",
+  "daily_article",
+  "post",
+  "plan",
+  "meal_plan",
+  // Legacy / UI aliases (tests + older clients)
   "articles",
   "recipes",
   "workouts",
   "videos",
-  "post",
   "daily_fix",
 ]);
 
@@ -2637,16 +2649,18 @@ function magicBytesOk(bytes: Uint8Array, contentType: string): boolean {
   return false;
 }
 
-function favoriteCurrentlySet(list: unknown, sourceType: string, sourceId: string): boolean {
+function favoriteRowsFromPayload(list: unknown): unknown[] {
   const obj = asRecord(list);
-  const items = Array.isArray(list)
-    ? list
-    : obj && Array.isArray(obj.items)
-      ? obj.items
-      : obj && Array.isArray(obj.favorites)
-        ? obj.favorites
-        : [];
-  for (const row of items) {
+  if (Array.isArray(list)) return list;
+  if (!obj) return [];
+  for (const key of ["items", "favorites", "recipes", "workouts", "articles"] as const) {
+    if (Array.isArray(obj[key])) return obj[key] as unknown[];
+  }
+  return [];
+}
+
+function favoriteCurrentlySet(list: unknown, sourceType: string, sourceId: string): boolean {
+  for (const row of favoriteRowsFromPayload(list)) {
     const r = asRecord(row);
     if (!r) continue;
     const t = String(r.source_type ?? r.type ?? "");
@@ -2654,6 +2668,132 @@ function favoriteCurrentlySet(list: unknown, sourceType: string, sourceId: strin
     if (t === sourceType && id === sourceId) return true;
   }
   return false;
+}
+
+function favoriteHttpsOrNull(v: unknown, max = 500): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s.startsWith("https://") || s.length > max) return null;
+  return s;
+}
+
+function favoritePlainOrNull(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  // BSI fields (esp. workout scale / excerpts) often include HTML tags.
+  const s = plainText(v);
+  if (!s) return null;
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+function favoriteFiniteNum(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) {
+    return Number(v);
+  }
+  return null;
+}
+
+/** Prefer relative app paths so AccountFavorites can Link; fall back to absolute media URLs. */
+function favoriteItemUrl(row: Record<string, unknown>, sourceType: string, sourceId: string): string | null {
+  if (sourceType === "post") return `/posts/${encodeURIComponent(sourceId)}`;
+  if (sourceType === "custom_recipe") {
+    return `/account/my-meals/recipes/${encodeURIComponent(sourceId)}/edit`;
+  }
+  const candidates = [row.article_url, row.recipe_url, row.video_url, row.url, row.permalink];
+  for (const c of candidates) {
+    if (typeof c !== "string" || !c.trim()) continue;
+    const u = c.trim();
+    if (u.startsWith("/")) return u;
+    if (u.startsWith("https://")) return u;
+  }
+  return null;
+}
+
+function normalizeFavoriteMacros(row: Record<string, unknown>): {
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+} {
+  const nested = asRecord(row.macros) ?? asRecord(row.macros_json);
+  const protein =
+    favoriteFiniteNum(row.protein_g) ??
+    favoriteFiniteNum(nested?.protein) ??
+    favoriteFiniteNum(nested?.protein_g);
+  const fat =
+    favoriteFiniteNum(row.fat_g) ??
+    favoriteFiniteNum(nested?.fat) ??
+    favoriteFiniteNum(nested?.fat_g);
+  const carbs =
+    favoriteFiniteNum(row.carb_g) ??
+    favoriteFiniteNum(row.carbs_g) ??
+    favoriteFiniteNum(nested?.carbs) ??
+    favoriteFiniteNum(nested?.carb) ??
+    favoriteFiniteNum(nested?.carb_g);
+  return { protein, fat, carbs };
+}
+
+function normalizeFavoriteItem(row: unknown): Record<string, unknown> | null {
+  const r = asRecord(row);
+  if (!r) return null;
+  const sourceType = String(r.source_type ?? r.type ?? "").trim();
+  const rawId = r.source_id ?? r.id ?? r.item_id;
+  if (!sourceType || rawId == null) return null;
+  const sourceId = String(rawId).trim();
+  if (!sourceId) return null;
+  const title =
+    favoritePlainOrNull(r.title, 300) ?? favoritePlainOrNull(r.name, 300);
+  const macros = normalizeFavoriteMacros(r);
+  const photo =
+    favoriteHttpsOrNull(r.photo_url) ??
+    favoriteHttpsOrNull(r.image_url) ??
+    favoriteHttpsOrNull(r.plate_photo);
+  const servings = favoriteFiniteNum(r.servings_default ?? r.servings);
+  return {
+    source_type: sourceType,
+    source_id: sourceId,
+    title,
+    url: favoriteItemUrl(r, sourceType, sourceId),
+    photo_url: photo,
+    excerpt: favoritePlainOrNull(r.excerpt, 280),
+    protein_g: macros.protein,
+    fat_g: macros.fat,
+    carb_g: macros.carbs,
+    protein_name: favoritePlainOrNull(r.protein_name, 80),
+    servings_default: servings != null && servings > 0 ? Math.round(servings) : null,
+    scale: favoritePlainOrNull(r.scale, 160),
+    video_url: favoriteHttpsOrNull(r.video_url),
+    article_url: favoriteHttpsOrNull(r.article_url),
+    recipe_url: favoriteHttpsOrNull(r.recipe_url) ?? (typeof r.recipe_url === "string" && r.recipe_url.startsWith("/") ? r.recipe_url.trim() : null),
+    saved_at: favoritePlainOrNull(r.saved_at, 40),
+    date: favoritePlainOrNull(r.date, 40),
+  };
+}
+
+function normalizeFavoriteItems(payload: unknown): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  for (const row of favoriteRowsFromPayload(payload)) {
+    const item = normalizeFavoriteItem(row);
+    if (!item) continue;
+    const key = `${item.source_type}:${item.source_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+type FavoriteFilter = "all" | "articles" | "recipes" | "workouts" | "videos";
+
+function favoriteUpstreamPaths(filter: FavoriteFilter): string[] {
+  if (filter === "recipes") return [accountFavoriteRecipesPath()];
+  if (filter === "workouts" || filter === "videos") return [accountFavoriteWorkoutsPath()];
+  if (filter === "articles") return [accountFavoriteArticlesPath()];
+  return [
+    accountFavoriteRecipesPath(),
+    accountFavoriteWorkoutsPath(),
+    accountFavoriteArticlesPath(),
+  ];
 }
 
 type ProfileAttrWrite = {
@@ -4629,24 +4769,55 @@ async function dispatch(
       return accountJson({ dates }, 200);
     }
     case "DP21": {
-      const type = url.searchParams.get("type") ?? "all";
+      const type = (url.searchParams.get("type") ?? "all") as FavoriteFilter;
       if (!FAVORITE_FILTER_TYPES.has(type)) {
         return accountJson({ error: "invalid_request" }, 400);
       }
-      const q = type === "all" ? undefined : `type=${encodeURIComponent(type)}`;
-      const ran = await runBearer(
-        ctx!,
-        env,
-        fetchImpl,
-        opts,
-        "GET",
-        accountFavoritesPath(),
-        { query: q },
+      // BSI returns { favorites } / { recipes } / { workouts } / { articles }.
+      // Web contract is always { items: [...] } with titles when enriched endpoints work.
+      const paths = favoriteUpstreamPaths(type);
+      const results = await Promise.all(
+        paths.map((path) => runBearer(ctx!, env, fetchImpl, opts, "GET", path)),
       );
-      if (ran instanceof Response) return mapUnauthenticated(ran);
-      const mapped = mapUpstreamResult(ran.result);
-      if (mapped instanceof Response) return mapped;
-      return accountJson(mapped.json ?? { items: [] }, 200);
+      for (const ran of results) {
+        if (ran instanceof Response) return mapUnauthenticated(ran);
+      }
+      const items: Record<string, unknown>[] = [];
+      const seen = new Set<string>();
+      let anyOk = false;
+      let lastError: Response | null = null;
+      for (const ran of results) {
+        if (ran instanceof Response) continue;
+        const mapped = mapUpstreamResult(ran.result);
+        if (mapped instanceof Response) {
+          lastError = mapped;
+          continue;
+        }
+        anyOk = true;
+        for (const item of normalizeFavoriteItems(mapped.json)) {
+          const key = `${item.source_type}:${item.source_id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          items.push(item);
+        }
+      }
+      if (!anyOk && lastError) return lastError;
+      // Fallback: raw bookmark index when enriched endpoints are empty/unavailable.
+      if (items.length === 0 && type === "all") {
+        const rawRan = await runBearer(ctx!, env, fetchImpl, opts, "GET", accountFavoritesPath());
+        if (!(rawRan instanceof Response)) {
+          const rawMapped = mapUpstreamResult(rawRan.result);
+          if (!(rawMapped instanceof Response)) {
+            for (const item of normalizeFavoriteItems(rawMapped.json)) {
+              const key = `${item.source_type}:${item.source_id}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              items.push(item);
+            }
+          }
+        }
+      }
+      return accountJson({ items }, 200);
     }
     case "DP22": {
       const sourceType = match.params.sourceType!;

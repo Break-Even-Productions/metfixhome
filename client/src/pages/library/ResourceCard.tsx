@@ -2,6 +2,7 @@ import {
   Clapperboard,
   FileText,
   Lock,
+  LockOpen,
   Play,
   Presentation,
   Radio,
@@ -158,6 +159,7 @@ export function ResourceCard({
   const locked = isLockedCard(resource);
   const exclusive = isProfessionalTagged(resource);
   const showLock = locked || exclusive;
+  const hasAccess = resource.access.user_has_access || resource.access.access === "full";
   const baseHref = libraryOnly
     ? `/library/${resource.type}/${resource.id}`
     : resource.daily_fix_date
@@ -172,6 +174,9 @@ export function ResourceCard({
   const TypeIcon = visual.Icon;
   const dateLabel = formatDate(resource.date);
   const category = resource.categories[0]?.name;
+  const LockIcon = hasAccess && !locked ? LockOpen : Lock;
+  const lockLabel =
+    hasAccess && !locked ? "Unlocked exclusive content" : "Exclusive content";
 
   const body = (
     <>
@@ -235,8 +240,8 @@ export function ResourceCard({
           </span>
         ) : null}
         {showLock ? (
-          <span className="library-card-lock" aria-label="Exclusive content">
-            <Lock size={12} strokeWidth={2.25} aria-hidden />
+          <span className="library-card-lock" aria-label={lockLabel}>
+            <LockIcon size={12} strokeWidth={2.25} aria-hidden />
           </span>
         ) : null}
       </div>

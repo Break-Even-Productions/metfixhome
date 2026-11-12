@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ExclusiveAccessLevel, LibraryResource, LibrarySearchMeta } from "@shared/library";
 import { retainExclusiveCatalog } from "@shared/library";
 import { fetchExclusiveAccessLevels, fetchExclusiveFeed } from "@/pages/library/api";
 import { JoinModal } from "@/pages/library/JoinModal";
+import { LibraryRailSkeleton } from "@/pages/library/LibraryRailSkeleton";
 import { ResourceCard } from "@/pages/library/ResourceCard";
 import "@/pages/library/library.css";
 import DashboardLayout from "./DashboardLayout";
@@ -99,98 +100,123 @@ export default function AccountExclusive() {
     );
   }
 
+  const filterHint = useMemo(() => {
+    if (selected.length === 0) {
+      return "Every exclusive post across all access levels.";
+    }
+    const names = levels
+      .filter((level) => selected.includes(level.id))
+      .map((level) => level.name);
+    if (names.length === 0) return "Filtered by selected access levels.";
+    if (names.length === 1) return `Only posts exclusive to ${names[0]}.`;
+    if (names.length === 2) return `Only posts exclusive to ${names[0]} or ${names[1]}.`;
+    return `Only posts exclusive to ${names.slice(0, -1).join(", ")}, or ${names.at(-1)}.`;
+  }, [levels, selected]);
+
   return (
     <DashboardLayout
       title="Exclusive feed"
       description="Posts and pages marked exclusive in the MetFix library."
     >
-      <form
-        className="account-search"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setSubmitted(query.trim());
-        }}
-      >
-        <label className="account-search__label" htmlFor="exclusive-query">
-          Search exclusive posts
-        </label>
-        <input
-          id="exclusive-query"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search exclusive posts"
-        />
-        <button type="submit" className="account-btn">
-          Search
-        </button>
-      </form>
-
-      <div className="account-exclusive__filters" role="group" aria-label="Access level">
-        <button
-          type="button"
-          className={selected.length === 0 ? "account-chip account-chip--on" : "account-chip"}
-          aria-pressed={selected.length === 0}
-          onClick={() => setSelected([])}
+      <div className="library-embed">
+        <form
+          className="library-search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setSubmitted(query.trim());
+          }}
         >
-          All exclusive
-        </button>
-        {levels.map((level) => {
-          const on = selected.includes(level.id);
-          return (
-            <button
-              key={level.id}
-              type="button"
-              className={on ? "account-chip account-chip--on" : "account-chip"}
-              aria-pressed={on}
-              onClick={() => toggleLevel(level.id)}
-            >
-              {level.name}
-            </button>
-          );
-        })}
-      </div>
-      <p className="account-muted">
-        Showing only resources exclusive to the selected access level. An empty selection
-        includes every exclusive post.
-      </p>
+          <input
+            id="exclusive-query"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search exclusive posts"
+            aria-label="Search exclusive posts"
+            type="search"
+          />
+          <button type="submit">Search</button>
+        </form>
 
-      {error ? <p className="account-error">{error}</p> : null}
-      {loading ? <p className="account-muted">Loading exclusive posts…</p> : null}
+        {levels.length > 0 ? (
+          <>
+            <div className="library-chips" role="toolbar" aria-label="Access level">
+              <button
+                type="button"
+                className="library-chip"
+                data-active={selected.length === 0 ? "true" : "false"}
+                aria-pressed={selected.length === 0}
+                onClick={() => setSelected([])}
+              >
+                All exclusive
+              </button>
+              {levels.map((level) => {
+                const on = selected.includes(level.id);
+                return (
+                  <button
+                    key={level.id}
+                    type="button"
+                    className="library-chip"
+                    data-active={on ? "true" : "false"}
+                    aria-pressed={on}
+                    onClick={() => toggleLevel(level.id)}
+                  >
+                    {level.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="library-filter-hint">{filterHint}</p>
+          </>
+        ) : null}
 
-      {!loading && resources.length === 0 ? (
-        <section className="account-empty" aria-labelledby="exclusive-empty-heading">
-          <h2 id="exclusive-empty-heading">No exclusive posts</h2>
-          <p className="account-muted">
+        {error ? <p className="account-error">{error}</p> : null}
+        {loading ? <LibraryRailSkeleton count={6} label="Loading exclusive posts" /> : null}
+
+        {!loading && resources.length === 0 ? (
+          <div className="library-stub">
+            <strong>No exclusive posts</strong>
             Nothing in the exclusive catalog matches this search.
-          </p>
-        </section>
-      ) : null}
+          </div>
+        ) : null}
 
-      {resources.length > 0 ? (
-        <div className="account-exclusive-grid">
-          {resources.map((resource) => (
-            <ResourceCard
-              key={`${resource.type}:${resource.id}`}
-              resource={resource}
-              libraryOnly
-              onOpenLocked={setLocked}
-            />
-          ))}
-        </div>
-      ) : null}
+        {!loading && resources.length > 0 ? (
+          <section className="library-section">
+            <div className="library-section-head">
+              <div>
+                <div className="library-section-label">Members only</div>
+                <h2 className="library-section-title">Exclusive posts</h2>
+              </div>
+            </div>
+            <div className="library-rail">
+              {resources.map((resource) => (
+                <ResourceCard
+                  key={`${resource.type}:${resource.id}`}
+                  resource={resource}
+                  libraryOnly
+                  onOpenLocked={setLocked}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-      {meta?.has_more ? (
-        <div className="account-list-item__actions">
-          <button
-            type="button"
-            className="account-btn account-btn--ghost"
-            disabled={loadingMore}
-            onClick={() => void loadMore()}
-          >
-            {loadingMore ? "Loading…" : "Load more"}
-          </button>
-        </div>
-      ) : null}
+        {meta?.has_more ? (
+          <div className="library-search">
+            <button
+              type="button"
+              className="library-btn library-btn-ghost"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+            >
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          </div>
+        ) : null}
+
+        {loadingMore ? (
+          <LibraryRailSkeleton count={3} label="Loading more exclusive posts" />
+        ) : null}
+      </div>
 
       <JoinModal
         open={locked != null}

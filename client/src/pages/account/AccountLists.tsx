@@ -51,6 +51,24 @@ function visibilityLabel(list: UserList): string {
   }
 }
 
+function visibilityTone(list: UserList): string {
+  if (list.list_relationship === "subscriber" || list.access_status === "subscribed") {
+    return "subscribed";
+  }
+  switch (list.visibility) {
+    case "public":
+      return "public";
+    case "unlisted":
+      return "unlisted";
+    case "affiliate":
+      return "affiliate";
+    case "invite_only":
+      return "invite";
+    default:
+      return "private";
+  }
+}
+
 export default function AccountLists() {
   const [tab, setTab] = useState<"mine" | "public">("mine");
   const [lists, setLists] = useState<UserList[]>([]);
@@ -236,32 +254,59 @@ export default function AccountLists() {
 
       {visible.length > 0 ? (
         <ul className="account-lists-grid">
-          {visible.map((list) => (
-            <li key={list.id}>
-              <Link href={basePath(`/account/lists/${list.id}`)} className="account-list-card">
-                {list.cover_image_url ? (
-                  <img
-                    className="account-list-card__cover"
-                    src={list.cover_image_url}
-                    alt=""
-                  />
-                ) : null}
-                <div className="account-list-card__body">
-                  <span className="account-tag">{visibilityLabel(list)}</span>
-                  <span className="account-saved-item__title">{list.title}</span>
-                  {list.description ? (
-                    <span className="account-muted">{list.description}</span>
-                  ) : null}
-                  <span className="account-muted">
-                    {list.item_count} {list.item_count === 1 ? "item" : "items"}
-                    {list.list_relationship === "subscriber" && list.owner_display_name
-                      ? ` · ${list.owner_display_name}`
-                      : ""}
-                  </span>
-                </div>
-              </Link>
-            </li>
-          ))}
+          {visible.map((list) => {
+            const tone = visibilityTone(list);
+            const itemLabel = `${list.item_count} ${list.item_count === 1 ? "item" : "items"}`;
+            return (
+              <li key={list.id}>
+                <Link href={basePath(`/account/lists/${list.id}`)} className="account-list-card">
+                  <div className="account-list-card__media" aria-hidden="true">
+                    {list.cover_image_url ? (
+                      <img
+                        className="account-list-card__cover"
+                        src={list.cover_image_url}
+                        alt=""
+                      />
+                    ) : (
+                      <div className="account-list-card__placeholder">
+                        <svg
+                          className="account-list-card__placeholder-icon"
+                          viewBox="0 0 24 24"
+                          width="28"
+                          height="28"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          aria-hidden="true"
+                        >
+                          <path d="M4 7.5h16v11H4z" />
+                          <path d="M8 7.5V5.75A1.75 1.75 0 0 1 9.75 4h4.5A1.75 1.75 0 0 1 16 5.75V7.5" />
+                          <path d="M9 12.5h6M9 15.5h4" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="account-list-card__body">
+                    <div className="account-list-card__top">
+                      <span className={`account-tag account-tag--list-${tone}`}>
+                        {visibilityLabel(list)}
+                      </span>
+                      <span className="account-list-card__count">{itemLabel}</span>
+                    </div>
+                    <span className="account-list-card__title">{list.title}</span>
+                    {list.description ? (
+                      <span className="account-list-card__desc">{list.description}</span>
+                    ) : null}
+                    {list.list_relationship === "subscriber" && list.owner_display_name ? (
+                      <span className="account-list-card__owner">
+                        by {list.owner_display_name}
+                      </span>
+                    ) : null}
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </DashboardLayout>

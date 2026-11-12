@@ -1,19 +1,59 @@
 /* Resource Library — mia-metfix cream/ink/gold + Emily IA structure */
 
+/*
+ * Card/modal tokens must resolve outside .library-page too (account exclusive,
+ * search, keep-learning). Fallbacks match :root / account-shell cream palette.
+ */
+.library-page,
+.library-embed,
+.library-card,
+.library-modal,
+.keep-learning {
+  --lib-font-serif: var(--font-serif, "Playfair Display", ui-serif, Georgia, serif);
+  --lib-font-sans: var(--font-sans, "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif);
+  --lib-cream: var(--color-cream, #f3eee4);
+  --lib-cream-2: var(--color-cream-2, #e9e1d2);
+  --lib-paper: var(--color-paper, #faf7f1);
+  --lib-ink: var(--color-ink, #171512);
+  --lib-ink-2: var(--color-ink-2, #221f1b);
+  --lib-accent: var(--color-accent, #c4a46c);
+  --lib-accent-2: var(--color-accent-2, #b08d52);
+  --lib-accent-text: var(--color-accent-text, #775f37);
+  --lib-muted: var(--color-muted, #686158);
+  --lib-line: var(--color-line, rgba(23, 21, 18, 0.1));
+  --lib-ease: var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/*
+ * Account / non-library hosts: pin Resource Library cream/gold so audience
+ * themes (coach blue, clinician green, …) do not recolor the shared cards.
+ */
+.library-embed {
+  --color-cream: #f3eee4;
+  --color-cream-2: #e9e1d2;
+  --color-paper: #faf7f1;
+  --color-ink: #171512;
+  --color-ink-2: #221f1b;
+  --color-accent: #c4a46c;
+  --color-accent-2: #b08d52;
+  --color-accent-text: #775f37;
+  --color-muted: #686158;
+  --color-line: rgba(23, 21, 18, 0.1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--lib-ink);
+  font-family: var(--lib-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.library-filter-hint {
+  margin: -1.35rem 0 1.75rem;
+  max-width: 34rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--lib-muted);
+}
+
 .library-page {
-  --lib-font-serif: var(--font-serif);
-  --lib-font-sans: var(--font-sans);
-  --lib-cream: var(--color-cream);
-  --lib-cream-2: var(--color-cream-2);
-  --lib-paper: var(--color-paper);
-  --lib-ink: var(--color-ink);
-  --lib-ink-2: var(--color-ink-2);
-  --lib-accent: var(--color-accent);
-  --lib-accent-2: var(--color-accent-2);
-  --lib-accent-text: var(--color-accent-text);
-  --lib-muted: var(--color-muted);
-  --lib-line: var(--color-line);
-  --lib-ease: var(--ease-out-expo);
   /* Comment thread reuses Daily Fix tokens. */
   --df-cream: var(--lib-cream);
   --df-cream-2: var(--lib-cream-2);
@@ -290,8 +330,8 @@
     0 1px 2px rgba(23, 21, 18, 0.05),
     0 8px 22px rgba(23, 21, 18, 0.08);
   transition:
-    transform 0.25s var(--lib-ease),
-    box-shadow 0.25s var(--lib-ease);
+    transform 0.35s var(--lib-ease),
+    box-shadow 0.35s var(--lib-ease);
 }
 
 @media (min-width: 768px) {
@@ -321,12 +361,15 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.35s var(--lib-ease);
+  /* Compositor layer so zoom stays smooth with the card lift. */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: transform 0.45s var(--lib-ease);
 }
 
 .library-card:hover .library-card-media > img,
 .library-card:focus-visible .library-card-media > img {
-  transform: scale(1.04);
+  transform: translateZ(0) scale(1.04);
 }
 
 .library-card-play {
@@ -432,14 +475,14 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   background: rgba(23, 21, 18, 0.82);
-  color: var(--lib-paper);
+  color: var(--lib-paper, #faf7f1);
   padding: 0.3rem 0.55rem;
   border-radius: 999px;
 }
 
 .library-card-type-icon {
   flex-shrink: 0;
-  color: var(--lib-accent);
+  color: var(--lib-accent, #c4a46c);
 }
 
 .library-card-type-icon--asterisk {
@@ -455,7 +498,7 @@
   height: 1.75rem;
   border-radius: 999px;
   background: rgba(23, 21, 18, 0.75);
-  color: var(--lib-paper);
+  color: var(--lib-paper, #faf7f1);
   display: grid;
   place-items: center;
 }
@@ -474,7 +517,7 @@
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--lib-accent-text);
+  color: var(--lib-accent-text, #775f37);
 }
 
 .library-card-meta {
@@ -869,6 +912,6 @@
 
   .library-card:hover .library-card-media > img,
   .library-card:focus-visible .library-card-media > img {
-    transform: none;
+    transform: translateZ(0);
   }
 }
