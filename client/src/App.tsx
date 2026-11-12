@@ -15,6 +15,7 @@ import AffiliateSeminars from "./pages/AffiliateSeminars";
 import Login from "./pages/Login";
 import JoinPage from "./pages/join/JoinPage";
 import TheDailyFixPage from "./pages/the-daily-fix/TheDailyFixPage";
+import TheDailyFixWheelPage from "./pages/the-daily-fix/wheel/TheDailyFixWheelPage";
 import PostsPage from "./pages/posts/PostsPage";
 import LibraryPage from "./pages/library/LibraryPage";
 import AccountOverview from "./pages/account/AccountOverview";
@@ -97,6 +98,7 @@ function AppRoutes() {
           </Suspense>
         )}
       </Route>
+      <Route path={"/the-daily-fix/wheel"} component={TheDailyFixWheelPage} />
       <Route path={"/the-daily-fix/:yy/:mm/:dd"} component={TheDailyFixPage} />
       <Route
         path={"/the-daily-fix/:date/:pillar"}

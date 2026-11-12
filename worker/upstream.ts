@@ -1398,3 +1398,73 @@ export async function bsiFetchLeaderboard(
   );
   return mapWriteResult(r);
 }
+
+/** BSI wheel recipes base (`…/metfix/v1/wheel/recipes`). */
+export function resolveWheelRecipesBase(env: Env, opts?: ResolveBsiOriginOpts): string {
+  const origin = resolveBsiOrigin(env, opts);
+  return `${origin}/wp-json/metfix/v1/wheel/recipes`;
+}
+
+export type WheelRecipesUpstream =
+  | { kind: "ok"; status: number; bodyText: string }
+  | { kind: "upstream_error"; status: number }
+  | { kind: "timeout" }
+  | { kind: "throw" };
+
+/**
+ * Proxy helper for `GET /metfix/v1/wheel/recipes`.
+ * Upstream permission is Origin/Referer (`bsi_is_allowed_origin`), so we send
+ * `Origin: https://metfix.org`. API key is optional (not required by that gate).
+ */
+export async function fetchWheelRecipes(
+  searchParams: URLSearchParams,
+  env: Env,
+  fetchImpl: FetchImpl,
+  opts?: ResolveBsiOriginOpts,
+): Promise<WheelRecipesUpstream> {
+  const base = resolveWheelRecipesBase(env, opts);
+  const qs = new URLSearchParams();
+  const limitRaw = searchParams.get("limit");
+  const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 12;
+  qs.set("limit", String(Number.isFinite(limit) ? Math.max(1, Math.min(40, limit)) : 12));
+  const exclude = searchParams.get("exclude_id");
+  if (exclude) qs.set("exclude_id", exclude);
+  const proteinIds = searchParams.get("protein_ids");
+  if (proteinIds) qs.set("protein_ids", proteinIds);
+
+  const url = `${base}?${qs.toString()}`;
+  try {
+    assertBsiHost(url, env);
+  } catch {
+    return { kind: "throw" };
+  }
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "User-Agent": UPSTREAM_USER_AGENT,
+    Origin: "https://metfix.org",
+    Referer: "https://metfix.org/the-daily-fix/wheel",
+  };
+  const apiKey = dailyFixApiKey(env);
+  if (apiKey) headers["X-API-Key"] = apiKey;
+
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      return { kind: "upstream_error", status: response.status };
+    }
+    return { kind: "ok", status: 200, bodyText: await response.text() };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      return { kind: "timeout" };
+    }
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      return { kind: "timeout" };
+    }
+    return { kind: "throw" };
+  }
+}

@@ -11,6 +11,7 @@ vi.mock("@/pages/Classes", () => ({ default: () => null }));
 vi.mock("@/pages/AffiliateSeminars", () => ({ default: () => null }));
 vi.mock("@/pages/Login", () => ({ default: () => null }));
 vi.mock("@/pages/the-daily-fix/TheDailyFixPage", () => ({ default: () => null }));
+vi.mock("@/pages/the-daily-fix/wheel/TheDailyFixWheelPage", () => ({ default: () => null }));
 vi.mock("@/pages/posts/PostsPage", () => ({ default: () => null }));
 vi.mock("@/pages/library/LibraryPage", () => ({ default: () => null }));
 vi.mock("@/pages/account/AccountOverview", () => ({ default: () => null }));

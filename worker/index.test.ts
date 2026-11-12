@@ -1410,6 +1410,52 @@ describe("Worker HTML / API / sitemap", () => {
       expect(cache.puts.length).toBe(0);
     });
   });
+
+  describe("Daily Fix wheel", () => {
+    it("serves SPA shell for /the-daily-fix/wheel without day upstream", async () => {
+      const res = await call("/the-daily-fix/wheel", { headers: { Accept: "text/html" } });
+      expect(res.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(0);
+      expect(assetsFetch).toHaveBeenCalled();
+      expect(await res.text()).toContain('id="root"');
+    });
+
+    it("redirects trailing slash on the wheel path", async () => {
+      const res = await call("/the-daily-fix/wheel/", { headers: { Accept: "text/html" } });
+      expect(res.status).toBe(301);
+      expect(res.headers.get("Location")).toBe("/the-daily-fix/wheel");
+    });
+
+    it("proxies /api/daily-fix/wheel/recipes with Origin and no-store", async () => {
+      const payload = {
+        recipes: [{ id: 1, title: "Dish", last_used: "261004", protein: { id: 1, name: "beef" }, macros: {}, assets: null }],
+        meta: { count: 1, limit: 12, excluded: null, protein_ids: [] },
+      };
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      const res = await call("/api/daily-fix/wheel/recipes?limit=12");
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(await res.json()).toEqual(payload);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(String(url)).toContain("/wp-json/metfix/v1/wheel/recipes?limit=12");
+      const headers = (init as RequestInit).headers as Record<string, string>;
+      expect(headers.Origin).toBe("https://metfix.org");
+      expect(headers["X-API-Key"]).toBe("test-secret-key");
+    });
+
+    it("returns 503 when wheel upstream fails", async () => {
+      fetchMock.mockResolvedValue(new Response("nope", { status: 500 }));
+      const res = await call("/api/daily-fix/wheel/recipes");
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "unavailable" });
+    });
+  });
 });
 
 describe("W27 truncation (shared cutDescription)", () => {

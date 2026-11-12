@@ -324,6 +324,9 @@ export default function TheDailyFixPage({
                 <button type="button" className="df-btn df-btn-ghost" onClick={() => jumpTo("daily-fix-subscribe")}>
                   Subscribe free
                 </button>
+                <Link href="/the-daily-fix/wheel" className="df-btn df-btn-ghost">
+                  Spin the wheel
+                </Link>
               </div>
             </div>
             <nav ref={barRef} className="df-masthead" aria-label="Today's recipe, workout, and reading">
@@ -432,6 +435,22 @@ export default function TheDailyFixPage({
                 </button>
               </form>
               <p className="df-fine">Unsubscribe anytime. A MetFix product by The Broken Science Initiative.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="daily-fix-wheel-cta" className="df-card">
+          <div className="df-pad">
+            <div className="df-wheel-cta">
+              <p className="df-pill df-pill-ink">Recipe roulette</p>
+              <h2>
+                Try the <em>Wheel</em>
+              </h2>
+              <p>Spin through Daily Fix recipes and land on tonight’s meal.</p>
+              <Link href="/the-daily-fix/wheel" className="df-btn df-btn-accent df-wheel-cta-btn">
+                Try the Wheel
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </div>
           </div>
         </section>
