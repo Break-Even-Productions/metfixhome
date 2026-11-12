@@ -1639,11 +1639,6 @@ a.df-article {
   padding: 1.25rem 0 0.5rem;
 }
 
-.df-pill-ink {
-  background: var(--df-ink);
-  color: var(--df-cream);
-}
-
 .df-wheel-cta h2 {
   margin: 1.25rem 0 0;
   font-family: var(--df-font-serif);
@@ -1656,7 +1651,8 @@ a.df-article {
 
 .df-wheel-cta h2 em {
   font-style: italic;
-  color: var(--df-accent-2);
+  /* Darker gold than --df-accent-2 so WCAG AA clears on paper cards. */
+  color: var(--df-accent-text);
 }
 
 @media (min-width: 768px) {
@@ -1671,6 +1667,12 @@ a.df-article {
   font-size: 0.9375rem;
   line-height: 1.6;
   color: var(--df-muted);
+}
+
+/* After `.df-wheel-cta p` so cream text wins over muted body copy. */
+.df-wheel-cta p.df-pill-ink {
+  background: var(--df-ink);
+  color: var(--df-cream);
 }
 
 .df-wheel-cta-btn {

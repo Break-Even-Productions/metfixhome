@@ -17,8 +17,8 @@ const JAKARTA_ID = "daily-fix-jakarta-font";
 const JAKARTA_HREF =
   "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap";
 
-const PRE_SPIN_SRC =
-  "https://brokenscience.org/wp-content/uploads/2025/10/nutritionPlateNoBG.png";
+/** Same-origin pre-spin mark (AU22.2 forbids upstream BSI hosts in this tree). */
+const PRE_SPIN_SRC = "/metfix-lockup.png";
 
 function loadJakartaSans() {
   if (document.getElementById(JAKARTA_ID)) return;
